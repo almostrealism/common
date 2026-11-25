@@ -150,5 +150,33 @@ public class SetIntervalScale<T extends KeyPosition<T>> implements Scale<T> {
 	}
 
 	@Override
-	public int length() { return repetitions * intervals.length; }
+	// TODO(review): length() is now O(n); valueAt's per-level bounds check makes valueAt O(n^2) / forEach O(n^3). Consider caching reachable length.
+	public int length() {
+		int declared = repetitions * intervals.length;
+		if (root == null) return declared;
+
+		// A scale cannot extend past the top of its key type's range: once a note
+		// has no successor, no higher position is representable. Report only the
+		// positions whose notes actually exist, so valueAt returns a note for
+		// every position in [0, length()) and forEach never walks off the end of
+		// the keyboard, where next() would otherwise throw mid-iteration.
+		T note = root;
+		int reachable = 0;
+		try {
+			for (int position = 0; position < declared; position++) {
+				if (position > 0) {
+					int intervalIndex = (position - 1) % intervals.length;
+					for (int i = 0; i < intervals[intervalIndex]; i++) {
+						note = note.next();
+					}
+				}
+				reachable++;
+			}
+		} catch (RuntimeException outsideKeyRange) {
+			// next() reports no successor at the top of the key type's range, so
+			// the scale extends only as far as the notes counted so far.
+		}
+
+		return reachable;
+	}
 }
