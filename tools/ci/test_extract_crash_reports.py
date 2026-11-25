@@ -94,6 +94,21 @@ class ExtractCrashReportsTest(unittest.TestCase):
         self.assertIn("hs_err: hs_err_pid4242.log", out)
         self.assertTrue(os.path.isfile(os.path.join(self.out, "crash-reports", "hs_err", _HS_ERR)))
 
+    def test_symlinked_banner_path_is_refused(self):
+        """A banner path that is a symlink must not have its target collected."""
+        secret_dir = tempfile.mkdtemp(prefix="hs-err-secret-")
+        self.addCleanup(shutil.rmtree, secret_dir, True)
+        secret = os.path.join(secret_dir, "id_rsa")
+        with open(secret, "w") as f:
+            f.write("TOP SECRET KEY MATERIAL\n")
+        link = os.path.join(secret_dir, _HS_ERR)
+        os.symlink(secret, link)
+        self.place_dumpstream(link)
+        out = self.run_script()
+        collected = os.path.join(self.out, "crash-reports", "hs_err", _HS_ERR)
+        self.assertFalse(os.path.exists(collected))
+        self.assertNotIn("TOP SECRET KEY MATERIAL", out)
+
     def test_native_frames_bounded(self):
         shutil.copy(_HS_ERR_FIXTURE, os.path.join(self.root, "engine", _HS_ERR))
         out = self.run_script(CRASH_LOG_NATIVE_FRAMES="5")

@@ -192,6 +192,13 @@ hs_err_count=0
 collect_hs_err() {
     local file="$1" dest
     [ -f "$file" ] || return 0
+    # A crash log is a regular file the JVM wrote. Refuse a symlink: a banner
+    # path parsed from test-controlled output could name a symlink to a
+    # sensitive file and have cp copy its contents into the uploaded artifact.
+    if [ -L "$file" ]; then
+        echo "# WARN: refusing symlinked crash path: ${file}" >> "$SUMMARY_FILE"
+        return 0
+    fi
     dest="${HS_ERR_DIR}/$(basename "$file")"
     [ -e "$dest" ] && return 0
     cp "$file" "$dest"
