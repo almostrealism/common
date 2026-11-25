@@ -122,6 +122,7 @@ import java.util.function.Supplier;
  *     expressionShape,    // Shape of the expression being differentiated
  *     targetShape,        // Shape of the variable we're differentiating with respect to
  *     args -> myExpression(args),  // Expression function
+ *     expressionSignature,  // Structural signature of the expression, or null to opt out of reuse
  *     targetVariable,     // Variable to differentiate with respect to
  *     inputProducers      // Input arguments
  * );
@@ -549,6 +550,7 @@ public class TraversableDeltaComputation
 	 *     shape(3, 4),           // Expression shape
 	 *     shape(4, 5),           // Target shape
 	 *     args -> myExpression(args),
+	 *     expressionSignature,   // Structural signature of the expression, or null to opt out of reuse
 	 *     targetVariable,
 	 *     inputProducers
 	 * );
