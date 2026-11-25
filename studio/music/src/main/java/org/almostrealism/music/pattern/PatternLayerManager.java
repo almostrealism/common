@@ -269,17 +269,26 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures, D
 	}
 
 	/**
+	 * The initial value of {@link #cachePersistent} for every new manager, taken from the
+	 * {@code AR_PATTERN_CACHE_PERSIST} system property at class load. Owners that know
+	 * their render loops a fixed arrangement enable persistence on their own managers
+	 * through {@link #setCachePersistent(boolean)} (normally via
+	 * {@link PatternSystemManager#setNoteCachePersistent(boolean)}) rather than relying
+	 * on this process-wide default.
+	 */
+	private static final boolean defaultCachePersistent =
+			Boolean.getBoolean("AR_PATTERN_CACHE_PERSIST");
+
+	/**
 	 * When {@code true}, {@link #noteAudioCache} is never cleared or evicted in
 	 * {@link #sum}, so a continuously looped arrangement reuses the same rendered
 	 * note audio across passes with no re-evaluation and no per-loop deallocation
 	 * churn (the deallocation churn otherwise intermittently stalls the render
 	 * kernel). Memory is then bounded by the arrangement length rather than the
-	 * current playback window. Enabled via the {@code AR_PATTERN_CACHE_PERSIST}
-	 * system property; callers that switch arrangements at runtime must leave it
-	 * disabled so stale audio is evicted.
+	 * current playback window. An arrangement switch must still be announced with
+	 * {@link #invalidateCaches()}, which discards persisted audio on the next render.
 	 */
-	private static final boolean cachePersist =
-			Boolean.getBoolean("AR_PATTERN_CACHE_PERSIST");
+	private volatile boolean cachePersistent = defaultCachePersistent;
 
 	/**
 	 * Global cache-invalidation epoch. {@link #invalidateCaches()} increments it to
@@ -300,6 +309,37 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures, D
 	 */
 	public static void invalidateCaches() {
 		cacheEpoch.incrementAndGet();
+	}
+
+	/**
+	 * Returns whether this manager keeps its rendered note audio across render passes
+	 * (see {@link #setCachePersistent(boolean)}).
+	 *
+	 * @return {@code true} if the note-audio cache persists across passes
+	 */
+	public boolean isCachePersistent() {
+		return cachePersistent;
+	}
+
+	/**
+	 * Sets whether this manager keeps its rendered note audio across render passes.
+	 *
+	 * <p>When enabled, {@link #sum} neither clears the note-audio cache at frame 0 nor
+	 * evicts entries behind the playback position, and does not release it when a pass
+	 * reaches the arrangement end: a render that loops one arrangement evaluates each
+	 * note once and reuses the audio on every later pass. This is the right setting for
+	 * a sustained render of a fixed arrangement, where re-evaluating and re-freeing the
+	 * note audio on every pass churns native deallocations that stall the render kernel.
+	 * A caller that changes the arrangement must call {@link #invalidateCaches()}; the
+	 * next render then discards the persisted audio regardless of this setting.</p>
+	 *
+	 * <p>When disabled (the default unless {@code AR_PATTERN_CACHE_PERSIST} is set), the
+	 * cache only holds the current playback window.</p>
+	 *
+	 * @param cachePersistent {@code true} to keep note audio across render passes
+	 */
+	public void setCachePersistent(boolean cachePersistent) {
+		this.cachePersistent = cachePersistent;
 	}
 
 	/**
@@ -1004,7 +1044,7 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures, D
 	 * already summed into the destination and referenced by nothing else — are freed
 	 * now rather than left reachable until the next frame-0 clear or teardown. This
 	 * bounds the native memory a completed render retains in a renderer shared across
-	 * arrangements, matching the per-tick eviction done mid-render. {@code cachePersist}
+	 * arrangements, matching the per-tick eviction done mid-render. {@link #isCachePersistent() Persistent caching}
 	 * deliberately keeps the audio for looped reuse and is left untouched.</p>
 	 *
 	 * @param context Supplier for AudioSceneContext with destination buffer
@@ -1044,7 +1084,7 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures, D
 							// genome so the new arrangement renders fresh.
 							observedCacheEpoch = currentEpoch;
 							noteAudioCache.clear();
-						} else if (!cachePersist) {
+						} else if (!cachePersistent) {
 							if (frame == 0) {
 								noteAudioCache.clear();
 							} else {
@@ -1055,7 +1095,7 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures, D
 
 						// Release the final window's note audio once a non-persistent render
 						// reaches the arrangement end (see method javadoc).
-						if (!cachePersist && frame + frameCount >= ctx.getFrames()) {
+						if (!cachePersistent && frame + frameCount >= ctx.getFrames()) {
 							noteAudioCache.clear();
 						}
 					}

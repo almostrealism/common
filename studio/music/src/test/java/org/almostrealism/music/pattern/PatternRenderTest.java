@@ -325,6 +325,53 @@ public class PatternRenderTest extends TestSuiteBase implements AudioTestFeature
 	}
 
 	/**
+	 * With persistent note caching enabled through
+	 * {@link PatternSystemManager#setNoteCachePersistent(boolean)}, a buffered render keeps
+	 * every repetition's note audio after the pass ends (a non-persistent cache would
+	 * have evicted both short hits and released the rest at the arrangement end), a second
+	 * looped pass reuses it and produces the same audio, and
+	 * {@link PatternLayerManager#invalidateCaches()} still discards it on the next render.
+	 * The first buffer holds no note, so after invalidating, a single frame-0 tick must
+	 * leave the cache empty.
+	 */
+	@Test(timeout = 300000)
+	@TestDepth(2)
+	public void persistentCacheSurvivesLoopedPasses() {
+		boolean batched = PatternLayerManager.enableBatched;
+		PatternLayerManager.enableBatched = false;
+
+		try (PatternSystemManager psm = system()) {
+			psm.setNoteCachePersistent(true);
+			PatternLayerManager plm = psm.getPatterns().get(0);
+			Assert.assertTrue("the setting reaches the existing pattern", plm.isCachePersistent());
+			NoteAudioCache cache = plm.getNoteAudioCache();
+
+			double[] first = renderInBuffers(psm);
+			assertHitPlacement(first);
+			Assert.assertEquals("both repetitions stay cached after the pass ends", 2, cache.size());
+
+			double[] second = renderInBuffers(psm);
+			Assert.assertEquals("a looped pass keeps the cached repetitions", 2, cache.size());
+			for (int i = 0; i < TOTAL_FRAMES; i++) {
+				Assert.assertEquals("frame " + i, first[i], second[i], 1e-6);
+			}
+
+			PatternLayerManager.invalidateCaches();
+			AudioSceneContext context = context(null);
+			PatternAudioBuffer buffer = new PatternAudioBuffer(psm, () -> context, CHANNEL,
+					BUFFER_SIZE, () -> 0);
+			try {
+				buffer.prepareBatch().get().run();
+				Assert.assertEquals("invalidation discards persisted note audio", 0, cache.size());
+			} finally {
+				buffer.getOutputBuffer().destroy();
+			}
+		} finally {
+			PatternLayerManager.enableBatched = batched;
+		}
+	}
+
+	/**
 	 * The batched render path places the hits the same way and is also
 	 * independent of how the arrangement is divided into buffers.
 	 */

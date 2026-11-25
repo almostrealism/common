@@ -1,14 +1,14 @@
 ---
-status: proposed
+status: completed
 created: 2026-11-25
-closed:
+closed: 2026-11-25
 tracker: [afdcf400-bfb1-4a69-8129-098e0679395e]
 ---
 
 # Fix the sustained all-channel render timeout and restore the test to CI
 
 Plans tracker task **afdcf400-bfb1-4a69-8129-098e0679395e** — *"Fix the sustained
-all-channel render timeout and restore the test to CI"* — in release **Common 0.78**.
+all-channel render timeout and restore the test to CI"*.
 
 ## Motivation
 
@@ -190,6 +190,38 @@ must pass within its timeout.
    diagnostics are decisive here), the plan's Step 3 owner request may be unnecessary;
    the fix then lands entirely in the renderer / cache code and the exclusion is removed
    once the sustained render is within budget.
+
+## Implementation outcome
+
+The diagnosis overturned the cache-churn hypothesis (open question 3 applied).
+
+- **Reproduction (unfixed, macOS/Metal hybrid, curated library).** The first 64-measure
+  pass (690 buffers, ~125 s of audio) rendered at a realtime ratio of ~0.13–0.21, with
+  allocated native memory oscillating between ~1.4 and ~2.4 GB, not climbing. The thread
+  dump showed the render-ahead producer busy in note rendering, not stalled. At the
+  **first loop boundary** the test failed with `IllegalStateException: Render-ahead stream
+  is not running` from `PatternRenderStream.awaitSlot`.
+- **Cause.** `RealtimeContinuousRenderer` reset the cells between passes (`cells.reset()`,
+  or `disableGenome`/`enableGenome` on a switch, which also reset) and kept ticking without
+  running `setup()` again. `AudioSceneRealtimeRunner`'s PDSL `reset()` stops the
+  render-ahead producer, and only `setup()` restarts it. Until a stopped stream began
+  rejecting `awaitSlot()`, that wait blocked forever, which is the historical 40-minute
+  timeout. Every other `TemporalCellular` driver (`StableDurationHealthComputation`,
+  `AudioSceneBenchmark`, `AudioScenePopulation`) already runs setup after reset.
+- **Fix.** The renderer re-runs setup after every loop-boundary reset. With it, the test
+  passes under the pipeline profile: 300 s of audio over 3 loops in ~371 s wall, ratio
+  ~0.2, non-silent `rt-live.wav`, and memory flat after the first loop.
+- **Cache persistence (open question 1).** It is now a per-manager setting instead of a
+  class-load-only flag: `PatternLayerManager.setCachePersistent` and
+  `PatternSystemManager.setNoteCachePersistent`, which also applies to patterns added
+  later. The renderer enables it for its looped fixed arrangement (`AR_RT_CACHE_PERSIST=false`
+  turns it off), so **no `pom.xml` or CI change is needed** and the owner dependency is gone.
+  A comparison run with persistence off also passed at the same ratio with lower memory
+  (~1.0–2.5 GB, no growth), so persistence is not what makes this five-minute test pass.
+  It is kept because it saves re-evaluating note audio on every pass of a looped render.
+- **Pacing (open question 2).** Left at realtime. The test costs ~8 minutes of runner
+  time, well inside its 40-minute timeout, and realtime pacing is what the renderer runs
+  in production.
 
 ## Estimated complexity
 

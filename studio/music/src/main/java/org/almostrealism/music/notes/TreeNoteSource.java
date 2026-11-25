@@ -175,7 +175,8 @@ public class TreeNoteSource extends NoteAudioSourceBase implements ConsoleFeatur
 
 	/** Sets the underlying tree and triggers provider recomputation. */
 	@JsonIgnore
-	public void setTree(FileWaveDataProviderTree tree) {
+	@Override
+	public void setTree(FileWaveDataProviderTree<? extends Supplier<FileWaveDataProvider>> tree) {
 		this.tree = tree;
 		if (!isUpdated()) computeProviders();
 	}

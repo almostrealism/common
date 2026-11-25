@@ -147,6 +147,37 @@ public class PatternSystemManagerTest extends TestSuiteBase {
 	}
 
 	/**
+	 * {@link PatternSystemManager#setNoteCachePersistent(boolean)} reaches the patterns
+	 * present when it is called and every pattern added afterwards, including the ones
+	 * {@link PatternSystemManager#setSettings(PatternSystemManager.Settings)} recreates,
+	 * and turning it off again reaches them all too.
+	 */
+	@Test(timeout = 30000)
+	public void noteCachePersistenceReachesEveryPattern() {
+		PatternSystemManager psm = new PatternSystemManager(chromosomes(3));
+		PatternLayerManager existing = psm.addPattern(0, 2.0, false);
+		boolean defaultPersistent = existing.isCachePersistent();
+
+		psm.setNoteCachePersistent(!defaultPersistent);
+		Assert.assertEquals("an existing pattern follows the setting", !defaultPersistent,
+				existing.isCachePersistent());
+
+		PatternLayerManager added = psm.addPattern(1, 2.0, false);
+		Assert.assertEquals("a pattern added later follows the setting", !defaultPersistent,
+				added.isCachePersistent());
+
+		psm.setSettings(psm.getSettings());
+		Assert.assertEquals(2, psm.getPatterns().size());
+		psm.getPatterns().forEach(p -> Assert.assertEquals("a recreated pattern follows the setting",
+				!defaultPersistent, p.isCachePersistent()));
+
+		psm.setNoteCachePersistent(defaultPersistent);
+		psm.getPatterns().forEach(p -> Assert.assertEquals("turning the setting back reaches every pattern",
+				defaultPersistent, p.isCachePersistent()));
+		psm.destroy();
+	}
+
+	/**
 	 * {@code destroy()} empties the pattern list, releasing every manager's cache, and
 	 * is idempotent across repeated teardown.
 	 */
