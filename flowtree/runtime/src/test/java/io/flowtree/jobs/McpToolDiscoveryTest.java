@@ -342,6 +342,7 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 			"github_update_pr",
 			"github_set_pr_state",
 			"github_start_test_run",
+			"github_rerun_failed_jobs",
 			"github_request_copilot_review",
 			"github_read_file",
 			"github_pr_check_status",
@@ -449,6 +450,13 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 			startTestRunParams.contains("branch"));
 		assertTrue("github_start_test_run must declare workstream_id in signature",
 			startTestRunParams.contains("workstream_id"));
+
+		List<String> rerunFailedJobsParams =
+			McpToolDiscovery.discoverToolParameters(managerSources, "github_rerun_failed_jobs");
+		assertTrue("github_rerun_failed_jobs must declare run_id in signature",
+			rerunFailedJobsParams.contains("run_id"));
+		assertTrue("github_rerun_failed_jobs must declare workstream_id in signature",
+			rerunFailedJobsParams.contains("workstream_id"));
 
 		List<String> submitParams =
 			McpToolDiscovery.discoverToolParameters(managerSources, "workstream_submit_task");
