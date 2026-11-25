@@ -179,7 +179,17 @@ single-argument `compile(OperationProfile)` overload, which builds the backward
 graph too. Calling it from the test needs the `compileMixdownModel` path to
 accept a profile, which is a small change to `AudioSceneRealtimeRunner`. The
 simplest route is the hardware-assigned profile, which needs no production
-change. The saved XML is then read with `ar-profile-analyzer`
+change. `Hardware.assignProfile` installs the profile as the runtime listener
+(`HardwareOperator.timingListener`), the compilation listener
+(`AbstractComputeContext.compilationTimingListener`) and the scope/expression
+timing listeners (`ComputationScopeCompiler`, `Scope`, `ScopeSettings`,
+`Expression`). `MetalComputeContext` reports every kernel it compiles, with its
+source and elapsed nanoseconds, to the compilation listener. The capture
+therefore covers native compilation and code generation across every build step,
+including steps 1 and 3, and not only kernel execution. These listeners are
+static fields, so the capture is process-wide for as long as the profile is
+assigned. Keep the assignment window to the build, and clear it with
+`assignProfile(null)` before `setup()` runs. The saved XML is then read with `ar-profile-analyzer`
 (`load_profile`, `find_slowest`, `find_slowest_by_category`, `get_source`) to
 name the dominant operations and confirm whether the cost is codegen,
 optimisation, or native compilation.
