@@ -42,6 +42,8 @@ import java.util.Set;
  *   <li><b>Frequency data</b>: FFT results with configurable bin count and time resolution</li>
  *   <li><b>Feature data</b>: Extracted features for similarity comparison</li>
  *   <li><b>Similarities</b>: Computed similarity scores to other samples</li>
+ *   <li><b>Tags</b>: Labels assigned by tagging models, keyed by
+ *       {@link TagModelVersion} (see {@link WaveTags})</li>
  * </ul>
  *
  * <h2>Persistence</h2>
@@ -113,6 +115,13 @@ public class WaveDetails implements CodeFeatures, Node {
 	 * older application wrote with no provenance.
 	 */
 	private final Map<String, WaveFeatures> featureSets = new HashMap<>();
+
+	/**
+	 * Tag sets keyed by the (tagging model, vocabulary version) that produced
+	 * them, so tags from a new model or vocabulary revision sit beside older
+	 * ones until they are deliberately cleaned up.
+	 */
+	private final Map<TagModelVersion, WaveTags> tagSets = new HashMap<>();
 
 	/**
 	 * Identifier of the model whose features the no-argument accessors read, set
@@ -802,6 +811,69 @@ public class WaveDetails implements CodeFeatures, Node {
 		if (activeModelIdentifier != null && !featureSets.containsKey(activeModelIdentifier)) {
 			activeModelIdentifier = null;
 		}
+	}
+
+	/**
+	 * Stores a tag set under its (model, vocabulary-version) key. Any existing
+	 * tag set for the same key is replaced.
+	 *
+	 * @param tags the tag set to store
+	 */
+	public void putTags(WaveTags tags) {
+		tagSets.put(tags.getKey(), tags);
+	}
+
+	/**
+	 * Returns the tag set stored under the given (model, vocabulary-version)
+	 * key, or {@code null} if this item has none for that key.
+	 *
+	 * @param key the tagging model and vocabulary version
+	 * @return the tag set, or {@code null}
+	 */
+	public WaveTags getTags(TagModelVersion key) {
+		return tagSets.get(key);
+	}
+
+	/**
+	 * Returns the (model, vocabulary-version) keys of every tag set present on
+	 * this item.
+	 *
+	 * @return a copy of the set of keys present
+	 */
+	public Set<TagModelVersion> getTagModelVersions() {
+		return new HashSet<>(tagSets.keySet());
+	}
+
+	/**
+	 * Returns whether this item holds any tag set whose key differs from the
+	 * given one, whether by model, by vocabulary version, or both.
+	 *
+	 * @param keep the tagging model and vocabulary version to keep
+	 * @return true if a stale tag set is present
+	 */
+	public boolean hasOtherModelTags(TagModelVersion keep) {
+		return otherModelTagCount(keep) > 0;
+	}
+
+	/**
+	 * Returns the number of tag sets on this item whose key differs from the
+	 * given one.
+	 *
+	 * @param keep the tagging model and vocabulary version to keep
+	 * @return the number of stale tag sets
+	 */
+	public int otherModelTagCount(TagModelVersion keep) {
+		return tagSets.containsKey(keep) ? tagSets.size() - 1 : tagSets.size();
+	}
+
+	/**
+	 * Removes every tag set whose key differs from the given one, leaving only
+	 * the kept (model, vocabulary-version) tags.
+	 *
+	 * @param keep the tagging model and vocabulary version to keep
+	 */
+	public void removeOtherModelTags(TagModelVersion keep) {
+		tagSets.keySet().retainAll(Set.of(keep));
 	}
 
 	/**

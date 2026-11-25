@@ -16,9 +16,12 @@
 
 package org.almostrealism.collect.computations.test;
 
+import io.almostrealism.code.ScopeLifecycle;
 import io.almostrealism.compute.Process;
 import io.almostrealism.collect.Algebraic;
+import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.Shape;
+import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
@@ -32,13 +35,18 @@ import org.almostrealism.collect.computations.CollectionProducerComputationBase;
 import org.almostrealism.collect.computations.CollectionProductComputation;
 import org.almostrealism.collect.computations.CollectionSumComputation;
 import org.almostrealism.collect.computations.DynamicCollectionProducer;
+import org.almostrealism.collect.computations.PackedCollectionEnumerate;
 import org.almostrealism.collect.computations.ReshapeProducer;
+import org.almostrealism.collect.computations.TraversableDeltaComputation;
+import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.OptionalDouble;
+import java.util.function.BiFunction;
 import java.util.function.Function;
 
 /**
@@ -489,6 +497,77 @@ public class ProducerHookTest extends TestSuiteBase implements MatrixFeatures {
 				2.0, 0.0, 0.0,
 				0.0, 4.0, 0.0,
 				0.0, 0.0, 6.0);
+	}
+
+	/**
+	 * Regenerating an ordinary binary computation keeps the configuration it carries that is not
+	 * reconstructed from its children — its postprocessor, description, short-circuit and dependent
+	 * lifecycles — which is the behavior every {@code generate(List)} shares through
+	 * {@link CollectionProducerComputationBase#copyConfigurationTo}.
+	 */
+	@Test(timeout = 60000)
+	public void generatePreservesConfiguration() {
+		CollectionProductComputation product = new CollectionProductComputation(shape(3),
+				cp(pack(1.0, 2.0, 3.0)), cp(pack(4.0, 5.0, 6.0)));
+		assertGeneratePreservesConfiguration(product);
+	}
+
+	/**
+	 * An enumeration preserves the same configuration when regenerated. Its {@code generate(List)}
+	 * once copied only the dependent lifecycles and dropped the postprocessor, description and
+	 * short-circuit; routing it through
+	 * {@link CollectionProducerComputationBase#copyConfigurationTo} keeps all four.
+	 */
+	@Test(timeout = 60000)
+	public void enumerateGeneratePreservesConfiguration() {
+		PackedCollectionEnumerate enumerated =
+				new PackedCollectionEnumerate(shape(1, 3), cp(new PackedCollection(shape(2, 3))));
+		assertGeneratePreservesConfiguration(enumerated);
+	}
+
+	/**
+	 * A delta computation preserves the same configuration when regenerated. Its
+	 * {@code generate(List)} once copied the postprocessor, short-circuit and dependent lifecycles
+	 * but dropped the description — the {@code delta(...)} label a delta is given when it is built —
+	 * which regeneration during optimization silently lost; it now keeps all four.
+	 */
+	@Test(timeout = 60000)
+	public void deltaGeneratePreservesConfiguration() {
+		Producer<PackedCollection> target = cp(pack(1.0, 2.0, 3.0));
+		TraversableDeltaComputation delta = TraversableDeltaComputation.create(
+				"delta", shape(3), shape(3),
+				(TraversableExpression[] args) ->
+						CollectionExpression.create(shape(3), idx -> args[1].getValueAt(idx)),
+				target, target);
+		assertGeneratePreservesConfiguration(delta);
+	}
+
+	/**
+	 * Sets each of the four configuration properties that {@code generate(List)} must preserve on
+	 * {@code computation}, regenerates it from its own children exactly as the optimizer does, and
+	 * asserts the replacement carries every one of them.
+	 *
+	 * @param computation the computation whose regeneration is checked
+	 */
+	private void assertGeneratePreservesConfiguration(CollectionProducerComputationBase computation) {
+		BiFunction<MemoryData, Integer, PackedCollection> postprocessor = (mem, offset) -> null;
+		Function<List<String>, String> description = args -> "pinned-description";
+		Evaluable<PackedCollection> shortCircuit = args -> null;
+		ScopeLifecycle lifecycle = new ScopeLifecycle() { };
+
+		computation.setPostprocessor(postprocessor);
+		computation.setDescription(description);
+		computation.setShortCircuit(shortCircuit);
+		computation.addDependentLifecycle(lifecycle);
+
+		List<Process<?, ?>> children = new ArrayList<>(computation.getChildren());
+		CollectionProducerComputationBase regenerated =
+				(CollectionProducerComputationBase) computation.generate(children);
+
+		Assert.assertSame(postprocessor, regenerated.getPostprocessor());
+		Assert.assertSame(description, regenerated.getDescription());
+		Assert.assertSame(shortCircuit, regenerated.getShortCircuit());
+		Assert.assertTrue(regenerated.getDependentLifecycles().contains(lifecycle));
 	}
 
 	/**

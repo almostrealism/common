@@ -59,7 +59,18 @@ message WaveDetailData {
   // Model-keyed feature analyses; additive, ignored by the previous release.
   repeated FeatureSet feature_sets = 21;
 
+  // Tag sets keyed by (tagging model, vocabulary version); additive, ignored
+  // by earlier releases.
+  repeated TagSet tag_sets = 22;
+
   reserved 1;
+}
+
+// One tagging model's labels for a sample, drawn from one vocabulary version.
+message TagSet {
+  string model_identifier = 1;
+  string vocabulary_version = 2;
+  map<string, double> tags = 3;
 }
 
 // One model's feature analysis tagged with the producing model's identifier.

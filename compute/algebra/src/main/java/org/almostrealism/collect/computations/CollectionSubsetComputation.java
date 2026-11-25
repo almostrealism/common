@@ -203,11 +203,7 @@ public class CollectionSubsetComputation extends TransitiveDeltaExpressionComput
 			newOutputShape = originalOutputShape;
 		}
 
-		return new CollectionSubsetComputation(newOutputShape, input, pos)
-				.setPostprocessor(getPostprocessor())
-				.setDescription(getDescription())
-				.setShortCircuit(getShortCircuit())
-				.addAllDependentLifecycles(getDependentLifecycles());
+		return copyConfigurationTo(new CollectionSubsetComputation(newOutputShape, input, pos));
 	}
 
 	/**
