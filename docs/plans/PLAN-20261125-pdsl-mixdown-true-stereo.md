@@ -147,9 +147,12 @@ budget still holds at `AudioScene.DEFAULT_REALTIME_BUFFER_SIZE`.
 - `studio/compose/.../arrange/MixdownManagerPdslAdapter.java`: a stereo mode that tiles
   per-channel arrays, builds the block-diagonal matrices and doubled state, and refreshes
   `pan_matrix` (and the pan-folded `bus_send`) in `automationRefresh`, once per buffer
-  like the other slots. Pan is ramped across the buffer only if the per-buffer step is
-  audible. Pan values are stepped per buffer; that is acceptable because pan changes are
-  user-driven and infrequent.
+  like the other slots. Pan is **stepped per buffer**, not ramped within it: the
+  `pan_matrix` is a `route` matrix, applied as a single constant matrix per forward,
+  so it holds one pan value for the whole buffer rather than interpolating `_prev →
+  current` across frames the way the `ramp_scale` slots (`volume`, `efx_automation`) do.
+  That is acceptable because pan changes are user-driven and infrequent; smoothing a pan
+  jump across the buffer is open question 5, and per-frame pan automation is out of scope.
 - `studio/compose/.../health/MultiChannelAudioOutput.java`: per-side push methods, for
   example `pushMaster(Function<StereoChannel, Producer<PackedCollection>>)` and the
   same for measures and stems. They reuse the existing private `pushToStereo`, which
@@ -210,6 +213,13 @@ well as Metal, so no specific machine is needed.
    smaller pieces, split it into (a) stereo layers plus the adapter's stereo mode, with the
    centre-parity test (no pan yet), and (b) the pan setting, the `pan_matrix`, the sink
    wiring and the hard-pan test.
+5. **Stepping pan per buffer vs smoothing the jump.** Because the `pan_matrix` is a `route`
+   matrix applied once per forward, pan is held constant for the whole buffer and changes
+   discontinuously at buffer boundaries. A large pan jump could therefore produce an audible
+   click (zipper noise) at a buffer edge. This plan accepts that, on the grounds that pan is
+   user-driven and infrequent. If it proves audible, the fix is not per-frame automation
+   (out of scope) but smoothing the step — for example by crossfading two `route` passes at
+   the old and new pan over the buffer. That is a later refinement, not part of this change.
 
 ## Estimated complexity
 
