@@ -123,6 +123,41 @@ public class NodeStatusReportTest extends TestSuiteBase {
 	}
 
 	/**
+	 * A {@code labels} field carrying a malformed pair — one without a non-empty key ahead of its
+	 * {@code =} — decodes to unknown labels rather than to a partial or empty set, so a garbled
+	 * report never presents inaccurate capabilities as if they were authoritative. The busy flag
+	 * alongside it still decodes normally.
+	 */
+	@Test(timeout = 10000)
+	public void parseOfMalformedLabelsReportsUnknown() {
+		NodeStatusReport missingAssignment = NodeStatusReport.parse("busy:true;labels:platform");
+		Assert.assertEquals(Boolean.TRUE, missingAssignment.busy());
+		Assert.assertNull("a labels field with no assignment is unknown", missingAssignment.labels());
+
+		NodeStatusReport partial = NodeStatusReport.parse("busy:false;labels:platform=linux,bad");
+		Assert.assertEquals(Boolean.FALSE, partial.busy());
+		Assert.assertNull("a partially malformed labels field is unknown, not partial", partial.labels());
+	}
+
+	/**
+	 * Whitespace within a decoded label key or value is preserved, because the encoder writes no
+	 * padding around the {@code =} and {@code ,} separators; any surrounding whitespace is part of
+	 * the capability the peer routes on, so trimming it would report a label that differs from the
+	 * one in use.
+	 */
+	@Test(timeout = 10000)
+	public void parsePreservesWhitespaceInLabelValues() {
+		Map<String, String> labels = new LinkedHashMap<>();
+		labels.put("hostname", "build box ");
+
+		String fields = new NodeStatusReport(true, labels).encode();
+		Assert.assertEquals("busy:true;labels:hostname=build box ", fields);
+
+		NodeStatusReport parsed = NodeStatusReport.parse(fields);
+		Assert.assertEquals("build box ", parsed.labels().get("hostname"));
+	}
+
+	/**
 	 * A label whose key or value carries one of the payload's structural delimiters is dropped
 	 * from the encoding, so it can neither split into spurious pairs nor forge a status field
 	 * such as {@code busy}. The surviving labels still round-trip unchanged.

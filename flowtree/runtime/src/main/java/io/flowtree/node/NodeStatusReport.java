@@ -173,10 +173,18 @@ public final class NodeStatusReport {
 
 	/**
 	 * Decodes a labels field value into a map. A blank value yields an empty map rather than
-	 * {@code null}, since the field was present and simply carried no labels.
+	 * {@code null}, since the field was present and simply carried no labels. Whitespace within a
+	 * key or value is preserved: {@link #encodeLabels} writes no padding around the {@value
+	 * #LABEL_ASSIGNMENT} and {@value #LABEL_SEPARATOR} separators, so any surrounding whitespace is
+	 * part of the label the peer actually routes on, and trimming it would report a capability that
+	 * differs from the one in use. A malformed pair — one without a non-empty key ahead of its
+	 * {@value #LABEL_ASSIGNMENT} — makes the whole field unreliable, so the labels decode to
+	 * {@code null} ("unknown") rather than to a partial or empty set that would read as
+	 * authoritative; this mirrors the strict {@link #parseBusy} contract.
 	 *
 	 * @param value  the encoded labels, e.g. {@code "platform=linux,hostname=halo"}.
-	 * @return  the decoded labels; never {@code null}.
+	 * @return  the decoded labels; an empty map when the field was blank, or {@code null} when a
+	 *          pair was malformed.
 	 */
 	private static Map<String, String> decodeLabels(String value) {
 		Map<String, String> labels = new LinkedHashMap<>();
@@ -184,11 +192,11 @@ public final class NodeStatusReport {
 
 		for (String pair : value.split(LABEL_SEPARATOR)) {
 			int eq = pair.indexOf(LABEL_ASSIGNMENT);
-			if (eq <= 0) continue;
+			if (eq <= 0) return null;
 
-			String key = pair.substring(0, eq).trim();
-			String val = pair.substring(eq + LABEL_ASSIGNMENT.length()).trim();
-			if (!key.isEmpty()) labels.put(key, val);
+			String key = pair.substring(0, eq);
+			String val = pair.substring(eq + LABEL_ASSIGNMENT.length());
+			labels.put(key, val);
 		}
 		return labels;
 	}
