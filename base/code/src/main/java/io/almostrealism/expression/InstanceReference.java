@@ -171,17 +171,6 @@ public class InstanceReference<T, V> extends Expression<V> implements Expression
 		return (getReferent() != null && names.contains(getReferent().getName())) || super.containsReference(names);
 	}
 
-	/**
-	 * {@inheritDoc}
-	 *
-	 * <p>An assignment to a reference writes its referent, so the referent is the array this
-	 * reference contributes. Its position, read to locate the element, is not written.</p>
-	 */
-	@Override
-	public void appendWrittenArrays(Set<Variable<?, ?>> arrays) {
-		if (getReferent() != null) arrays.add(getReferent());
-	}
-
 	@Override
 	public ExpressionAssignment<V> assign(Expression exp) {
 		return new ExpressionAssignment<>(this, exp);

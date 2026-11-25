@@ -205,19 +205,6 @@ public class ExpressionAssignment<T> implements Statement<ExpressionAssignment<T
 	/**
 	 * {@inheritDoc}
 	 *
-	 * <p>A {@link #isDeclaration() declaration} introduces a new local value and writes no
-	 * existing array, so it contributes nothing. A plain assignment writes through its
-	 * destination, so the destination {@link Expression#appendWrittenArrays(Set) answers} which
-	 * array it writes.</p>
-	 */
-	@Override
-	public void appendWrittenArrays(Set<Variable<?, ?>> arrays) {
-		if (!declaration && destination != null) destination.appendWrittenArrays(arrays);
-	}
-
-	/**
-	 * {@inheritDoc}
-	 *
 	 * <p>An assignment reads what its expression reads. Its destination is written, not read,
 	 * when it is a {@link Expression#isVariableReference() variable reference}, so only what
 	 * locating the element reads (its position) counts; a destination of any other kind cannot

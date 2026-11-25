@@ -1232,25 +1232,33 @@ public class Scope<T> extends ArrayList<Scope<T>>
 	}
 
 	/**
-	 * {@inheritDoc}
+	 * Returns every {@link ArrayVariable} this scope {@link #getDependencies() depends on} that
+	 * it may also write any element of, by {@link #containsAssignment(ArrayVariable, long, long)}.
 	 *
-	 * <p>The arrays are read off the scope itself: each of its {@link Statement statements} and
-	 * declarations adds the array it writes, and each child scope adds what its own content
-	 * writes.</p>
+	 * <p>The answer is as conservative as {@link #containsAssignment(ArrayVariable, long, long)}
+	 * itself: code whose writes cannot be enumerated (a {@link Method} call, explicit code, a
+	 * required scope) may write anything, so every array the scope refers to is returned for it,
+	 * and a write through a wrapped destination (such as a {@link io.almostrealism.expression.Mask}
+	 * of an element reference) counts as a write of every array the destination refers to. An
+	 * analysis that must know which memory a body of code may change, such as the loop-variance
+	 * analysis of {@link Repeated}, therefore cannot miss a write the scope can make to an array it
+	 * refers to.</p>
+	 *
+	 * @return a new list of the arrays this scope may write, in dependency order
 	 */
-	@Override
-	public void appendWrittenArrays(Set<Variable<?, ?>> arrays) {
-		for (Statement<?> statement : getStatements()) {
-			statement.appendWrittenArrays(arrays);
+	public List<ArrayVariable<?>> collectWrittenArrays() {
+		List<ArrayVariable<?>> written = new ArrayList<>();
+
+		for (Argument<?> dependency : getDependencies()) {
+			if (!(dependency.getVariable() instanceof ArrayVariable)) continue;
+
+			ArrayVariable<?> array = (ArrayVariable<?>) dependency.getVariable();
+			if (!written.contains(array) && containsAssignment(array, Long.MIN_VALUE, Long.MAX_VALUE)) {
+				written.add(array);
+			}
 		}
 
-		for (ExpressionAssignment<?> declaration : getVariables()) {
-			declaration.appendWrittenArrays(arrays);
-		}
-
-		for (Scope<?> child : getChildren()) {
-			child.appendWrittenArrays(arrays);
-		}
+		return written;
 	}
 
 	/**

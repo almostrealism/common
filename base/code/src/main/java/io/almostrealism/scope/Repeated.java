@@ -66,10 +66,14 @@ import java.util.function.Predicate;
  * records what it writes partly by variable name, but an element read through an
  * {@link InstanceReference} contributes no name, and argument aggregation can let one buffer be
  * reached through variables of different names, so a write recorded under one name does not mark
- * such a read as variant. The analysis therefore also tracks the buffers the loop writes by
- * identity (see {@link #hoistLoopInvariantStatements()} and
- * {@link VariableReferenceSupport#appendWrittenArrays(Set)}) and treats a declaration that reads
- * any of them, matched on {@link Variable#hasSameRoot(Variable) shared storage}, as variant. A
+ * such a read as variant. The analysis therefore also asks, by array, which buffers the loop may
+ * write ({@link Scope#collectWrittenArrays()}, on the conservative terms of
+ * {@link VariableReferenceSupport#containsAssignment(ArrayVariable, long, long)}, so a call,
+ * explicit code or a masked destination counts as a write), and treats a declaration that may
+ * read any of them ({@link VariableReferenceSupport#containsReadOfAny(java.util.Collection)}, on
+ * the terms of {@link VariableReferenceSupport#containsRead(ArrayVariable, long, long)}, so a
+ * {@link StaticReference} referring to the buffer counts as a read) as variant. Buffers are
+ * matched on {@link Variable#hasSameRoot(Variable) shared storage}, as everywhere else. A
  * change that makes replacement substitution more effective (a different target order, a higher
  * replacement cap, smarter matching) relies on this soundness: without it, hoisted reads of
  * written buffers silently corrupt loop kernels.</p>
@@ -280,11 +284,13 @@ public class Repeated<T> extends Scope<T> {
 
 		Set<String> variantNames = collectBaseVariantNames(allDeclarations);
 
-		// The arrays the loop body writes, by identity. A declaration that reads one of them is
-		// loop-variant even though an element read contributes no name to the name-based set above.
-		Set<Variable<?, ?>> writtenArrays = new HashSet<>();
+		// The arrays the loop body may write. A declaration that reads one of them is loop-variant
+		// even though an element read contributes no name to the name-based set above.
+		List<ArrayVariable<?>> writtenArrays = new ArrayList<>();
 		for (Scope<T> child : getChildren()) {
-			child.appendWrittenArrays(writtenArrays);
+			for (ArrayVariable<?> array : child.collectWrittenArrays()) {
+				if (!writtenArrays.contains(array)) writtenArrays.add(array);
+			}
 		}
 
 		// Collect all loop indices (this scope's index plus nested loop indices)
@@ -544,12 +550,12 @@ public class Repeated<T> extends Scope<T> {
 	 * ({@code minDepth = 3}) to avoid extracting trivially cheap sub-expressions.</p>
 	 *
 	 * @param variantNames the set of loop-variant variable names
-	 * @param writtenArrays the arrays the loop body writes, by identity
+	 * @param writtenArrays the arrays the loop body may write
 	 * @param loopIndices all loop indices (outer and nested)
 	 * @param extractedDeclarations list to receive the new extracted declarations
 	 */
 	private void extractInvariantSubExpressions(Set<String> variantNames,
-												Set<Variable<?, ?>> writtenArrays,
+												List<ArrayVariable<?>> writtenArrays,
 												List<Index> loopIndices,
 												List<Statement<?>> extractedDeclarations) {
 		Map<Expression<?>, StaticReference<?>> extracted = new HashMap<>();
@@ -571,14 +577,14 @@ public class Repeated<T> extends Scope<T> {
 	 *
 	 * @param scope the scope to scan
 	 * @param variantNames the set of loop-variant variable names
-	 * @param writtenArrays the arrays the loop body writes, by identity
+	 * @param writtenArrays the arrays the loop body may write
 	 * @param loopIndices all loop indices
 	 * @param extracted map of already-extracted sub-expressions to their references (for dedup)
 	 * @param extractIdx counter for generating unique declaration names
 	 * @param declarations list to receive new extracted declarations
 	 */
 	private void extractFromScope(Scope<?> scope, Set<String> variantNames,
-								  Set<Variable<?, ?>> writtenArrays,
+								  List<ArrayVariable<?>> writtenArrays,
 								  List<Index> loopIndices,
 								  Map<Expression<?>, StaticReference<?>> extracted,
 								  int[] extractIdx, List<Statement<?>> declarations) {
@@ -639,7 +645,7 @@ public class Repeated<T> extends Scope<T> {
 	 *
 	 * @param assignment the assignment to process
 	 * @param variantNames the set of loop-variant variable names
-	 * @param writtenArrays the arrays the loop body writes, by identity
+	 * @param writtenArrays the arrays the loop body may write
 	 * @param loopIndices all loop indices
 	 * @param extracted map of already-extracted sub-expressions (for dedup)
 	 * @param extractIdx counter for generating unique declaration names
@@ -648,7 +654,7 @@ public class Repeated<T> extends Scope<T> {
 	 */
 	private ExpressionAssignment<?> extractSubExpressionsFromAssignment(
 			ExpressionAssignment<?> assignment, Set<String> variantNames,
-			Set<Variable<?, ?>> writtenArrays,
+			List<ArrayVariable<?>> writtenArrays,
 			List<Index> loopIndices, Map<Expression<?>, StaticReference<?>> extracted,
 			int[] extractIdx, List<Statement<?>> declarations) {
 		Expression<?> expr = assignment.getExpression();
@@ -705,7 +711,7 @@ public class Repeated<T> extends Scope<T> {
 	 */
 	private Expression<?> replaceInvariantSubExpressions(Expression<?> expr,
 														 Set<String> variantNames,
-														 Set<Variable<?, ?>> writtenArrays,
+														 List<ArrayVariable<?>> writtenArrays,
 														 List<Index> loopIndices,
 														 Map<Expression<?>, StaticReference<?>> extracted,
 														 int[] extractIdx,
@@ -908,18 +914,18 @@ public class Repeated<T> extends Scope<T> {
 	 * objects). When a declaration is found to be variant, its name is added to the variant set,
 	 * which may cause other declarations that reference it to become variant as well.</p>
 	 *
-	 * <p>A declaration that reads an array the loop writes (by {@code writtenArrays} identity, not
-	 * by name) is loop-variant unconditionally: the buffer holds a different value once the loop
+	 * <p>A declaration that may read an array the loop may write (one of {@code writtenArrays},
+	 * matched by storage rather than by name) is loop-variant unconditionally: the buffer holds a different value once the loop
 	 * has run, and an element read through an {@link InstanceReference} contributes no name to the
 	 * name-based set, so the dependency-chain test alone would miss it.</p>
 	 *
 	 * @param declarations all declarations in the loop body
 	 * @param variantNames the set of variant names (modified in place)
-	 * @param writtenArrays the arrays the loop body writes, by identity
+	 * @param writtenArrays the arrays the loop body may write
 	 * @param loopIndices indices from this and nested loops
 	 */
 	private static void propagateVariance(List<ExpressionAssignment<?>> declarations,
-										  Set<String> variantNames, Set<Variable<?, ?>> writtenArrays,
+										  Set<String> variantNames, List<ArrayVariable<?>> writtenArrays,
 										  List<Index> loopIndices) {
 		// Precompute declaration names and the set of all names referenced by each
 		// declaration's expression in a single O(N) traversal per declaration.
@@ -943,17 +949,9 @@ public class Repeated<T> extends Scope<T> {
 				}
 			}
 
-			boolean readsWritten = false;
-			for (Variable<?, ?> array : writtenArrays) {
-				if (expr.containsReference(array)) {
-					readsWritten = true;
-					break;
-				}
-			}
-
 			referencedNameSets.add(names);
 			containsLoopIndexFlags.add(hasLoopIdx);
-			readsWrittenArrayFlags.add(readsWritten);
+			readsWrittenArrayFlags.add(expr.containsReadOfAny(writtenArrays));
 		}
 
 		// Fixed-point loop using precomputed name sets
@@ -1011,21 +1009,24 @@ public class Repeated<T> extends Scope<T> {
 	 *   <li>Via {@link StaticReference} nodes whose name matches a loop-assigned variable
 	 *       (handles local declarations like {@code double f_0 = ...} that are referenced
 	 *       by subsequent expressions via {@code StaticReference("f_0")})</li>
-	 *   <li>Via an element of an array the loop writes (checked via {@code writtenArrays},
-	 *       by {@link Variable#hasSameRoot(Variable) buffer identity} rather than by name, so a
-	 *       read that names no array and a read through an aggregated view are both caught)</li>
+	 *   <li>Via a read of an array the loop may write (checked against {@code writtenArrays}
+	 *       with {@link VariableReferenceSupport#containsReadOfAny(java.util.Collection)}, by
+	 *       {@link Variable#hasSameRoot(Variable) shared storage} rather than by name, so a read
+	 *       that names no array and a read through an aggregated view are both caught)</li>
 	 * </ul>
 	 *
 	 * @param expr the expression to check
 	 * @param loopAssignedVariables names of variables assigned inside the loop
-	 * @param writtenArrays the arrays the loop body writes, by identity
+	 * @param writtenArrays the arrays the loop body may write
 	 * @param loopIndices indices from this and nested loops
 	 * @return true if the expression does not depend on any loop-variant variables
 	 */
 	private boolean isLoopInvariant(Expression<?> expr, Set<String> loopAssignedVariables,
-									Set<Variable<?, ?>> writtenArrays, List<Index> loopIndices) {
+									List<ArrayVariable<?>> writtenArrays, List<Index> loopIndices) {
 		if (index == null) return false;
-		return expr.isLoopInvariant(loopAssignedVariables, writtenArrays, loopIndices);
+		// TODO(review): containsReadOfAny walks the subtree once per written array, at every recursion level of Phase 4.
+		return expr.isLoopInvariant(loopAssignedVariables, Collections.emptyList(), loopIndices)
+				&& !expr.containsReadOfAny(writtenArrays);
 	}
 
 	/**

@@ -16,6 +16,7 @@
 
 package io.almostrealism.scope;
 
+import java.util.Collection;
 import java.util.Set;
 
 /**
@@ -66,28 +67,6 @@ public interface VariableReferenceSupport {
 	void appendAssignedNames(Set<String> names);
 
 	/**
-	 * Appends to {@code arrays}, which this method modifies, the {@link ArrayVariable} whose
-	 * storage this code may write, identified by the variable itself rather than by its name: the
-	 * identity-keyed counterpart to {@link #appendAssignedNames(Set)}. An analysis that must
-	 * decide whether a declaration reads memory the loop writes cannot do so by name, because an
-	 * element read through an {@link io.almostrealism.expression.InstanceReference} contributes no
-	 * name to {@link io.almostrealism.expression.ExpressionReferences#appendReferencedNames(Set)},
-	 * and because argument aggregation lets one buffer be reached through variables of different
-	 * names; comparing the written variable against a read with
-	 * {@link io.almostrealism.expression.ExpressionReferences#containsReference(Variable)}, which
-	 * matches on {@link Variable#hasSameRoot(Variable) shared storage}, answers both soundly.
-	 *
-	 * <p>This default adds nothing: an expression evaluated reads but does not write, and only the
-	 * code that writes a known array ({@link io.almostrealism.code.ExpressionAssignment} through
-	 * its destination, and {@link Scope} through its contents) contributes one. The name-based
-	 * {@link #appendAssignedNames(Set)} remains the conservative account the variance analysis also
-	 * consults for everything a precise array identity is not available for.</p>
-	 *
-	 * @param arrays the set to which the written arrays are added
-	 */
-	default void appendWrittenArrays(Set<Variable<?, ?>> arrays) { }
-
-	/**
 	 * Returns whether this code reads the value of an element of {@code array} at a position in
 	 * {@code [start, end)}: whether it references such an element anywhere other than as the
 	 * element an assignment writes. Positions are in the same frame as for
@@ -102,6 +81,27 @@ public interface VariableReferenceSupport {
 	 */
 	default boolean containsRead(ArrayVariable<?> array, long start, long end) {
 		return getReadPositions(array).contains(start, end);
+	}
+
+	/**
+	 * Returns whether this code may read any element of any of {@code arrays}, on the terms of
+	 * {@link #containsRead(ArrayVariable, long, long)}: the question a loop-variance analysis asks
+	 * of an expression, given the arrays a loop may write, to decide whether the value of the
+	 * expression can change from one iteration to the next. Because the answer uses the same read
+	 * accounting as {@link #containsRead(ArrayVariable, long, long)}, a read the code cannot bound
+	 * (such as a {@link io.almostrealism.expression.StaticReference} whose referent or verbatim code
+	 * refers to the array) is counted.
+	 *
+	 * @param arrays the arrays in question
+	 * @return false only when nothing this code generates can read an element of any of
+	 *         {@code arrays}
+	 */
+	default boolean containsReadOfAny(Collection<? extends ArrayVariable<?>> arrays) {
+		for (ArrayVariable<?> array : arrays) {
+			if (containsRead(array, Long.MIN_VALUE, Long.MAX_VALUE)) return true;
+		}
+
+		return false;
 	}
 
 	/**
