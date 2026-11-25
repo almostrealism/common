@@ -188,6 +188,68 @@ A reviewer can confirm the task is done when:
    backend-agnostic (no machine requirement); if the approver wants the Metal confirmation, add it
    as a follow-up with a `platform: macos` workstream setting.
 
+## Why the implementation request appeared to produce nothing
+
+This section answers a direct question from the owner: when asked to implement this plan, why did
+the agent sessions on this branch appear to do nothing? It is reconstructed from the branch's
+commit history and the workstream's job and message record, not from recollection.
+
+### What actually happened, session by session (all on 2026-11-25)
+
+1. **Planning job (morning).** Wrote this plan with `status: proposed` and changed no code. That
+   was correct for a planning job. Its second-pass review also changed nothing.
+2. **Documentation-review job (about an hour later).** This is the session that *did nothing*. It
+   was a documentation review of the branch's changes, not an implementation job. Its prompt said
+   not to implement any plan, so it checked every claim in this document against the source,
+   found them all accurate, made no edits and wrote no commit. Its final message said the
+   implementation "remains for the person who approves the plan". If this job was submitted to
+   *implement* the plan, the request never reached the agent in a form it acted on: the prompt it
+   ran under was the review template, and the agent obeyed that template's "do not implement"
+   rule instead of noticing that the plan was why the job existed.
+3. **Implementation job (afternoon).** This session did implement the plan, but its whole
+   result was **two test files and edits to this document, with no production code changed**:
+   - `ArgumentLimitFoldTest.loweredAggregateThresholdIsVerifiedAgainstTheLimit` (Part 1);
+   - `ConstantArgumentCacheAuditTest` (a guard for the Part 2 audit);
+   - this plan set to `status: completed`.
+
+   The branch diff against `master` is this document plus those two test files, nothing else.
+
+### Why the result looks like "nothing"
+
+- **The plan predicted an empty diff, and the implementation delivered it.** The plan says the
+  Part 1 mechanism (`verifyArgumentLimit`, `ComputeContext.getArgumentLimit()`, the `postCompile`
+  wiring) was already on `master`, so Part 1 shrank to one regression test. It also says the
+  `isConstant()` audit would *likely find nothing to fix*. The implementing session followed
+  that framing: it added the test, decided no `isConstant()` implementation was defective,
+  added a guard test, and closed the plan. That is "doing the plan", but it changes no behaviour,
+  and a reader expecting a production change would reasonably say nothing was done.
+- **The audit's findings were recorded where a reader of the branch does not look.** The
+  enumeration of `isConstant()` implementations and their verdicts was put in the pull request
+  description and in workstream memory, not in this document or the code. Someone reviewing the
+  diff sees two tests and a status change, with no visible evidence that the audit happened.
+- **The planning stage shrank the task, and no later session pushed back.** The tracker task asked
+  for a clear failure when a kernel exceeds the device argument limit. Because a related change had
+  already landed, planning reduced that to "add one test". No session asked the owner whether the
+  task should be closed as already satisfied, or whether more was wanted (for example, a Metal
+  confirmation, Open question 3, which was left as an optional follow-up). Open questions 1–3
+  were written for an approver, but nobody waited for or recorded the approver's answers; the
+  implementing session picked the proposed answers itself.
+- **Review sessions confirmed rather than questioned.** Every review pass on this branch (four)
+  reported "clean, no edits warranted". None asked whether an implementation that changes only
+  tests met the owner's intent.
+
+### What should have happened instead
+
+- The documentation-review job should have said clearly, in its first status message, that it
+  was a review job and would not implement the plan, so that a misrouted implementation request
+  was visible straight away instead of looking like a refusal.
+- The implementing session should have told the owner, *before* closing the plan, that this plan
+  as written produces no production change. It should have asked whether that was acceptable or
+  whether the task should be closed as already satisfied by the earlier work.
+- The `isConstant()` audit enumeration (each implementation, its constant condition, its verdict)
+  should be in this document, next to the checklist in Scope item 3, so the evidence for "no fix
+  needed" is part of the branch rather than only in the PR description.
+
 ## Estimated complexity
 
 **Small.** Part 1 is one regression test over an already-implemented and already-tested mechanism.
