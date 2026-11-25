@@ -739,7 +739,7 @@ The `job_timing` table in `JobStatsStore` has a `trigger_reason VARCHAR(64)` col
 | `manual` | the default, for every job that nothing marked otherwise (including CI and other automated submissions) |
 | `completion_listener` | `CompletionListenerFanout`, through `JobStatsStore.setTriggerReason(jobId, "completion_listener")`, right before the wake-up is submitted |
 
-The `setTriggerReason` javadoc also mentions `auto_resolve`, but nothing in the code writes that value yet. A wake-up's `STARTED` event can arrive before `setTriggerReason` is called, so the reason is held in memory and applied when `recordJobStarted` inserts the row, and is also written to any row that already exists. That covers the usual orderings, but not every one:
+The `setTriggerReason` javadoc also mentions `auto_resolve`, but nothing in the code writes that value yet. Because the fan-out calls `setTriggerReason` before it submits the wake-up, the `job_timing` row normally does not exist yet. The reason is therefore staged in memory (`pendingTriggerReasons`) and applied when `recordJobStarted` inserts the row. `setTriggerReason` also updates the row in place if one already exists. That covers the usual orderings, but not every one:
 
 - When no row exists by the time the job completes (the controller restarted while the wake-up was running, or its `STARTED` event never reached the controller), `recordJobCompleted` inserts the row itself, and that insert does not set `trigger_reason`. The row gets the default `'manual'` even though it was a wake-up.
 - The pending reasons are held only in memory, so a controller restart between `setTriggerReason` and the job's first row loses them as well.
