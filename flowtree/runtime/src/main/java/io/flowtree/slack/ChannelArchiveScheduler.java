@@ -100,7 +100,12 @@ class ChannelArchiveScheduler {
             deferredExecutor = defaultDeferredExecutor();
         }
         deferredExecutor.executeAfter(CHANNEL_ARCHIVE_DELAY_MILLIS, () -> {
-            String error = archiveAction.apply(channelId);
+            String error;
+            try {
+                error = archiveAction.apply(channelId);
+            } catch (RuntimeException e) {
+                error = e.getMessage() == null ? e.toString() : e.getMessage();
+            }
             if (error != null) onFailure.accept(error);
         });
     }

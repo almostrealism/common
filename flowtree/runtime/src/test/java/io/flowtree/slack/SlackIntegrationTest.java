@@ -1369,6 +1369,40 @@ public class SlackIntegrationTest extends TestSuiteBase {
                         && responses.get(1).contains("channel_not_found"));
     }
 
+    /**
+     * When the deferred channel archive throws an unchecked exception rather than
+     * returning an error string, the failure is still reported through the
+     * responder. Without this, a Slack client fault would leave the user with the
+     * optimistic acknowledgement and no indication that the archive never happened.
+     */
+    @Test(timeout = 10000)
+    public void testSlashCommandArchiveReportsThrownDeferredFailure() {
+        SlackNotifier notifier = new SlackNotifier(null) {
+            @Override
+            public String archiveChannel(String channelId) {
+                throw new IllegalStateException("slack client exploded");
+            }
+        };
+        AtomicReference<Runnable> deferred = new AtomicReference<>();
+        notifier.channelArchiveScheduler().setDeferredExecutor((delayMillis, task) -> deferred.set(task));
+
+        SlackListener listener = new SlackListener(notifier);
+        Workstream ws = new Workstream("C_ARCH_THROW", "#archive-channel");
+        listener.registerWorkstream(ws);
+
+        List<String> responses = new ArrayList<>();
+        listener.handleSlashCommand("archive", "C_ARCH_THROW", "#archive-channel",
+                responses::add);
+
+        assertNotNull("the archive must be deferred, not run inline", deferred.get());
+        deferred.get().run();
+        assertEquals("the thrown failure must be reported after the deferred archive runs",
+                2, responses.size());
+        assertTrue("the failure report must name the warning and the thrown message",
+                responses.get(1).contains("could not be archived")
+                        && responses.get(1).contains("slack client exploded"));
+    }
+
     /** The /flowtree help listing advertises the archive subcommand. */
     @Test(timeout = 10000)
     public void testSlashCommandHelpListsArchive() {
