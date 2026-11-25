@@ -467,6 +467,21 @@ public class SequenceAttentionPrimitivesTest extends TestSuiteBase implements At
 	}
 
 	/**
+	 * {@code sequence_rope} rejects an argument that is neither one-dimensional inverse frequencies
+	 * nor a two-dimensional angle table, even when its element count would fit a row: a
+	 * {@code [1, 2, 2]} argument is not read as four inverse frequencies.
+	 */
+	@Test(timeout = 60000)
+	public void sequenceRopeRejectsAnArgumentOfMoreThanTwoDimensions() {
+		assertRejected("rotate", shape(1, 2, ROPE_POSITIONS, 8),
+				args("inv_freq", new PackedCollection(shape(1, 2, 2))),
+				"sequence_rope() should reject a three-dimensional argument");
+		assertRejected("rotate", shape(1, 2, ROPE_POSITIONS, 8),
+				args("inv_freq", new PackedCollection(shape(ROPE_POSITIONS, 1, 2))),
+				"sequence_rope() should reject a three-dimensional angle table");
+	}
+
+	/**
 	 * {@code RotationFeatures.applyRotaryPositionEmbedding(input, angles)} rejects an angle table
 	 * that does not hold one row per position, and one that is not two-dimensional.
 	 */

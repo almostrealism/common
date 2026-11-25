@@ -236,12 +236,14 @@ public class AttentionPrimitives implements PdslExtension, AttentionFeatures {
 	 * {@code p} holds the angle of each of the {@code n} rotated pairs of position {@code p}. This
 	 * expresses positions that are not the row index: a two-dimensional (axial) rotary embedding,
 	 * whose angles mix a row and a column coordinate, or prefix tokens left unrotated by an
-	 * all-zero row.</p>
+	 * all-zero row. The number of dimensions decides which of the two the argument is, so an
+	 * argument of any other rank is rejected rather than flattened into inverse frequencies.</p>
 	 *
-	 * @param args one argument: the inverse frequencies, one per rotated feature pair, or the
-	 *             {@code [seq_len, n]} angle table
+	 * @param args one argument: the one-dimensional inverse frequencies, one per rotated feature
+	 *             pair, or the {@code [seq_len, n]} angle table
 	 * @param ctx  the call context
 	 * @return a factory that creates the rotation for a {@code [batch, heads, seq_len, head_dim]} input
+	 * @throws PdslParseException if the argument is neither one- nor two-dimensional
 	 * @see RotationFeatures#applyRotaryPositionEmbedding(TraversalPolicy, PackedCollection)
 	 * @see RotationFeatures#applyRotaryPositionEmbedding(TraversalPolicy, CollectionProducer)
 	 */
@@ -249,6 +251,11 @@ public class AttentionPrimitives implements PdslExtension, AttentionFeatures {
 		requireArguments("sequence_rope", args, 1, "inv_freq");
 		CollectionProducer frequencies = ctx.toProducer(args.get(0), null, "sequence_rope() inv_freq");
 		TraversalPolicy frequencyShape = frequencies.getShape();
+		if (frequencyShape.getDimensions() != 1 && frequencyShape.getDimensions() != 2) {
+			throw new PdslParseException("sequence_rope() expects one-dimensional inverse frequencies"
+					+ " or a two-dimensional [seq_len, n] angle table, got " + frequencyShape);
+		}
+
 		boolean table = frequencyShape.getDimensions() == 2;
 		int rotated = 2 * (table ? frequencyShape.length(1) : frequencyShape.getTotalSize());
 		return inputShape -> {
