@@ -1301,4 +1301,40 @@ public class PhaseConfigResolverTest extends TestSuiteBase {
         assertTrue("partial request override must still report the fallback applied",
                 json.toString().contains("fallback applied"));
     }
+
+    /**
+     * When no request is supplied and the fallback's values already equal what
+     * the workspace / controller levels resolve to, the fallback has no net
+     * effect — but the request did not shadow it, so the reason must NOT name a
+     * request override. It must report the fallback as unused because it
+     * coincides with the already-resolved config.
+     */
+    @Test(timeout = 5000)
+    public void fallbackReportedUnusedWhenItMatchesWorkspaceConfig() {
+        PhaseConfig shared = new PhaseConfig(
+                AgentRunnerRegistry.OPENCODE, "z-ai/glm-4.6", null, "openrouter");
+        PhaseConfigBundle fallback = bundle(shared, null, null);
+        PhaseConfigBundle workspace = bundle(shared, null, null);
+        PhaseConfigResolver r = PhaseConfigResolver.resolve(
+                PhaseConfigBundle.EMPTY, PhaseConfigBundle.EMPTY, fallback, workspace);
+        assertNull(r.error());
+
+        // The fallback and workspace carry identical values, so the phase
+        // resolves to them whether or not the fallback is applied.
+        PhaseConfig primary = r.forPhase(Phase.PRIMARY);
+        assertEquals(AgentRunnerRegistry.OPENCODE, primary.runner());
+        assertEquals("z-ai/glm-4.6", primary.model());
+        assertEquals("openrouter", primary.provider());
+
+        StringBuilder json = new StringBuilder("{\"ok\":true");
+        r.appendFallbackResolutionJson(json);
+        json.append("}");
+        String result = json.toString();
+        assertFalse("no request was supplied, so the reason must not name a request override",
+                result.contains("request overrides"));
+        assertTrue("the fallback coincides with the resolved config",
+                result.contains("fallback matches resolved primary config"));
+        assertFalse("a no-effect fallback must not be reported used",
+                result.contains("\"fallbackUsed\":true"));
+    }
 }

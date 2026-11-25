@@ -399,9 +399,11 @@ def workstream_submit_task(
             fallback. Use it to run CI-submitted jobs on a cheaper setup
             without overriding a workstream an owner configured on purpose.
             A fallback naming ``provider=openrouter`` needs the workspace's
-            ``openrouter-api-key`` secret and fails at submission if it is
-            missing, rather than silently using another provider. Empty
-            (default) sends no fallback and resolution is unchanged. Example::
+            ``openrouter-api-key`` secret; the opencode runner resolves the key
+            when the job starts, so a missing secret surfaces as a runtime job
+            failure rather than a submission rejection (submission validates
+            only the runner/model/provider combination). Empty (default) sends
+            no fallback and resolution is unchanged. Example::
 
                 '{"runner": "opencode", "model": "z-ai/glm-4.6",
                   "provider": "openrouter"}'

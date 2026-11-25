@@ -191,28 +191,37 @@ public final class PhaseConfigResolver {
      * ({@code fallbackUsed} and a human-readable {@code reason}) as a JSON
      * object. The fallback is reported used for a phase only when it actually
      * affects the effective config: the workstream leaves the phase unset, the
-     * fallback has a non-empty entry for it, and a higher-precedence per-job
-     * request override does not shadow it into irrelevance. A fallback that is
-     * fully overridden by the request resolves to the same config it would
-     * without the fallback, so it is reported unused with a {@code reason}
-     * naming the request override.
+     * fallback has a non-empty entry for it, and the config it resolves to
+     * differs from the config the phase would resolve to without the fallback.
+     *
+     * <p>When a non-empty fallback has no net effect, the {@code reason}
+     * distinguishes <em>why</em>: {@code "request overrides <phase>"} when a
+     * higher-precedence per-job request supplies every field the fallback would
+     * have contributed (so the request, not the fallback, decides the config),
+     * and {@code "fallback matches resolved <phase> config"} when the request
+     * does not cover the fallback yet the workspace / controller levels already
+     * resolve to the same values the fallback carries. Reporting the request as
+     * the cause in the latter case would be misleading, since the request
+     * contributed nothing.</p>
      */
     private void appendPhaseFallbackStatusJson(StringBuilder json, Phase phase) {
         PhaseConfig resolved = forPhase(phase);
         boolean workstreamSets = workstreamBundle.setsPhase(phase);
         boolean fallbackContributes = !fallbackBundle.forPhase(phase).isEmpty();
-        boolean shadowed = fallbackContributes && !workstreamSets
+        boolean noNetEffect = fallbackContributes && !workstreamSets
                 && resolved.equals(resolveWithoutFallback(phase));
-        boolean used = fallbackContributes && !workstreamSets && !shadowed;
+        boolean used = fallbackContributes && !workstreamSets && !noNetEffect;
         String reason;
         if (workstreamSets) {
             reason = "workstream sets " + phase.wireName();
         } else if (!fallbackContributes) {
             reason = "fallback has no entry for this phase";
-        } else if (shadowed) {
+        } else if (used) {
+            reason = "fallback applied";
+        } else if (requestBundle.forPhase(phase).covers(fallbackBundle.forPhase(phase))) {
             reason = "request overrides " + phase.wireName();
         } else {
-            reason = "fallback applied";
+            reason = "fallback matches resolved " + phase.wireName() + " config";
         }
         json.append("{");
         appendResolvedField(json, true, "runner", resolved.runner());
@@ -265,8 +274,10 @@ public final class PhaseConfigResolver {
      * leaves unset falls straight through to the workspace / controller levels.
      * Used only by {@link #appendPhaseFallbackStatusJson(StringBuilder, Phase)}
      * to decide whether the fallback actually affected the effective config —
-     * when the result equals {@link #forPhase(Phase)}, a higher-precedence
-     * request override has shadowed the fallback and it is reported unused.
+     * when the result equals {@link #forPhase(Phase)} the fallback had no net
+     * effect and is reported unused (the {@code reason} then names whether a
+     * request override or a coincident workspace / controller default is the
+     * cause).
      *
      * @param phase the phase to resolve; never {@code null} in callers
      * @return the config this phase would resolve to without the fallback

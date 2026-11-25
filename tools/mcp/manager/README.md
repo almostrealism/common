@@ -208,9 +208,11 @@ a `fallbackResolution` object reporting, per phase, the resolved runner/model/
 effort/provider and whether the fallback was used or ignored and why.
 
 A fallback naming `provider=openrouter` needs the workspace's
-`openrouter-api-key` secret (see `flowtree/docs/operations/PROVIDERS.md`); the
-submission fails if the secret is missing rather than silently using another
-provider.
+`openrouter-api-key` secret (see `flowtree/docs/operations/PROVIDERS.md`).
+Submission validates only the runner/model/provider combination, not the
+presence of the secret: the opencode runner resolves the key when the job
+starts, so a missing secret surfaces as a runtime job failure, not a
+submission rejection.
 
 CI uses the fallback through the `AR_CI_FALLBACK_PHASE_CONFIG` repository
 variable, which `tools/ci/submit-agent-job.sh` forwards as `fallbackPhaseConfig`
