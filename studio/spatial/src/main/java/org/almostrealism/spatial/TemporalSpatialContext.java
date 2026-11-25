@@ -142,10 +142,26 @@ public class TemporalSpatialContext implements ConsoleFeatures {
 	 * Setting the duration will cause spatial elements to be regenerated
 	 * on the next call to {@link SpatialTimeseries#elements(TemporalSpatialContext)}.</p>
 	 *
-	 * @param duration the duration in seconds
+	 * @param duration the duration in this context's time units (seconds only when
+	 *                 the temporal scale is {@code 1}; see {@link #setDurationSeconds(double)})
 	 */
 	public void setDuration(double duration) {
 		this.duration = duration;
+	}
+
+	/**
+	 * Sets the total duration of the content being visualized from a number of
+	 * seconds, so that span fills the full width of the view when zoom is enabled.
+	 *
+	 * <p>{@link #setDuration(double)} takes this context's own time units, which
+	 * are seconds only when the temporal scale is {@code 1} (in the arrangement
+	 * they are measures). Passing seconds there would fit the wrong span; this
+	 * converts them with {@link #getSecondsToTime()} first.</p>
+	 *
+	 * @param seconds the number of seconds the view should span
+	 */
+	public void setDurationSeconds(double seconds) {
+		setDuration(getSecondsToTime().applyAsDouble(seconds));
 	}
 
 	/**
