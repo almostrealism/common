@@ -1494,6 +1494,7 @@ from github_tools import (  # noqa: E402
 from github_lifecycle_tools import (  # noqa: E402
     github_set_pr_state,
     github_start_test_run,
+    github_rerun_failed_jobs,
 )
 from tracker_tools import (  # noqa: E402
     tracker_list_projects,

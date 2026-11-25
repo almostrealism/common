@@ -57,6 +57,7 @@ GRANTED_TOOLS = (
     "github_update_pr",
     "github_set_pr_state",
     "github_start_test_run",
+    "github_rerun_failed_jobs",
     "github_request_copilot_review",
     "github_read_file",
     "github_pr_check_status",

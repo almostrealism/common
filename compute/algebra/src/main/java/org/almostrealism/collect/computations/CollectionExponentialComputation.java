@@ -197,12 +197,8 @@ public class CollectionExponentialComputation extends TraversableExpressionCompu
 	 */
 	@Override
 	public CollectionProducerParallelProcess generate(List<Process<?, ?>> children) {
-		return new CollectionExponentialComputation(getName(), getShape(), isIgnoreZero(),
-				(Producer<PackedCollection>) children.get(1))
-				.setPostprocessor(getPostprocessor())
-				.setDescription(getDescription())
-				.setShortCircuit(getShortCircuit())
-				.addAllDependentLifecycles(getDependentLifecycles());
+		return copyConfigurationTo(new CollectionExponentialComputation(getName(), getShape(), isIgnoreZero(),
+				(Producer<PackedCollection>) children.get(1)));
 	}
 
 	/**

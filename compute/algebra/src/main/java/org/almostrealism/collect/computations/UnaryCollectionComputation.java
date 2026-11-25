@@ -162,10 +162,6 @@ public abstract class UnaryCollectionComputation extends TraversableExpressionCo
 	 */
 	@Override
 	public CollectionProducerParallelProcess generate(List<Process<?, ?>> children) {
-		return create(getShape(), (Producer<PackedCollection>) children.get(1))
-				.setPostprocessor(getPostprocessor())
-				.setDescription(getDescription())
-				.setShortCircuit(getShortCircuit())
-				.addAllDependentLifecycles(getDependentLifecycles());
+		return copyConfigurationTo(create(getShape(), (Producer<PackedCollection>) children.get(1)));
 	}
 }

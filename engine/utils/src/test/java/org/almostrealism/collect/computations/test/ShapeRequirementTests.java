@@ -23,6 +23,7 @@ import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.CollectionPermute;
+import org.almostrealism.collect.computations.CollectionStopGradientComputation;
 import org.almostrealism.collect.computations.CollectionSubsetComputation;
 import org.almostrealism.collect.computations.PackedCollectionEnumerate;
 import org.almostrealism.collect.computations.PackedCollectionRepeat;
@@ -33,7 +34,7 @@ import org.junit.Test;
 
 /**
  * Pins how the shape-dependent collection computations (repeat, enumerate,
- * subset, permute) treat their input: a shaped input determines the output
+ * subset, permute, stop-gradient) treat their input: a shaped input determines the output
  * shape, and an input that is not a {@link io.almostrealism.collect.Shape}
  * is rejected with an {@link IllegalArgumentException} naming the operation.
  */
@@ -91,6 +92,17 @@ public class ShapeRequirementTests extends TestSuiteBase {
 	public void permuteRequiresShape() {
 		assertRejected("Permute cannot be performed without a TraversalPolicy",
 				() -> new CollectionPermute(shapeless(), 1, 0));
+	}
+
+	/**
+	 * A stop-gradient takes its shape from its input, so it rejects a shapeless input, both when
+	 * it is constructed and through {@link org.almostrealism.collect.GradientFeatures#stopGradient}.
+	 */
+	@Test(timeout = 30000)
+	public void stopGradientRequiresShape() {
+		String msg = "Stop gradient cannot be performed without a TraversalPolicy";
+		assertRejected(msg, () -> new CollectionStopGradientComputation(shapeless()));
+		assertRejected(msg, () -> stopGradient(shapeless()));
 	}
 
 	/** A shaped input determines the output shape of each computation. */

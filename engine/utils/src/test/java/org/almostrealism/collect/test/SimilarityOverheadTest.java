@@ -140,6 +140,81 @@ public class SimilarityOverheadTest extends TestSuiteBase {
 	}
 
 	/**
+	 * Minimum acceptable throughput, in comparisons per second, of the per-call
+	 * {@link #productSimilarity(CollectionProducer, CollectionProducer, int)} path
+	 * measured by {@link #pairwiseSimilarityThroughputFloor()}.
+	 *
+	 * <p>Baseline: 852 to 882 comparisons/s (1.13 to 1.17 ms/comparison) over three
+	 * runs of 19,900 comparisons on an Apple silicon macOS host with Metal, measured
+	 * after warmup. The floor is about 5.8x below that rate so that ordinary contention
+	 * on a shared self-hosted runner does not trip it; only a substantial regression in
+	 * the cost of building and evaluating the similarity graph does. At the floor the
+	 * workload takes about 133 s, inside the test timeout, so the assertion reports a
+	 * slowdown before the timeout can.</p>
+	 *
+	 * <p>Because the baseline was measured only with Metal, the floor is enforced only
+	 * where a Metal context is available. An earlier CUDA profile measured about
+	 * 3.1 ms/comparison (about 325 comparisons/s), only about 2x above this floor, so
+	 * applying it to CUDA without a current CUDA baseline would either flake or need a
+	 * floor too low to detect a Metal regression.</p>
+	 */
+	private static final double THROUGHPUT_FLOOR = 150.0;
+
+	/**
+	 * Asserts that the per-call {@code productSimilarity} path sustains at least
+	 * {@link #THROUGHPUT_FLOOR} comparisons per second.
+	 *
+	 * <p>This exercises the same expression-tree-per-comparison pattern as
+	 * {@link #pairwiseSimilarityAtScale()}, on a workload sized to finish in a small
+	 * fraction of its timeout, so that a slowdown fails with the measured throughput
+	 * rather than with an opaque timeout. The first comparisons are run untimed so
+	 * that kernel compilation and first-call warmup do not count against the rate.
+	 * It runs only where a Metal context is available, the one backend on which
+	 * {@link #THROUGHPUT_FLOOR} has a measured baseline; other GPU backends remain
+	 * covered by {@link #pairwiseSimilarityAtScale()}.</p>
+	 */
+	@Test(timeout = 300_000)
+	public void pairwiseSimilarityThroughputFloor() {
+		Assume.assumeTrue("The throughput floor has a measured baseline only on Metal",
+				hasContext(MetalComputeContext.class, ComputeRequirement.MTL));
+
+		int count = 200;
+		int warmup = 200;
+		PackedCollection[] tensors = createRandomTensors(count, FRAMES, BINS);
+
+		for (int w = 0; w < warmup; w++) {
+			productSimilarity(cp(tensors[w % count]), cp(tensors[(w + 1) % count]), FRAMES);
+		}
+
+		long totalComparisons = 0;
+		long startTime = System.nanoTime();
+
+		for (int i = 0; i < count; i++) {
+			for (int j = i + 1; j < count; j++) {
+				productSimilarity(cp(tensors[i]), cp(tensors[j]), FRAMES);
+				totalComparisons++;
+			}
+		}
+
+		long elapsed = System.nanoTime() - startTime;
+		double seconds = elapsed / 1_000_000_000.0;
+		double comparisonsPerSecond = totalComparisons / seconds;
+		log("Throughput: " + totalComparisons + " comparisons in " +
+				String.format("%.1f", seconds) + "s (" +
+				String.format("%.3f", elapsed / (double) totalComparisons / 1_000_000.0) +
+				" ms/comparison, " + String.format("%.0f", comparisonsPerSecond) +
+				" comparisons/s, floor " + String.format("%.0f", THROUGHPUT_FLOOR) + ")");
+
+		Assert.assertTrue("Pairwise similarity throughput " +
+						String.format("%.0f", comparisonsPerSecond) +
+						" comparisons/s is below the floor of " +
+						String.format("%.0f", THROUGHPUT_FLOOR) + " comparisons/s (" +
+						totalComparisons + " comparisons in " +
+						String.format("%.1f", seconds) + "s)",
+				comparisonsPerSecond >= THROUGHPUT_FLOOR);
+	}
+
+	/**
 	 * Smaller-scale test (100 tensors, ~5K comparisons) that runs at
 	 * default test depth to verify the comparison pipeline works and
 	 * provide baseline timing data.
