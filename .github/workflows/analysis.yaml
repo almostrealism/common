@@ -183,6 +183,7 @@ jobs:
       evals_changed: ${{ steps.filter.outputs.evals_changed }}
       exfil_guard_changed: ${{ steps.filter.outputs.exfil_guard_changed }}
       agent_protection_changed: ${{ steps.filter.outputs.agent_protection_changed }}
+      infra_classifier_changed: ${{ steps.filter.outputs.infra_classifier_changed }}
       agent_isolation_changed: ${{ steps.filter.outputs.agent_isolation_changed }}
       images_changed: ${{ steps.filter.outputs.images_changed }}
       # The branch this run is for, its base, and the commit under test, for
@@ -245,6 +246,7 @@ jobs:
             echo "evals_changed=true" >> "$GITHUB_OUTPUT"
             echo "exfil_guard_changed=true" >> "$GITHUB_OUTPUT"
             echo "agent_protection_changed=true" >> "$GITHUB_OUTPUT"
+            echo "infra_classifier_changed=true" >> "$GITHUB_OUTPUT"
             echo "agent_isolation_changed=true" >> "$GITHUB_OUTPUT"
             echo "images_changed=true" >> "$GITHUB_OUTPUT"
           }
@@ -430,6 +432,30 @@ jobs:
             echo "::notice::Agent-protection scripts changed — running their regression suites"
           else
             echo "agent_protection_changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          # Infrastructure-failure classifier detection. tools/ci/infra-failure.sh
+          # holds INFRA_SIGNATURES and the shared log-reading helpers that both
+          # the flaky-test retry gate (rerun-flaky-tests.sh) and the auto-review
+          # job use to tell an infrastructure failure from a defect in the commit.
+          # Its standalone regression suite (tools/tests/test-infra-classification.sh)
+          # and the Python wiring tests (test_remediation_job_exclusivity.py, which
+          # read this file's auto-review GATE_JOBS and suppression conditions —
+          # the classifier's other half) both run in python-tests, but none of
+          # these files is a .py, so a change to the regex, the retry gate, or
+          # this file's auto-review wiring would not set python_changed. Give them
+          # their own flag so the classifier's suites run whenever they change —
+          # the same reason the guard and agent-protection flags exist.
+          INFRA_FILES=$(git diff --name-only "$BASE" HEAD -- \
+            'tools/ci/infra-failure.sh' \
+            'tools/ci/rerun-flaky-tests.sh' \
+            'tools/tests/test-infra-classification.sh' \
+            '.github/workflows/analysis.yaml' || true)
+          if [ -n "$INFRA_FILES" ]; then
+            echo "infra_classifier_changed=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::Infrastructure-failure classifier changed — running its regression suite"
+          else
+            echo "infra_classifier_changed=false" >> "$GITHUB_OUTPUT"
           fi
 
           # Agent volume isolation detection. The agent-volume-isolation job
@@ -2146,17 +2172,20 @@ jobs:
   # on `changes` and runs in parallel with build/checkstyle. Fails the PR
   # when any test fails, and a failure is submitted straight away by
   # auto-resolve-python, which quotes the output this job uploads. Gated on
-  # python_changed, exfil_guard_changed or agent_protection_changed, so the
-  # guard suites still run when only its shell adapter, allowlist, or
-  # settings.json registration changed, and the branch-check suites run when
-  # an agent-protection script changed — none of which set python_changed.
+  # python_changed, exfil_guard_changed, agent_protection_changed or
+  # infra_classifier_changed, so the guard suites still run when only its shell
+  # adapter, allowlist, or settings.json registration changed, the branch-check
+  # suites run when an agent-protection script changed, and the infrastructure
+  # classifier's suites run when only its shell scripts or this file's
+  # auto-review wiring changed — none of which set python_changed.
   python-tests:
     needs: changes
     if: >-
       needs.changes.outputs.code_changed == 'true' &&
       (needs.changes.outputs.python_changed == 'true' ||
        needs.changes.outputs.exfil_guard_changed == 'true' ||
-       needs.changes.outputs.agent_protection_changed == 'true')
+       needs.changes.outputs.agent_protection_changed == 'true' ||
+       needs.changes.outputs.infra_classifier_changed == 'true')
     runs-on: ubuntu-latest
     # `bash` (rather than the default shell) runs every step with pipefail, so
     # piping a suite through `tee` still fails the step when the suite fails.
@@ -2205,6 +2234,14 @@ jobs:
           python3 -m unittest discover -v -s tools/ci -p "test_collect_master_failures.py" 2>&1 | tee -a "${RUNNER_TEMP}/python-tests.log"
           python3 -m unittest discover -v -s tools/ci -p "test_copilot_review_status.py" 2>&1 | tee -a "${RUNNER_TEMP}/python-tests.log"
           python3 -m unittest discover -v -s tools/ci -p "test_extract_branch_todos.py" 2>&1 | tee -a "${RUNNER_TEMP}/python-tests.log"
+
+      # The shared infrastructure-failure classifier (tools/ci/infra-failure.sh)
+      # is a shell script, so its INFRA_SIGNATURES regex is exercised against
+      # real log samples by a shell suite rather than a unittest discovery. The
+      # Python wiring tests in test_remediation_job_exclusivity.py stub the log
+      # fetch, so this is the only CI coverage of the operational signatures.
+      - name: Run infrastructure classifier tests
+        run: bash tools/tests/test-infra-classification.sh 2>&1 | tee -a "${RUNNER_TEMP}/python-tests.log"
 
       # The exfiltration guard's decision logic is Python under
       # .claude/hooks/lib; its tests build scratch git repositories and
@@ -4580,6 +4617,9 @@ jobs:
     permissions:
       contents: read
       pull-requests: read
+      # Read the run's job list and job logs to tell an infrastructure gate
+      # failure from a deterministic one (tools/ci/infra-failure.sh).
+      actions: read
     outputs:
       staged: ${{ steps.upload.outcome == 'success' }}
       # 'false' when the latest Copilot review on this PR is an out-of-quota
@@ -4667,6 +4707,94 @@ jobs:
           echo "route=${ROUTE}" >> "$GITHUB_OUTPUT"
           echo "::notice::auto-review prompt: ${ROUTE}"
 
+      # A gate can fail on infrastructure — a plugin that would not download, a
+      # lost runner, a 5xx from a package host — rather than on the commit. One
+      # failed os-maven-plugin download in test-timeout-check once routed here
+      # as a quality-gate finding and dispatched an agent that had nothing to
+      # fix. When EVERY gate that would be reported to an agent failed that way,
+      # suppress the submission: "Auto-Resolve Submit"'s retry gate re-runs the
+      # whole pipeline after it completes, and that is what clears a transient
+      # infrastructure failure. The signature check is the retry gate's own
+      # (tools/ci/infra-failure.sh), shared so the two cannot drift. Only a
+      # failure route reaches this step; docs-review and general-review always
+      # submit. It is conservative on every doubt — a readable gate failure that
+      # is not infrastructure, an unreadable log, a script missing from an older
+      # checkout, or an unreachable jobs API all leave infra_only=false — so a
+      # genuine finding is never suppressed, only sent through its normal path.
+      - name: Classify failing gates as infrastructure or deterministic
+        id: infra
+        if: steps.route.outputs.route == 'build-failure' || steps.route.outputs.route == 'code-policy' || steps.route.outputs.route == 'quality-gates'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          # Every job whose failure check-quality-gates.sh can turn into a
+          # finding this run routes to an agent. That is the Maven gates
+          # (build, code-policy-check, test-timeout-check, duplicate-code-check,
+          # checkstyle) and the non-Maven integrity checks test-integrity-check
+          # (test-hiding, enforcement-tampering, exfil-guard, python-test-hiding)
+          # and agent-commit-validation (only_base_test_edits) — each of which
+          # drives the quality-gates route. All must be classified: a real
+          # integrity finding alongside an infrastructure gate failure has to
+          # register as genuine so the agent is still dispatched. (Their logs
+          # carry detector output, not infrastructure signatures, so a readable
+          # genuine failure classifies as deterministic and sets genuine_seen.)
+          # deception-audit is omitted on purpose: it is informational and never
+          # contributes a finding that routes here.
+          GATE_JOBS: "build code-policy-check test-timeout-check duplicate-code-check checkstyle test-integrity-check agent-commit-validation"
+        run: |
+          if [ ! -f ./tools/ci/infra-failure.sh ]; then
+            echo "::notice::infra-failure.sh absent from this checkout — not classifying gate failures as infrastructure"
+            echo "infra_only=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # shellcheck source=tools/ci/infra-failure.sh
+          . ./tools/ci/infra-failure.sh
+          JOBS=$(gh api --paginate \
+            "/repos/$REPO/actions/runs/$RUN_ID/attempts/$RUN_ATTEMPT/jobs" \
+            --jq '.jobs[] | "\(.conclusion)\t\(.name)\t\(.id)"' 2>/dev/null || true)
+          if [ -z "$JOBS" ]; then
+            echo "::warning::Could not list the run's jobs — not classifying gate failures as infrastructure"
+            echo "infra_only=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          infra_seen=false
+          genuine_seen=false
+          for gate in $GATE_JOBS; do
+            line=$(printf '%s\n' "$JOBS" | awk -F '\t' -v j="$gate" '$2 == j { print; exit }')
+            if [ -z "$line" ]; then
+              continue
+            fi
+            conclusion=${line%%$'\t'*}
+            rest=${line#*$'\t'}
+            id=${rest#*$'\t'}
+            case "$conclusion" in
+              failure|timed_out) ;;
+              *) continue ;;
+            esac
+            rc=0
+            ci_infra_job_matches "$id" || rc=$?
+            if [ "$rc" = "0" ]; then
+              infra_seen=true
+              echo "::notice::Gate '$gate' failed on infrastructure"
+            else
+              # Readable-but-deterministic (rc=1) or unreadable (rc=2): treat as
+              # a genuine failure and let the agent see it. Dispatching is
+              # auto-review's normal action, so an unreadable log never suppresses
+              # it — the opposite-direction fallback from the retry gate's, each
+              # conservative for its own path.
+              genuine_seen=true
+              echo "::notice::Gate '$gate' failed, not classified as infrastructure (rc=$rc)"
+            fi
+          done
+          if [ "$infra_seen" = "true" ] && [ "$genuine_seen" = "false" ]; then
+            echo "::warning::Every failing gate is an infrastructure failure — not dispatching an agent; the Auto-Resolve Submit retry gate will re-run this pipeline"
+            echo "infra_only=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "infra_only=false" >> "$GITHUB_OUTPUT"
+          fi
+
       # GitHub Copilot has been dark for long stretches, posting only an
       # "insufficient remaining quota" notice in place of a review.
       # When that is the latest Copilot review on
@@ -4727,7 +4855,7 @@ jobs:
           ./tools/ci/prompts/build-build-failure-prompt.sh "${{ runner.temp }}/agent-prompt.txt" "${{ runner.temp }}/branch-todos.txt"
 
       - name: Stage submit request (build failure)
-        if: steps.route.outputs.route == 'build-failure'
+        if: steps.route.outputs.route == 'build-failure' && steps.infra.outputs.infra_only != 'true'
         env:
           BRANCH: ${{ needs.changes.outputs.branch }}
           BASE_BRANCH: ${{ needs.changes.outputs.base_branch }}
@@ -4754,7 +4882,7 @@ jobs:
           ./tools/ci/prompts/build-policy-violation-prompt.sh "${{ runner.temp }}/agent-prompt.txt" "${{ runner.temp }}/branch-todos.txt"
 
       - name: Stage submit request (code policy violations)
-        if: steps.route.outputs.route == 'code-policy'
+        if: steps.route.outputs.route == 'code-policy' && steps.infra.outputs.infra_only != 'true'
         env:
           BRANCH: ${{ needs.changes.outputs.branch }}
           BASE_BRANCH: ${{ needs.changes.outputs.base_branch }}
@@ -4787,7 +4915,7 @@ jobs:
           ./tools/ci/prompts/build-quality-gate-prompt.sh "${{ runner.temp }}/quality-gate-failures.txt" "${{ runner.temp }}/agent-prompt.txt" "${{ runner.temp }}/branch-todos.txt"
 
       - name: Stage submit request (quality gates)
-        if: steps.route.outputs.route == 'quality-gates'
+        if: steps.route.outputs.route == 'quality-gates' && steps.infra.outputs.infra_only != 'true'
         env:
           BRANCH: ${{ needs.changes.outputs.branch }}
           BASE_BRANCH: ${{ needs.changes.outputs.base_branch }}
@@ -4891,6 +5019,7 @@ jobs:
           ROUTE: ${{ steps.route.outputs.route }}
           QUALITY_FAILURE_COUNT: ${{ steps.quality.outputs.failure_count }}
           COPILOT_AVAILABLE: ${{ steps.copilot.outputs.copilot_available }}
+          INFRA_ONLY: ${{ steps.infra.outputs.infra_only }}
         run: |
           {
             echo "## Auto-Review"
@@ -4898,6 +5027,14 @@ jobs:
             if [ "$COPILOT_AVAILABLE" = "false" ]; then
               echo "> **Copilot unavailable** — the latest Copilot review on this PR is an \"insufficient remaining quota\" notice, so no Copilot review ran. The review agent is the only automated reviewer, and it will not wait for a Copilot review that is not coming."
               echo ""
+            fi
+            if [ "$INFRA_ONLY" = "true" ]; then
+              echo "> **Infrastructure failure** — the \`${ROUTE}\` gate(s) failed on infrastructure (a download, a lost runner, a server error), not on the commit. No agent was dispatched; the Auto-Resolve Submit retry gate will re-run this pipeline."
+              echo ""
+              echo "_No prompt was submitted._"
+              echo ""
+              echo "_Long-running test failures are not considered here: they are auto-resolve's, once the flaky-test retries are spent._"
+              exit 0
             fi
             case "$ROUTE" in
               docs-review)    echo "**Docs-only change** — submitted a job to review the docs changes (it does not implement a plan)." ;;
