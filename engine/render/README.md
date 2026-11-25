@@ -230,14 +230,22 @@ public class RenderParameters {
 ### LightingEngine
 
 ```java
-public class LightingEngine<T extends ContinuousField> {
-    public LightingEngine(Surface surface, Light light);
-
-    public Producer<RGB> shade(Producer<Ray> ray);
+public class LightingEngine<T extends ContinuousField>
+        extends ProducerWithRankAdapter<PackedCollection> {
+    // Evaluates the shadow * shade color for one surface-light pair; the
+    // intersection distance becomes the rank used for closest-surface selection.
+    public LightingEngine(T intersections,
+                          ShadableSurface surface,
+                          Collection<? extends ShadableSurface> otherSurfaces,
+                          Light light, Iterable<Light> otherLights, ShaderContext p);
 
     public static boolean enableShadows;  // Shadow computation
 }
 ```
+
+Because `LightingEngine` is a `ProducerWithRankAdapter`, callers obtain the color
+producer and its rank through `getProducer()` and `getRank()` rather than a `shade`
+method; the aggregator selects the closest hit by rank (see `LightingEngineAggregator`).
 
 ## Rendering Pipeline
 
