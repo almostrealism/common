@@ -340,6 +340,40 @@ public class LoopInvariantBufferAliasingTest extends TestSuiteBase {
 	}
 
 	/**
+	 * Verifies that a declaration reading an array declared in a child of the loop is NOT hoisted
+	 * even when the loop never writes that array. Hoisted statements precede everything in the
+	 * loop, so hoisting the read would place it ahead of the array's declaration.
+	 *
+	 * <pre>
+	 * for (i = 0; i &lt; 100; i++) {
+	 *   {
+	 *     double local[8];
+	 *     double f_alias = local[0] + 1.0;  // must stay after the declaration
+	 *   }
+	 * }
+	 * </pre>
+	 */
+	@Test(timeout = 30000)
+	public void declarationReadingUnwrittenLoopDeclaredArrayNotHoisted() {
+		Variable<Integer, ?> idx = Variable.integer("_test_i");
+		Repeated<Void> loop = new Repeated<>(idx, idx.ref().lessThan(100));
+		loop.setName("unwrittenDeclaredArrayTest");
+
+		Scope<Void> child = new Scope<>("body");
+		ArrayVariable<Double> local = (ArrayVariable<Double>) child.declareArray("_v_read_only", e(8));
+		child.getStatements().add(new ExpressionAssignment(true,
+				new StaticReference<>(Double.class, "f_alias"),
+				new InstanceReference<>(local, e(0), null)
+						.add(new DoubleConstant(1.0))));
+		loop.getChildren().add(child);
+
+		Repeated<Void> simplified = (Repeated<Void>) loop.simplify(new NoOpKernelStructureContext(), 0);
+
+		Assert.assertEquals("Declaration reading an array declared inside the loop must NOT be hoisted",
+				0, countDeclarationsNamed(simplified.getStatements(), "f_alias"));
+	}
+
+	/**
 	 * Returns a scope that writes {@code array[i] = i} and then declares
 	 * {@code f_alias = array[0] + 1.0}.
 	 *

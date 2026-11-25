@@ -706,10 +706,10 @@ public class Scope<T> extends ArrayList<Scope<T>>
 					.stream().flatMap(e -> e.getDependencies().stream()).collect(Collectors.toList())));
 			Argument.sort(args);
 
-			List<String> declaredArrays = getStatements().stream()
-					.map(s -> s instanceof ArrayDeclaration ? (ArrayDeclaration) s : null)
-					.filter(Objects::nonNull)
-					.map(ArrayDeclaration::getName)
+			List<ArrayVariable<?>> ownArrays = new ArrayList<>();
+			getStatements().forEach(statement -> statement.appendDeclaredArrays(ownArrays));
+			List<String> declaredArrays = ownArrays.stream()
+					.map(Variable::getName)
 					.collect(Collectors.toList());
 
 			List<String> declaredParameters = getParameters().stream()
@@ -1272,18 +1272,13 @@ public class Scope<T> extends ArrayList<Scope<T>>
 	}
 
 	/**
-	 * Adds to {@code arrays} the {@link ArrayDeclaration#getVariable() variable} of every
-	 * {@link ArrayDeclaration} among the statements of this scope and its descendants, in
-	 * traversal order.
+	 * Adds to {@code arrays} every array {@link Statement#appendDeclaredArrays(List) declared} by
+	 * the statements of this scope and its descendants, in traversal order.
 	 *
 	 * @param arrays the list to add the declared arrays to
 	 */
 	public void appendDeclaredArrays(List<ArrayVariable<?>> arrays) {
-		for (Statement<?> statement : getStatements()) {
-			if (statement instanceof ArrayDeclaration) {
-				arrays.add(((ArrayDeclaration<?>) statement).getVariable());
-			}
-		}
+		getStatements().forEach(statement -> statement.appendDeclaredArrays(arrays));
 
 		for (Scope<?> child : getChildren()) {
 			child.appendDeclaredArrays(arrays);

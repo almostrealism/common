@@ -78,6 +78,11 @@ import java.util.function.Predicate;
  * replacement cap, smarter matching) relies on this soundness: without it, hoisted reads of
  * written buffers silently corrupt loop kernels.</p>
  *
+ * <p>An array the loop declares itself ({@link Scope#declareArray(String, Expression)}, among
+ * its own statements or within its body) is treated the same way whether or not the loop
+ * writes it: hoisted statements are emitted ahead of everything in the loop, including that
+ * declaration, so a hoisted read of the array would use it before it is declared.</p>
+ *
  * @param <T> the return type of this scope
  * @see Scope
  * @see ScopeSettings
@@ -284,8 +289,10 @@ public class Repeated<T> extends Scope<T> {
 
 		Set<String> variantNames = collectBaseVariantNames(allDeclarations);
 
-		// Arrays the loop may write, from this scope so its own statements count.
+		// Arrays the loop may write, from this scope so its own statements count, plus every
+		// array it declares: a hoisted read of one would precede the declaration.
 		List<ArrayVariable<?>> writtenArrays = collectWrittenArrays();
+		appendDeclaredArrays(writtenArrays);
 
 		List<Index> loopIndices = collectLoopIndices();
 
@@ -543,7 +550,7 @@ public class Repeated<T> extends Scope<T> {
 	 * ({@code minDepth = 3}) to avoid extracting trivially cheap sub-expressions.</p>
 	 *
 	 * @param variantNames the set of loop-variant variable names
-	 * @param writtenArrays the arrays the loop body may write
+	 * @param writtenArrays the arrays the loop body may write, and those it declares
 	 * @param loopIndices all loop indices (outer and nested)
 	 * @param extractedDeclarations list to receive the new extracted declarations
 	 */
@@ -570,7 +577,7 @@ public class Repeated<T> extends Scope<T> {
 	 *
 	 * @param scope the scope to scan
 	 * @param variantNames the set of loop-variant variable names
-	 * @param writtenArrays the arrays the loop body may write
+	 * @param writtenArrays the arrays the loop body may write, and those it declares
 	 * @param loopIndices all loop indices
 	 * @param extracted map of already-extracted sub-expressions to their references (for dedup)
 	 * @param extractIdx counter for generating unique declaration names
@@ -638,7 +645,7 @@ public class Repeated<T> extends Scope<T> {
 	 *
 	 * @param assignment the assignment to process
 	 * @param variantNames the set of loop-variant variable names
-	 * @param writtenArrays the arrays the loop body may write
+	 * @param writtenArrays the arrays the loop body may write, and those it declares
 	 * @param loopIndices all loop indices
 	 * @param extracted map of already-extracted sub-expressions (for dedup)
 	 * @param extractIdx counter for generating unique declaration names
@@ -914,7 +921,7 @@ public class Repeated<T> extends Scope<T> {
 	 *
 	 * @param declarations all declarations in the loop body
 	 * @param variantNames the set of variant names (modified in place)
-	 * @param writtenArrays the arrays the loop body may write
+	 * @param writtenArrays the arrays the loop body may write, and those it declares
 	 * @param loopIndices indices from this and nested loops
 	 */
 	private static void propagateVariance(List<ExpressionAssignment<?>> declarations,
@@ -1018,7 +1025,7 @@ public class Repeated<T> extends Scope<T> {
 	 *
 	 * @param expr the expression to check
 	 * @param loopAssignedVariables names of variables assigned inside the loop
-	 * @param writtenArrays the arrays the loop body may write
+	 * @param writtenArrays the arrays the loop body may write, and those it declares
 	 * @param loopIndices indices from this and nested loops
 	 * @return true if the expression does not depend on any loop-variant variables
 	 */
