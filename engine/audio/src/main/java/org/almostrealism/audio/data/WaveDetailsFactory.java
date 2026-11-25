@@ -180,7 +180,7 @@ public class WaveDetailsFactory implements CodeFeatures {
 	 */
 	public WaveDetails forProvider(WaveDataProvider provider, WaveDetails existing) {
 		if (existing == null) {
-			if (provider == null) return null;
+			if (provider == null || !provider.isReadable()) return null;
 
 			existing = new WaveDetails(provider.getIdentifier(), provider.getSampleRate());
 		}

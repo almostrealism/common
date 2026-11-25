@@ -138,6 +138,19 @@ public class FileWaveDataProvider extends WaveDataProviderAdapter implements Pat
 		});
 	}
 
+	/**
+	 * Returns whether this file can be read. A file recorded as corrupt after a
+	 * prior failed read is not readable; this is answered from the corrupt-file
+	 * record alone, without opening the file, so it neither forces a read nor
+	 * throws when the file has already failed once in this JVM.
+	 *
+	 * @return true unless this file has been marked corrupt
+	 */
+	@Override
+	public boolean isReadable() {
+		return !corruptFiles.contains(getResourcePath());
+	}
+
 	@Override
 	public int getSampleRate() {
 		if (corruptFiles.contains(getResourcePath())) return 0;
