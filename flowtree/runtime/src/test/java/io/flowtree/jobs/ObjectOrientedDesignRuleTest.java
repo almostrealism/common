@@ -272,6 +272,125 @@ public class ObjectOrientedDesignRuleTest extends TestSuiteBase {
 	}
 
 	/**
+	 * Drives the rule through several enforcement rounds in one job over a single unchanged class
+	 * whose content hash never changes, recording the verdict each round in a form a session writes
+	 * naturally — the bare simple name, not the full repository-relative path the prompt listed. The
+	 * class is selected exactly once: the first round records it, so every later round finds nothing
+	 * to review. This is the regression for the repeated-selection defect: the old matcher required
+	 * the verdict line to start with the exact full path, so a simple-name verdict settled nothing and
+	 * the class was re-selected every round until the job-wide attempt ceiling stopped it.
+	 *
+	 * @throws IOException if the temporary tree cannot be written
+	 */
+	@Test(timeout = 30000)
+	public void selectsAnUnchangedClassOnlyOnceAcrossRoundsWithANaturalVerdict() throws IOException {
+		Path root = Files.createTempDirectory("oop-rule");
+		try {
+			String target = "engine/ml/src/main/java/org/example/Window.java";
+			Files.createDirectories(root.resolve(target).getParent());
+			Files.writeString(root.resolve(target), "class Window {}");
+			StubJob job = new StubJob(root, new ArrayList<>(List.of(target)));
+			FakeRule rule = new FakeRule(root.resolve("ledger.tsv"))
+					.with(target, "w1", ObjectOrientedRiskGate.Signal.NEW_CLASS);
+
+			int selections = 0;
+			for (int round = 0; round < 5 && rule.isViolated(job); round++) {
+				String prompt = rule.buildCorrectionPrompt(job);
+				if (prompt.contains(target)) selections++;
+				// A session reports its verdict by the class's bare simple name, not its full path.
+				appendVerdict(root, VERDICT_FILE, "Window: CLEAN");
+				rule.onCorrectionAttempted(job);
+			}
+
+			assertEquals("the unchanged class must be selected exactly once across rounds", 1, selections);
+			assertEquals(Set.of(target), rule.getReviewed());
+			assertFalse(rule.isViolated(job));
+		} finally {
+			delete(root);
+		}
+	}
+
+	/**
+	 * A verdict a session writes behind markdown decoration — a bullet, backticks around the class
+	 * name, a trailing note — is still read, whether it names the class by full path, simple name,
+	 * {@code .java} file name or fully-qualified name. Each decorated form settles its class, so none
+	 * is re-reviewed.
+	 *
+	 * @throws IOException if the temporary tree cannot be written
+	 */
+	@Test(timeout = 30000)
+	public void recordsVerdictsWrittenWithMarkdownDecorationAndVariedNames() throws IOException {
+		Path root = Files.createTempDirectory("oop-rule");
+		try {
+			String bulletFullPath = "engine/ml/src/main/java/org/example/Alpha.java";
+			String backtickSimple = "engine/ml/src/main/java/org/example/Beta.java";
+			String javaFileName = "engine/ml/src/main/java/org/example/Gamma.java";
+			String qualifiedName = "engine/ml/src/main/java/org/example/Delta.java";
+			for (String path : List.of(bulletFullPath, backtickSimple, javaFileName, qualifiedName)) {
+				Files.createDirectories(root.resolve(path).getParent());
+				Files.writeString(root.resolve(path), "class X {}");
+			}
+			StubJob job = new StubJob(root, new ArrayList<>(
+					List.of(bulletFullPath, backtickSimple, javaFileName, qualifiedName)));
+			FakeRule rule = new FakeRule(root.resolve("ledger.tsv"))
+					.with(bulletFullPath, "a1", ObjectOrientedRiskGate.Signal.NEW_CLASS)
+					.with(backtickSimple, "b1", ObjectOrientedRiskGate.Signal.NEW_CLASS)
+					.with(javaFileName, "g1", ObjectOrientedRiskGate.Signal.NEW_CLASS)
+					.with(qualifiedName, "d1", ObjectOrientedRiskGate.Signal.NEW_CLASS);
+
+			rule.buildCorrectionPrompt(job);
+			appendVerdict(root, VERDICT_FILE, "- " + bulletFullPath + ": CLEAN");
+			appendVerdict(root, VERDICT_FILE, "* `Beta`: FIXED - made it a factory");
+			appendVerdict(root, VERDICT_FILE, "Gamma.java: CLEAN");
+			appendVerdict(root, VERDICT_FILE, "org.example.Delta: CLEAN");
+			rule.onCorrectionAttempted(job);
+
+			assertEquals(Set.of(bulletFullPath, backtickSimple, javaFileName, qualifiedName),
+					rule.getReviewed());
+			assertFalse(rule.isViolated(job));
+		} finally {
+			delete(root);
+		}
+	}
+
+	/**
+	 * The per-job session cap is a hard backstop: when every session reports a verdict the rule
+	 * cannot record — so no class ever leaves the unreviewed set — the rule still dispatches at most
+	 * {@link ObjectOrientedDesignRule#MAX_SESSIONS_PER_JOB} sessions and then reports that it stopped
+	 * with classes unsettled, rather than re-entering until the job-wide attempt ceiling intervenes.
+	 *
+	 * @throws IOException if the temporary tree cannot be written
+	 */
+	@Test(timeout = 30000)
+	public void perJobSessionCapStopsRepeatedReviewWhenNoVerdictIsRecorded() throws IOException {
+		Path root = Files.createTempDirectory("oop-rule");
+		try {
+			String target = "engine/ml/src/main/java/org/example/Window.java";
+			Files.createDirectories(root.resolve(target).getParent());
+			Files.writeString(root.resolve(target), "class Window {}");
+			StubJob job = new StubJob(root, new ArrayList<>(List.of(target)));
+			FakeRule rule = new FakeRule(root.resolve("ledger.tsv"))
+					.with(target, "w1", ObjectOrientedRiskGate.Signal.NEW_CLASS);
+
+			int sessions = 0;
+			while (rule.isViolated(job) && sessions < 10) {
+				rule.buildCorrectionPrompt(job);
+				// The session writes no verdict the rule can record.
+				rule.onCorrectionAttempted(job);
+				sessions++;
+			}
+
+			assertEquals("the rule must stop at its per-job session cap",
+					ObjectOrientedDesignRule.MAX_SESSIONS_PER_JOB, sessions);
+			assertFalse("the capped rule must report no further violation", rule.isViolated(job));
+			assertTrue("reaching the cap with work left must be reported", job.posted("per-job cap"));
+			assertTrue("the unsettled class is left unreviewed", rule.getReviewed().isEmpty());
+		} finally {
+			delete(root);
+		}
+	}
+
+	/**
 	 * A verdict a session writes into a module's {@code .flowtree/oop-review.md} — not the
 	 * repository root — is still found, so the class is not re-reviewed.
 	 *
