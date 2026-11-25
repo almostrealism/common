@@ -126,6 +126,17 @@ public interface Statement<T extends KernelStructure> extends Fragment, KernelSt
 	}
 
 	/**
+	 * Adds to {@code arrays} the {@link ArrayVariable} of every local array this statement
+	 * declares, so that a {@link io.almostrealism.scope.Scope} can learn which arrays are its own
+	 * storage by asking its statements rather than by inspecting their kind.
+	 *
+	 * <p>This default adds nothing: a statement that does not say otherwise declares no array.</p>
+	 *
+	 * @param arrays the list to add the declared arrays to
+	 */
+	default void appendDeclaredArrays(List<ArrayVariable<?>> arrays) { }
+
+	/**
 	 * Returns a copy of this statement with every occurrence of {@code target} within its
 	 * expressions replaced by {@code replacement}, mirroring
 	 * {@link Expression#replace(Expression, Expression)} at the statement level.

@@ -26,6 +26,7 @@ import org.almostrealism.io.ConsoleFeatures;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.Iterator;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.function.Predicate;
@@ -52,11 +53,19 @@ import java.util.function.Supplier;
  *       round, until no candidate is left or the maximum has been reached.</li>
  * </ol>
  *
- * <p>Replacements are applied in the order they were declared. The order changes the
- * generated code, since a replacement can absorb part of another target, so it must
- * not depend on hash iteration order: every {@link StaticReference} has the same hash,
- * and a hash table holding many of them orders them by identity, which differs from
- * one run to the next.</p>
+ * <p>Targets are considered in the order the supplier ranks them, which for the expression
+ * cache is by estimated savings, so the most valuable sub-expressions are declared first.
+ * Replacements are then applied in the order they were declared. Both orders change the
+ * generated code, since a replacement can absorb part of another target, so both must stay
+ * deterministic: the supplier's order is a list, and the declarations are kept in a list; neither
+ * depends on hash iteration order, which for the {@link StaticReference} variables (all sharing
+ * one hash) would order by identity and differ from one run to the next.</p>
+ *
+ * <p>Considering the outer, higher-savings targets first depends on loop-invariant code motion
+ * being sound under buffer aliasing: when a declared sub-expression reads a buffer the loop
+ * writes, {@link Repeated} must keep it inside the loop rather than hoist it (see the buffer
+ * aliasing hazard documented on {@link Repeated}). Were that unsound, savings order would replace
+ * the outer targets first and the loop would read the hoisted, stale values on every iteration.</p>
  *
  * <p>A kernel can offer thousands of candidates to each of thousands of scopes, so a
  * round does no more per candidate than it must. When the supplier returns the list it
@@ -107,7 +116,7 @@ public class CommonSubexpressions implements ConsoleFeatures {
 	public List<Statement<?>> replace(Supplier<List<Expression<?>>> candidates) {
 		Set<Expression<?>> processed = new HashSet<>();
 		List<Expression<?>> offered = candidates.get();
-		Set<Expression<?>> targets = new HashSet<>(offered);
+		Set<Expression<?>> targets = new LinkedHashSet<>(offered);
 
 		while (!targets.isEmpty() && !isFull()) {
 			if (Scope.verbose) log("Processing " + targets.size() + " replacement targets");
