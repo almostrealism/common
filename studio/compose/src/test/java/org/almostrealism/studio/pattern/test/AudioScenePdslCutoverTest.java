@@ -226,27 +226,32 @@ public class AudioScenePdslCutoverTest extends AudioSceneTestBase {
 	@Test(timeout = 900_000)
 	@TestDepth(2)
 	public void pdslHardPanRendersStereoSplit() throws IOException {
-		MixdownManager.enableMainFilterUp = true;
-		MixdownManager.enableEfx = true;
-		MixdownManager.enableEfxFilters = true;
-		MixdownManager.enableReverb = false;
-		PatternSystemManager.enableWarnings = false;
-
-		File outDir = new File("results/pdsl-cutover");
-		outDir.mkdirs();
-
-		File samplesDir = getSamplesDir();
-		AudioScene<?> scene = createBaselineScene(samplesDir, SMOKE_SOURCE_COUNT);
-		long seed = findWorkingGenomeSeed(scene, samplesDir);
-		Assert.assertTrue("No working genome found for stereo-pan scene", seed >= 0);
-		applyGenome(scene, seed);
-
-		int frames = (int) (SMOKE_SECONDS * SAMPLE_RATE);
-		int bufferSize = AudioScene.DEFAULT_REALTIME_BUFFER_SIZE;
-		MixdownManager mixdown = scene.getMixdownManager();
-
+		boolean prevMainFilterUp = MixdownManager.enableMainFilterUp;
+		boolean prevEfx = MixdownManager.enableEfx;
+		boolean prevEfxFilters = MixdownManager.enableEfxFilters;
+		boolean prevReverb = MixdownManager.enableReverb;
+		boolean prevWarnings = PatternSystemManager.enableWarnings;
 		boolean previous = MixdownManager.enablePdslMixdown;
 		try {
+			MixdownManager.enableMainFilterUp = true;
+			MixdownManager.enableEfx = true;
+			MixdownManager.enableEfxFilters = true;
+			MixdownManager.enableReverb = false;
+			PatternSystemManager.enableWarnings = false;
+
+			File outDir = new File("results/pdsl-cutover");
+			outDir.mkdirs();
+
+			File samplesDir = getSamplesDir();
+			AudioScene<?> scene = createBaselineScene(samplesDir, SMOKE_SOURCE_COUNT);
+			long seed = findWorkingGenomeSeed(scene, samplesDir);
+			Assert.assertTrue("No working genome found for stereo-pan scene", seed >= 0);
+			applyGenome(scene, seed);
+
+			int frames = (int) (SMOKE_SECONDS * SAMPLE_RATE);
+			int bufferSize = AudioScene.DEFAULT_REALTIME_BUFFER_SIZE;
+			MixdownManager mixdown = scene.getMixdownManager();
+
 			MixdownManager.enablePdslMixdown = true;
 
 			for (int ch = 0; ch < mixdown.getChannelCount(); ch++) mixdown.setPan(ch, -1.0);
@@ -272,6 +277,11 @@ public class AudioScenePdslCutoverTest extends AudioSceneTestBase {
 					+ " masters differ (diff=" + diffRms + ", ref=" + ref + ")", diffRms > 1e-2 * ref);
 		} finally {
 			MixdownManager.enablePdslMixdown = previous;
+			MixdownManager.enableMainFilterUp = prevMainFilterUp;
+			MixdownManager.enableEfx = prevEfx;
+			MixdownManager.enableEfxFilters = prevEfxFilters;
+			MixdownManager.enableReverb = prevReverb;
+			PatternSystemManager.enableWarnings = prevWarnings;
 		}
 	}
 
@@ -304,6 +314,7 @@ public class AudioScenePdslCutoverTest extends AudioSceneTestBase {
 		} finally {
 			out.reset();
 			runner.reset();
+			runner.destroy();
 		}
 
 		WaveData wav = WaveData.load(outFile);

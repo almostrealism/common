@@ -34,13 +34,12 @@ import org.almostrealism.audio.tone.WesternChromatic;
 import org.almostrealism.music.notes.KeyPositionDeserializer;
 import org.almostrealism.music.pattern.ChordProgressionManager;
 import org.almostrealism.music.pattern.PatternSystemManager;
+import org.almostrealism.studio.arrange.MixdownManager;
 import org.almostrealism.studio.generative.GenerationManager;
 import org.almostrealism.space.Animation;
 
 import java.io.File;
 import java.io.IOException;
-import org.almostrealism.studio.arrange.MixdownManager;
-
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.DoubleConsumer;

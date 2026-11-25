@@ -138,7 +138,8 @@ public class MixdownManagerPdslStereoPanTest extends TestSuiteBase
 	/**
 	 * Per-channel pan storage round-trips through {@link MixdownManager#getPan(int)} and is
 	 * clamped to {@code [-1, 1]}, so a setting out of range cannot drive a side gain outside
-	 * the balance law. Default is centre.
+	 * the balance law. Default is centre. The slot is a {@link PackedCollection}, stored at
+	 * the backend's precision, so the round-trip value is one FP32 represents exactly.
 	 */
 	@Test(timeout = 60_000)
 	public void panStorageRoundTripsAndClamps() {
@@ -146,8 +147,8 @@ public class MixdownManagerPdslStereoPanTest extends TestSuiteBase
 
 		Assert.assertEquals("pan defaults to centre", 0.0, mixdown.getPan(0), 1e-9);
 
-		mixdown.setPan(0, -0.4);
-		Assert.assertEquals("pan must round-trip", -0.4, mixdown.getPan(0), 1e-9);
+		mixdown.setPan(0, -0.375);
+		Assert.assertEquals("pan must round-trip", -0.375, mixdown.getPan(0), 1e-9);
 
 		mixdown.setPan(1, 2.0);
 		Assert.assertEquals("pan above 1 must clamp to +1", 1.0, mixdown.getPan(1), 1e-9);
@@ -180,9 +181,13 @@ public class MixdownManagerPdslStereoPanTest extends TestSuiteBase
 		model.add(block);
 		CompiledModel compiled = model.compile(false);
 
-		compiled.forward(input);
-		PackedCollection out = compiled.forward(input);
-		return energy(out.range(shape(SIGNAL_SIZE)), 0);
+		try {
+			compiled.forward(input);
+			PackedCollection out = compiled.forward(input);
+			return energy(out.range(shape(SIGNAL_SIZE)), 0);
+		} finally {
+			compiled.destroy();
+		}
 	}
 
 	/**
@@ -302,9 +307,13 @@ public class MixdownManagerPdslStereoPanTest extends TestSuiteBase
 		model.add(block);
 		CompiledModel compiled = model.compile(false);
 
-		PackedCollection copy = new PackedCollection(SIGNAL_SIZE);
-		copy.setFrom(0, compiled.forward(input).range(shape(SIGNAL_SIZE)));
-		return copy;
+		try {
+			PackedCollection copy = new PackedCollection(SIGNAL_SIZE);
+			copy.setFrom(0, compiled.forward(input).range(shape(SIGNAL_SIZE)));
+			return copy;
+		} finally {
+			compiled.destroy();
+		}
 	}
 
 	/**
