@@ -260,9 +260,12 @@ test_classes:["Clap2TaggingTest"]` (the new synthetic/parity class).
    read, or give `ByteLevelBPETokenizer` a shared byte-level loader (the base
    declares none today; `Qwen3Tokenizer` reads its own little-endian binary plus a
    `merges.txt`). Pinning that format is a prerequisite the owner should settle
-   before implementation, and it is the natural home for the `Qwen3Tokenizer`
-   "should it implement the `Tokenizer` interface" follow-up already in the
-   backlog. Second, the GPT-2 `r50k_base` vocabulary is ~50k tokens (a
+   before implementation. (A separate backlog task asks whether `Qwen3Tokenizer`
+   "should implement the `Tokenizer` interface"; that question is already settled
+   in code — `ByteLevelBPETokenizer` `implements Tokenizer`, so its subclass
+   `Qwen3Tokenizer` is a `Tokenizer` for free — so that task should be closed
+   rather than folded into this format decision.) Second, the GPT-2 `r50k_base`
+   vocabulary is ~50k tokens (a
    one-to-two-MB binary); shipping it as a test resource lets the tokenizer-parity
    check (criterion 2) run in CI without gating, otherwise that check is gated with
    the real-weight run. The owner should confirm whether a vocabulary file of that
