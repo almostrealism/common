@@ -236,6 +236,16 @@ public class AcceleratedProcessDetails implements ConsoleFeatures {
 	 */
 	private volatile Throwable listenerFailure;
 
+	/**
+	 * The terminal argument-processing failure recorded by {@link #failListeners(Throwable)} when the
+	 * {@link #whenReady(Runnable)} listeners are discarded without running. This is distinct from
+	 * {@link #listenerFailure}, which is <em>also</em> set when a listener runs and then throws: a
+	 * {@link #whenReadyFailed(Consumer)} registration keys on this field alone, so it fires only on the
+	 * discard path its contract promises and never for a listener that actually ran. Guarded by
+	 * {@code this}.
+	 */
+	private Throwable processingFailure;
+
 	/** Listeners to notify when all arguments are ready. */
 	private List<Runnable> listeners;
 
@@ -634,6 +644,7 @@ public class AcceleratedProcessDetails implements ConsoleFeatures {
 		List<Consumer<Throwable>> handlers;
 		synchronized (this) {
 			listenerFailure = failure;
+			processingFailure = failure;
 			handlers = readyFailureHandlers;
 			readyFailureHandlers = new ArrayList<>();
 		}
@@ -662,11 +673,11 @@ public class AcceleratedProcessDetails implements ConsoleFeatures {
 	public void whenReadyFailed(Consumer<Throwable> handler) {
 		Throwable failure;
 		synchronized (this) {
-			if (listenerFailure == null) {
+			if (processingFailure == null) {
 				readyFailureHandlers.add(handler);
 				return;
 			}
-			failure = listenerFailure;
+			failure = processingFailure;
 		}
 
 		handler.accept(failure);

@@ -242,6 +242,40 @@ public class AcceleratedProcessDetailsFailureTest {
 				failure, failed.get());
 	}
 
+	/**
+	 * A listener that runs and then throws is not the discard path, so a
+	 * {@link AcceleratedProcessDetails#whenReadyFailed(java.util.function.Consumer)} handler
+	 * registered afterwards must not fire: the listener ran, and its caller releases retained
+	 * resources through the listener's own failure handling, not through this terminal-failure hook.
+	 * The listener failure and the argument-processing failure that discards the listeners are
+	 * tracked separately so this distinction holds even though both record a failure for
+	 * {@code awaitReady} to report.
+	 */
+	@Test(timeout = 30000)
+	public void whenReadyFailedDoesNotRunForListenerFailure() {
+		AcceleratedProcessDetails details = details();
+		IllegalStateException failure = new IllegalStateException("listener threw");
+
+		try {
+			// Synchronous hardware runs the listener on this thread, where it throws; asynchronous
+			// hardware runs it on the executor thread and whenReady returns normally.
+			details.whenReady(() -> { throw failure; });
+		} catch (IllegalStateException e) {
+			Assert.assertSame(failure, e);
+		}
+
+		// awaitReady returns only after the listener has run (the readiness latch is counted down
+		// even when it throws), so the listener failure is recorded before the handler registers.
+		HardwareException thrown = awaitFailure(details);
+		Assert.assertSame(failure, thrown.getCause());
+
+		AtomicReference<Throwable> failed = new AtomicReference<>();
+		details.whenReadyFailed(failed::set);
+
+		Assert.assertNull("whenReadyFailed must not fire for a listener that ran and threw",
+				failed.get());
+	}
+
 	/** A successful dispatch never invokes a registered failure handler. */
 	@Test(timeout = 30000)
 	public void whenReadyFailedDoesNotRunOnSuccess() {

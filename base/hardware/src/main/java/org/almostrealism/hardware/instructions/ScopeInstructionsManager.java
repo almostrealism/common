@@ -181,15 +181,33 @@ public class ScopeInstructionsManager<K extends ExecutionKey>
 	private List<Runnable> destroyListeners;
 
 	/**
+	 * Dedicated monitor guarding the dispatch-retention lifecycle &mdash; {@link #retainForDispatch()},
+	 * {@link #releaseAfterDispatch()}, {@link #destroy()} and the {@link #performDestroy()} they run.
+	 *
+	 * <p>It is deliberately <em>not</em> the instance monitor that {@link #getOperator(ExecutionKey)}
+	 * (and {@link #getInstructionSet()}/{@link #getKernelStructureContext(Computation)}) hold. That
+	 * method holds {@code this} while its access listener inserts into the shared instruction cache,
+	 * and a capacity-pressure insertion evicts another manager and calls its {@link #destroy()} from
+	 * within the cache monitor. Synchronizing {@code destroy()} on {@code this} would therefore order
+	 * [manager monitor &rarr; cache monitor] against [cache monitor &rarr; manager monitor] and two
+	 * threads evicting each other's managers would deadlock. This monitor is a leaf &mdash; nothing it
+	 * guards acquires the cache monitor, the instance monitor, or an operation monitor (the destroy
+	 * listeners reset operation-local state without locking) &mdash; so the retain/destroy coordination
+	 * stays atomic without joining that cycle.</p>
+	 */
+	private final Object dispatchLock = new Object();
+
+	/**
 	 * The number of dispatches currently using this manager's compiled instructions (see
 	 * {@link #retainForDispatch()}). While it is positive a {@link #destroy()} is deferred so a
-	 * running dispatch never has its instructions released out from under it. Guarded by {@code this}.
+	 * running dispatch never has its instructions released out from under it. Guarded by
+	 * {@link #dispatchLock}.
 	 */
 	private int dispatchesInFlight;
 
 	/**
 	 * Whether a {@link #destroy()} arrived while dispatches were in flight and is waiting for the
-	 * last to complete (see {@link #releaseAfterDispatch()}). Guarded by {@code this}.
+	 * last to complete (see {@link #releaseAfterDispatch()}). Guarded by {@link #dispatchLock}.
 	 */
 	private boolean destroyRequested;
 
@@ -469,8 +487,10 @@ public class ScopeInstructionsManager<K extends ExecutionKey>
 	 * structure resources the running kernel reads.</p>
 	 */
 	@Override
-	public synchronized void retainForDispatch() {
-		dispatchesInFlight++;
+	public void retainForDispatch() {
+		synchronized (dispatchLock) {
+			dispatchesInFlight++;
+		}
 	}
 
 	/**
@@ -480,10 +500,12 @@ public class ScopeInstructionsManager<K extends ExecutionKey>
 	 * {@link #destroy()} that was deferred while dispatches were in flight once the last completes.</p>
 	 */
 	@Override
-	public synchronized void releaseAfterDispatch() {
-		if (--dispatchesInFlight == 0 && destroyRequested) {
-			destroyRequested = false;
-			performDestroy();
+	public void releaseAfterDispatch() {
+		synchronized (dispatchLock) {
+			if (--dispatchesInFlight == 0 && destroyRequested) {
+				destroyRequested = false;
+				performDestroy();
+			}
 		}
 	}
 
@@ -495,13 +517,15 @@ public class ScopeInstructionsManager<K extends ExecutionKey>
 	 * is deferred until the last such dispatch completes (see {@link #releaseAfterDispatch()}).</p>
 	 */
 	@Override
-	public synchronized void destroy() {
-		if (dispatchesInFlight > 0) {
-			destroyRequested = true;
-			return;
-		}
+	public void destroy() {
+		synchronized (dispatchLock) {
+			if (dispatchesInFlight > 0) {
+				destroyRequested = true;
+				return;
+			}
 
-		performDestroy();
+			performDestroy();
+		}
 	}
 
 	/**
