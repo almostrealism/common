@@ -1051,6 +1051,36 @@ class InfrastructureFailureSharingTests(unittest.TestCase):
                 step = _named_step({"steps": steps}, "Stage submit request (%s)" % route)
                 self.assertNotIn("infra_only", _condition(step))
 
+    def test_the_classifier_shell_suite_runs_in_ci(self):
+        """INFRA_SIGNATURES lives in a shell script no unittest discovery
+        reaches, and the Python wiring tests here stub the log fetch, so the
+        standalone shell suite is the only CI coverage of the regex itself. It
+        must be invoked by a python-tests step or it never runs in CI."""
+        step = _named_step(_jobs()["python-tests"],
+                           "Run infrastructure classifier tests")
+        self.assertIn("tools/tests/test-infra-classification.sh", step["run"])
+
+    def test_python_tests_runs_when_only_the_classifier_scripts_change(self):
+        """A change to infra-failure.sh or the retry gate touches no .py file,
+        so python-tests must also gate on infra_classifier_changed or the
+        classifier suite above would not run on exactly that change."""
+        self.assertIn("needs.changes.outputs.infra_classifier_changed == 'true'",
+                      _condition(_jobs()["python-tests"]))
+
+    def test_the_classifier_scripts_have_a_change_detection_flag(self):
+        """The changes job must set infra_classifier_changed from the classifier
+        scripts, and set_all_flags_true must include it, following the contract
+        every non-layer path flag follows (detection + force-all + consumer)."""
+        filter_step = next(s for s in _jobs()["changes"]["steps"]
+                           if s.get("id") == "filter")
+        run = filter_step["run"]
+        self.assertIn("infra_classifier_changed", run)
+        for path in ("tools/ci/infra-failure.sh",
+                     "tools/ci/rerun-flaky-tests.sh",
+                     "tools/tests/test-infra-classification.sh"):
+            with self.subTest(path=path):
+                self.assertIn(path, run)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -272,6 +272,7 @@ The `changes` job detects which top-level directories changed and sets flags:
 | `python_changed`   | any `*.py` + `tools/mcp/requirements.txt` | `python-tests`    |
 | `evals_changed`    | any file under the ar-manager Dockerfile's docs-stage COPY roots (`docs/`, `CLAUDE.md`, `base/`, `compute/`, `domain/`, `engine/`, `extern/`, `studio/`, `flowtree/`, `tools/`, `.github/`, `.claude/`, `scripts/`) | `python-evals` |
 | `agent_protection_changed` | `tools/ci/agent-protection/` | `python-tests` (the branch-check shell suites) |
+| `infra_classifier_changed` | `tools/ci/infra-failure.sh`, `tools/ci/rerun-flaky-tests.sh`, `tools/tests/test-infra-classification.sh` | `python-tests` (the classifier shell suite) |
 | `agent_isolation_changed` | agent compose/entrypoint + isolation validator (+ `analysis.yaml`) | `agent-volume-isolation` |
 | `images_changed`   | Dockerfiles, `.dockerignore`, compose, `tools/mcp/`, `tools/tracker/`, `docs/`, `CLAUDE.md` | `docker-build` |
 

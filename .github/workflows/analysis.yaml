@@ -183,6 +183,7 @@ jobs:
       evals_changed: ${{ steps.filter.outputs.evals_changed }}
       exfil_guard_changed: ${{ steps.filter.outputs.exfil_guard_changed }}
       agent_protection_changed: ${{ steps.filter.outputs.agent_protection_changed }}
+      infra_classifier_changed: ${{ steps.filter.outputs.infra_classifier_changed }}
       agent_isolation_changed: ${{ steps.filter.outputs.agent_isolation_changed }}
       images_changed: ${{ steps.filter.outputs.images_changed }}
       # The branch this run is for, its base, and the commit under test, for
@@ -245,6 +246,7 @@ jobs:
             echo "evals_changed=true" >> "$GITHUB_OUTPUT"
             echo "exfil_guard_changed=true" >> "$GITHUB_OUTPUT"
             echo "agent_protection_changed=true" >> "$GITHUB_OUTPUT"
+            echo "infra_classifier_changed=true" >> "$GITHUB_OUTPUT"
             echo "agent_isolation_changed=true" >> "$GITHUB_OUTPUT"
             echo "images_changed=true" >> "$GITHUB_OUTPUT"
           }
@@ -430,6 +432,26 @@ jobs:
             echo "::notice::Agent-protection scripts changed — running their regression suites"
           else
             echo "agent_protection_changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          # Infrastructure-failure classifier detection. tools/ci/infra-failure.sh
+          # holds INFRA_SIGNATURES and the shared log-reading helpers that both
+          # the flaky-test retry gate (rerun-flaky-tests.sh) and the auto-review
+          # job use to tell an infrastructure failure from a defect in the commit.
+          # Its standalone regression suite (tools/tests/test-infra-classification.sh)
+          # runs in python-tests, but none of those three files is a .py, so a
+          # change to the regex or the retry gate would not set python_changed.
+          # Give them their own flag so the classifier's suite runs whenever they
+          # change — the same reason the guard and agent-protection flags exist.
+          INFRA_FILES=$(git diff --name-only "$BASE" HEAD -- \
+            'tools/ci/infra-failure.sh' \
+            'tools/ci/rerun-flaky-tests.sh' \
+            'tools/tests/test-infra-classification.sh' || true)
+          if [ -n "$INFRA_FILES" ]; then
+            echo "infra_classifier_changed=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::Infrastructure-failure classifier changed — running its regression suite"
+          else
+            echo "infra_classifier_changed=false" >> "$GITHUB_OUTPUT"
           fi
 
           # Agent volume isolation detection. The agent-volume-isolation job
@@ -2146,17 +2168,20 @@ jobs:
   # on `changes` and runs in parallel with build/checkstyle. Fails the PR
   # when any test fails, and a failure is submitted straight away by
   # auto-resolve-python, which quotes the output this job uploads. Gated on
-  # python_changed, exfil_guard_changed or agent_protection_changed, so the
-  # guard suites still run when only its shell adapter, allowlist, or
-  # settings.json registration changed, and the branch-check suites run when
-  # an agent-protection script changed — none of which set python_changed.
+  # python_changed, exfil_guard_changed, agent_protection_changed or
+  # infra_classifier_changed, so the guard suites still run when only its shell
+  # adapter, allowlist, or settings.json registration changed, the branch-check
+  # suites run when an agent-protection script changed, and the infrastructure
+  # classifier's suite runs when only its shell scripts changed — none of which
+  # set python_changed.
   python-tests:
     needs: changes
     if: >-
       needs.changes.outputs.code_changed == 'true' &&
       (needs.changes.outputs.python_changed == 'true' ||
        needs.changes.outputs.exfil_guard_changed == 'true' ||
-       needs.changes.outputs.agent_protection_changed == 'true')
+       needs.changes.outputs.agent_protection_changed == 'true' ||
+       needs.changes.outputs.infra_classifier_changed == 'true')
     runs-on: ubuntu-latest
     # `bash` (rather than the default shell) runs every step with pipefail, so
     # piping a suite through `tee` still fails the step when the suite fails.
@@ -2205,6 +2230,14 @@ jobs:
           python3 -m unittest discover -v -s tools/ci -p "test_collect_master_failures.py" 2>&1 | tee -a "${RUNNER_TEMP}/python-tests.log"
           python3 -m unittest discover -v -s tools/ci -p "test_copilot_review_status.py" 2>&1 | tee -a "${RUNNER_TEMP}/python-tests.log"
           python3 -m unittest discover -v -s tools/ci -p "test_extract_branch_todos.py" 2>&1 | tee -a "${RUNNER_TEMP}/python-tests.log"
+
+      # The shared infrastructure-failure classifier (tools/ci/infra-failure.sh)
+      # is a shell script, so its INFRA_SIGNATURES regex is exercised against
+      # real log samples by a shell suite rather than a unittest discovery. The
+      # Python wiring tests in test_remediation_job_exclusivity.py stub the log
+      # fetch, so this is the only CI coverage of the operational signatures.
+      - name: Run infrastructure classifier tests
+        run: bash tools/tests/test-infra-classification.sh 2>&1 | tee -a "${RUNNER_TEMP}/python-tests.log"
 
       # The exfiltration guard's decision logic is Python under
       # .claude/hooks/lib; its tests build scratch git repositories and

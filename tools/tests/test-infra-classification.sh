@@ -2,12 +2,14 @@
 # ─── Standalone test for infrastructure-failure classification ───────────
 #
 # Checks tools/ci/infra-failure.sh's INFRA_SIGNATURES against real log samples,
-# without the GitHub API. Run it directly:
+# without the GitHub API. The python-tests job runs it (as the "Run
+# infrastructure classifier tests" step), gated on infra_classifier_changed so a
+# change to the regex or the retry gate triggers it; run it directly too:
 #
 #   bash tools/tests/test-infra-classification.sh
 #
 # Broader verification (the retry gate and auto-review wiring) is in
-# tools/tests/test_remediation_job_exclusivity.py, run by CI.
+# tools/tests/test_remediation_job_exclusivity.py, run by the same job.
 
 set -euo pipefail
 
