@@ -179,8 +179,13 @@ must pass within its timeout.
    minutes of (mostly sleeping) macOS-runner wall time. Consider having the test pace at
    a bounded multiple (e.g. set `AR_RT_PACE_RATE=4.0`, documented as "still bounded")
    to cut wall time to ~75 s while still exercising sustained dispatch — keeps the
-   pipeline lane cheap without weakening what the test proves. The owner/reviewer should
-   decide whether realtime pacing is a deliberate requirement of this test.
+   pipeline lane cheap without weakening what the test proves. Unlike
+   `AR_PATTERN_CACHE_PERSIST`, this lever carries no owner dependency: `AR_RT_PACE_RATE`
+   is read at runtime inside `RealtimeContinuousRenderer.main` (via `System.getProperty`),
+   not once at class load, so the test can set it in its own body with `System.setProperty`
+   alongside the other `AR_RT_*` properties it already sets — no surefire `argLine` needed.
+   The owner/reviewer should decide whether realtime pacing is a deliberate requirement of
+   this test.
 3. **Should the fix prove to be something other than the persistent cache** (the
    diagnostics are decisive here), the plan's Step 3 owner request may be unnecessary;
    the fix then lands entirely in the renderer / cache code and the exclusion is removed
