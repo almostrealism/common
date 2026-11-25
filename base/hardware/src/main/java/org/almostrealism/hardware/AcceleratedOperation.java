@@ -827,6 +827,11 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	 * clears the bindings in the narrow window before the retain, they are rebuilt and the retain is
 	 * retried.</p>
 	 *
+	 * <p>The retain is released on every terminal path so the manager is never pinned: the dispatch's
+	 * completion settling on success, the dispatch listener failing, a synchronous failure before the
+	 * dispatch is registered, and &mdash; via {@link AcceleratedProcessDetails#whenReadyFailed} &mdash;
+	 * the case where argument processing fails and the dispatch listener is discarded without running.</p>
+	 *
 	 * @param output    The destination memory bank for operation results, or null
 	 * @param args      The input arguments for the operation
 	 * @param dependsOn The prior operation's completion {@link Semaphore} to chain on, or null
@@ -977,6 +982,11 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 				}
 			}
 		});
+
+			// Discarded (never-run) listeners release the retain here; see whenReadyFailed.
+			process.whenReadyFailed(t -> {
+				if (dispatchReleased.compareAndSet(false, true)) retained.releaseAfterDispatch();
+			});
 
 			registered = true;
 			return process;

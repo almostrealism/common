@@ -170,6 +170,92 @@ public class AcceleratedProcessDetailsFailureTest {
 	}
 
 	/**
+	 * When argument processing fails and the {@link AcceleratedProcessDetails#whenReady(Runnable)}
+	 * listener is discarded without running, a registered
+	 * {@link AcceleratedProcessDetails#whenReadyFailed(java.util.function.Consumer)} handler must run
+	 * with that failure. {@code AcceleratedOperation.apply} relies on this to release a retained
+	 * instruction manager on a path where neither the discarded listener nor its completion can.
+	 */
+	@Test(timeout = 30000)
+	public void whenReadyFailedRunsWhenListenerDiscarded() throws InterruptedException {
+		IllegalStateException failure = new IllegalStateException("argument replacement failed");
+		MemoryReplacementManager failing = new MemoryReplacementManager(null, null, null) {
+			@Override
+			public Object[] processArguments(Object[] args) {
+				throw failure;
+			}
+		};
+
+		AcceleratedProcessDetails details = new AcceleratedProcessDetails(
+				new Object[1], 0, failing, SEPARATE_THREAD);
+		details.setReadyLatch(new DefaultLatchSemaphore((OperationMetadata) null, 1));
+
+		AtomicBoolean ran = new AtomicBoolean();
+		AtomicReference<Throwable> failed = new AtomicReference<>();
+		details.whenReady(() -> ran.set(true));
+		details.whenReadyFailed(failed::set);
+
+		Thread producer = new Thread(() -> details.result(0, new Object()), "argument producer");
+		producer.setUncaughtExceptionHandler((t, e) -> { });
+		producer.setDaemon(true);
+		producer.start();
+		producer.join(10000);
+
+		Assert.assertFalse(producer.isAlive());
+		Assert.assertFalse("the discarded listener must not run", ran.get());
+		Assert.assertSame("the failure handler must run with the processing failure",
+				failure, failed.get());
+	}
+
+	/**
+	 * A {@link AcceleratedProcessDetails#whenReadyFailed(java.util.function.Consumer)} handler
+	 * registered after the failure has already been recorded runs immediately with that failure,
+	 * so the retain is released even when the failure races ahead of the registration.
+	 */
+	@Test(timeout = 30000)
+	public void whenReadyFailedRunsImmediatelyWhenAlreadyFailed() throws InterruptedException {
+		IllegalStateException failure = new IllegalStateException("argument replacement failed");
+		MemoryReplacementManager failing = new MemoryReplacementManager(null, null, null) {
+			@Override
+			public Object[] processArguments(Object[] args) {
+				throw failure;
+			}
+		};
+
+		AcceleratedProcessDetails details = new AcceleratedProcessDetails(
+				new Object[1], 0, failing, SEPARATE_THREAD);
+		details.setReadyLatch(new DefaultLatchSemaphore((OperationMetadata) null, 1));
+
+		details.whenReady(() -> { });
+
+		Thread producer = new Thread(() -> details.result(0, new Object()), "argument producer");
+		producer.setUncaughtExceptionHandler((t, e) -> { });
+		producer.setDaemon(true);
+		producer.start();
+		producer.join(10000);
+		Assert.assertFalse(producer.isAlive());
+
+		AtomicReference<Throwable> failed = new AtomicReference<>();
+		details.whenReadyFailed(failed::set);
+
+		Assert.assertSame("a handler registered after the failure must run immediately",
+				failure, failed.get());
+	}
+
+	/** A successful dispatch never invokes a registered failure handler. */
+	@Test(timeout = 30000)
+	public void whenReadyFailedDoesNotRunOnSuccess() {
+		AcceleratedProcessDetails details = details();
+		AtomicReference<Throwable> failed = new AtomicReference<>();
+
+		details.whenReadyFailed(failed::set);
+		details.whenReady(() -> { });
+		details.awaitReady();
+
+		Assert.assertNull("the failure handler must not run on a successful dispatch", failed.get());
+	}
+
+	/**
 	 * An interrupt does not end {@code awaitReady} before the dispatch has been issued: the
 	 * waiter returns only once the readiness latch fires, so the completion it reads is the
 	 * one the dispatch published rather than the unfired readiness latch, and its interrupt
