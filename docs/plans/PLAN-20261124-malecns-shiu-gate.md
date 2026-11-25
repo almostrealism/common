@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: in-progress
 created: 2026-11-24
 closed:
 tracker: [2a8fe992-0352-45b4-8b82-0ca7dd097d70]
@@ -9,7 +9,8 @@ tracker: [2a8fe992-0352-45b4-8b82-0ca7dd097d70]
 
 **Tracker task:** `2a8fe992-0352-45b4-8b82-0ca7dd097d70` — *Reproduce Shiu et al. on
 the MaleCNS connectome against a Brian2 reference (connectome Phase 1 gate)*.
-**Release:** Common 0.78 (the release this repository's master is building).
+**Release:** the release under development, whose name matches the version in the root
+`pom.xml`.
 
 This is Phase 1 task 11, the **gate**, of the connectome model organism design
 (`docs/plans/CONNECTOME_MODEL_ORGANISM.md`): *"the neuron-level MaleCNS model runs
@@ -207,6 +208,114 @@ references in place:
 If the first real MaleCNS run surfaces a defect that is clearly outside this gate (for example a
 deficiency in the sparse product or the ingest that also affects FlyWire), file it as a follow-up
 task with `tracker_create_task` rather than widening this one, and note it here.
+
+## Outcome (first real run, 2026-11-24)
+
+Run on the macOS/Metal host (Apple GPU, `Hardware[MTL]`, `AR_HARDWARE_MEMORY_SCALE=6`) with
+`AR_LONG_TESTS=enabled`. **Status: the comparison half of the gate is met; the negative control is
+not, and the reference model fails it too, so it needs an owner decision before this plan can
+close.**
+
+### Identities settled (scope item 1)
+
+Checked against the converted `neurons.tsv` and the MaleCNS v1.0 annotation table
+(`body-annotations-male-cns-v1.0-minconf-0.5.feather`):
+
+- **MN9** — body 10331 (`MN9`, `cb_motor`, side L) and body 16949 (`MN9`, `cb_motor`, side R). These
+  are the only two `MN9` bodies, so `MALE_CNS_MN9 = {10331, 16949}` and the
+  `NAMED_NEURONS["male-cns"]` pair are correct. No change.
+- **`"gustatory"`** is the annotation's `class` value for the gustatory sensory neurons (1,416
+  neurons, types `LB*`, `LgAG*`, `LgLG*`, `PhG*`, `WG*`, `*_tpGRN`, `SNch05`, ...). Correct. No change.
+- **Sugar-sensing GRNs: `LB3a, LB3b, LB3c, LB3d`, both sides (77 neurons).** Evidence: all four carry
+  `flywireType = LB3` in the MaleCNS annotations (the FlyWire labellar bristle type), and they are,
+  by a wide margin, the gustatory types with the strongest signed two-synapse input to MN9 (LB3d L
+  1128, LB3c L 750, LB3c R 560, LB3a L 528 ... against at most 488 for any other gustatory type).
+  Both sides are driven because MaleCNS has two MN9s and the FlyWire experiment's right-only choice
+  reflects the right-side annotation available to Shiu et al., not the biology. `LB4b` (also
+  `flywireType = LB3`) and the single `LB3` body are not driven; this remains open to the owner's
+  ratification.
+
+### Assets produced (scope item 2)
+
+The converted connectome was already on the host (`male-cns/csr`, 164,506 neurons, 25,135,616 edges,
+122,318,556 synapses, `min_count` 1). The Brian2 references were generated with Brian2 2.11.0 and
+the authors' `model.py` unchanged (sha256 `fc45837d…`):
+
+    brian2_reference.py experiment --repo <Drosophila_brain_model> \
+        --connectome <models-derived>/male-cns/csr --name male-cns_<rate>Hz \
+        --stimulate-types LB3a,LB3b,LB3c,LB3d --rate <100|150|200> --trials 30 \
+        --processes 15 --output <dir>/male-cns_<rate>Hz
+
+Each took about 4 minutes of simulation (6 minutes with model construction). The shared directory
+`/Users/Shared/models-derived/male-cns` is not writable by the agent account, so the references were
+written to `/Users/worker/models-derived/male-cns/brian2-reference` and the tests were pointed at it
+with `AR_MALE_CNS_BRIAN2_REFERENCE`. **Owner action:** copy that directory to
+`/Users/Shared/models-derived/male-cns/brian2-reference` so the default path works.
+
+### Parameters
+
+Shiu et al. defaults throughout, identical in both simulators: dt 0.1 ms, trial 1 s, 30 trials (30
+replicas in one AR pass), `v_0 = v_rst = -52 mV`, `v_th = -45 mV`, `t_mbr = 20 ms`, `tau = 5 ms`,
+refractory 2.2 ms (0 for Poisson targets), delay 1.8 ms, `w_syn = 0.275 mV`, Poisson kick
+`f_poi * w_syn = 68.75 mV`. Sign: -1 for GABA/glutamate, +1 otherwise. Seed 0 on the AR side.
+
+### Results (scope item 3)
+
+Tolerance applied as currently encoded in `assertRatesAgree` (MN9 within 5%, median ≤ 3%, p90 ≤ 8%
+over neurons above 10 Hz, top-50 overlap ≥ 48). It has **not** been ratified by the owner.
+
+| Test | MN9 AR / Brian2 (Hz) | Neurons > 10 Hz | Median | p90 | Top-50 | AR wall | Result |
+|---|---|---|---|---|---|---|---|
+| `sugar100Hz` (FlyWire 630) | 66.33 / 66.53 | 233 | 0.0113 | 0.0277 | 49 | 370 s | pass |
+| `sugar150Hz` (FlyWire 630) | 85.33 / 82.73 | 269 | 0.0127 | 0.0387 | 50 | 386 s | pass |
+| `sugar200Hz` (FlyWire 630) | 94.17 / 92.67 | 296 | 0.0105 | 0.0422 | 49 | 370 s | pass |
+| `nonGustatoryInputLeavesMn9Silent` | 0.0 | — | — | — | — | — | pass |
+| `maleCns100Hz` | L 145.60 / 143.73, R 31.60 / 30.70 | 13,910 | 0.0107 | 0.0367 | 49 | 536 s | pass |
+| `maleCns150Hz` | L 154.77 / 156.10, R 37.47 / 37.93 | 13,789 | 0.0062 | 0.0248 | 48 | 541 s | pass |
+| `maleCns200Hz` | L 159.40 / 159.37, R 40.27 / 40.53 | 13,797 | 0.0036 | 0.0209 | 49 | 528 s | pass |
+| `maleCnsNonGustatoryInputLeavesMn9Silent` | L 3.77 (allowed 0 ± 0.5) | — | — | — | — | 538 s | **fail** |
+
+So sugar GRN input drives MN9 on MaleCNS (L about 150 Hz, R about 35 Hz) and the AR rates match
+Brian2's within the encoded tolerance at all three rates, on 13.8k neurons. On FlyWire the same holds
+on the paper's 21 sugar GRNs, so the simulation is confirmed on both connectomes.
+
+### The negative control (success criterion 2) — fails in Brian2 as well
+
+The control drives 77 neurons spread evenly over the index range, skipping the gustatory class, at
+150 Hz. On MaleCNS the authors' model in Brian2, given exactly that input, also fires MN9: **1.17 Hz,
+and 1.50 Hz in an independent repeat** (left MN9; the right is 0.0 and 0.07). With the one premotor
+neuron in the set (`GNG103`, body 162461, 37 synapses two steps from MN9) left out, Brian2 gives
+6.97 / 1.33 Hz, so that neuron is not the cause.
+
+The reason is a regime the FlyWire model does not reach: on MaleCNS, any 77-neuron input at 150 Hz
+ignites widespread activity (about 13k neurons above 10 Hz, the mushroom-body APL/DPM/MBONs and
+ExR6 near 200–380 Hz), starting 60–300 ms into the trial. Under sugar input it starts within
+30–90 ms and is steady (1.10M ± 0.04M spikes per trial). Under the control it varies widely from
+trial to trial (0.57M ± 0.40M). MN9 still separates sugar from control by a factor of 20–100, but it
+is not silent. This is the model on a denser connectome (743 synapses per neuron against 414 in
+FlyWire 630, at the same `w_syn` and with every 1-synapse edge kept), not an AR defect:
+
+- Run against the Brian2 control as a reference, AR's control rates differ by median 0.209, p90
+  0.215, top-50 overlap 34. Two independent Brian2 control runs differ from each other by median
+  0.244, p90 0.250, top-50 overlap 31. AR is inside Brian2's own spread. The near-uniform ~20% gap
+  is the trial-to-trial variation in how strong the widespread activity gets, shared by every neuron.
+- The sign rule's MaleCNS-only edge cases were checked and do not drive it. MaleCNS labels 7,883
+  neurons histaminergic, which the rule makes excitatory, but none of them is among the active
+  neurons. `unclear` (2,469 neurons) carries 5.5% of the synaptic drive.
+
+**Decision needed from the owner** (follow-up task `130005e1-0dad-45d6-ae16-2d050fcf4f99`): what success criterion 2
+means on MaleCNS. The options are to restate it as selectivity (for example control MN9 ≤ 5% of the
+sugar MN9 rate, which both simulators meet), or to change the MaleCNS adaptation (a minimum synapse
+count per edge, a MaleCNS-specific `w_syn`, or restricting the bodies) so the model leaves the
+widespread-activity regime. Both are scientific choices that have to be made before the comparison
+is rerun, not tuned by the agent. Until then `maleCnsNonGustatoryInputLeavesMn9Silent` stays as
+written and fails on this host.
+
+### CI guard (success criterion 4)
+
+`ConnectomeNetworkTest` in the pipeline profile: 8 tests run, 0 failures, 0 skipped (synthetic
+connectome and FlyWire sugar circuit against their committed Brian2 references). No production code
+changed in this run, so the guard is unaffected.
 
 ## Estimated complexity
 
