@@ -270,6 +270,81 @@ class JvmArgsReachForkTest(unittest.TestCase):
         self.assertEqual("", metadata.arg_line)
 
 
+class StartTestRunArgLineResponseTest(unittest.TestCase):
+    """The start_test_run dispatch response always carries ``arg_line``.
+
+    ``JvmArgsReachForkTest`` pins ``build_maven_command``/``arg_line_value``
+    directly, but the value a caller actually reads back is the ``arg_line``
+    field of the dispatch response, which the ``start_test_run`` handler
+    computes itself as ``" ".join(jvm_args)`` from the validated arguments --
+    a separate code path from metadata. These tests exercise that path
+    through ``call_tool`` so a regression that drops or miscomputes
+    ``response["arg_line"]`` is caught, for both populated and empty
+    ``jvm_args``. ``start_run`` and ``in_flight`` are mocked so no Maven
+    process is spawned; the field is derived before ``start_run`` runs and
+    is independent of its return value.
+    """
+
+    def _dispatch(self, arguments):
+        with patch.object(server.runner, "start_run",
+                          return_value=("run-1", "mvn test")) as mock_start, \
+                patch.object(server.build_tree, "in_flight", return_value=[]):
+            result = asyncio.run(server.call_tool("start_test_run", arguments))
+            mock_start.assert_called_once()
+        return json.loads(result[0].text)
+
+    def test_populated_jvm_args_are_joined_in_order(self):
+        response = self._dispatch({
+            "module": "engine/utils",
+            "test_classes": ["FooTest#bar"],
+            "jvm_args": ["-Xmx4g", "-XX:+UseZGC", "-Dfoo=bar"],
+        })
+        self.assertEqual("-Xmx4g -XX:+UseZGC -Dfoo=bar", response["arg_line"])
+
+    def test_single_jvm_arg_is_reported_verbatim(self):
+        response = self._dispatch({
+            "module": "engine/utils",
+            "test_classes": ["FooTest#bar"],
+            "jvm_args": ["-Xmx4g"],
+        })
+        self.assertEqual("-Xmx4g", response["arg_line"])
+
+    def test_empty_jvm_args_yield_empty_string_not_missing_field(self):
+        # The field must be present and empty -- not absent -- so a caller has
+        # one stable response shape and never has to special-case the no-args
+        # run. A regression that only set arg_line when jvm_args was truthy
+        # would fail the presence assertion here.
+        response = self._dispatch({
+            "module": "engine/utils",
+            "test_classes": ["FooTest#bar"],
+        })
+        self.assertIn("arg_line", response)
+        self.assertEqual("", response["arg_line"])
+
+    def test_arg_line_matches_metadata_arg_line_value(self):
+        # The response's arg_line and the command's recorded arg_line_value are
+        # two independent computations of the same set; they must agree, since
+        # a caller comparing the response against the run's metadata relies on
+        # it. Build the command the same way the dispatch does and confirm the
+        # join matches arg_line_value.
+        jvm_args = ["-Xmx4g", "-XX:+UseZGC", "-Dfoo=bar"]
+        response = self._dispatch({
+            "module": "engine/utils",
+            "test_classes": ["FooTest#bar"],
+            "jvm_args": jvm_args,
+        })
+        config = server.RunConfig(module="engine/utils", jvm_args=jvm_args,
+                                  test_classes=["FooTest"])
+        tmpdir = tempfile.mkdtemp()
+        try:
+            cmd = server.TestRunner().build_maven_command(
+                config, run_dir=Path(tmpdir), run_id="a1")
+            self.assertEqual(
+                server.TestRunner.arg_line_value(cmd), response["arg_line"])
+        finally:
+            shutil.rmtree(tmpdir, ignore_errors=True)
+
+
 class DegradedConfigTest(unittest.TestCase):
     """Retrying without JMX must change only whether JMX is on.
 
