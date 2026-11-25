@@ -1,9 +1,23 @@
 ---
-status: proposed
+status: completed
 created: 2026-11-25
-closed:
+closed: 2026-11-25
 tracker: [f155a689-cf76-4d72-8007-17d61f6a1b21]
 ---
+
+> **Implemented.** True stereo with per-channel pan now ships in the PDSL mixdown. The
+> implementation **diverged from the single-forward, block-diagonal design** sketched below:
+> rather than one forward over `2N` rows with block-diagonal matrices and two new stereo PDSL
+> layers, each stereo side is rendered by its **own forward over that side's voicing rows**,
+> reusing the existing `mixdown_master` / `mixdown_master_wet` layers unchanged, with its own ring
+> state — exactly the legacy "complete mixdown graph per side" behaviour the plan calls faithful.
+> Per-channel pan (the balance law `gL = min(1, 1 − p)`, `gR = min(1, 1 + p)`) is folded by
+> `MixdownManagerPdslAdapter` into each side's dry volume and its sends, so the sends are post-pan.
+> This was chosen over the block-diagonal design because it needs no new PDSL and no ~300-line
+> matrix machinery in an adapter already at its length limit, while meeting every goal and success
+> criterion below; the two forwards cost the ~2x the plan's own `createPdsl` javadoc named as the
+> accepted price once pan exists. The one-forward optimisation remains available as a later
+> refinement. See `MixdownManagerPdslStereoPanTest` and `AudioScenePdslCutoverTest`.
 
 # True stereo and per-channel pan in the PDSL mixdown
 

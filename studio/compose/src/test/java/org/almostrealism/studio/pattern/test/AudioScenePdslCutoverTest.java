@@ -19,6 +19,7 @@ package org.almostrealism.studio.pattern.test;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.audio.WaveOutput;
+import org.almostrealism.audio.data.WaveData;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.heredity.Chromosome;
 import org.almostrealism.heredity.Gene;
@@ -205,6 +206,139 @@ public class AudioScenePdslCutoverTest extends AudioSceneTestBase {
 		int frames = (int) (SMOKE_SECONDS * SAMPLE_RATE);
 		renderBothPaths(scene, List.of(channel), frames, AudioScene.DEFAULT_REALTIME_BUFFER_SIZE,
 				outDir, "single", "ch" + channel);
+	}
+
+	/**
+	 * End-to-end true-stereo gate through {@code runnerRealTime}. Renders the scene through the
+	 * PDSL path to a stereo WAV and asserts the two consequences of per-channel pan that the
+	 * dual-mono predecessor could not produce:
+	 *
+	 * <ul>
+	 *   <li>Panning every channel hard-left silences the right master (each channel's right
+	 *       gain is zero), so the energy reaches only the left writer — the energy split.</li>
+	 *   <li>Panning channel 0 left and channel 1 right makes the two masters carry different
+	 *       channels, so the stereo WAV's two channels differ — where the dual-mono path wrote
+	 *       one master to both writers, making them identical.</li>
+	 * </ul>
+	 *
+	 * @throws IOException if a rendered WAV cannot be read back
+	 */
+	@Test(timeout = 900_000)
+	@TestDepth(2)
+	public void pdslHardPanRendersStereoSplit() throws IOException {
+		MixdownManager.enableMainFilterUp = true;
+		MixdownManager.enableEfx = true;
+		MixdownManager.enableEfxFilters = true;
+		MixdownManager.enableReverb = false;
+		PatternSystemManager.enableWarnings = false;
+
+		File outDir = new File("results/pdsl-cutover");
+		outDir.mkdirs();
+
+		File samplesDir = getSamplesDir();
+		AudioScene<?> scene = createBaselineScene(samplesDir, SMOKE_SOURCE_COUNT);
+		long seed = findWorkingGenomeSeed(scene, samplesDir);
+		Assert.assertTrue("No working genome found for stereo-pan scene", seed >= 0);
+		applyGenome(scene, seed);
+
+		int frames = (int) (SMOKE_SECONDS * SAMPLE_RATE);
+		int bufferSize = AudioScene.DEFAULT_REALTIME_BUFFER_SIZE;
+		MixdownManager mixdown = scene.getMixdownManager();
+
+		boolean previous = MixdownManager.enablePdslMixdown;
+		try {
+			MixdownManager.enablePdslMixdown = true;
+
+			for (int ch = 0; ch < mixdown.getChannelCount(); ch++) mixdown.setPan(ch, -1.0);
+			double[][] allLeft = renderStereoMasters(scene, frames, bufferSize,
+					new File(outDir, "stereo_all_left.wav"));
+			double leftRms = channelRms(allLeft[0]);
+			double rightRms = channelRms(allLeft[1]);
+			log("all-left masters: L rms=" + leftRms + " R rms=" + rightRms);
+			assertFiniteNonSilent("all-left L", allLeft[0]);
+			Assert.assertTrue("panning every channel hard-left must silence the right master"
+					+ " (L=" + leftRms + ", R=" + rightRms + ")", rightRms < 1e-3 * leftRms);
+
+			mixdown.setPan(0, -1.0);
+			mixdown.setPan(1, 1.0);
+			double[][] split = renderStereoMasters(scene, frames, bufferSize,
+					new File(outDir, "stereo_split.wav"));
+			assertFiniteNonSilent("split L", split[0]);
+			assertFiniteNonSilent("split R", split[1]);
+			double diffRms = channelRms(channelDifference(split[0], split[1]));
+			double ref = Math.max(channelRms(split[0]), channelRms(split[1]));
+			log("split masters: diff rms=" + diffRms + " ref=" + ref);
+			Assert.assertTrue("hard-panning channels to opposite sides must make the two stereo"
+					+ " masters differ (diff=" + diffRms + ", ref=" + ref + ")", diffRms > 1e-2 * ref);
+		} finally {
+			MixdownManager.enablePdslMixdown = previous;
+		}
+	}
+
+	/**
+	 * Renders the scene through {@code runnerRealTime} to a stereo WAV and returns its two
+	 * channels as {@code {left, right}}.
+	 *
+	 * @param scene      the scene (genome already applied)
+	 * @param frames     frames to render
+	 * @param bufferSize frames per buffer
+	 * @param outFile    destination stereo WAV
+	 * @return the left and right channel samples
+	 * @throws IOException if the WAV cannot be read back
+	 */
+	private double[][] renderStereoMasters(AudioScene<?> scene, int frames, int bufferSize,
+										   File outFile) throws IOException {
+		WaveOutput out = new WaveOutput(() -> outFile, 24, true);
+		MultiChannelAudioOutput output = new MultiChannelAudioOutput(out);
+		TemporalCellular runner = scene.runnerRealTime(output, null, bufferSize);
+
+		int bufferCount = (frames + bufferSize - 1) / bufferSize;
+		Runnable setup = runner.setup().get();
+		Runnable tick = runner.tick().get();
+		try {
+			setup.run();
+			for (int b = 0; b < bufferCount; b++) {
+				tick.run();
+			}
+			out.write().get().run();
+		} finally {
+			out.reset();
+			runner.reset();
+		}
+
+		WaveData wav = WaveData.load(outFile);
+		try {
+			int rightChannel = wav.getChannelCount() > 1 ? 1 : 0;
+			return new double[][] { toDoubleArray(wav.getChannelData(0)),
+					toDoubleArray(wav.getChannelData(rightChannel)) };
+		} finally {
+			wav.destroy();
+		}
+	}
+
+	/** Reads a channel's samples into a {@code double[]} (the same per-sample read as {@link #readWavSamples}). */
+	private double[] toDoubleArray(PackedCollection data) {
+		int n = data.getMemLength();
+		double[] samples = new double[n];
+		for (int i = 0; i < n; i++) {
+			samples[i] = data.toDouble(i);
+		}
+		return samples;
+	}
+
+	/** Root-mean-square of a whole channel. */
+	private double channelRms(double[] samples) {
+		return windowRms(samples, 0, samples.length);
+	}
+
+	/** Sample-by-sample difference of two channels, truncated to the shorter. */
+	private double[] channelDifference(double[] a, double[] b) {
+		int n = Math.min(a.length, b.length);
+		double[] diff = new double[n];
+		for (int i = 0; i < n; i++) {
+			diff[i] = a[i] - b[i];
+		}
+		return diff;
 	}
 
 	/**
