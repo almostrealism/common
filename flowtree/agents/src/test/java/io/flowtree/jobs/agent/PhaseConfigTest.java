@@ -193,4 +193,39 @@ public class PhaseConfigTest extends TestSuiteBase {
         PhaseConfig merged = top.overlayOnClearingInheritedProvider(null);
         assertSame(top, merged);
     }
+
+    /** covers is true when this supplies every field the other sets. */
+    @Test(timeout = 5000)
+    public void coversWhenAllOtherFieldsAreSupplied() {
+        PhaseConfig full = new PhaseConfig("claude", "claude-sonnet-5", "high", "anthropic");
+        PhaseConfig partial = new PhaseConfig("opencode", "qwen3-coder", null, "openrouter");
+        assertTrue("a fully-specified config covers a partial one", full.covers(partial));
+    }
+
+    /** covers is false when the other sets a field this leaves null. */
+    @Test(timeout = 5000)
+    public void doesNotCoverWhenAFieldIsMissing() {
+        // this supplies runner only; other also sets model, which this leaves null.
+        PhaseConfig runnerOnly = new PhaseConfig("claude", null, null, null);
+        PhaseConfig withModel = new PhaseConfig("opencode", "qwen3-coder", null, null);
+        assertFalse("a field the other sets but this omits is not covered",
+                runnerOnly.covers(withModel));
+    }
+
+    /** covers checks each field independently (provider gap alone breaks coverage). */
+    @Test(timeout = 5000)
+    public void doesNotCoverWhenOnlyProviderIsMissing() {
+        PhaseConfig noProvider = new PhaseConfig("opencode", "qwen3-coder", "high", null);
+        PhaseConfig withProvider = new PhaseConfig("opencode", "qwen3-coder", "high", "openrouter");
+        assertFalse("a provider the other sets but this omits is not covered",
+                noProvider.covers(withProvider));
+    }
+
+    /** covers is trivially true for an empty or null other. */
+    @Test(timeout = 5000)
+    public void coversEmptyAndNullOther() {
+        PhaseConfig empty = PhaseConfig.EMPTY;
+        assertTrue("every config covers EMPTY", empty.covers(PhaseConfig.EMPTY));
+        assertTrue("a null other is treated as EMPTY and covered", empty.covers(null));
+    }
 }

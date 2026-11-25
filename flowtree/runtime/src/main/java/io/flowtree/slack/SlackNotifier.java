@@ -254,6 +254,35 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
         }
     }
 
+    /** Defers channel archiving so a {@code /flowtree archive} is acked first; lazily created. */
+    private ChannelArchiveScheduler channelArchiveScheduler;
+
+    /**
+     * Archives {@code channelId} shortly after the {@code /flowtree archive}
+     * command that requested it has been acknowledged, reporting any failure
+     * through {@code onFailure}. Delegates to {@link ChannelArchiveScheduler},
+     * which keeps the channel reachable until the reply has been delivered.
+     *
+     * @param channelId the Slack channel to archive
+     * @param onFailure invoked with the error string when the delayed archive fails
+     */
+    public void scheduleChannelArchive(String channelId, Consumer<String> onFailure) {
+        channelArchiveScheduler().schedule(channelId, onFailure);
+    }
+
+    /**
+     * The scheduler that defers channel archiving for this notifier, created on
+     * first use and bound to this notifier's {@link #archiveChannel}.
+     *
+     * @return this notifier's {@link ChannelArchiveScheduler}
+     */
+    synchronized ChannelArchiveScheduler channelArchiveScheduler() {
+        if (channelArchiveScheduler == null) {
+            channelArchiveScheduler = new ChannelArchiveScheduler(this::archiveChannel);
+        }
+        return channelArchiveScheduler;
+    }
+
     /**
      * Finds a channel by name that the bot is a member of.
      *
@@ -630,6 +659,12 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
 
         if (threadTs != null && event.getJobId() != null) {
             jobThreadTs.put(event.getJobId(), threadTs);
+            // Persist the thread ts now, not only at completion, so progress and
+            // completion messages still land in this thread if the controller
+            // restarts while the job is running (getThreadTs then recovers it).
+            if (statsStore != null) {
+                statsStore.updateJobSlackTs(event.getJobId(), threadTs);
+            }
             // The job ID stays in the thread rather than the channel
             postMessageInThread(workstream.getChannelId(),
                     "   Job ID: `" + event.getJobId() + "`", threadTs);
@@ -646,19 +681,19 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
 
         trackJob(workstreamId, event);
 
+        // Recover the thread from the persistent store when the in-memory entry
+        // is gone (e.g. the controller restarted after this job was submitted).
+        String threadTs = getThreadTs(event.getJobId());
+
         // The controller owns job-state persistence (see JobLifecycleRecorder);
         // the notifier only links its Slack message to the already-persisted row.
-        if (statsStore != null && event.getJobId() != null) {
-            String linkTs = jobThreadTs.get(event.getJobId());
-            if (linkTs != null) {
-                statsStore.updateJobSlackTs(event.getJobId(), linkTs);
-            }
+        if (statsStore != null && event.getJobId() != null && threadTs != null) {
+            statsStore.updateJobSlackTs(event.getJobId(), threadTs);
         }
 
         String message = formatStartedMessage(event);
 
         // Thread under the submission message if one exists
-        String threadTs = jobThreadTs.get(event.getJobId());
         if (threadTs != null) {
             postMessageInThread(workstream.getChannelId(), message, threadTs);
         } else {
@@ -676,9 +711,12 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
 
         trackJob(workstreamId, event);
 
-        // Terminal persistence is owned by the controller's completeJob path
-        // (see JobLifecycleRecorder), not by the notifier.
-        String threadTs = event.getJobId() != null ? jobThreadTs.remove(event.getJobId()) : null;
+        // Take the thread from the store-backed lookup so a restart still
+        // threads the completion, then drop the finished job's in-memory entry.
+        String threadTs = getThreadTs(event.getJobId());
+        if (event.getJobId() != null) {
+            jobThreadTs.remove(event.getJobId());
+        }
         String summary = formatCompletedSummary(event, threadTs != null);
         String details = formatCompletedDetails(event);
 

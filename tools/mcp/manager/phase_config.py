@@ -87,8 +87,10 @@ def _validate_phase_config_field(context: str, field: str, value: str) -> Option
 
 
 def _parse_default_phase_config_json(
-        default_phase_config: str) -> "tuple[Optional[dict], Optional[dict]]":
-    """Parse and validate the ``default_phase_config`` JSON argument.
+        default_phase_config: str,
+        param_name: str = "default_phase_config",
+) -> "tuple[Optional[dict], Optional[dict]]":
+    """Parse and validate a ``default_phase_config``-shaped JSON argument.
 
     The argument is a JSON object string with optional keys ``runner``,
     ``model``, ``effort``, ``provider``. Unknown keys are rejected.
@@ -101,6 +103,9 @@ def _parse_default_phase_config_json(
 
     Args:
         default_phase_config: A JSON object string, or empty string for none.
+        param_name: The caller-facing parameter name used in error messages.
+            Defaults to ``"default_phase_config"``; the fallback variant passes
+            ``"fallback_default_phase_config"`` so errors name the right knob.
 
     Returns:
         A tuple ``(parsed_dict, error_dict)``:
@@ -116,12 +121,12 @@ def _parse_default_phase_config_json(
     except ValueError as e:
         return None, {
             "ok": False,
-            "error": "default_phase_config must be a JSON object: " + str(e),
+            "error": param_name + " must be a JSON object: " + str(e),
         }
     if not isinstance(parsed, dict):
         return None, {
             "ok": False,
-            "error": "default_phase_config must be a JSON object with optional "
+            "error": param_name + " must be a JSON object with optional "
                      "runner/model/effort/provider keys",
         }
     allowed = {"runner", "model", "effort", "provider"}
@@ -130,7 +135,7 @@ def _parse_default_phase_config_json(
         if key not in allowed:
             return None, {
                 "ok": False,
-                "error": ("Unknown key in default_phase_config: '"
+                "error": ("Unknown key in " + param_name + ": '"
                           + str(key) + "'. Allowed: runner, model, effort, provider"),
             }
         if value is None:
@@ -138,10 +143,10 @@ def _parse_default_phase_config_json(
         if not isinstance(value, str) or not value:
             return None, {
                 "ok": False,
-                "error": ("default_phase_config." + str(key)
+                "error": (param_name + "." + str(key)
                           + " must be a non-empty string"),
             }
-        err = _validate_phase_config_field("default_phase_config", key, value)
+        err = _validate_phase_config_field(param_name, key, value)
         if err is not None:
             return None, err
         cleaned[key] = value
@@ -149,8 +154,10 @@ def _parse_default_phase_config_json(
 
 
 def _parse_phase_configs_json(
-        phase_configs: str) -> "tuple[Optional[dict], Optional[dict]]":
-    """Parse and validate the ``phase_configs`` JSON argument.
+        phase_configs: str,
+        param_name: str = "phase_configs",
+) -> "tuple[Optional[dict], Optional[dict]]":
+    """Parse and validate a ``phase_configs``-shaped JSON argument.
 
     The argument is a JSON object whose keys are phase wire names
     (``"primary"``, ``"review"``, ``"deduplication"``, ...) and whose
@@ -169,6 +176,9 @@ def _parse_phase_configs_json(
 
     Args:
         phase_configs: A JSON object string, or empty string for none.
+        param_name: The caller-facing parameter name used in error messages.
+            Defaults to ``"phase_configs"``; the fallback variant passes
+            ``"fallback_phase_configs"`` so errors name the right knob.
 
     Returns:
         A tuple ``(parsed_dict, error_dict)`` matching the pattern of
@@ -181,12 +191,12 @@ def _parse_phase_configs_json(
     except ValueError as e:
         return None, {
             "ok": False,
-            "error": "phase_configs must be a JSON object: " + str(e),
+            "error": param_name + " must be a JSON object: " + str(e),
         }
     if not isinstance(parsed, dict):
         return None, {
             "ok": False,
-            "error": "phase_configs must be a JSON object mapping phase names to "
+            "error": param_name + " must be a JSON object mapping phase names to "
                      "objects with optional runner/model/effort/provider keys",
         }
     valid_phase_keys = set(_KNOWN_PHASE_WIRE_NAMES)
@@ -196,7 +206,7 @@ def _parse_phase_configs_json(
         if key not in valid_phase_keys:
             return None, {
                 "ok": False,
-                "error": ("Unknown phase key in phase_configs: '" + str(key)
+                "error": ("Unknown phase key in " + param_name + ": '" + str(key)
                           + "'. Allowed phase keys: "
                           + ", ".join(sorted(valid_phase_keys))),
             }
@@ -207,7 +217,7 @@ def _parse_phase_configs_json(
         if not isinstance(inner, dict):
             return None, {
                 "ok": False,
-                "error": ("phase_configs['" + str(key)
+                "error": (param_name + "['" + str(key)
                           + "'] must be an object with runner/model/effort/provider keys, "
                           "or null to clear that phase's override"),
             }
@@ -216,7 +226,7 @@ def _parse_phase_configs_json(
             if inner_key not in allowed_inner:
                 return None, {
                     "ok": False,
-                    "error": ("Unknown key in phase_configs['" + str(key) + "']: '"
+                    "error": ("Unknown key in " + param_name + "['" + str(key) + "']: '"
                               + str(inner_key) + "'. Allowed: runner, model, effort, provider"),
                 }
             if value is None:
@@ -224,11 +234,11 @@ def _parse_phase_configs_json(
             if not isinstance(value, str) or not value:
                 return None, {
                     "ok": False,
-                    "error": ("phase_configs['" + str(key) + "']."
+                    "error": (param_name + "['" + str(key) + "']."
                               + str(inner_key) + " must be a non-empty string"),
                 }
             err = _validate_phase_config_field(
-                "phase_configs['" + str(key) + "']", inner_key, value)
+                param_name + "['" + str(key) + "']", inner_key, value)
             if err is not None:
                 return None, err
             inner_cleaned[inner_key] = value

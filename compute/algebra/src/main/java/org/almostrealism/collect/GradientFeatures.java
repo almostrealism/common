@@ -18,6 +18,7 @@ package org.almostrealism.collect;
 
 import io.almostrealism.relation.Producer;
 import org.almostrealism.calculus.ReduceAxis;
+import org.almostrealism.collect.computations.CollectionStopGradientComputation;
 
 /**
  * Factory interface for gradient and differentiation operations on collections.
@@ -46,6 +47,31 @@ public interface GradientFeatures extends ComparisonFeatures {
 	 */
 	default CollectionProducer delta(Producer<PackedCollection> producer, Producer<?> target) {
 		return CollectionFeatures.getInstance().c(producer).delta(target);
+	}
+
+	/**
+	 * Returns the values of {@code producer}, held constant with respect to differentiation:
+	 * the result evaluates exactly as {@code producer} does, and embeds into a kernel as
+	 * {@code producer} would, but its {@link CollectionProducer#delta(Producer) delta} with
+	 * respect to any target other than itself is zero, and every derivative rule that works from
+	 * the producer graph leaves it out of the derivative of a computation that consumes it.
+	 *
+	 * <p>This is not a strict stop-gradient. A consumer whose Jacobian falls back to
+	 * differentiating its own expression as a whole (see {@link CollectionStopGradientComputation})
+	 * still differentiates through the stopped value. Use it only where the dependence of the
+	 * value on the variables being differentiated contributes nothing to the true derivative, such
+	 * as the shift a numerically stable softmax subtracts from its logits. There, whichever path a
+	 * consumer takes, the derivative is correct, and the stop only avoids building terms that
+	 * cancel. Where that dependence does contribute, the result depends on which path is taken,
+	 * so do not use it there.</p>
+	 *
+	 * @param producer the producer whose values to hold constant
+	 * @return a producer of the same values, with the same shape, through which nothing is
+	 *         differentiated
+	 * @throws IllegalArgumentException if {@code producer} does not have a shape
+	 */
+	default CollectionProducer stopGradient(Producer<PackedCollection> producer) {
+		return new CollectionStopGradientComputation(producer);
 	}
 
 	/**

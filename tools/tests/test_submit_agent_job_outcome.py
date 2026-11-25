@@ -81,7 +81,7 @@ class SubmitAgentJobOutcomeTest(unittest.TestCase):
         return self.submit(body, CAP_STATUS_SHA=sha, GH_TOKEN="t",
                            GITHUB_REPOSITORY="o/r")
 
-    _CAP_BODY = ('{"ok":true,"skipped":true,"reason":"Per-PR remediation cap of 8 '
+    _CAP_BODY = ('{"ok":true,"skipped":true,"reason":"Per-PR remediation cap of 10 '
                  'passes reached; auto-dispatch paused pending a person"}')
 
     def test_a_cap_skip_without_a_head_commit_marks_nothing(self):
@@ -103,7 +103,7 @@ class SubmitAgentJobOutcomeTest(unittest.TestCase):
 
     def test_a_cap_skip_marks_the_head_commit(self):
         result = self.submit_marking_the_cap(
-            '{"ok":true,"skipped":true,"reason":"Per-PR remediation cap of 8 passes '
+            '{"ok":true,"skipped":true,"reason":"Per-PR remediation cap of 10 passes '
             'reached; auto-dispatch paused pending a person"}')
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertIn("submitted=false", self.outputs())

@@ -1,0 +1,87 @@
+/**
+ * Pre-norm residual transformer block — the self-attention sub-layer, an optional cross-attention
+ * sub-layer over an encoder context, an optional per-position local conditioning add, and the gated
+ * feed-forward sub-layer, in sequence. This is the block-level composition of a diffusion / encoder
+ * transformer: the residual stream flows through each sub-layer in turn and keeps its shape
+ * throughout.
+ *
+ * This file replaces the Java assembly that used to live in
+ * TransformerBlockFeatures.transformerBlock(...), which stacked the sub-layers as a SequentialBlock:
+ *   SequentialBlock block = new SequentialBlock(blockShape);
+ *   block.add(selfAttentionResidualSublayer(...));
+ *   if (crossAttend)       block.add(crossAttentionResidualSublayer(...));
+ *   if (localAddition)     block.add(localAddCond layer);
+ *   block.add(feedForwardResidualSublayer(...));
+ * transformerBlock now builds each residual sub-layer block (binding its normalization weights,
+ * conditioning producers and attention / feed-forward body) and loads the layer of this file whose
+ * sub-layers are present, so there is one definition of the block-level composition and it is here.
+ * It is the top of the transformer-block hierarchy: the sub-layer structure (norm, optional adaLN
+ * modulation, body, optional gate, residual) is self_attention_sublayer.pdsl,
+ * cross_attention_sublayer.pdsl and feed_forward_sublayer.pdsl; this file only puts those sub-layers
+ * in order.
+ *
+ * The sub-layers arrive as blocks rather than being written out here, exactly as the attention and
+ * feed-forward bodies arrive as blocks in the sub-layer assets: which normalization family each
+ * sub-layer uses, whether it is adaLN-modulated, which attention variant and projection adapter the
+ * body uses, and (for cross-attention) the encoder context it attends over are decisions of the
+ * sub-layer build, not of this ordering, and the language names none of them as a value a stage can
+ * select. The self-attention and feed-forward sub-layers may be adaLN-modulated (the modulation is
+ * inside those blocks); the cross-attention sub-layer never is. The local conditioning add is a
+ * single `x = x + conditioning` block the caller builds from a per-position conditioning producer.
+ *
+ * There is one layer per combination of the two optional sub-layers (cross-attention present or
+ * absent, local conditioning present or absent); each reads as the same diagram with the optional
+ * stages present or absent:
+ *
+ *   transformer_block              self-attention, feed-forward
+ *   transformer_block_cross        self-attention, cross-attention, feed-forward
+ *   transformer_block_local        self-attention, local conditioning, feed-forward
+ *   transformer_block_cross_local  self-attention, cross-attention, local conditioning, feed-forward
+ *
+ * Data flow of one forward pass over a [batch, seq_len, dim] activation (fullest form):
+ *
+ *   x                                                               [batch, seq_len, dim]
+ *   self_attention_sublayer       x + (gated) self-attention(norm(x))        [batch, seq_len, dim]
+ *   cross_attention_sublayer      x + cross-attention(norm(x)) over context  [batch, seq_len, dim]
+ *   local_conditioning            x + per-position conditioning              [batch, seq_len, dim]
+ *   feed_forward_sublayer         x + (gated) feed-forward(norm(x))          [batch, seq_len, dim]
+ */
+
+import "/pdsl/self_attention_sublayer.pdsl"
+import "/pdsl/cross_attention_sublayer.pdsl"
+import "/pdsl/feed_forward_sublayer.pdsl"
+
+/** Self-attention sub-layer, then feed-forward sub-layer: the plain pre-norm transformer block. */
+layer transformer_block(self_attention_sublayer: block, feed_forward_sublayer: block) {
+    self_attention_sublayer     // residual self-attention sub-layer      [batch, seq_len, dim]
+    feed_forward_sublayer       // residual gated feed-forward sub-layer  [batch, seq_len, dim]
+}
+
+/** Self-attention, cross-attention over an encoder context, then feed-forward. */
+layer transformer_block_cross(self_attention_sublayer: block,
+                              cross_attention_sublayer: block,
+                              feed_forward_sublayer: block) {
+    self_attention_sublayer     // residual self-attention sub-layer      [batch, seq_len, dim]
+    cross_attention_sublayer    // residual cross-attention over context   [batch, seq_len, dim]
+    feed_forward_sublayer       // residual gated feed-forward sub-layer  [batch, seq_len, dim]
+}
+
+/** Self-attention, a per-position local conditioning add, then feed-forward. */
+layer transformer_block_local(self_attention_sublayer: block,
+                              local_conditioning: block,
+                              feed_forward_sublayer: block) {
+    self_attention_sublayer     // residual self-attention sub-layer      [batch, seq_len, dim]
+    local_conditioning          // x + per-position conditioning           [batch, seq_len, dim]
+    feed_forward_sublayer       // residual gated feed-forward sub-layer  [batch, seq_len, dim]
+}
+
+/** Self-attention, cross-attention, a local conditioning add, then feed-forward. */
+layer transformer_block_cross_local(self_attention_sublayer: block,
+                                    cross_attention_sublayer: block,
+                                    local_conditioning: block,
+                                    feed_forward_sublayer: block) {
+    self_attention_sublayer     // residual self-attention sub-layer      [batch, seq_len, dim]
+    cross_attention_sublayer    // residual cross-attention over context   [batch, seq_len, dim]
+    local_conditioning          // x + per-position conditioning           [batch, seq_len, dim]
+    feed_forward_sublayer       // residual gated feed-forward sub-layer  [batch, seq_len, dim]
+}

@@ -487,6 +487,74 @@ class TestPhaseConfigParameters(unittest.TestCase):
             self.assertIn("runners", result["error"], "tool=" + tool)
             mock_post.assert_not_called()
 
+class TestFallbackPhaseConfigParameters(unittest.TestCase):
+    """Coverage of the per-job fallback parameters on ``workstream_submit_task``
+    (``fallback_default_phase_config`` / ``fallback_phase_configs``).
+
+    The fallback shares the same parser pair as the override pair, so these
+    tests focus on the submit-tool wiring: the fallback is forwarded under the
+    ``fallbackPhaseConfig`` / ``fallbackPhaseConfigs`` payload keys, unset sends
+    nothing, and the same validation applies with the fallback parameter named
+    in the error.
+    """
+
+    def setUp(self):
+        _grant_all_scopes()
+
+    def _payload(self, mock_post):
+        return mock_post.call_args[0][1]
+
+    @patch.object(server, "_controller_post")
+    def test_fallback_default_forwarded(self, mock_post):
+        mock_post.return_value = {"ok": True, "jobId": "j", "workstreamId": "w"}
+        server.workstream_submit_task(
+            prompt="Task",
+            fallback_default_phase_config='{"runner":"opencode","model":"z-ai/glm-4.6","provider":"openrouter"}')
+        payload = self._payload(mock_post)
+        self.assertEqual(payload["fallbackPhaseConfig"], {
+            "runner": "opencode", "model": "z-ai/glm-4.6", "provider": "openrouter",
+        })
+
+    @patch.object(server, "_controller_post")
+    def test_fallback_phase_configs_forwarded(self, mock_post):
+        mock_post.return_value = {"ok": True, "jobId": "j", "workstreamId": "w"}
+        server.workstream_submit_task(
+            prompt="Task",
+            fallback_phase_configs='{"review":{"runner":"opencode","provider":"openrouter"}}')
+        payload = self._payload(mock_post)
+        self.assertEqual(payload["fallbackPhaseConfigs"], {
+            "review": {"runner": "opencode", "provider": "openrouter"},
+        })
+
+    @patch.object(server, "_controller_post")
+    def test_unset_fallback_sends_nothing(self, mock_post):
+        mock_post.return_value = {"ok": True, "jobId": "j", "workstreamId": "w"}
+        server.workstream_submit_task(prompt="Task")
+        payload = self._payload(mock_post)
+        self.assertNotIn("fallbackPhaseConfig", payload)
+        self.assertNotIn("fallbackPhaseConfigs", payload)
+
+    @patch.object(server, "_controller_post")
+    def test_fallback_rejects_unknown_runner_naming_the_param(self, mock_post):
+        mock_post.return_value = {"ok": True, "jobId": "j", "workstreamId": "w"}
+        result = server.workstream_submit_task(
+            prompt="Task",
+            fallback_default_phase_config='{"runner":"not-a-runner"}')
+        self.assertFalse(result["ok"])
+        self.assertIn("fallback_default_phase_config", result["error"])
+        mock_post.assert_not_called()
+
+    @patch.object(server, "_controller_post")
+    def test_fallback_phase_configs_rejects_unknown_phase_naming_the_param(self, mock_post):
+        mock_post.return_value = {"ok": True, "jobId": "j", "workstreamId": "w"}
+        result = server.workstream_submit_task(
+            prompt="Task",
+            fallback_phase_configs='{"not-a-phase":{"runner":"opencode"}}')
+        self.assertFalse(result["ok"])
+        self.assertIn("fallback_phase_configs", result["error"])
+        mock_post.assert_not_called()
+
+
 class TestDefaultBranch(unittest.TestCase):
     """Resolution of a repository's default branch.
 
@@ -1149,6 +1217,7 @@ class TestToolRegistration(unittest.TestCase):
             "github_update_pr",
             "github_set_pr_state",
             "github_start_test_run",
+            "github_rerun_failed_jobs",
             "github_request_copilot_review",
             "github_read_file",
             "github_pr_check_status",
@@ -1156,6 +1225,7 @@ class TestToolRegistration(unittest.TestCase):
             "github_list_workflow_runs",
             "github_workflow_run_status",
             "github_job_logs",
+            "github_run_artifacts",
             "github_list_runners",
             "tracker_list_projects",
             "tracker_create_project",
