@@ -56,7 +56,9 @@ Concretely, four pieces and their tests:
    itself. Add a concrete `ByteLevelBPETokenizer` subclass that loads the
    `r50k_base` vocabulary and merges and applies GPT-2 pre-tokenization, plus a
    weight-extraction script under `engine/ml/scripts/` that exports that
-   vocabulary to the binary format the Java tokenizer reads.
+   vocabulary to a byte-level binary format the Java tokenizer reads (a new
+   format and script — distinct from the `SentencePieceBPETokenizer` `ARTK`
+   path, which rejects byte-level tokenizers; see Approach piece 1).
 
 2. **Tag vocabulary with multi-caption averaging.** A tag is one or more short
    caption sentences (the CLAP2 model card's guidance); its text embedding is the
@@ -110,23 +112,35 @@ Everything lands in `engine/ml`, mostly in the existing
 
 **(1) Tokenizer.** `ByteLevelBPETokenizer`
 (`org.almostrealism.ml.tokenization`) is already the abstract byte-level BPE
-pipeline; `RegexPreTokenizer` already provides the GPT-2 pre-tokenization pattern
-(`createGPT2Pattern()`), and `Qwen3Tokenizer` is the worked example of a concrete
-subclass (construct with a `RegexPreTokenizer`, load vocabulary and merges,
-override the special-token ids). The CLAP2 tokenizer is a new subclass of the
-same base — a vocabulary/merges-loading class with the CLAP2 special-token ids
-from `Clap2Config` — **not** a new tokenizer algorithm. Place it beside the
-model it serves (`org.almostrealism.ml.clap`) since it is specific to the CLAP2
-`r50k_base` vocabulary; it implements the general `Tokenizer` contract and adds
+pipeline; `RegexPreTokenizer` already applies the GPT-2 pre-tokenization pattern
+through its no-argument constructor (`new RegexPreTokenizer()`, the private
+`createGPT2Pattern()` behind it), which is how `Qwen3Tokenizer` — the worked
+example of a concrete subclass — obtains it (construct with a `RegexPreTokenizer`,
+load vocabulary and merges, override the special-token ids). The CLAP2 tokenizer
+is a new subclass of the same base — a vocabulary/merges-loading class with the
+CLAP2 special-token ids from `Clap2Config` — **not** a new tokenizer algorithm.
+Place it beside the model it serves (`org.almostrealism.ml.clap`) since it is
+specific to the CLAP2 `r50k_base` vocabulary; it implements the general
+`Tokenizer` contract (which the abstract base already implements) and adds
 nothing CLAP-specific to the base class.
 
-   The vocabulary is exported by a new script under `engine/ml/scripts/`
-   following `export_tokenizer.py` (which already writes the length-prefixed
-   `ARTK` binary that the Java tokenizers read with `DataInputStream`, chosen
-   precisely because `engine/ml` has no JSON parser on its classpath). The
-   `r50k_base` vocabulary and merges come from `open_clip` / `tiktoken` in the
-   extraction environment, exactly where `dump_clap2_reference.py` gets them
-   today, so the exported ids are guaranteed consistent with the reference dump.
+   The vocabulary and merges are exported by a new script under
+   `engine/ml/scripts/`. This export is **not** a reuse of `export_tokenizer.py`,
+   and the plan should not describe it as one: that script and its `ARTK` binary
+   serve `SentencePieceBPETokenizer`, and its `validate_pipeline` *explicitly
+   rejects* a byte-level (GPT-2/Qwen family) pre-tokenizer — exactly `r50k_base` —
+   because the whole-text Java `ARTK` reader does not remap bytes the way a
+   byte-level BPE does (see `test_byte_level_pre_tokenizer_is_rejected` in
+   `test_export_tokenizer.py`). The byte-level lineage instead reads a format each
+   subclass defines for itself: the abstract base declares no file-loading method,
+   and `Qwen3Tokenizer` loads a little-endian vocabulary binary (per-token score
+   plus length-prefixed UTF-8 bytes) alongside a separate HuggingFace-style
+   `merges.txt`. No committed script under `engine/ml/scripts/` produces that
+   pair today, so defining the export format (or giving the base a shared byte-level
+   loader) and writing its script is genuinely new work, not a thin reuse — see
+   open question 2. The `r50k_base` vocabulary and merges come from `open_clip` /
+   `tiktoken` in the extraction environment, exactly where `dump_clap2_reference.py`
+   gets them today, so the exported ids stay consistent with the reference dump.
 
 **(2) Tag vocabulary.** A new type in `org.almostrealism.ml.clap` representing a
 versioned tag vocabulary: each tag carries one or more caption strings, and the
@@ -238,12 +252,21 @@ test_classes:["Clap2TaggingTest"]` (the new synthetic/parity class).
    decision. If the owner wants the task description made precise, the planner can
    update *this* task to reflect that the spike fixed CLAP2-S and retired the
    SAME-S fallback. Confirm before implementation.
-2. **Is the exported `r50k_base` vocabulary a committed test resource?** The
-   GPT-2 `r50k_base` vocabulary is ~50k tokens (a one-to-two-MB binary). Shipping
-   it as a test resource lets the tokenizer-parity check (criterion 2) run in CI
-   without gating; otherwise that check is gated with the real-weight run. The
-   owner should confirm whether a vocabulary file of that size is acceptable in
-   the module's test resources.
+2. **The byte-level export format, and whether the exported vocabulary is a
+   committed test resource.** Two linked decisions. First, the export is new
+   work, not a reuse of `export_tokenizer.py` (whose `ARTK` reader rejects the
+   byte-level `r50k_base` family — see Approach piece 1): the implementer must
+   either define a byte-level vocabulary+merges binary for the new tokenizer to
+   read, or give `ByteLevelBPETokenizer` a shared byte-level loader (the base
+   declares none today; `Qwen3Tokenizer` reads its own little-endian binary plus a
+   `merges.txt`). Pinning that format is a prerequisite the owner should settle
+   before implementation, and it is the natural home for the `Qwen3Tokenizer`
+   "should it implement the `Tokenizer` interface" follow-up already in the
+   backlog. Second, the GPT-2 `r50k_base` vocabulary is ~50k tokens (a
+   one-to-two-MB binary); shipping it as a test resource lets the tokenizer-parity
+   check (criterion 2) run in CI without gating, otherwise that check is gated with
+   the real-weight run. The owner should confirm whether a vocabulary file of that
+   size is acceptable in the module's test resources.
 3. **What does the API return — raw cosine, logits, or centered scores?** The
    spike's useful thresholds are *per-tag centered* scores (subtract each tag's
    mean over a library), which presume a library the framework does not have.
@@ -260,11 +283,21 @@ test_classes:["Clap2TaggingTest"]` (the new synthetic/parity class).
    (e.g. "describing tag within top-3 for the clearly-separable clips such as
    drums") — the spike's small-N probe shows single sustained pitched notes are
    often confused, so a top-1 assertion over all clips would be too strong.
-6. **Follow-ups filed by the spike.** The spike's recommendation listed four
-   follow-ups (native tokenizer, multi-caption averaging, fixed-window
-   segmentation, tagging API) that together *are* this task. If separate tracker
-   tasks were filed for any of them, the owner should fold them into this task so
-   they are not worked twice.
+6. **Follow-ups filed by the spike overlap this task.** The spike's recommendation
+   listed four follow-ups (native tokenizer, multi-caption averaging, fixed-window
+   segmentation, tagging API) that together *are* this task. Checking the tracker:
+   one of the four was filed as a separate open backlog task — *"Native GPT-2
+   (r50k_base) byte-level BPE tokenizer for the CLAP2 text tower"*, which is
+   exactly piece 1 — while multi-caption averaging, fixed-window segmentation and
+   the tagging API were not filed separately. The owner should fold (or close) that
+   tokenizer task into this one before implementation so piece 1 is not worked
+   twice. Two further open backlog tasks touch this work's edges rather than
+   duplicating it: *"Bound the per-length compiled-model cache of
+   Clap2AudioEncoder"* (piece 3 compiles a single fixed window, which reduces but
+   does not by itself bound that cache) and *"Validate CLAP2 caption token ids
+   against the vocabulary before the embedding gather"* (the native tokenizer of
+   piece 1 is what produces those ids). Neither is in this task's scope, but the
+   owner should be aware they interact with it.
 
 ## Estimated complexity
 
@@ -274,3 +307,8 @@ existing abstract base (with the GPT-2 pattern already present), a versioned
 vocabulary value type, a fixed-window encode on the existing audio encoder, and a
 scoring method on the existing `Clap2`, plus a synthetic/parity CI test and a
 gated real-weight ranking test. No new architecture, no training, no new module.
+The one piece without an existing template is the byte-level tokenizer export
+(open question 2): the base declares no byte-level file format and the `ARTK`
+exporter rejects this family, so the format and its script are defined from
+scratch — a bounded but non-trivial task that the complexity estimate assumes is
+settled up front rather than discovered mid-implementation.
