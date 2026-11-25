@@ -13,7 +13,7 @@ tracker: [f155a689-cf76-4d72-8007-17d61f6a1b21]
 ## Confirmation first: is it already done?
 
 The owner's note asks for this to be checked before anything else. It is **not** done on
-current master (`792e9a508`, which this branch matches):
+current master (re-checked at `a7fa8c16d`, which this branch is up to date with):
 
 - **No pan in the mixdown.** No `pan` appears in any `pdsl/audio/*.pdsl`
   (`engine/ml/src/main/resources/pdsl/audio/`, or the test resources under
@@ -110,19 +110,43 @@ annotation (`PdslInterpreter.declaredInputShape`). Instead, the stereo layer pro
   per-channel arrays tiled twice (`[2N, …]`). Gene reads stay per scene channel, so both
   sides of a channel get the same values.
 - **Pan and side sum in one step.** Where the mono layer collapses channels with
-  `sum_channels()`, the stereo layer uses `route(pan_matrix)` with a `[2, 2N]` matrix:
-  `pan_matrix[s][s·N + c] = g_s(pan_c)`, zero elsewhere. `route` already accepts
-  rectangular matrices (`mixdown_efx_bus_rectangular` exercises this).
+  `sum_channels()`, the stereo layer uses `route(pan_matrix)` with a `[2N, 2]` matrix:
+  `pan_matrix[s·N + c][s] = g_s(pan_c)`, zero elsewhere. `route` takes its matrix as
+  `[in, out]` — `AudioDspPrimitives.dispatchRoute` requires the first axis to equal the
+  upstream row count, and the second axis becomes the downstream row count — so the
+  matrix is `[2N, 2]`, not `[2, 2N]`. Rectangular matrices are already accepted
+  (`mixdown_efx_bus_rectangular` exercises this).
+- **Every `sum_channels()` in `mixdown_master_wet` changes.** The layer has four, and
+  each needs a side-aware replacement, or it silently collapses both sides into one row:
+  1. MAIN arm, after `capture(stem_channels)`: `route(pan_matrix)` (`[2N, 2]`).
+  2. Efx bus, after `feedback(...)`: a constant `[2L, 2]` side-sum matrix (ones in each
+     side's `L` lines). The pan is already in `bus_send`, so this sum carries no pan.
+  3. Reverb send, after the per-channel `ramp_scale(reverb_send…)` and before `repeat`:
+     a pan-weighted `[2N, 2]` route. This is where the reverb send becomes post-pan.
+     `repeat(reverb_taps)` then becomes `repeat_each(reverb_taps)`, which turns `[2, S]`
+     into side-major `[2T, S]` (`repeat` would interleave the sides).
+  4. Reverb taps, after `delay_network(...)`: a constant `[2T, 2]` side-sum route,
+     followed by the existing `scale(reverb_tap_mean)`.
 - **Shared networks become block-diagonal.** The per-channel echo matrix
   (`efx_fb_transmission`, `[2N, 2N]`, already diagonal), the bus-line network
   (`bus_send` `[2N, 2L]` with the pan gains folded in, `bus_transmission` and `bus_wet_out`
   `[2L, 2L]`, delays `[2L]`) and the reverb (`repeat_each` to `2T` taps, `[2T, 2T]`
-  feedback, then a `[2, 2T]` side-sum `route` in place of `sum_channels` + mean) each get
+  feedback, then the `[2T, 2]` side-sum `route` and the existing mean) each get
   one independent copy per side. This reproduces the legacy behaviour, where each side has
   its own complete mixdown graph, without cross-side leakage. The adapter builds the
   block-diagonal matrices from the existing per-side ones (`householderMatrix`,
   `reverbTapDelays`, etc.), and the ring state (`fb_*`, `main_fb_*`, `bus_*`, `reverb_*`)
   doubles in size.
+- **The efx-off layer is a different shape.** `mixdown_master` is not a cut-down
+  `mixdown_master_wet`. It computes its high-pass in the graph
+  (`highpass(hp_cutoff[channel], …)`, not `fir(hp_coeffs[channel])`), applies volume with
+  a stepped `scale(volume[channel])` rather than `ramp_scale`, has its own wet arm
+  (`fir`, `scale(wet_level)`, `delay(…, buffers[channel], heads[channel])`,
+  `route(transmission)` `[N, N]`), uses `lowpass(lp_cutoff, …)` in the tail, and has no
+  stem captures. Its stereo version needs `hp_cutoff`/`volume` tiled to `[2N]`, a
+  block-diagonal `[2N, 2N]` `transmission`, doubled `buffers`/`heads`, and its two
+  `sum_channels()` replaced as above: `route(pan_matrix)` on the dry arm, and on the wet
+  arm either a pan-weighted `[2N, 2]` route or pan folded into `transmission`.
 - **Sends are post-pan.** A channel's efx-bus and reverb sends take the same side gain as
   its dry signal, as on a normal mixer, so a hard-left channel reaches only the left
   networks.
@@ -133,8 +157,11 @@ annotation (`PdslInterpreter.declaredInputShape`). Instead, the stereo layer pro
 - **Stems.** `stem_channels` becomes `[2N, S]` (side-major); `stem_efx` and `stem_reverb`
   become `[2, S]`.
 
-The cost per forward roughly doubles compared with today's LEFT-only forward. This is the
-2x that the `createPdsl` javadoc already budgets for, and it is still one forward per buffer.
+The cost per forward roughly doubles compared with today's LEFT-only forward. The
+`createPdsl` javadoc gives this 2x as the reason the path is still mono: "until
+per-channel PAN exists, processing the two (near-identical) sides separately would cost 2x
+for no audible benefit". This plan adds pan, which is the condition the javadoc names for
+paying that cost. It is still one forward per buffer.
 `PdslHotPathBreakdownTest` and `MixdownLayerPerformanceTest` should confirm the realtime
 budget still holds at `AudioScene.DEFAULT_REALTIME_BUFFER_SIZE`.
 
@@ -228,6 +255,20 @@ well as Metal, so no specific machine is needed.
    user-driven and infrequent. If it proves audible, the fix is not per-frame automation
    (out of scope) but smoothing the step — for example by crossfading two `route` passes at
    the old and new pan over the buffer. That is a later refinement, not part of this change.
+
+   A simpler alternative, which the reviewer may prefer to the `pan_matrix` design
+   altogether: apply pan as a **per-row gain** on the `2N` rows with
+   `ramp_scale(pan_gain_prev[channel], pan_gain[channel])`. This is the stage the layer
+   already uses for `volume`, `wet_in`, `efx_automation` and `reverb_send`, and the
+   layer's own comment on the volume ramp calls a per-buffer step a zipper. The ramp goes
+   after each arm's last non-linear stage (`clip`) — the dry arm next to the volume ramp,
+   the efx-bus arm next to the `wet_in` ramp, the reverb arm next to the `reverb_send`
+   ramp. Pan would then ramp within the buffer, and every side sum in the list above
+   would be a constant 0/1 matrix built once, so the adapter would not need to refresh
+   `pan_matrix` or a pan-folded `bus_send` per buffer. The cost is one more `ramp_scale`
+   per arm. Under this plan's balance law the pan gain is a plain per-side gain, so moving
+   it ahead of the (linear) send and network stages gives the same signal as the
+   `route` form.
 
 ## Estimated complexity
 
