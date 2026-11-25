@@ -288,6 +288,18 @@ public final class PhaseConfigResolver {
      * configured for one runner at a lower level from leaking into a phase that
      * resolves to a different runner.</p>
      *
+     * <p>The resolved bundle's {@link PhaseConfigBundle#defaultPhaseConfig()
+     * default} is built <em>without</em> the fallback — the fallback is applied
+     * per phase and every phase that takes it is stored as an explicit entry.
+     * This is deliberate: {@link PhaseConfigBundle#forPhase(Phase)} re-overlays a
+     * stored entry on the bundle default, so baking the fallback's
+     * {@code model} / {@code effort} into that default would leak those fields
+     * into a workstream-set phase whose entry leaves them {@code null} (a phase
+     * the resolver correctly excluded the fallback from). Keeping the fallback
+     * out of the default makes the resolved bundle's own {@code forPhase}
+     * reproduce {@link #forPhase(Phase)} here exactly, which is what the worker
+     * and {@code AgentRunRequestFactory} ultimately read.</p>
+     *
      * @param requestBundle    per-job bundle (request body); may be {@code null}
      * @param workstreamBundle workstream-level bundle; may be {@code null}
      * @param fallbackBundle   per-job fallback bundle; may be {@code null}
@@ -323,18 +335,13 @@ public final class PhaseConfigResolver {
         effortErr = validateEffort(wsp);
         if (effortErr != null) return fail(effortErr);
 
-        // The default's middle layer is the workstream when it sets a default,
-        // otherwise the fallback.
-        PhaseConfig middleDefault = ws.setsPhase(null)
-                ? ws.defaultPhaseConfig()
-                : fb.defaultPhaseConfig();
+        // Resolved default EXCLUDES the fallback (applied per phase below).
         PhaseConfig resolvedDefault = req.defaultPhaseConfig()
-                .overlayOnClearingInheritedProvider(middleDefault)
+                .overlayOnClearingInheritedProvider(ws.defaultPhaseConfig())
                 .overlayOnClearingInheritedProvider(wsp.defaultPhaseConfig())
                 .overlayOn(CONTROLLER_DEFAULT);
 
-        // Each phase's middle layer is the workstream's config when it sets the
-        // phase, otherwise the fallback's.
+        // Middle layer is the workstream when it sets the phase, else the fallback.
         Map<Phase, PhaseConfig> phases = new EnumMap<>(Phase.class);
         for (Phase phase : Phase.values()) {
             PhaseConfig middle = ws.setsPhase(phase)

@@ -1122,6 +1122,54 @@ public class PhaseConfigResolverTest extends TestSuiteBase {
     }
 
     /**
+     * Regression: the fallback must not leak into a workstream-set phase through
+     * the <em>resolved bundle</em>, not merely through {@link
+     * PhaseConfigResolver#forPhase(Phase)}. The fallback default sets a model and
+     * provider; the workstream sets {@code primary} with a runner only (model
+     * null). The resolver's own {@code forPhase} already resolves primary to
+     * claude with a null model, but {@link PhaseConfigBundle#forPhase(Phase)} on
+     * the resolved bundle — the method the worker and {@code AgentRunRequestFactory}
+     * ultimately read — re-overlays the stored primary entry on the bundle
+     * default. Before the fix that default carried the fallback's model, so the
+     * claude primary phase inherited {@code z-ai/glm-4.6}. After the fix the
+     * default excludes the fallback, so the resolved bundle reproduces the
+     * resolver: primary keeps a null model while unset phases still take the
+     * fallback.
+     */
+    @Test(timeout = 5000)
+    public void fallbackDoesNotLeakIntoWorkstreamSetPhaseInResolvedBundle() {
+        PhaseConfigBundle ws = bundle(null, Phase.PRIMARY,
+                new PhaseConfig(AgentRunnerRegistry.CLAUDE, null, null));
+        PhaseConfigBundle fallback = bundle(
+                new PhaseConfig(AgentRunnerRegistry.OPENCODE, "z-ai/glm-4.6", null, "openrouter"),
+                null, null);
+        PhaseConfigResolver r = PhaseConfigResolver.resolve(
+                PhaseConfigBundle.EMPTY, ws, fallback, PhaseConfigBundle.EMPTY);
+        assertNull(r.error());
+
+        // The resolver's own forPhase is correct: primary keeps claude, no model.
+        PhaseConfig primaryResolver = r.forPhase(Phase.PRIMARY);
+        assertEquals(AgentRunnerRegistry.CLAUDE, primaryResolver.runner());
+        assertNull(primaryResolver.model());
+
+        // The resolved bundle must reproduce it: no fallback model/provider leak.
+        PhaseConfig primary = r.resolvedBundle().forPhase(Phase.PRIMARY);
+        assertEquals(AgentRunnerRegistry.CLAUDE, primary.runner());
+        assertNull("fallback model must not leak into a workstream-set phase",
+                primary.model());
+        assertNull("fallback effort must not leak into a workstream-set phase",
+                primary.effort());
+        assertNull("fallback provider must not leak into a workstream-set phase",
+                primary.provider());
+
+        // An unset phase still takes the fallback through the resolved bundle.
+        PhaseConfig review = r.resolvedBundle().forPhase(Phase.REVIEW);
+        assertEquals(AgentRunnerRegistry.OPENCODE, review.runner());
+        assertEquals("z-ai/glm-4.6", review.model());
+        assertEquals("openrouter", review.provider());
+    }
+
+    /**
      * A fallback that completes into an invalid runner/provider combination
      * (claude with a non-anthropic provider) is rejected at submission, just as
      * an explicit per-job config would be.
