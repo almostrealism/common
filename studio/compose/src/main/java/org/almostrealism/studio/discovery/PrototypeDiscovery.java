@@ -35,6 +35,7 @@ import org.almostrealism.io.SystemUtils;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -118,6 +119,18 @@ public class PrototypeDiscovery implements ConsoleFeatures, GraphFeatures {
 		this.samplesDir = samplesDir;
 		this.maxClusters = maxClusters;
 		this.reveal = reveal;
+	}
+
+	/**
+	 * Creates a prototype discovery pipeline over an already loaded library, for
+	 * in-process callers of {@link #discoverPrototypes}.
+	 *
+	 * @param library       the audio library to analyze
+	 * @param maxPrototypes maximum number of prototypes to return
+	 */
+	private PrototypeDiscovery(AudioLibrary library, int maxPrototypes) {
+		this(null, null, maxPrototypes, false);
+		this.library = library;
 	}
 
 	/** Executes the prototype discovery pipeline, clustering audio samples and revealing prototypes. */
@@ -212,7 +225,7 @@ public class PrototypeDiscovery implements ConsoleFeatures, GraphFeatures {
 		// Run community detection and find prototypes
 		log("");
 		log("Detecting communities (Louvain algorithm)...");
-		List<PrototypeResult> prototypes = findPrototypesFromGraph(graph, maxClusters);
+		List<PrototypeResult> prototypes = findPrototypesFromGraph(graph);
 		log("  Found " + prototypes.size() + " prototype communities");
 
 		// Display top prototypes
@@ -394,25 +407,21 @@ public class PrototypeDiscovery implements ConsoleFeatures, GraphFeatures {
 														   int maxPrototypes,
 														   Consumer<String> statusCallback)
 			throws PrototypeDiscoveryException {
-		PrototypeDiscovery instance = new PrototypeDiscovery(null, null, maxPrototypes, false);
-		return instance.doDiscoverPrototypes(library, maxPrototypes, statusCallback);
+		return new PrototypeDiscovery(library, maxPrototypes).doDiscoverPrototypes(statusCallback);
 	}
 
 	/** Default number of nearest neighbors for HNSW-based sparse graph. */
 	public static final int DEFAULT_K_NEIGHBORS = 20;
 
 	/**
-	 * Executes the full prototype discovery pipeline on the given library.
+	 * Executes the full prototype discovery pipeline on this instance's library,
+	 * returning at most {@link #maxClusters} prototypes.
 	 *
-	 * @param library        the audio library to analyze
-	 * @param maxPrototypes  maximum number of prototypes to return
 	 * @param statusCallback optional callback for progress messages
 	 * @return prototypes sorted by community size (largest first)
 	 * @throws PrototypeDiscoveryException if discovery fails or times out
 	 */
-	private List<PrototypeResult> doDiscoverPrototypes(AudioLibrary library,
-													   int maxPrototypes,
-													   Consumer<String> statusCallback)
+	private List<PrototypeResult> doDiscoverPrototypes(Consumer<String> statusCallback)
 			throws PrototypeDiscoveryException {
 		report(statusCallback, "Waiting for library refresh...");
 		log("Waiting for library refresh to complete...");
@@ -420,7 +429,7 @@ public class PrototypeDiscovery implements ConsoleFeatures, GraphFeatures {
 				+ "progress=" + String.format("%.1f%%", library.getProgress() * 100));
 
 		try {
-			waitForRefresh(library, statusCallback);
+			waitForRefresh(statusCallback);
 		} catch (TimeoutException e) {
 			String msg = "Library refresh did not complete within "
 					+ REFRESH_TIMEOUT_MINUTES + " minutes ("
@@ -445,11 +454,11 @@ public class PrototypeDiscovery implements ConsoleFeatures, GraphFeatures {
 
 		WaveDetailsStore store = library.getStore();
 		if (store != null) {
-			backfillEmbeddingsIfNeeded(library, store, totalDetails, statusCallback);
+			backfillEmbeddingsIfNeeded(store, totalDetails, statusCallback);
 			report(statusCallback, "Building sparse K-NN graph via HNSW...");
 			log("Building sparse K-NN graph (K=" + DEFAULT_K_NEIGHBORS
 					+ ") for " + totalDetails + " samples...");
-			graph = buildSparseGraph(library, store, DEFAULT_K_NEIGHBORS, statusCallback);
+			graph = buildSparseGraph(store, DEFAULT_K_NEIGHBORS, statusCallback);
 		} else {
 			log("Computing pairwise similarities for "
 					+ totalDetails + " samples...");
@@ -475,7 +484,7 @@ public class PrototypeDiscovery implements ConsoleFeatures, GraphFeatures {
 		report(statusCallback, "Detecting communities...");
 		log("Running Louvain community detection...");
 
-		List<PrototypeResult> prototypes = findPrototypesFromGraph(graph, maxPrototypes);
+		List<PrototypeResult> prototypes = findPrototypesFromGraph(graph);
 		log("Returning " + prototypes.size() + " prototypes");
 		return prototypes;
 	}
@@ -503,13 +512,11 @@ public class PrototypeDiscovery implements ConsoleFeatures, GraphFeatures {
 	 * cost is amortized to the first Prototypes click after the gap is
 	 * introduced.</p>
 	 *
-	 * @param library        the audio library
 	 * @param store          the backing store (must have HNSW capability)
 	 * @param totalDetails   the number of complete library identifiers
 	 * @param statusCallback optional progress callback
 	 */
-	private void backfillEmbeddingsIfNeeded(AudioLibrary library,
-											 WaveDetailsStore store,
+	private void backfillEmbeddingsIfNeeded(WaveDetailsStore store,
 											 int totalDetails,
 											 Consumer<String> statusCallback) {
 		int indexed = store.indexedEmbeddingCount();
@@ -567,14 +574,12 @@ public class PrototypeDiscovery implements ConsoleFeatures, GraphFeatures {
 	 * scores in each {@link WaveDetails}, producing a sparse graph with
 	 * O(N*K) edges instead of O(N^2).</p>
 	 *
-	 * @param library        the audio library
 	 * @param store          the backing store with HNSW index
 	 * @param k              number of nearest neighbors per sample
 	 * @param statusCallback optional progress callback
 	 * @return a sparse similarity graph
 	 */
-	private AudioSimilarityGraph buildSparseGraph(AudioLibrary library,
-												   WaveDetailsStore store,
+	private AudioSimilarityGraph buildSparseGraph(WaveDetailsStore store,
 												   int k,
 												   Consumer<String> statusCallback) {
 		List<WaveDetails> allDetails = library.allDetails().toList();
@@ -704,20 +709,29 @@ public class PrototypeDiscovery implements ConsoleFeatures, GraphFeatures {
 	 * Runs Louvain community detection and PageRank centrality on the given
 	 * graph and returns the highest-centrality node in each community.
 	 *
-	 * @param graph          the similarity graph to analyze
-	 * @param maxPrototypes  maximum number of prototypes to return
+	 * <p>When {@code AR_PROTOTYPE_DIAGNOSTICS} is enabled, the community size
+	 * distribution, the membership and cohesion of the largest communities, and
+	 * the pairs of representatives where either lists the other among its
+	 * nearest neighbours are logged.</p>
+	 *
+	 * <p>At most {@link #maxClusters} prototypes are returned; this instance's
+	 * library, when present, names samples and supplies their embeddings in the
+	 * diagnostic output.</p>
+	 *
+	 * @param graph the similarity graph to analyze
 	 * @return prototypes sorted by community size (largest first)
 	 */
-	private List<PrototypeResult> findPrototypesFromGraph(AudioSimilarityGraph graph,
-														   int maxPrototypes) {
+	private List<PrototypeResult> findPrototypesFromGraph(AudioSimilarityGraph graph) {
 		int[] communities = louvain(graph, 1.0);
 		double[] ranks = pageRank(graph, 0.85, 50);
-		Map<Integer, List<Integer>> communityMembers = getCommunityMembers(communities);
+
+		List<List<Integer>> communityMembers = new ArrayList<>(getCommunityMembers(communities).values());
+		communityMembers.sort(Comparator.comparingInt((List<Integer> m) -> m.size()).reversed());
 
 		List<PrototypeResult> prototypes = new ArrayList<>();
-		for (Map.Entry<Integer, List<Integer>> entry : communityMembers.entrySet()) {
-			List<Integer> members = entry.getValue();
-
+		List<List<Integer>> keptMembers = new ArrayList<>();
+		List<Integer> prototypeIndices = new ArrayList<>();
+		for (List<Integer> members : communityMembers) {
 			int prototypeIdx = members.stream()
 					.max(Comparator.comparingDouble(i -> ranks[i]))
 					.orElse(-1);
@@ -738,17 +752,148 @@ public class PrototypeDiscovery implements ConsoleFeatures, GraphFeatures {
 					ranks[prototypeIdx],
 					memberIds.size(),
 					memberIds));
+			keptMembers.add(members);
+			prototypeIndices.add(prototypeIdx);
 		}
-
-		prototypes.sort(Comparator.comparingInt(
-				(PrototypeResult p) -> p.communitySize()).reversed());
 
 		if (DIAGNOSTICS_ENABLED) {
 			logCommunitySizeDistribution(prototypes);
+			logCommunityMembership(graph, communities, keptMembers, prototypeIndices);
+			logRepresentativeSimilarity(graph,
+					prototypeIndices.subList(0, Math.min(prototypeIndices.size(), maxClusters)));
 		}
 
-		int count = Math.min(prototypes.size(), maxPrototypes);
+		int count = Math.min(prototypes.size(), maxClusters);
 		return List.copyOf(prototypes.subList(0, count));
+	}
+
+	/** Number of the largest communities whose membership is logged when diagnostics are enabled. */
+	private static final int DIAGNOSTIC_COMMUNITIES = 20;
+
+	/** Number of members, per logged community, whose names and embeddings are logged. */
+	private static final int DIAGNOSTIC_SAMPLE_MEMBERS = 5;
+
+	/** Number of leading embedding components logged for each sampled member. */
+	private static final int DIAGNOSTIC_EMBEDDING_COMPONENTS = 4;
+
+	/** Similarity above which two chosen representatives are reported as a near-duplicate pair. */
+	private static final double DIAGNOSTIC_DUPLICATE_SIMILARITY = 0.95;
+
+	/**
+	 * Logs, for each of the largest communities, how cohesive it is in the graph, how typical
+	 * its PageRank representative is, and a sample of its members with the leading components
+	 * of their embeddings. Together with {@link #logRepresentativeSimilarity} this separates a
+	 * poor representative choice (low {@code repInternalDegree} relative to
+	 * {@code bestInternalDegree}), a poor partition (low {@code internalFraction}, or a strong
+	 * neighbouring community), and embeddings that do not separate the material (members of
+	 * unrelated kinds sharing a cohesive community).
+	 *
+	 * @param graph            the similarity graph
+	 * @param communities      the Louvain assignment, node index to community
+	 * @param members          the node indices of each community, largest first
+	 * @param prototypeIndices the node index of each community's representative
+	 */
+	private void logCommunityMembership(AudioSimilarityGraph graph, int[] communities,
+										List<List<Integer>> members, List<Integer> prototypeIndices) {
+		double[][] weights = communityWeights(graph, communities);
+		int shown = Math.min(DIAGNOSTIC_COMMUNITIES, members.size());
+
+		for (int c = 0; c < shown; c++) {
+			List<Integer> m = members.get(c);
+			int id = communities[m.get(0)];
+			double total = Arrays.stream(weights[id]).sum();
+			int neighbor = -1;
+			for (int d = 0; d < weights.length; d++) {
+				if (d != id && (neighbor < 0 || weights[id][d] > weights[id][neighbor])) neighbor = d;
+			}
+
+			int rep = prototypeIndices.get(c);
+			int best = m.stream().max(Comparator.comparingDouble(
+					i -> internalWeightedDegree(graph, communities, i))).orElse(rep);
+
+			log(String.format("community=%d size=%d internalFraction=%.3f strongestNeighborFraction=%.3f "
+							+ "repInternalDegree=%.4f bestInternalDegree=%.4f rep=%s best=%s",
+					c, m.size(), total > 0 ? weights[id][id] / total : 0.0,
+					total > 0 && neighbor >= 0 ? weights[id][neighbor] / total : 0.0,
+					internalWeightedDegree(graph, communities, rep), internalWeightedDegree(graph, communities, best),
+					describe(graph.nodeAt(rep).getIdentifier()),
+					describe(graph.nodeAt(best).getIdentifier())));
+
+			for (int s = 0; s < Math.min(DIAGNOSTIC_SAMPLE_MEMBERS, m.size()); s++) {
+				String member = graph.nodeAt(m.get(s)).getIdentifier();
+				log(String.format("community=%d member=%s embeddingHead=%s",
+						c, describe(member), embeddingHead(member)));
+			}
+		}
+	}
+
+	/**
+	 * Logs every pair of returned representatives where either one lists the other among its
+	 * nearest neighbours in the similarity graph, with the larger of the two directed edge
+	 * weights, and how many such pairs there are. The graph's edges are directed (each node
+	 * holds its own K-NN list), and a single direction is enough to flag a pair: a
+	 * representative of distinct material should not appear in another's K-NN list at all. A
+	 * pair above {@link #DIAGNOSTIC_DUPLICATE_SIMILARITY} is the reported symptom of
+	 * prototypes that are too similar to each other.
+	 *
+	 * @param graph            the similarity graph
+	 * @param prototypeIndices the node index of each returned representative
+	 */
+	private void logRepresentativeSimilarity(AudioSimilarityGraph graph, List<Integer> prototypeIndices) {
+		int linked = 0;
+		int duplicates = 0;
+		double max = Double.NEGATIVE_INFINITY;
+		for (int a = 0; a < prototypeIndices.size(); a++) {
+			for (int b = a + 1; b < prototypeIndices.size(); b++) {
+				int i = prototypeIndices.get(a);
+				int j = prototypeIndices.get(b);
+				double s = Math.max(graph.edgeWeight(i, j), graph.edgeWeight(j, i));
+				if (s <= 0) continue;
+
+				linked++;
+				max = Math.max(max, s);
+				if (s > DIAGNOSTIC_DUPLICATE_SIMILARITY) duplicates++;
+				log(String.format("representatives %d and %d are neighbors similarity=%.4f %s ~ %s",
+						a, b, s, describe(graph.nodeAt(i).getIdentifier()),
+						describe(graph.nodeAt(j).getIdentifier())));
+			}
+		}
+
+		log(String.format("representatives=%d neighborPairs=%d pairsAbove%.2f=%d maxNeighborSimilarity=%.4f",
+				prototypeIndices.size(), linked, DIAGNOSTIC_DUPLICATE_SIMILARITY, duplicates,
+				linked == 0 ? 0.0 : max));
+	}
+
+	/**
+	 * The file name of the sample, followed by its identifier, or the identifier alone if
+	 * this instance's library cannot resolve it.
+	 *
+	 * @param identifier the sample identifier
+	 * @return a description of the sample for diagnostic output
+	 */
+	private String describe(String identifier) {
+		String path = resolveFilePath(identifier);
+		return path == null ? identifier : getDisplayName(path) + " (" + identifier + ")";
+	}
+
+	/**
+	 * The leading components of the embedding the index holds for a sample (the
+	 * current model's mean-pooled features), for diagnostic output.
+	 *
+	 * @param identifier the sample identifier
+	 * @return the formatted components, or {@code "-"} if no embedding is available
+	 */
+	private String embeddingHead(String identifier) {
+		WaveDetails details = library == null ? null : library.get(identifier);
+		PackedCollection e = details == null ? null : details.meanPooledEmbedding(library.currentModelId());
+		if (e == null) return "-";
+
+		try {
+			double[] head = e.toArray(0, Math.min(DIAGNOSTIC_EMBEDDING_COMPONENTS, e.getMemLength()));
+			return Arrays.toString(Arrays.stream(head).mapToObj(v -> String.format("%.3f", v)).toArray());
+		} finally {
+			e.destroy();
+		}
 	}
 
 	/**
@@ -819,12 +964,11 @@ public class PrototypeDiscovery implements ConsoleFeatures, GraphFeatures {
 	 * {@link #REFRESH_TIMEOUT_MINUTES} deadline is reached, polling every
 	 * 500 ms and forwarding progress to the optional status callback.
 	 *
-	 * @param library        the library whose refresh to await
 	 * @param statusCallback optional callback for progress messages (may be null)
 	 * @throws TimeoutException    if the refresh does not complete in time
 	 * @throws InterruptedException if the waiting thread is interrupted
 	 */
-	private void waitForRefresh(AudioLibrary library, Consumer<String> statusCallback)
+	private void waitForRefresh(Consumer<String> statusCallback)
 			throws TimeoutException, InterruptedException {
 		CompletableFuture<Void> refresh = library.awaitRefresh();
 
