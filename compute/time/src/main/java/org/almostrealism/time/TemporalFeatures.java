@@ -913,7 +913,10 @@ public interface TemporalFeatures extends SpectralFeatures {
 	 *
 	 * <p>All frames are gathered into a single {@code [numFrames, fftSize]} collection,
 	 * windowed together, and transformed by one batched {@link FourierTransform}. The
-	 * number of compiled kernels therefore does not grow with the number of frames.</p>
+	 * number of compiled kernels therefore does not grow with the number of frames. The
+	 * gather is one indexed read of the signal (element {@code j} of frame {@code i} is
+	 * sample {@code i * hopSize + j}), so the number of kernel arguments does not grow with
+	 * the number of frames either.</p>
 	 *
 	 * @param fftSize      The FFT frame size (must be power of 2)
 	 * @param hopSize      The hop size (number of samples between frames)
@@ -938,14 +941,10 @@ public interface TemporalFeatures extends SpectralFeatures {
 		TraversalPolicy outputShape = shape(numFrames, fftSize, 2);
 		TraversalPolicy framesShape = shape(numFrames, fftSize);
 
-		CollectionProducer[] frames = new CollectionProducer[numFrames];
-
-		for (int i = 0; i < numFrames; i++) {
-			frames[i] = subset(shape(fftSize), signal, i * hopSize).reshape(shape(1, fftSize));
-		}
-
-		CollectionProducer framed = numFrames == 1 ?
-				frames[0].reshape(framesShape) : concat(framesShape, frames);
+		CollectionProducer position = integers(0, numFrames * fftSize);
+		CollectionProducer sample = floor(position.divide(c((double) fftSize))).multiply(c((double) hopSize))
+				.add(mod(position, c((double) fftSize)));
+		CollectionProducer framed = c(framesShape, signal, sample);
 
 		TraversalPolicy samplesShape = shape(numFrames * fftSize);
 		CollectionProducer windowed = multiply(framed, repeat(0, numFrames, window(windowType, fftSize)));
@@ -1100,6 +1099,123 @@ public interface TemporalFeatures extends SpectralFeatures {
 
 		return mask.multiply(weight)
 				.reshape(shape(numMelBands, numFreqBins)).evaluate();
+	}
+
+	/**
+	 * Pads a signal on both sides by reflecting it about its first and last samples, without
+	 * repeating them: for a signal {@code [a, b, c, d]} and a padding of 2 the result is
+	 * {@code [c, b, a, b, c, d, c, b]}. This is the {@code reflect} mode a centered STFT pads with,
+	 * so that the first analysis window is centered on the first sample.
+	 *
+	 * <p>Every output element is gathered from the signal at the index
+	 * {@code (n - 1) - |(n - 1) - |j - padding||}, computed in the graph from the output position
+	 * {@code j}; a single reflection on each side is exact as long as the padding is shorter than
+	 * the signal.</p>
+	 *
+	 * @param signal  the signal, of any shape (read as its flat sequence of samples)
+	 * @param padding the number of samples added on each side
+	 * @return the padded signal, shape {@code [n + 2 * padding]}
+	 * @throws IllegalArgumentException if the padding is negative or not shorter than the signal
+	 */
+	default CollectionProducer reflectPad(Producer<PackedCollection> signal, int padding) {
+		int length = shape(signal).getTotalSize();
+		if (padding < 0 || padding >= length) {
+			throw new IllegalArgumentException("Reflect padding of " + padding
+					+ " requires a signal longer than the padding, got " + length + " samples");
+		}
+
+		int last = length - 1;
+		CollectionProducer offset = abs(integers(0, length + 2 * padding).subtract(c((double) padding)));
+		CollectionProducer index = c((double) last).subtract(abs(c((double) last).subtract(offset)));
+		return c(shape(length + 2 * padding), signal, index);
+	}
+
+	/**
+	 * Creates a triangular mel filterbank on the HTK mel scale, as the continuous (unquantized)
+	 * filterbank of {@code torchaudio.functional.melscale_fbanks} with {@code norm=None} and
+	 * {@code mel_scale="htk"} defines it. Unlike {@link #createMelFilterbankMatrix}, whose filter
+	 * edges are rounded to FFT bins, every band here is the triangle between three consecutive
+	 * mel points evaluated at the exact frequency of each bin, so the weights of a bin vary
+	 * continuously with the band edges.
+	 *
+	 * <p>Bin {@code k} sits at {@code k * (sampleRate / 2) / (numFreqBins - 1)} Hz (with
+	 * {@code sampleRate / 2} in integer division, as the reference does), the mel points are
+	 * {@code numMelBands + 2} values equally spaced on the mel scale between {@code fMin} and
+	 * {@code fMax}, and band {@code m}'s weight at frequency {@code f} is
+	 * {@code max(0, min((f - lower) / (center - lower), (upper - f) / (upper - center)))} over its
+	 * three points. The filters are not area-normalized.</p>
+	 *
+	 * @param fftSize     the FFT size, giving {@code fftSize / 2 + 1} frequency bins
+	 * @param sampleRate  the sample rate in Hz
+	 * @param numMelBands the number of mel bands
+	 * @param fMin        the lowest mel point in Hz
+	 * @param fMax        the highest mel point in Hz
+	 * @return the filterbank, shape {@code [numFreqBins, numMelBands]}, so that a power spectrum
+	 *         {@code [frames, numFreqBins]} times it is the mel spectrum {@code [frames, numMelBands]}
+	 */
+	default CollectionProducer htkMelFilterbank(int fftSize, int sampleRate, int numMelBands,
+												double fMin, double fMax) {
+		int numFreqBins = fftSize / 2 + 1;
+		double binHz = (double) (sampleRate / 2) / (numFreqBins - 1);
+		double melMin = hzToMel(fMin);
+		double melStep = (hzToMel(fMax) - melMin) / (numMelBands + 1);
+
+		Function<CollectionProducer, CollectionProducer> melPoint = p ->
+				pow(c(10.0), p.multiply(c(melStep)).add(c(melMin)).divide(c(2595.0)))
+						.subtract(c(1.0)).multiply(c(700.0));
+
+		CollectionProducer index = integers(0, numFreqBins * numMelBands);
+		CollectionProducer frequency = floor(index.divide(c((double) numMelBands))).multiply(c(binHz));
+		CollectionProducer band = mod(index, c((double) numMelBands));
+
+		CollectionProducer lower = melPoint.apply(band);
+		CollectionProducer center = melPoint.apply(band.add(c(1.0)));
+		CollectionProducer upper = melPoint.apply(band.add(c(2.0)));
+
+		CollectionProducer rising = frequency.subtract(lower).divide(center.subtract(lower));
+		CollectionProducer falling = upper.subtract(frequency).divide(upper.subtract(center));
+		return max(min(rising, falling), c(0.0)).reshape(shape(numFreqBins, numMelBands));
+	}
+
+	/**
+	 * Computes the log-mel spectrogram of a signal in decibels, as {@code torchaudio}'s
+	 * {@code MelSpectrogram} (power 2, HTK mel scale, no filter normalization) followed by
+	 * {@code AmplitudeToDB} without a dynamic-range floor computes it — the front end of most
+	 * audio-language and audio-tagging models.
+	 *
+	 * <ol>
+	 *   <li>The signal is {@link #reflectPad reflect-padded} by {@code fftSize / 2} on both sides,
+	 *       so frame {@code t} is centered on sample {@code t * hopSize}; there are
+	 *       {@code 1 + n / hopSize} frames.</li>
+	 *   <li>Each frame is weighted by the {@link WindowComputation.Type#HANN_PERIODIC periodic Hann}
+	 *       window and transformed by the {@link #stft STFT}.</li>
+	 *   <li>The power {@code re² + im²} of the {@code fftSize / 2 + 1} non-negative frequency
+	 *       bins is projected onto the {@link #htkMelFilterbank HTK mel filterbank}.</li>
+	 *   <li>Each mel energy becomes {@code 10 * log10(max(energy, 1e-10))}.</li>
+	 * </ol>
+	 *
+	 * @param fftSize     the FFT and window size (a power of 2)
+	 * @param hopSize     the number of samples between frame centers
+	 * @param sampleRate  the sample rate in Hz
+	 * @param numMelBands the number of mel bands
+	 * @param fMin        the lowest mel point in Hz
+	 * @param fMax        the highest mel point in Hz
+	 * @param signal      the mono signal
+	 * @return the log-mel spectrogram, shape {@code [frames, numMelBands]}, time-major
+	 */
+	default CollectionProducer logMelSpectrogram(int fftSize, int hopSize, int sampleRate, int numMelBands,
+												 double fMin, double fMax, Producer<PackedCollection> signal) {
+		int length = shape(signal).getTotalSize();
+		int frames = 1 + length / hopSize;
+		int numFreqBins = fftSize / 2 + 1;
+
+		CollectionProducer spectrum = stft(fftSize, hopSize, WindowComputation.Type.HANN_PERIODIC,
+				reflectPad(signal, fftSize / 2), frames);
+		CollectionProducer power = powerSpectrum(
+				spectrum.subset(shape(frames, numFreqBins, 2), 0, 0, 0));
+		CollectionProducer mel = matmul(power,
+				htkMelFilterbank(fftSize, sampleRate, numMelBands, fMin, fMax));
+		return log(max(mel, c(1e-10))).multiply(c(10.0 / Math.log(10.0)));
 	}
 
 	/**

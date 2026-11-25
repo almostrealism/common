@@ -188,6 +188,37 @@ searches. Never write the dumps to a tracked path such as `src/test/resources`: 
 regenerable and must not be committed. The model load dominates the cost of a rerun (a few
 seconds), so regenerating many times is cheap once the environment and cache exist.
 
+## CLAP2 audio-text weights and reference dumps
+
+`extract_clap2_weights.py` converts a LAION CLAP2 checkpoint (`open_clip_model.safetensors`
+from any of `laion/clap2-{xxs,xs,small,medium,large}-audioxl-s1B`) to the StateDictionary
+`org.almostrealism.ml.clap.Clap2` loads. Besides renaming, it permutes the query/key rows of every
+qkv projection from CLAP2's interleaved rotary pairing to the framework's split-half pairing,
+swaps the halves of the audio feed-forward's gated projection, and appends the register token to
+the patch embedding as one more input column (the module docstring explains each).
+`test_extract_clap2_weights.py` covers the remap with synthetic tensors.
+
+`dump_clap2_reference.py reference` loads a checkpoint through OpenCLIP and writes, under
+`--out`, both the native weights and a reference dump of a musical probe set: NSynth one-shots
+(two per instrument family, from a local copy of the NSynth test split, CC BY 4.0), synthesized
+drum one-shots and a drum loop, and loops and stems sequenced from NSynth notes, each with its
+32 kHz waveform and reference audio embedding, plus the token ids and reference text embeddings of
+twenty tag captions and a `manifest.json` naming the tags that describe each clip.
+`score_clap2_reference.py` reports the reference model's own tagging accuracy on a dump.
+
+```bash
+python3 -m venv /tmp/clap-venv
+/tmp/clap-venv/bin/pip install open_clip_torch soundfile safetensors numpy tiktoken pyarrow protobuf
+/tmp/clap-venv/bin/python engine/ml/scripts/dump_clap2_reference.py reference laion/clap2-xxs-audioxl-s1B \
+    --nsynth /data/nsynth/test-00000-of-00001.parquet --out /data/clap2-xxs
+/tmp/clap-venv/bin/python engine/ml/scripts/score_clap2_reference.py /data/clap2-xxs/references
+```
+
+`Clap2TaggingSpikeTest` reads the two directories through `AR_CLAP2_WEIGHTS` and
+`AR_CLAP2_REFERENCES` (system property or environment variable), and the SAME-S weights for its
+device-memory measurement through `AR_SAME_WEIGHTS`. Write the dumps outside the repository: they
+hold audio and weights and must not be committed.
+
 ## Workflow for Comparison Tests
 
 1. **Extract weights and generate high-level references:**
