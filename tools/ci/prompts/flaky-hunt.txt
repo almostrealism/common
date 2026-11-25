@@ -177,11 +177,15 @@ its seed as a `randomSeed=<seed>` line, so when a run fails, read the
 run's output. A test class that does not extend `TestSuiteBase` logs no such
 line and is outside this mechanism — its randomness is not governed by
 `AR_TEST_SEED`, so hunt it by plain repetition (step 2) instead. The seed also
-governs only the draws a test makes once it is running: a random value built in
-a test-instance field initializer is drawn when the instance is constructed,
-before the per-method seeding runs, so it is not reproduced by replaying the
-logged seed. If a replay does not reproduce the failure, suspect such a field
-initializer and move the draw into the test body or an `@Before`.
+governs only the draws a test makes once its method is running, because
+`resetRandomSeed()` is an `@Before`: any random value drawn before that runs is
+not reproduced by replaying the logged seed. That covers a draw in a
+test-instance field initializer (run when the instance is constructed), a
+static field initializer (run once when the class is loaded), and a
+`@BeforeClass` method (run once before any test method) — all of which execute
+before the per-method seeding. If a replay does not reproduce the failure,
+suspect one of these earlier draws and move it into the test body or an
+`@Before`.
 
 **5. Replay the failing seed to make it deterministic.** Re-run only the single
 failing `Class#method`, pinning the seed you recorded, so the failure
