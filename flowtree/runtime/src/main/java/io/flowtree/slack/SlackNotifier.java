@@ -254,6 +254,35 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
         }
     }
 
+    /** Defers channel archiving so a {@code /flowtree archive} is acked first; lazily created. */
+    private ChannelArchiveScheduler channelArchiveScheduler;
+
+    /**
+     * Archives {@code channelId} shortly after the {@code /flowtree archive}
+     * command that requested it has been acknowledged, reporting any failure
+     * through {@code onFailure}. Delegates to {@link ChannelArchiveScheduler},
+     * which keeps the channel reachable until the reply has been delivered.
+     *
+     * @param channelId the Slack channel to archive
+     * @param onFailure invoked with the error string when the delayed archive fails
+     */
+    public void scheduleChannelArchive(String channelId, Consumer<String> onFailure) {
+        channelArchiveScheduler().schedule(channelId, onFailure);
+    }
+
+    /**
+     * The scheduler that defers channel archiving for this notifier, created on
+     * first use and bound to this notifier's {@link #archiveChannel}.
+     *
+     * @return this notifier's {@link ChannelArchiveScheduler}
+     */
+    synchronized ChannelArchiveScheduler channelArchiveScheduler() {
+        if (channelArchiveScheduler == null) {
+            channelArchiveScheduler = new ChannelArchiveScheduler(this::archiveChannel);
+        }
+        return channelArchiveScheduler;
+    }
+
     /**
      * Finds a channel by name that the bot is a member of.
      *
