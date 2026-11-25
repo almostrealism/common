@@ -601,7 +601,10 @@ exit 0
                    GH_TOKEN="t", REPO="o/r", RUN_ID="1", RUN_ATTEMPT=attempt,
                    HEAD_SHA="abc", HEAD_BRANCH="feature/x", HEAD_REPO="o/r",
                    MAX_ATTEMPTS="3", STUB_TIP_SHA=tip, GITHUB_OUTPUT=output,
-                   STUB_STAGED_AT=staged_at, ATTEMPT_STARTED_AT=attempt_started_at)
+                   STUB_STAGED_AT=staged_at, ATTEMPT_STARTED_AT=attempt_started_at,
+                   # Keep the log-fetch retry (infra-failure.sh) fast and
+                   # deterministic for the stub: two tries, no delay.
+                   CI_INFRA_LOG_ATTEMPTS="2", CI_INFRA_LOG_RETRY_DELAY="0")
         result = subprocess.run(["bash", _RERUN_SCRIPT], env=env, capture_output=True, text=True)
         self.assertEqual(0, result.returncode, result.stderr)
         with open(output) as f:
@@ -641,8 +644,13 @@ exit 0
         self.assertFalse(posted)
 
     def test_a_gate_only_failure_is_not_retried(self):
-        outputs, posted = self._run([("failure", "checkstyle"), ("failure", "test-timeout-check"),
-                                     ("skipped", "test (0)")])
+        """Readable gate logs that show a code failure, not infrastructure, are
+        deterministic and are not retried."""
+        outputs, posted = self._run(
+            [("failure", "checkstyle"), ("failure", "test-timeout-check"),
+             ("skipped", "test (0)")],
+            logs={0: "[ERROR] Checkstyle violation: do not use the var keyword\n",
+                  1: "FooTest.bar has @Test without a timeout\n"})
         self.assertEqual("false", outputs["retried"])
         self.assertFalse(posted)
 
@@ -692,7 +700,32 @@ exit 0
         self.assertFalse(posted)
 
     def test_an_unreadable_log_leaves_the_job_deterministic(self):
-        outputs, posted = self._run([("failure", "code-policy-check")])
+        """An unreadable log on a job that is neither a validator nor the build
+        (here register-workstream) stays deterministic: the retry-on-unreadable
+        safety net is scoped to the jobs whose infrastructure failure skips the
+        test lanes (the *-check validators and build)."""
+        outputs, posted = self._run([("failure", "register-workstream")])
+        self.assertEqual("false", outputs["retried"])
+        self.assertFalse(posted)
+
+    def test_an_unreadable_check_log_is_retried(self):
+        """A *-check validator whose log cannot be read must not be silently
+        called deterministic: that is the case that left pipelines stuck. Retry
+        while attempts remain."""
+        outputs, posted = self._run([("failure", "test-timeout-check"), ("skipped", "test (0)")])
+        self.assertEqual("true", outputs["retried"])
+        self.assertTrue(posted)
+
+    def test_an_unreadable_build_log_is_retried(self):
+        """The build job's unreadable log is retried for the same reason."""
+        outputs, posted = self._run([("failure", "build")])
+        self.assertEqual("true", outputs["retried"])
+        self.assertTrue(posted)
+
+    def test_an_unreadable_check_log_on_the_last_attempt_is_not_retried(self):
+        """The retry-on-unreadable net is bounded by MAX_ATTEMPTS, so the final
+        attempt proceeds exactly as a deterministic failure would."""
+        outputs, posted = self._run([("failure", "test-timeout-check")], attempt="3")
         self.assertEqual("false", outputs["retried"])
         self.assertFalse(posted)
 
@@ -952,6 +985,56 @@ echo "{}"
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertNotIn("skipped by the controller", result.stdout)
         self.assertIn("job_id=job-123", result.stdout)
+
+
+class InfrastructureFailureSharingTests(unittest.TestCase):
+    """The infrastructure-vs-deterministic classification lives in one place,
+    tools/ci/infra-failure.sh, used by both the retry gate and auto-review, and
+    auto-review suppresses a dispatch when every failing gate is infrastructure.
+    """
+
+    _SHARED = os.path.join(_REPO_ROOT, "tools", "ci", "infra-failure.sh")
+
+    def test_the_shared_script_exists(self):
+        self.assertTrue(os.path.isfile(self._SHARED))
+
+    def test_the_retry_gate_sources_the_shared_script_and_keeps_no_copy(self):
+        with open(_RERUN_SCRIPT) as f:
+            body = f.read()
+        self.assertIn("infra-failure.sh", body)
+        # No second copy of the signatures or the matcher to drift from it.
+        self.assertNotIn("INFRA_SIGNATURES=", body)
+        self.assertNotIn("is_infra_failure()", body)
+
+    def test_auto_review_may_read_the_runs_jobs_and_logs(self):
+        self.assertEqual("read", _jobs()["auto-review"]["permissions"]["actions"])
+
+    def test_auto_review_classifies_gate_failures_with_the_shared_script(self):
+        step = next(s for s in _jobs()["auto-review"]["steps"] if s.get("id") == "infra")
+        run = step["run"]
+        self.assertIn("infra-failure.sh", run)
+        self.assertIn("ci_infra_job_matches", run)
+        self.assertIn("infra_only", run)
+        # Only the failure routes are classified; docs/general review always submit.
+        condition = _condition(step)
+        for route in ("build-failure", "code-policy", "quality-gates"):
+            with self.subTest(route=route):
+                self.assertIn("route == '%s'" % route, condition)
+
+    def test_the_failure_routes_suppress_dispatch_on_an_infra_only_failure(self):
+        steps = _jobs()["auto-review"]["steps"]
+        for route in ("build failure", "code policy violations", "quality gates"):
+            with self.subTest(route=route):
+                step = _named_step({"steps": steps}, "Stage submit request (%s)" % route)
+                self.assertIn("steps.infra.outputs.infra_only != 'true'", _condition(step))
+
+    def test_docs_and_general_review_are_never_suppressed_as_infrastructure(self):
+        """A review that reports no gate finding must always run."""
+        steps = _jobs()["auto-review"]["steps"]
+        for route in ("docs-only review", "general review"):
+            with self.subTest(route=route):
+                step = _named_step({"steps": steps}, "Stage submit request (%s)" % route)
+                self.assertNotIn("infra_only", _condition(step))
 
 
 if __name__ == "__main__":

@@ -4576,6 +4576,9 @@ jobs:
     permissions:
       contents: read
       pull-requests: read
+      # Read the run's job list and job logs to tell an infrastructure gate
+      # failure from a deterministic one (tools/ci/infra-failure.sh).
+      actions: read
     outputs:
       staged: ${{ steps.upload.outcome == 'success' }}
       # 'false' when the latest Copilot review on this PR is an out-of-quota
@@ -4663,6 +4666,85 @@ jobs:
           echo "route=${ROUTE}" >> "$GITHUB_OUTPUT"
           echo "::notice::auto-review prompt: ${ROUTE}"
 
+      # A gate can fail on infrastructure — a plugin that would not download, a
+      # lost runner, a 5xx from a package host — rather than on the commit. One
+      # failed os-maven-plugin download in test-timeout-check once routed here
+      # as a quality-gate finding and dispatched an agent that had nothing to
+      # fix. When EVERY gate that would be reported to an agent failed that way,
+      # suppress the submission: "Auto-Resolve Submit"'s retry gate re-runs the
+      # whole pipeline after it completes, and that is what clears a transient
+      # infrastructure failure. The signature check is the retry gate's own
+      # (tools/ci/infra-failure.sh), shared so the two cannot drift. Only a
+      # failure route reaches this step; docs-review and general-review always
+      # submit. It is conservative on every doubt — a readable gate failure that
+      # is not infrastructure, an unreadable log, a script missing from an older
+      # checkout, or an unreachable jobs API all leave infra_only=false — so a
+      # genuine finding is never suppressed, only sent through its normal path.
+      - name: Classify failing gates as infrastructure or deterministic
+        id: infra
+        if: steps.route.outputs.route == 'build-failure' || steps.route.outputs.route == 'code-policy' || steps.route.outputs.route == 'quality-gates'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          # The Maven-running gate jobs whose failure this run routes to an
+          # agent. A non-Maven check (test-integrity-check, deception-audit,
+          # agent-commit-validation) reaches an agent only through the general
+          # review, never a failure route, so it is not classified here.
+          GATE_JOBS: "build code-policy-check test-timeout-check duplicate-code-check checkstyle"
+        run: |
+          if [ ! -f ./tools/ci/infra-failure.sh ]; then
+            echo "::notice::infra-failure.sh absent from this checkout — not classifying gate failures as infrastructure"
+            echo "infra_only=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # shellcheck source=tools/ci/infra-failure.sh
+          . ./tools/ci/infra-failure.sh
+          JOBS=$(gh api --paginate \
+            "/repos/$REPO/actions/runs/$RUN_ID/attempts/$RUN_ATTEMPT/jobs" \
+            --jq '.jobs[] | "\(.conclusion)\t\(.name)\t\(.id)"' 2>/dev/null || true)
+          if [ -z "$JOBS" ]; then
+            echo "::warning::Could not list the run's jobs — not classifying gate failures as infrastructure"
+            echo "infra_only=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          infra_seen=false
+          genuine_seen=false
+          for gate in $GATE_JOBS; do
+            line=$(printf '%s\n' "$JOBS" | awk -F '\t' -v j="$gate" '$2 == j { print; exit }')
+            if [ -z "$line" ]; then
+              continue
+            fi
+            conclusion=${line%%$'\t'*}
+            rest=${line#*$'\t'}
+            id=${rest#*$'\t'}
+            case "$conclusion" in
+              failure|timed_out) ;;
+              *) continue ;;
+            esac
+            rc=0
+            ci_infra_job_matches "$id" || rc=$?
+            if [ "$rc" = "0" ]; then
+              infra_seen=true
+              echo "::notice::Gate '$gate' failed on infrastructure"
+            else
+              # Readable-but-deterministic (rc=1) or unreadable (rc=2): treat as
+              # a genuine failure and let the agent see it. Dispatching is
+              # auto-review's normal action, so an unreadable log never suppresses
+              # it — the opposite-direction fallback from the retry gate's, each
+              # conservative for its own path.
+              genuine_seen=true
+              echo "::notice::Gate '$gate' failed, not classified as infrastructure (rc=$rc)"
+            fi
+          done
+          if [ "$infra_seen" = "true" ] && [ "$genuine_seen" = "false" ]; then
+            echo "::warning::Every failing gate is an infrastructure failure — not dispatching an agent; the Auto-Resolve Submit retry gate will re-run this pipeline"
+            echo "infra_only=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "infra_only=false" >> "$GITHUB_OUTPUT"
+          fi
+
       # GitHub Copilot has been dark for long stretches, posting only an
       # "insufficient remaining quota" notice in place of a review.
       # When that is the latest Copilot review on
@@ -4723,7 +4805,7 @@ jobs:
           ./tools/ci/prompts/build-build-failure-prompt.sh "${{ runner.temp }}/agent-prompt.txt" "${{ runner.temp }}/branch-todos.txt"
 
       - name: Stage submit request (build failure)
-        if: steps.route.outputs.route == 'build-failure'
+        if: steps.route.outputs.route == 'build-failure' && steps.infra.outputs.infra_only != 'true'
         env:
           BRANCH: ${{ needs.changes.outputs.branch }}
           BASE_BRANCH: ${{ needs.changes.outputs.base_branch }}
@@ -4750,7 +4832,7 @@ jobs:
           ./tools/ci/prompts/build-policy-violation-prompt.sh "${{ runner.temp }}/agent-prompt.txt" "${{ runner.temp }}/branch-todos.txt"
 
       - name: Stage submit request (code policy violations)
-        if: steps.route.outputs.route == 'code-policy'
+        if: steps.route.outputs.route == 'code-policy' && steps.infra.outputs.infra_only != 'true'
         env:
           BRANCH: ${{ needs.changes.outputs.branch }}
           BASE_BRANCH: ${{ needs.changes.outputs.base_branch }}
@@ -4783,7 +4865,7 @@ jobs:
           ./tools/ci/prompts/build-quality-gate-prompt.sh "${{ runner.temp }}/quality-gate-failures.txt" "${{ runner.temp }}/agent-prompt.txt" "${{ runner.temp }}/branch-todos.txt"
 
       - name: Stage submit request (quality gates)
-        if: steps.route.outputs.route == 'quality-gates'
+        if: steps.route.outputs.route == 'quality-gates' && steps.infra.outputs.infra_only != 'true'
         env:
           BRANCH: ${{ needs.changes.outputs.branch }}
           BASE_BRANCH: ${{ needs.changes.outputs.base_branch }}
@@ -4887,6 +4969,7 @@ jobs:
           ROUTE: ${{ steps.route.outputs.route }}
           QUALITY_FAILURE_COUNT: ${{ steps.quality.outputs.failure_count }}
           COPILOT_AVAILABLE: ${{ steps.copilot.outputs.copilot_available }}
+          INFRA_ONLY: ${{ steps.infra.outputs.infra_only }}
         run: |
           {
             echo "## Auto-Review"
@@ -4894,6 +4977,14 @@ jobs:
             if [ "$COPILOT_AVAILABLE" = "false" ]; then
               echo "> **Copilot unavailable** — the latest Copilot review on this PR is an \"insufficient remaining quota\" notice, so no Copilot review ran. The review agent is the only automated reviewer, and it will not wait for a Copilot review that is not coming."
               echo ""
+            fi
+            if [ "$INFRA_ONLY" = "true" ]; then
+              echo "> **Infrastructure failure** — the \`${ROUTE}\` gate(s) failed on infrastructure (a download, a lost runner, a server error), not on the commit. No agent was dispatched; the Auto-Resolve Submit retry gate will re-run this pipeline."
+              echo ""
+              echo "_No prompt was submitted._"
+              echo ""
+              echo "_Long-running test failures are not considered here: they are auto-resolve's, once the flaky-test retries are spent._"
+              exit 0
             fi
             case "$ROUTE" in
               docs-review)    echo "**Docs-only change** — submitted a job to review the docs changes (it does not implement a plan)." ;;
