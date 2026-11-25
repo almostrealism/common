@@ -459,6 +459,62 @@ Notes on the declarations:
 
 ---
 
+## 8. Audio autoencoders
+
+Compressing raw audio into a compact latent representation and reconstructing it. One interface
+names the concept — `AutoEncoder` — and it is producer-valued and deferred: its `encode`/`decode`
+accept and return `Producer<PackedCollection>`, and three `double` accessors describe the
+sampling contract. The implementors split into two shapes: thin *adapters* that wrap an already
+compiled model and satisfy the interface, and *builders* that assemble a `Block` pipeline and do
+not. The split is the same adapter-vs-builder, producer-vs-structure tension seen in the audio
+processing family (6).
+
+| Type | Declared as | Module (package) | Members |
+|---|---|---|---|
+| `AutoEncoder` | `extends Destroyable` | `engine/ml` (`org.almostrealism.ml.audio`) | `getSampleRate()`, `getLatentSampleRate()`, `getMaximumDuration()` (all `double`); `encode(Producer) : Producer<PackedCollection>`, `decode(Producer) : Producer<PackedCollection>` |
+| `CompiledModelAutoEncoder` | `implements AutoEncoder, CodeFeatures` | `studio/compose` (`org.almostrealism.studio.ml`) | the five contract members, over a compiled model |
+| `OnnxAutoEncoder` | `implements AutoEncoder, OnnxFeatures` | `extern/ml-onnx` (`org.almostrealism.ml.audio`) | the five contract members, over an ONNX runtime |
+| `OobleckAutoEncoder` | `implements LayerFeatures` | `engine/ml` (`org.almostrealism.ml.audio`) | `getAutoencoder() : Block` (builds a pipeline stage) |
+| `SAMEAutoEncoder` | `implements TransformerResamplingFeatures, LayerFeatures` | `engine/ml` (`org.almostrealism.ml.audio`) | `encoder(int, int) : Block`, `decoder(int, int) : Block` |
+
+Notes on the declarations:
+
+- `AutoEncoder`'s javadoc names `OobleckAutoEncoder` as its example (`@see`), yet
+  `OobleckAutoEncoder` does not implement it — the example is of the *concept*, not of the
+  declared relationship.
+- The two adapters are genuine `AutoEncoder`s: they hold a compiled model (a Metal/OpenCL kernel
+  or an ONNX graph) and expose producer-valued `encode`/`decode` plus the sampling accessors over
+  it. The two builders instead return `Block`s from factory methods — `OobleckAutoEncoder`'s
+  no-argument `getAutoencoder()`, `SAMEAutoEncoder`'s `encoder(int, int)` / `decoder(int, int)`;
+  they describe *how to assemble* an autoencoder rather than *being* one that can encode a producer.
+- `PatchedPretransform` (`engine/ml`, same package) also exposes `encode(int, int) : Block` /
+  `decode(int, int) : Block`, but it is a parameter-free patch fold with no sample-rate or latent
+  notion, so it is not an `AutoEncoder` — coincidental method names, recorded so a later round
+  does not read it as an orphan of this family.
+
+### Gaps
+
+- **`OobleckAutoEncoder` and `SAMEAutoEncoder` are audio autoencoders but neither implements
+  the `AutoEncoder` interface.** They carry only `Features` mixins — `OobleckAutoEncoder`
+  implements `LayerFeatures`, and `SAMEAutoEncoder` implements `TransformerResamplingFeatures`
+  and `LayerFeatures` (as the table above shows) — not the concept interface.
+  Conceptually each *is an* `AutoEncoder`, and all of `AutoEncoder`,
+  `OobleckAutoEncoder` and `SAMEAutoEncoder` live in `engine/ml`, so the link would need **no new
+  dependency**. The blocker is **contract, not module**: the interface is producer-valued
+  (`encode`/`decode` over `Producer<PackedCollection>`, plus `getSampleRate`/`getLatentSampleRate`/
+  `getMaximumDuration`), whereas both types are `Block` *builders* — their `getAutoencoder()` /
+  `encoder(int, int)` / `decoder(int, int)` assemble pipeline stages and expose no producer-valued
+  encode/decode nor the sampling accessors. Making them `AutoEncoder`s means adding those
+  producer-valued members (deriving the latent/sample rates from their configuration and building
+  the encode/decode graphs), which is feature work and a design decision — "can be assembled into
+  an autoencoder" rather than "is one" — not a member rename. The real `AutoEncoder`s today are
+  the adapters `CompiledModelAutoEncoder`/`OnnxAutoEncoder`, which wrap an already compiled model.
+  Filed for a person to design rather than forced here; the same shape as the `Volume` (family 1),
+  `DistanceEstimator` (family 2) and `EnvelopeProcessor` (family 6) host-or-structure-vs-producer
+  gaps.
+
+---
+
 ## How to use this map
 
 To find where a concept lives and what it builds on, start from Part I and follow the link to the
