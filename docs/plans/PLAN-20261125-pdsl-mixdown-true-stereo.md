@@ -22,7 +22,7 @@ tracker: [f155a689-cf76-4d72-8007-17d61f6a1b21]
 # True stereo and per-channel pan in the PDSL mixdown
 
 **Tracker task:** `f155a689-cf76-4d72-8007-17d61f6a1b21` — *True stereo in the PDSL mixdown*
-**Release:** Common 0.78 (part of the realtime AudioScene umbrella `3472d41a`)
+**Release:** the version named in the root `pom.xml` (part of the realtime AudioScene umbrella)
 
 ## Confirmation first: is it already done?
 

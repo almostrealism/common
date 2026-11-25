@@ -363,6 +363,7 @@ public class MixdownManager implements Setup, Destroyable, CellFeatures, Optimiz
 		this.channels = channels;
 		this.pan = new PackedCollection(channels);
 		this.dependencies = new ArrayList<>();
+		this.dependencies.add(pan);
 	}
 
 	/** Returns the automation manager that drives time-varying parameter curves. */

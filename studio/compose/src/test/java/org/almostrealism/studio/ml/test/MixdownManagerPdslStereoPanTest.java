@@ -91,9 +91,10 @@ public class MixdownManagerPdslStereoPanTest extends TestSuiteBase
 	/**
 	 * A channel hard-panned left reaches only the left master; the right master is silent.
 	 * Panned right it mirrors; centred the two sides carry equal energy. Exercises the
-	 * effects-on layer, so the dry bus, efx bus and reverb send are all panned.
+	 * effects-on layer, so the dry bus, efx bus and reverb send are all panned. An
+	 * intermediate pan ({@code ±0.5}) additionally pins the law shape: both sides stay
+	 * audible and their energies must follow the squared balance-law gain ratio.
 	 */
-	// TODO(review): assert an intermediate pan (e.g. +/-0.5) gain ratio; 0 and +/-1 alone leave g^2==g and miss a double-count/law regression.
 	@Test(timeout = 300_000)
 	@TestDepth(2)
 	public void hardPanSplitsEnergyWithEffects() {
@@ -102,6 +103,8 @@ public class MixdownManagerPdslStereoPanTest extends TestSuiteBase
 		assertSplit(mixdown, true, -1.0, true);
 		assertSplit(mixdown, true, +1.0, false);
 		assertCentreBalanced(mixdown, true);
+		assertPanRatio(mixdown, true, +0.5);
+		assertPanRatio(mixdown, true, -0.5);
 	}
 
 	/**
@@ -117,6 +120,8 @@ public class MixdownManagerPdslStereoPanTest extends TestSuiteBase
 		assertSplit(mixdown, false, -1.0, true);
 		assertSplit(mixdown, false, +1.0, false);
 		assertCentreBalanced(mixdown, false);
+		assertPanRatio(mixdown, false, +0.5);
+		assertPanRatio(mixdown, false, -0.5);
 	}
 
 	/**
@@ -205,6 +210,38 @@ public class MixdownManagerPdslStereoPanTest extends TestSuiteBase
 	}
 
 	/**
+	 * Asserts that at an intermediate pan the two sides' energies follow the squared
+	 * balance-law gain ratio {@code (gL/gR)^2}. The {@link #assertSplit} cases only cover
+	 * {@code pan ∈ {0, ±1}}, where {@code g ∈ {0, 1}} and therefore {@code g^2 == g}, so
+	 * they cannot tell a single gain application (energy {@code ∝ g^2}) from a double-count
+	 * (energy {@code ∝ g^4}) or a differently-shaped law. A pan with {@code g ∉ {0, 1}}
+	 * does: at {@code pan = +0.5} the law gives {@code gL = 0.5}, {@code gR = 1}, so the
+	 * left/right energy ratio is {@code 0.25}, which a double-count would drive to
+	 * {@code 0.0625}. A low-amplitude tone keeps the whole chain below its {@code clip}
+	 * limiter, so both sides stay linear and the ratio is exactly the squared gain ratio.
+	 */
+	private void assertPanRatio(MixdownManager mixdown, boolean withEffects, double pan) {
+		setPan(mixdown, pan);
+		PackedCollection input = pannedChannelInput(withEffects, 0.02);
+
+		double leftEnergy = sideEnergy(mixdown, withEffects, ChannelInfo.StereoChannel.LEFT, input);
+		double rightEnergy = sideEnergy(mixdown, withEffects, ChannelInfo.StereoChannel.RIGHT, input);
+
+		double gainLeft = Math.min(1.0, 1.0 - pan);
+		double gainRight = Math.min(1.0, 1.0 + pan);
+		double expected = (gainLeft * gainLeft) / (gainRight * gainRight);
+		double actual = leftEnergy / rightEnergy;
+		log(String.format("pan=%.2f effects=%b leftE=%.6g rightE=%.6g ratio=%.4f expected=%.4f",
+				pan, withEffects, leftEnergy, rightEnergy, actual, expected));
+
+		Assert.assertTrue("both sides must stay audible at an intermediate pan "
+				+ "(leftE=" + leftEnergy + ", rightE=" + rightEnergy + ")",
+				leftEnergy > 1e-10 && rightEnergy > 1e-10);
+		Assert.assertEquals("intermediate pan must follow the squared balance-law gain ratio",
+				expected, actual, 0.1 * expected);
+	}
+
+	/**
 	 * Asserts that at {@code pan = 0} the two sides carry equal energy (both gains are 1).
 	 */
 	private void assertCentreBalanced(MixdownManager mixdown, boolean withEffects) {
@@ -276,10 +313,19 @@ public class MixdownManagerPdslStereoPanTest extends TestSuiteBase
 	 * reaches each side comes from that one channel.
 	 */
 	private PackedCollection pannedChannelInput(boolean withEffects) {
+		return pannedChannelInput(withEffects, 0.5);
+	}
+
+	/**
+	 * As {@link #pannedChannelInput(boolean)}, but with an explicit tone amplitude. A small
+	 * amplitude keeps the mixdown chain below its {@code clip} limiter, so the ratio tests
+	 * observe the linear (squared gain) relationship between the two sides.
+	 */
+	private PackedCollection pannedChannelInput(boolean withEffects, double amplitude) {
 		int rows = withEffects ? 2 * CHANNELS : CHANNELS;
 		PackedCollection input = new PackedCollection(new TraversalPolicy(rows, SIGNAL_SIZE));
 		PackedCollection tone = sin(integers(0, SIGNAL_SIZE)
-				.multiply(2.0 * Math.PI * 220.0 / SAMPLE_RATE)).multiply(0.5).evaluate();
+				.multiply(2.0 * Math.PI * 220.0 / SAMPLE_RATE)).multiply(amplitude).evaluate();
 		input.setFrom(PANNED_CHANNEL * SIGNAL_SIZE, tone);
 		if (withEffects) {
 			input.setFrom((CHANNELS + PANNED_CHANNEL) * SIGNAL_SIZE, tone);
