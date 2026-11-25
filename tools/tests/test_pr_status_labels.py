@@ -250,13 +250,15 @@ class LabelChangesTest(unittest.TestCase):
         self.assertEqual((add, remove), ([labels.STALLED], []))
 
     def test_ready_to_launch_is_added_beside_the_state(self):
-        add, remove = labels.label_changes([labels.VALIDATING],
-                                           labels.VALIDATING, False, ready=True)
+        add, remove = labels.label_changes([labels.NEEDS_ATTENTION],
+                                           labels.NEEDS_ATTENTION, False,
+                                           ready=True)
         self.assertEqual((add, remove), ([labels.READY_TO_LAUNCH], []))
 
     def test_both_markers_are_added_beside_the_state(self):
-        add, remove = labels.label_changes([labels.VALIDATING],
-                                           labels.VALIDATING, True, ready=True)
+        add, remove = labels.label_changes([labels.NEEDS_ATTENTION],
+                                           labels.NEEDS_ATTENTION, True,
+                                           ready=True)
         self.assertEqual(add,
                          sorted([labels.STALLED, labels.READY_TO_LAUNCH]))
         self.assertEqual(remove, [])
@@ -266,6 +268,29 @@ class LabelChangesTest(unittest.TestCase):
             [labels.FULL_TESTS, labels.READY_TO_LAUNCH], labels.FULL_TESTS,
             False, ready=False)
         self.assertEqual((add, remove), ([], [labels.READY_TO_LAUNCH]))
+
+    def test_ready_to_launch_is_suppressed_while_auto_review_is_the_state(self):
+        # The invariant: a plan an agent is still reviewing is not ready to
+        # launch, so the marker is never added beside ci: auto-review.
+        add, remove = labels.label_changes([labels.AUTO_REVIEW],
+                                           labels.AUTO_REVIEW, False,
+                                           ready=True)
+        self.assertEqual((add, remove), ([], []))
+
+    def test_starting_auto_review_removes_an_existing_ready_to_launch(self):
+        # A review starting on a later push: the stage is ci: auto-review and
+        # the marker left from the settled state is removed on this pass.
+        add, remove = labels.label_changes(
+            [labels.READY_TO_LAUNCH], labels.AUTO_REVIEW, False, ready=True)
+        self.assertEqual((add, remove),
+                         ([labels.AUTO_REVIEW], [labels.READY_TO_LAUNCH]))
+
+    def test_ready_to_launch_is_suppressed_beside_every_in_progress_state(self):
+        for state in (labels.VALIDATING, labels.AUTO_REVIEW,
+                      labels.FULL_TESTS, labels.AUTO_FIX):
+            add, remove = labels.label_changes([state], state, False,
+                                               ready=True)
+            self.assertNotIn(labels.READY_TO_LAUNCH, add, state)
 
 
 class ReadyToLaunchTest(unittest.TestCase):

@@ -5,3 +5,4 @@ run_utc	branch	window_since	workstreams_surveyed	jobs_surveyed	prs_surveyed	newe
 2026-11-04T05:02:42Z	qa/retro-20261104-050034	14 days ago	137	60	15	2026-11-04T05:01:00Z ab90ab9f-5831-4e9c-9de3-da761fda2bb1	temp-id-enforcement,job-cancel-on-merge,retro-cross-repo-scope,flaky-infra-concurrency	docs/qa/retrospectives/RETRO-20261104.md
 2026-11-10T04:28:50Z	qa/retro-20261110-032519	14 days ago	144	14	15	2026-11-10T04:31:46Z 20efbd5c-6f24-411f-9fd9-8b8e0838599a	flaky-gpu-reach,retro-cross-repo-scope	docs/qa/retrospectives/RETRO-20261110.md
 2026-11-18T01:14:41Z	qa/retro-20261118-011244	14 days ago	154	57	139	2026-11-15T15:16:31Z 92149549-26ae-4282-8316-d4fb5852d3c6	flaky-seed-default-source,commit-msg-prompt-fallback,flaky-followup-dedup	docs/qa/retrospectives/RETRO-20261118.md
+2026-11-24T19:47:13Z	qa/retro-20261124-194549	14 days ago	162	19	158	2026-11-24T19:45:31Z	concealment-fix-guard,flaky-random-seed	docs/qa/retrospectives/RETRO-20261124.md

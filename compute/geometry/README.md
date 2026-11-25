@@ -143,10 +143,12 @@ Producer<Ray> closestHit = closest.get(0);
 ```java
 import org.almostrealism.geometry.ReflectedRay;
 
-// Compute reflected ray
+// Compute reflected ray. The second argument is the viewer vector:
+// the direction from the surface toward the viewer, i.e. the negation
+// of the incident ray direction.
 ReflectedRay reflection = reflectedRay(
     intersectionPoint,
-    incidentDirection,
+    minus(direction(incidentRay)),
     surfaceNormal,
     blurAmount  // 0.0 = perfect mirror, >0 = glossy
 );
@@ -290,7 +292,7 @@ Producer<Vector> normal = direction(hitNormal);
 // 4. Compute reflection for recursive tracing
 ReflectedRay reflection = reflectedRay(
     hitPoint,
-    direction(ray),
+    minus(direction(ray)),  // viewer direction: negation of the incident ray direction
     normal,
     0.0  // Perfect reflection
 );
