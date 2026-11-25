@@ -20,6 +20,7 @@ import io.almostrealism.relation.IndexedGraph;
 import io.almostrealism.relation.Node;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -37,6 +38,8 @@ import java.util.Set;
  * <ul>
  *   <li>{@link #louvain(IndexedGraph, double)} - Louvain community detection</li>
  *   <li>{@link #modularity(IndexedGraph, int[])} - Modularity score computation</li>
+ *   <li>{@link #communityWeights(IndexedGraph, int[])} - Edge weight between each pair of communities</li>
+ *   <li>{@link #internalWeightedDegree(IndexedGraph, int[], int)} - A node's edge weight inside its community</li>
  * </ul>
  *
  * <h2>Usage Example</h2>
@@ -194,6 +197,56 @@ public interface CommunityFeatures {
 		}
 
 		return modularity / totalWeight;
+	}
+
+	/**
+	 * Computes the total edge weight between every pair of communities: entry
+	 * {@code [a][b]} sums the weight of every edge from a node of community
+	 * {@code a} to a node of community {@code b}. The diagonal is the weight a
+	 * community keeps inside itself, so {@code w[a][a] / sum(w[a])} is the fraction
+	 * of its members' weighted degree that stays in the community.
+	 *
+	 * <p>Community identifiers must be contiguous from 0, as {@link #louvain}
+	 * returns them. Each undirected edge is visited from both endpoints, as in
+	 * {@link #modularity}.</p>
+	 *
+	 * @param graph       the graph
+	 * @param communities cluster assignments (node index -> cluster ID)
+	 * @param <T>         the node type
+	 * @return the {@code [communities][communities]} weight matrix
+	 */
+	default <T extends Node> double[][] communityWeights(IndexedGraph<T> graph, int[] communities) {
+		int count = Arrays.stream(communities).max().orElse(-1) + 1;
+		double[][] weights = new double[count][count];
+
+		for (int i = 0; i < graph.countNodes(); i++) {
+			for (int j : graph.neighborIndices(i)) {
+				weights[communities[i]][communities[j]] += graph.edgeWeight(i, j);
+			}
+		}
+
+		return weights;
+	}
+
+	/**
+	 * Computes the weight of the edges from a node to the other members of its own
+	 * community. The member of a community with the largest internal weighted degree
+	 * is the one most strongly tied to the rest of it, a reference against which a
+	 * representative chosen by another measure (such as PageRank over the whole
+	 * graph) can be compared.
+	 *
+	 * @param graph       the graph
+	 * @param communities cluster assignments (node index -> cluster ID)
+	 * @param node        the node index
+	 * @param <T>         the node type
+	 * @return the total weight of the node's edges that stay inside its community
+	 */
+	default <T extends Node> double internalWeightedDegree(IndexedGraph<T> graph, int[] communities, int node) {
+		double degree = 0;
+		for (int j : graph.neighborIndices(node)) {
+			if (communities[j] == communities[node]) degree += graph.edgeWeight(node, j);
+		}
+		return degree;
 	}
 
 	/**

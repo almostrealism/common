@@ -43,6 +43,31 @@ import java.util.Set;
  * conflicted paths.  The merge is intentionally left in progress so that
  * the coding agent can resolve the conflict markers in place and produce a
  * proper two-parent merge commit via {@link GitCommitHandler}.</p>
+ *
+ * <h2>Push-target safety</h2>
+ *
+ * <p>Every checkout this class prepares — the primary working tree and each
+ * dependent repo — is given two pieces of repository-local git configuration
+ * that protect an agent's work from landing on the wrong branch:</p>
+ * <ul>
+ *   <li>{@code push.default=current} — a bare {@code git push} pushes to a
+ *       remote branch of the <em>same name</em> as the current branch, never
+ *       to the current branch's tracking branch.</li>
+ *   <li>{@code branch.autoSetupMerge=false} — a branch created with
+ *       {@code git checkout -b x origin/master} is not configured to track
+ *       {@code origin/master}.</li>
+ * </ul>
+ *
+ * <p>These close a gap the {@code block-branch-track-master} hook cannot see.
+ * That hook refuses a command that <em>creates</em> a branch tracking master,
+ * but it cannot inspect a branch that <em>already</em> tracks master: under
+ * git's default {@code push.default=simple}, a bare {@code git push} on such a
+ * branch pushes to master's upstream. Setting {@code push.default=current}
+ * makes the push target the current branch's name regardless of what it
+ * tracks, and disabling {@code branch.autoSetupMerge} stops the tracking link
+ * from being set up in the first place. The configuration is applied as
+ * repository-local git config (not relied upon from the agent image) so it
+ * holds on every node regardless of the image's global git configuration.</p>
  */
 class GitRepositorySetup implements ConsoleFeatures {
 
@@ -144,6 +169,9 @@ class GitRepositorySetup implements ConsoleFeatures {
      * @throws InterruptedException if a command is interrupted
      */
     void prepare() throws IOException, InterruptedException {
+        // 0. Pin the push target so a bare push cannot reach master's upstream.
+        configurePushDefaults(job.gitOperations(job.getWorkingDirectory()));
+
         // 1. Stash any uncommitted changes so they do not block branch switches.
         List<String> allDirtyFiles = getAllDirtyFiles();
         if (!allDirtyFiles.isEmpty()) {
@@ -256,6 +284,29 @@ class GitRepositorySetup implements ConsoleFeatures {
     }
 
     // ==================== Private Helpers ====================
+
+    /**
+     * Applies the repository-local git configuration that keeps an agent's
+     * push from reaching master's upstream. See this class's
+     * {@linkplain GitRepositorySetup header} for why both settings are needed.
+     *
+     * <p>Written as local config in the given repository so it holds on every
+     * node regardless of the agent image's global git configuration.</p>
+     *
+     * <p>Both writes must succeed: this protection is not best effort. If either
+     * {@code git config} command exits non-zero — for example because
+     * {@code .git/config} is not writable — preparation fails here rather than
+     * continuing to a checkout where a later bare push could still reach
+     * master's upstream.</p>
+     *
+     * @param gitOps the {@link GitOperations} bound to the repository to configure
+     * @throws IOException          if a git command fails or exits non-zero
+     * @throws InterruptedException if a command is interrupted
+     */
+    private void configurePushDefaults(GitOperations gitOps) throws IOException, InterruptedException {
+        gitOps.executeForResult("config", "push.default", "current").requireSuccess();
+        gitOps.executeForResult("config", "branch.autoSetupMerge", "false").requireSuccess();
+    }
 
     /**
      * Merges the remote base branch into the current working branch.
@@ -493,6 +544,7 @@ class GitRepositorySetup implements ConsoleFeatures {
         for (String depPath : dependentRepoUrlsByPath.keySet()) {
             log("Preparing dependent repo branch: " + depPath);
             GitOperations gitOps = job.gitOperations(depPath);
+            configurePushDefaults(gitOps);
 
             String statusOutput = gitOps.executeWithOutput("status", "--porcelain");
             if (!statusOutput.trim().isEmpty()) {

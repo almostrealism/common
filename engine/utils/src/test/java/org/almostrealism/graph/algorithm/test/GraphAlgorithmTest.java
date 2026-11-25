@@ -338,6 +338,37 @@ public class GraphAlgorithmTest extends TestSuiteBase implements GraphFeatures {
 	}
 
 	/**
+	 * Tests the community weight matrix: each cluster keeps its triangle's weight
+	 * (every edge counted from both ends) and only the bridge crosses between them.
+	 */
+	@Test(timeout = 30000)
+	public void testCommunityWeights() {
+		TestGraph graph = createTwoClusterGraph();
+
+		double[][] weights = communityWeights(graph, new int[] {0, 0, 0, 1, 1, 1});
+
+		assertEquals(2, weights.length);
+		assertEquals(6.0, weights[0][0], 1e-9);
+		assertEquals(6.0, weights[1][1], 1e-9);
+		assertEquals(0.1, weights[0][1], 1e-9);
+		assertEquals(0.1, weights[1][0], 1e-9);
+	}
+
+	/**
+	 * Tests the internal weighted degree: the bridge node of a cluster counts only its edges
+	 * inside the cluster, not the bridge.
+	 */
+	@Test(timeout = 30000)
+	public void testInternalWeightedDegree() {
+		TestGraph graph = createTwoClusterGraph();
+		int[] clusters = {0, 0, 0, 1, 1, 1};
+
+		assertEquals(2.0, internalWeightedDegree(graph, clusters, 2), 1e-9);
+		assertEquals(2.0, internalWeightedDegree(graph, clusters, 0), 1e-9);
+		assertEquals(0.0, internalWeightedDegree(graph, new int[] {0, 1, 2, 3, 4, 5}, 2), 1e-9);
+	}
+
+	/**
 	 * Tests community counting.
 	 */
 	@Test(timeout = 30000)

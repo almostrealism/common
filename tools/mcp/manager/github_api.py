@@ -13,12 +13,17 @@ the per-org PAT from ``workstreams.yaml``.
 Extracted from ``server.py`` to keep individual modules manageable.
 """
 
+import base64
 import contextvars
+import fnmatch
+import io
 import json
 import logging
 import re
 import sys
 import time
+import zipfile
+import zlib
 from typing import Optional
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote
@@ -133,6 +138,9 @@ def _github_proxy_request(method: str, path: str, payload: dict = None,
         if gh_status == 204 or gh_body is None:
             return {"ok": True, "status": gh_status}
         if 200 <= gh_status < 300:
+            # A body that is not UTF-8 (an artifact archive) arrives base64-encoded.
+            if wrapper.get("encoding") == "base64" and isinstance(gh_body, str):
+                return {"ok": True, "status": gh_status, "content_base64": gh_body}
             if isinstance(gh_body, (dict, list)):
                 return gh_body
             # Endpoints that serve a document rather than a structure — Actions job
@@ -567,6 +575,222 @@ def get_job_logs(owner: str, repo: str, job_id: int,
         "matched_lines": matched,
         "total_lines": total,
         "truncated": len(lines) < matched,
+    }
+
+
+# Member names listed for an artifact archive; a larger archive reports the count.
+_ARTIFACT_MEMBER_LIST_LIMIT = 200
+
+# GitHub paginates the run-artifacts listing at 100 per page. Pages are
+# requested until the run's reported total is collected, bounded so a
+# surprising total cannot loop without end.
+_ARTIFACT_LISTING_PAGE_SIZE = 100
+_ARTIFACT_LISTING_MAX_PAGES = 50
+
+
+def _list_run_artifacts(owner: str, repo: str, run_id: int) -> dict:
+    """Collect every artifact of a run, following the listing's pagination.
+
+    The artifacts endpoint returns at most ``_ARTIFACT_LISTING_PAGE_SIZE``
+    records per page, so a single request silently omits a run's later
+    artifacts; pages are fetched until the reported ``total_count`` is reached.
+
+    Returns:
+        dict with ok=True and ``artifacts`` (raw records) and ``total_count``;
+        or an ok=False error dict when a page request fails.
+    """
+    collected = []
+    total_count = 0
+    for page in range(1, _ARTIFACT_LISTING_MAX_PAGES + 1):
+        listing = _github_request(
+            "GET", f"/repos/{owner}/{repo}/actions/runs/{run_id}/artifacts"
+                   f"?per_page={_ARTIFACT_LISTING_PAGE_SIZE}&page={page}")
+        if isinstance(listing, dict) and listing.get("ok") is False:
+            return listing
+        if not isinstance(listing, dict):
+            return {"ok": False, "error": "Unexpected response listing run artifacts"}
+        total_count = listing.get("total_count", total_count)
+        page_artifacts = listing.get("artifacts", [])
+        collected.extend(page_artifacts)
+        if not page_artifacts or len(collected) >= total_count:
+            break
+    return {"ok": True, "artifacts": collected, "total_count": total_count}
+
+
+def _shape_artifact(artifact: dict) -> dict:
+    """Reduce a GitHub artifact record to the fields a caller chooses by."""
+    return {
+        "id": artifact.get("id"),
+        "name": artifact.get("name", ""),
+        "size_in_bytes": artifact.get("size_in_bytes", 0),
+        "expired": bool(artifact.get("expired", False)),
+        "created_at": artifact.get("created_at", ""),
+    }
+
+
+def _select_by_name(names: list, pattern: str) -> list:
+    """Return the names equal to ``pattern``, else those matching it as a glob.
+
+    A member of an archive is also matched by its base name, so
+    ``hs_err_pid12.log`` finds ``hs_err/hs_err_pid12.log``.
+    """
+    exact = [n for n in names if n == pattern or n.rsplit("/", 1)[-1] == pattern]
+    if exact:
+        return exact
+    return [n for n in names
+            if fnmatch.fnmatchcase(n, pattern)
+            or fnmatch.fnmatchcase(n.rsplit("/", 1)[-1], pattern)]
+
+
+def _read_members(archive: zipfile.ZipFile, members: list, budget: int) -> tuple[list, bool]:
+    """Read the named archive members as text, at most ``budget`` bytes in total.
+
+    Each member is decompressed as a stream and read no further than the bytes
+    left in the budget, so the cap bounds what is decompressed, not only what is
+    returned: an archive whose members expand to gigabytes costs ``budget``.
+    A member holding a NUL byte is reported as binary, without content. A member
+    that cannot be decompressed — encrypted, an unsupported compression method,
+    or corrupt data — is reported with an ``error`` rather than aborting the read
+    of the remaining members.
+
+    Returns:
+        (files, truncated) — one dict per member, and whether any member was cut
+        short, left out because the budget ran out, or failed to decompress.
+    """
+    files = []
+    truncated = False
+    remaining = budget
+    for info in members:
+        entry = {"path": info.filename, "size": info.file_size}
+        if remaining <= 0:
+            entry["omitted"] = True
+            truncated = True
+            files.append(entry)
+            continue
+        try:
+            with archive.open(info) as stream:
+                data = stream.read(remaining)
+        except (RuntimeError, NotImplementedError, zlib.error,
+                zipfile.BadZipFile, EOFError) as e:
+            entry["error"] = str(e) or e.__class__.__name__
+            truncated = True
+            files.append(entry)
+            continue
+        remaining -= len(data)
+        entry["returned_bytes"] = len(data)
+        entry["truncated"] = len(data) < info.file_size
+        truncated = truncated or entry["truncated"]
+        if b"\x00" in data:
+            entry["binary"] = True
+        else:
+            entry["content"] = data.decode("utf-8", errors="replace")
+        files.append(entry)
+    return files, truncated
+
+
+def get_run_artifacts(owner: str, repo: str, run_id: int, artifact: str = "",
+                      file: str = "", max_bytes: int = 262_144,
+                      archive_limit: int = 1_048_576,
+                      extract_limit: int = 1_048_576) -> dict:
+    """List a workflow run's artifacts, or fetch one and read files inside it.
+
+    GitHub serves an artifact only as a zip archive, by way of a redirect to
+    storage; the controller's proxy follows the redirect and returns the bytes
+    base64-encoded. The archive is opened in memory and its members are read
+    under ``max_bytes``.
+
+    Args:
+        owner: Repository owner (org or user).
+        repo: Repository name.
+        run_id: The numeric workflow run id.
+        artifact: Artifact name, or a glob such as ``crash-reports-*`` that must
+            match exactly one artifact. Empty lists the run's artifacts.
+        file: Member path, base name or glob within the archive. Empty reads
+            every member.
+        max_bytes: Total bytes of member content to return. Clamped to
+            ``extract_limit``.
+        archive_limit: Largest archive, in bytes, that is downloaded.
+        extract_limit: Upper bound on ``max_bytes``.
+
+    Returns:
+        dict with ok=True and ``artifacts`` (listing) or ``artifact``,
+        ``members``, ``files`` and ``truncated`` (fetch); or an ok=False error.
+    """
+    if max_bytes <= 0:
+        return {"ok": False, "error": f"max_bytes must be positive (got {max_bytes})"}
+    budget = min(max_bytes, extract_limit)
+
+    listing = _list_run_artifacts(owner, repo, run_id)
+    if listing.get("ok") is False:
+        return listing
+    artifacts = [_shape_artifact(a) for a in listing["artifacts"]]
+    total_count = listing.get("total_count", len(artifacts))
+
+    if not artifact:
+        return {"ok": True, "run_id": run_id,
+                "total_count": total_count,
+                "artifacts": artifacts}
+
+    by_name = {a["name"]: a for a in artifacts}
+    matched = _select_by_name(list(by_name), artifact)
+    if len(matched) != 1:
+        return {"ok": False,
+                "error": (f"Artifact '{artifact}' matched {len(matched)} artifacts of run "
+                          f"{run_id}; name exactly one"),
+                "matches": matched, "available": sorted(by_name)}
+    chosen = by_name[matched[0]]
+    if chosen["expired"]:
+        return {"ok": False, "error": f"Artifact '{chosen['name']}' has expired",
+                "artifact": chosen}
+    if chosen["size_in_bytes"] > archive_limit:
+        return {"ok": False,
+                "error": (f"Artifact '{chosen['name']}' is {chosen['size_in_bytes']:,} "
+                          f"bytes, which exceeds the {archive_limit:,} byte download limit"),
+                "artifact": chosen}
+
+    download = _github_request(
+        "GET", f"/repos/{owner}/{repo}/actions/artifacts/{chosen['id']}/zip", timeout=60)
+    if isinstance(download, dict) and download.get("ok") is False:
+        return download
+    if isinstance(download, dict) and "content_base64" in download:
+        raw = base64.b64decode(download["content_base64"])
+    elif isinstance(download, dict) and "text" in download:
+        raw = download["text"].encode("utf-8")
+    else:
+        return {"ok": False, "error": "Artifact archive was not returned by the proxy",
+                "next_steps": ["Confirm the controller proxy forwards binary bodies"]}
+    if len(raw) > archive_limit:
+        return {"ok": False,
+                "error": f"Artifact archive is {len(raw):,} bytes, over the download limit",
+                "artifact": chosen}
+
+    try:
+        archive = zipfile.ZipFile(io.BytesIO(raw))
+    except zipfile.BadZipFile as e:
+        return {"ok": False, "error": f"Artifact is not a readable zip archive: {e}",
+                "artifact": chosen}
+    with archive:
+        infos = [i for i in archive.infolist() if not i.is_dir()]
+        names = [i.filename for i in infos]
+        selected = names if not file else _select_by_name(names, file)
+        if not selected:
+            return {"ok": False,
+                    "error": f"No file matching '{file}' in artifact '{chosen['name']}'",
+                    "members": names[:_ARTIFACT_MEMBER_LIST_LIMIT]}
+        wanted = set(selected)
+        files, truncated = _read_members(
+            archive, [i for i in infos if i.filename in wanted], budget)
+
+    return {
+        "ok": True,
+        "run_id": run_id,
+        "artifact": chosen,
+        "member_count": len(infos),
+        "members": [{"path": i.filename, "size": i.file_size}
+                    for i in infos[:_ARTIFACT_MEMBER_LIST_LIMIT]],
+        "max_bytes": budget,
+        "files": files,
+        "truncated": truncated,
     }
 
 

@@ -101,11 +101,14 @@ resolved issues). Requires `security_events: write` permission on the PAT.
 | `github_pr_labels` | github | Read a PR's labels and draft status (read-only) |
 | `github_list_workflow_runs` | github | Search GitHub Actions workflow runs (by workflow/branch/event/status) |
 | `github_workflow_run_status` | github | Get a workflow run's jobs and failed steps by run id |
+| `github_job_logs` | github | Read a workflow job's log (tail, optionally filtered by `grep`) |
+| `github_run_artifacts` | github | List a workflow run's artifacts, or read files inside one (e.g. the `crash-reports-*` dumpstreams and `hs_err_pid*.log`); read-only, archives over 1 MB are refused and at most `max_bytes` (capped at 1 MB) of member content is decompressed |
 | `github_list_open_prs` | github | List open PRs for a repo |
 | `github_create_pr` | github | Create a pull request |
 | `github_update_pr` | github | Change an existing PR's title and/or description |
 | `github_set_pr_state` | github | Close a pull request, or reopen one that was closed without merging (state only; a merged PR cannot be reopened) |
 | `github_start_test_run` | github | Start a branch's CI test run by deploying it to the `test` environment through the controller's own GitHub credential; refuses a raw SHA, a pull ref, or a fork, and resolves the branch against `refs/heads` first |
+| `github_rerun_failed_jobs` | github | Rerun only the failed/cancelled/timed-out jobs of an existing workflow run in place (a new attempt of the same run), through the controller's GitHub credential; refuses a run still queued or in progress or one with nothing failed. Use instead of `github_start_test_run` when a run already exists and some jobs failed |
 | `github_request_copilot_review` | github | Request a Copilot automated review on a PR |
 | `github_read_file` | github | Read a file from a GitHub repo at a branch/ref |
 | `project_read_plan` | github | Read the planning document for a workstream |
@@ -176,6 +179,49 @@ branch, so each sends `objectOrientedReviewEnabled: false` and the review does n
 ride along on every pass. Those submitters set `OBJECT_ORIENTED_REVIEW_ENABLED=false`
 on the trusted submit step; `tools/ci/submit-agent-job.sh` sends the field only when
 that knob is set, so every other path inherits the default.
+
+## Per-Phase Configuration and the Fallback
+
+`workstream_submit_task` sets the runner, model, effort and provider a job uses,
+per phase, through two pairs of parameters:
+
+- **`default_phase_config` / `phase_configs`** — the per-job *override*. A
+  value here wins over the target workstream's own configuration. Use it when
+  the submission must pin a model regardless of how the workstream is set up.
+- **`fallback_default_phase_config` / `fallback_phase_configs`** — the per-job
+  *fallback*. It applies ONLY to phases the workstream leaves unset. A phase
+  whose workstream-level config is set, or every phase when the workstream has
+  its own `defaultPhaseConfig`, keeps the workstream's choice and ignores the
+  fallback. Use it to run a job on a cheaper setup (for example the opencode
+  runner against an inexpensive OpenRouter model) without overriding a
+  workstream an owner configured on purpose.
+
+Each is a JSON object with optional `runner` / `model` / `effort` / `provider`
+keys (the `*_phase_configs` variants map phase wire names to such objects); the
+same client-side validation applies to both pairs (`phase_config.py`). The
+controller resolves the precedence ladder — per-job override, workstream,
+**fallback**, workspace default, controller default — in
+`io.flowtree.submission.PhaseConfigResolver`. A fallback entry applies as a
+whole, not field-by-field: when it applies it overlays onto the workspace and
+controller defaults and the resulting runner/provider/model combination is
+validated at submission, so a fallback that completes into an invalid
+combination is rejected. The submit response echoes the resolved
+`defaultPhaseConfig` / `phaseConfigs`, and — when a fallback was supplied —
+a `fallbackResolution` object reporting, per phase, the resolved runner/model/
+effort/provider and whether the fallback was used or ignored and why.
+
+A fallback naming `provider=openrouter` needs the workspace's
+`openrouter-api-key` secret (see `flowtree/docs/operations/PROVIDERS.md`).
+Submission validates only the runner/model/provider combination, not the
+presence of the secret: the opencode runner resolves the key when the job
+starts, so a missing secret surfaces as a runtime job failure, not a
+submission rejection.
+
+CI uses the fallback through the `AR_CI_FALLBACK_PHASE_CONFIG` repository
+variable, which `tools/ci/submit-agent-job.sh` forwards as `fallbackPhaseConfig`
+for the auto-review, code-policy, quality-gate, auto-resolve and
+auto-resolve-python submissions. Unset → nothing is sent and resolution is
+byte-for-byte what it is today.
 
 ## Test Execution Limits
 

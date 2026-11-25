@@ -16,13 +16,21 @@
 
 package org.almostrealism.hardware.test;
 
+import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.AcceleratedComputationEvaluable;
+import org.almostrealism.hardware.AcceleratedOperation;
 import org.almostrealism.hardware.Hardware;
+import org.almostrealism.hardware.KernelBindingListener;
 import org.almostrealism.hardware.computations.HardwareEvaluable;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
+
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Verifies that an {@link Evaluable} held across the eviction of its shared
@@ -125,6 +133,105 @@ public class InstructionEvictionRebindTest extends TestSuiteBase {
 		}
 
 		integers(1, 5).multiply(-1.0).add(10.0).into(a.traverseEach()).evaluate();
+		PackedCollection second = held.evaluate();
+		for (int i = 0; i < 4; i++) {
+			assertEquals(a.toDouble(i) + b.toDouble(i), second.toDouble(i));
+		}
+	}
+
+	/**
+	 * Evicting an operation's instructions while another thread is dispatching the same operation
+	 * must not clear that operation's argument bindings out from under the running dispatch.
+	 *
+	 * <p>The eviction destroy listener and {@code AcceleratedOperation.apply} run on different
+	 * threads, and before the fix the listener cleared the bindings immediately, even while a
+	 * dispatch was reading them — the dispatch then executed against partially cleared state and
+	 * wrote nothing, or the wrong memory. This test pauses a dispatch inside {@code apply} using the
+	 * {@link AcceleratedOperation#bindingListener} dispatch hook, evicts the instructions from the
+	 * main thread while the dispatch is paused, and asserts the bindings are still intact; the reset
+	 * must be deferred until the dispatch completes. It is made deterministic with latches rather
+	 * than timing, and fails reliably before the fix (the bindings are cleared during the pause).</p>
+	 *
+	 * @throws InterruptedException if the test thread is interrupted while coordinating
+	 */
+	@Test(timeout = 120000)
+	public void evictionDeferredDuringConcurrentApply() throws InterruptedException {
+		PackedCollection a = new PackedCollection(4);
+		integers(1, 5).into(a.traverseEach()).evaluate();
+		PackedCollection b = new PackedCollection(4);
+		integers(1, 5).multiply(10.0).into(b.traverseEach()).evaluate();
+
+		Evaluable<PackedCollection> held = cp(a).add(cp(b)).get();
+
+		PackedCollection first = held.evaluate();
+		for (int i = 0; i < 4; i++) {
+			assertEquals(a.toDouble(i) + b.toDouble(i), first.toDouble(i));
+		}
+
+		AcceleratedComputationEvaluable<?> op = kernel(held);
+		String signature = op.signature();
+		assertNotNull("A provider-based computation should have a signature", signature);
+		assertNotNull("The operation should be bound after its first evaluation", op.getArguments());
+
+		CountDownLatch dispatchPaused = new CountDownLatch(1);
+		CountDownLatch evictionComplete = new CountDownLatch(1);
+		AtomicBoolean armed = new AtomicBoolean(false);
+		AtomicReference<Throwable> dispatchFailure = new AtomicReference<>();
+
+		KernelBindingListener previousListener = AcceleratedOperation.bindingListener;
+		AcceleratedOperation.bindingListener = new KernelBindingListener() {
+			@Override
+			public void dispatched(OperationMetadata metadata, boolean aggregating) {
+				if (armed.compareAndSet(true, false)) {
+					dispatchPaused.countDown();
+					try {
+						evictionComplete.await();
+					} catch (InterruptedException e) {
+						Thread.currentThread().interrupt();
+					}
+				}
+			}
+		};
+
+		boolean clearedDuringApply;
+
+		try {
+			armed.set(true);
+
+			Thread dispatcher = new Thread(() -> {
+				try {
+					held.evaluate();
+				} catch (Throwable t) {
+					dispatchFailure.set(t);
+				}
+			}, "eviction-concurrent-dispatch");
+			dispatcher.start();
+
+			assertTrue("The dispatch did not reach apply within the timeout",
+					dispatchPaused.await(60, TimeUnit.SECONDS));
+
+			// Evict while the paused dispatch is in flight; the reset must be deferred.
+			Hardware.getLocalHardware().getComputer().evictInstructions(signature);
+
+			clearedDuringApply = op.getArguments() == null;
+
+			evictionComplete.countDown();
+			dispatcher.join(60000);
+			assertFalse("The dispatch thread is still running", dispatcher.isAlive());
+		} finally {
+			AcceleratedOperation.bindingListener = previousListener;
+			evictionComplete.countDown();
+		}
+
+		if (dispatchFailure.get() != null) {
+			throw new AssertionError("The concurrent dispatch failed", dispatchFailure.get());
+		}
+		assertFalse("Eviction cleared the operation's bindings while a dispatch was in flight",
+				clearedDuringApply);
+
+		// The deferred reset ran once the dispatch completed; the held evaluable rebinds and
+		// still reflects input changed after the eviction.
+		integers(1, 5).multiply(100.0).into(b.traverseEach()).evaluate();
 		PackedCollection second = held.evaluate();
 		for (int i = 0; i < 4; i++) {
 			assertEquals(a.toDouble(i) + b.toDouble(i), second.toDouble(i));

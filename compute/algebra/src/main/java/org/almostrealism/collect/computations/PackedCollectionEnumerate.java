@@ -449,10 +449,8 @@ public class PackedCollectionEnumerate
 	 */
 	@Override
 	public PackedCollectionEnumerate generate(List<Process<?, ?>> children) {
-		return (PackedCollectionEnumerate)
-				new PackedCollectionEnumerate(subsetShape, strideShape,
-								(Producer<PackedCollection>) children.get(1), traversalDepth)
-						.addAllDependentLifecycles(getDependentLifecycles());
+		return copyConfigurationTo(new PackedCollectionEnumerate(subsetShape, strideShape,
+				(Producer<PackedCollection>) children.get(1), traversalDepth));
 	}
 
 	@Override

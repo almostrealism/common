@@ -58,6 +58,8 @@ public interface KeyPosition<T extends KeyPosition<T>> {
 	 * Returns the next note in the chromatic scale after this one.
 	 *
 	 * @return the next KeyPosition
+	 * @throws IllegalStateException if this is the highest position of its range
+	 *                               and therefore has no successor
 	 */
 	T next();
 

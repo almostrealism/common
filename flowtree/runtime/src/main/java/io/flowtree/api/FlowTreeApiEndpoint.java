@@ -1152,8 +1152,9 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         WorkspaceEntry wsEntry = (wsId != null && !wsId.isEmpty()) ? workspaceLookup.apply(wsId) : null;
         if (wsId != null && !wsId.isEmpty() && wsEntry == null) log("submitWorkspaceMissing workspaceId=" + wsId);
         PhaseConfigBundle requestBundle = PhaseConfigResolver.bundleFromRequest(body);
+        PhaseConfigBundle fallbackBundle = PhaseConfigResolver.fallbackBundleFromRequest(body);
         SubmissionConfigResolver configResolver = SubmissionConfigResolver.resolve(
-                requestBundle, workstream, wsEntry);
+                requestBundle, fallbackBundle, workstream, wsEntry);
         if (configResolver.error() != null) return errorResponse(configResolver.error());
         configResolver.applyTo(factory);
 
@@ -1220,6 +1221,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         // the same field names the config input uses, so the caller sees the
         // config the job will actually run with.
         PhaseConfigResolver.appendBundleJson(json, configResolver.phaseConfigResolver().resolvedBundle());
+        configResolver.phaseConfigResolver().appendFallbackResolutionJson(json);
         // Report which optional phases are active so callers can confirm
         // the effective job configuration without inspecting phase bundles.
         SubmissionConfigResolver.appendResolvedJobConfigJson(json, factory);

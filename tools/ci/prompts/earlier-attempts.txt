@@ -25,8 +25,11 @@ Then hold your own fix to what you found:
   real defect is, that is the defect to fix. If fixing it is more than this
   round can do, say so and file it; do not substitute the rejected fix.
 - **An open pull request that already makes the right fix means this failure
-  is being handled.** Do not open a second one. Report the pull request and
-  move to the next failure.
+  is being handled.** Do not open a second one, and do not file a fresh tracker
+  task for a failure something already tracks. Report the pull request, and when
+  an open task already covers this failure, append your evidence to it with
+  `tracker_add_artifact` (an additive comment, naming the run and what you found)
+  rather than filing a duplicate. Then move to the next failure.
 
 ## Fix the cause, not the place the failure surfaced
 

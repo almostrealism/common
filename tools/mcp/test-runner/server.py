@@ -61,6 +61,11 @@ RUNS_DIR = Path(__file__).parent / "runs"
 WATCHER_SCRIPT = Path(__file__).parent / "watcher.py"
 MAX_RUNS = 50
 DEFAULT_MODULE = "engine/utils"
+# Maven property prefix that carries the forked JVM's extra arguments. surefire
+# splits this property's value on whitespace and launches its fork with the
+# pieces, so the whole set of jvm_args is space-joined behind this one prefix
+# (see build_maven_command) rather than passed as separate command tokens.
+ARG_LINE_PREFIX = "-DargLine="
 # Default test timeout in minutes. The harness inactivity monitor
 # (ClaudeCodeJob.java:146) kills the agent process after 20 minutes of stdout
 # silence, so the test-runner default is set 5 minutes below that ceiling so a
@@ -170,6 +175,12 @@ class RunMetadata:
     exit_code: Optional[int] = None
     pid: Optional[int] = None
     command: str = ""
+    # The space-joined JVM arguments this run asks surefire to launch its fork
+    # with (the value of the single -DargLine= element), in order. Empty when
+    # the run passes no jvm_args. Recorded so a caller can confirm every entry
+    # reached the fork rather than being silently dropped -- see
+    # build_maven_command and the arg_line_value helper.
+    arg_line: str = ""
     jmx_monitoring: bool = False
     forked_pid: Optional[int] = None
     instruction_set_output_dir: Optional[str] = None
@@ -228,10 +239,15 @@ class TestRunner:
         #     still pass it explicitly through jvm_args.
         jvm_args = list(config.jvm_args)
 
-        # Add JVM args if specified
+        # Add JVM args if specified. Every entry is space-joined into ONE
+        # -DargLine= element; because start_run passes cmd to subprocess.Popen
+        # as a list (no shell), that element reaches Maven whole and surefire's
+        # argLine carries every entry, in order. Appending each entry as its own
+        # token instead would make Maven read all but the first as separate -D
+        # properties that never reach the fork -- the defect this guards against.
         if jvm_args:
             jvm_arg_str = " ".join(jvm_args)
-            cmd.append(f"-DargLine={jvm_arg_str}")
+            cmd.append(f"{ARG_LINE_PREFIX}{jvm_arg_str}")
 
         # Add test depth
         if config.depth is not None:
@@ -284,6 +300,28 @@ class TestRunner:
 
         return cmd
 
+    @staticmethod
+    def arg_line_value(cmd: list[str]) -> str:
+        """Return the forked JVM's extra arguments from a built Maven command.
+
+        This is the value of the single ``-DargLine=`` element
+        ``build_maven_command`` appends: the space-joined JVM arguments, in
+        order, that surefire launches its fork with. It is the effective extra
+        argument set for the forked JVM, recorded in run metadata so a caller
+        can confirm every ``jvm_args`` entry reached the fork. Empty when the
+        command carries no ``jvm_args``.
+
+        Args:
+            cmd: A Maven command as built by ``build_maven_command``.
+
+        Returns:
+            The argLine value, or ``""`` when the command sets no argLine.
+        """
+        for part in cmd:
+            if part.startswith(ARG_LINE_PREFIX):
+                return part[len(ARG_LINE_PREFIX):]
+        return ""
+
     def start_run(self, config: RunConfig) -> tuple[str, str]:
         """Start a new test run. Returns (run_id, command).
 
@@ -319,6 +357,11 @@ class TestRunner:
         # Build command
         cmd = self.build_maven_command(config, run_dir, run_id)
         cmd_str = " ".join(cmd)
+
+        # The forked JVM's effective extra arguments (the -DargLine= value),
+        # recorded on every metadata record below so a caller can confirm each
+        # jvm_args entry reached the fork.
+        arg_line = self.arg_line_value(cmd)
 
         # Extract instruction set output dir from command if injected
         iset_output_dir = None
@@ -361,6 +404,7 @@ class TestRunner:
                 completed_at=datetime.now().isoformat(),
                 exit_code=preflight_result.exit_code,
                 command=cmd_str,
+                arg_line=arg_line,
                 jmx_monitoring=config.jmx_monitoring,
                 instruction_set_output_dir=iset_output_dir,
                 repetitions=config.repetitions,
@@ -376,6 +420,7 @@ class TestRunner:
                 status="running",
                 started_at=datetime.now().isoformat(),
                 command=cmd_str,
+                arg_line=arg_line,
                 jmx_monitoring=config.jmx_monitoring,
                 instruction_set_output_dir=iset_output_dir,
                 repetitions=config.repetitions,
@@ -417,6 +462,7 @@ class TestRunner:
             status="running",
             started_at=datetime.now().isoformat(),
             command=cmd_str,
+            arg_line=arg_line,
             jmx_monitoring=config.jmx_monitoring,
             instruction_set_output_dir=iset_output_dir
         )
@@ -1353,6 +1399,15 @@ async def call_tool(name: str, arguments: dict):
                 "project": str(project_root),
                 "command": command
             }
+            # The forked JVM's effective extra arguments (space-joined, in
+            # order), so a caller can confirm every jvm_args entry was carried
+            # into the fork's argLine rather than silently dropped. Always
+            # present -- empty string when the run passes no jvm_args -- so a
+            # caller has one stable, checkable shape rather than an optional
+            # field. Joined the same way build_maven_command builds the
+            # -DargLine= value; splitting the rendered command string instead
+            # would re-break it on the very spaces that join the entries.
+            response["arg_line"] = " ".join(jvm_args)
             # Include instruction set output directory if it was auto-injected
             output_dir_prefix = "-DAR_INSTRUCTION_SET_OUTPUT_DIR="
             for part in command.split():

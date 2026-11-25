@@ -288,5 +288,349 @@ class TestGithubStartTestRun(unittest.TestCase):
         mock_gh.assert_not_called()
 
 
+@patch.object(server, "_resolve_github_repo",
+              return_value=("org", "repo", "feature/x", None))
+class TestGithubRerunFailedJobs(unittest.TestCase):
+    """Rerunning the failed jobs of an existing run, in place."""
+
+    def setUp(self):
+        _grant_all_scopes()
+
+    def _run(self, status="completed", attempt=1):
+        return {"id": 99, "status": status, "conclusion": "failure",
+                "run_attempt": attempt, "html_url": "https://run/99"}
+
+    def _jobs(self, *conclusions):
+        return {"jobs": [{"conclusion": c} for c in conclusions]}
+
+    def _jobs_page(self, conclusion, count):
+        return {"jobs": [{"conclusion": conclusion} for _ in range(count)]}
+
+    @patch.object(server, "_github_request")
+    def test_happy_path_reruns_failed_jobs(self, mock_gh, mock_repo):
+        mock_gh.side_effect = [
+            self._run(attempt=1),            # GET run
+            self._jobs("success", "failure"),  # GET jobs
+            {"ok": True, "status": 201},     # POST rerun-failed-jobs
+            self._run(attempt=2),            # GET run (refreshed)
+        ]
+        result = server.github_rerun_failed_jobs(run_id=99)
+        self.assertTrue(result["ok"], msg=result.get("error"))
+        self.assertEqual(99, result["run_id"])
+        self.assertEqual("org/repo", result["repo"])
+        self.assertEqual(2, result["run_attempt"])
+        self.assertEqual("https://run/99", result["html_url"])
+        # A contextual (no org/repo) call's follow-up carries only the run id.
+        self.assertEqual(
+            ["Follow the new attempt with "
+             "github_workflow_run_status(run_id=99)"],
+            result["next_steps"])
+        # The rerun POST hit the rerun-failed-jobs endpoint with no payload.
+        post_call = mock_gh.call_args_list[2]
+        self.assertEqual("POST", post_call.args[0])
+        self.assertEqual(
+            "/repos/org/repo/actions/runs/99/rerun-failed-jobs",
+            post_call.args[1])
+        self.assertEqual(2, len(post_call.args))  # method and path, no payload
+
+    @patch.object(server, "_github_request")
+    def test_zero_run_id_rejected(self, mock_gh, mock_repo):
+        result = server.github_rerun_failed_jobs(run_id=0)
+        self.assertFalse(result["ok"])
+        self.assertIn("run_id", result["error"])
+        mock_gh.assert_not_called()
+
+    @patch.object(server, "_github_request")
+    def test_refused_while_run_in_progress(self, mock_gh, mock_repo):
+        mock_gh.return_value = self._run(status="in_progress")
+        result = server.github_rerun_failed_jobs(run_id=99)
+        self.assertFalse(result["ok"])
+        self.assertIn("in_progress", result["error"])
+        # The run was read; no jobs listing and no rerun POST followed.
+        self.assertEqual(1, mock_gh.call_count)
+
+    @patch.object(server, "_github_request")
+    def test_refused_when_nothing_failed(self, mock_gh, mock_repo):
+        mock_gh.side_effect = [
+            self._run(),
+            self._jobs("success", "success"),
+        ]
+        result = server.github_rerun_failed_jobs(run_id=99)
+        self.assertFalse(result["ok"])
+        self.assertIn("no failed", result["error"])
+        # Read the run and its jobs, but did not POST a rerun.
+        self.assertEqual(2, mock_gh.call_count)
+
+    @patch.object(server, "_github_request")
+    def test_cancelled_job_is_rerunnable(self, mock_gh, mock_repo):
+        mock_gh.side_effect = [
+            self._run(),
+            self._jobs("success", "cancelled"),
+            {"ok": True, "status": 201},
+            self._run(attempt=2),
+        ]
+        result = server.github_rerun_failed_jobs(run_id=99)
+        self.assertTrue(result["ok"], msg=result.get("error"))
+
+    @patch.object(server, "_github_request")
+    def test_failure_on_a_later_job_page_is_found(self, mock_gh, mock_repo):
+        # A run with more than 100 jobs whose only failure sits on the second
+        # page must still be rerun: the jobs listing follows pagination rather
+        # than deciding from the first page of all-successes alone.
+        mock_gh.side_effect = [
+            self._run(),                           # GET run
+            self._jobs_page("success", 100),       # GET jobs page 1 (full)
+            self._jobs("success", "failure"),      # GET jobs page 2 (short)
+            {"ok": True, "status": 201},           # POST rerun-failed-jobs
+            self._run(attempt=2),                  # GET run (refreshed)
+        ]
+        result = server.github_rerun_failed_jobs(run_id=99)
+        self.assertTrue(result["ok"], msg=result.get("error"))
+        # Both job pages were read, with page in the second request's path.
+        self.assertIn("page=2", mock_gh.call_args_list[2].args[1])
+        # The POST landed only after paginating, not before.
+        self.assertEqual("POST", mock_gh.call_args_list[3].args[0])
+
+    @patch.object(server, "_github_request")
+    def test_paging_stops_at_first_page_with_a_rerunnable_job(
+            self, mock_gh, mock_repo):
+        # A full first page that already carries a failure is enough to decide a
+        # rerun; the scan must not read further pages (saving API calls and
+        # rate-limit budget on large matrix runs). Page 1 is 99 successes plus a
+        # failure (a full 100), and no page-2 response is queued — reading one
+        # would raise StopIteration and fail the test.
+        page1 = {"jobs": [{"conclusion": "success"} for _ in range(99)]
+                 + [{"conclusion": "failure"}]}
+        mock_gh.side_effect = [
+            self._run(),                     # GET run
+            page1,                           # GET jobs page 1 (full, has failure)
+            {"ok": True, "status": 201},     # POST rerun-failed-jobs
+            self._run(attempt=2),            # GET run (refreshed)
+        ]
+        result = server.github_rerun_failed_jobs(run_id=99)
+        self.assertTrue(result["ok"], msg=result.get("error"))
+        # Only page 1 was read, then the POST — page 2 was never requested.
+        self.assertIn("page=1", mock_gh.call_args_list[1].args[1])
+        self.assertEqual("POST", mock_gh.call_args_list[2].args[0])
+        self.assertEqual(4, mock_gh.call_count)
+
+    @patch.object(server, "_github_request")
+    def test_jobs_listing_pins_latest_attempt(self, mock_gh, mock_repo):
+        # The jobs listing must scope to the latest attempt so a failure left
+        # behind by an earlier attempt — that the latest attempt has since
+        # passed — cannot trigger an unnecessary rerun. The request carries
+        # filter=latest rather than relying on the endpoint's default.
+        mock_gh.side_effect = [
+            self._run(),
+            self._jobs("success", "success"),
+        ]
+        result = server.github_rerun_failed_jobs(run_id=99)
+        self.assertFalse(result["ok"])
+        self.assertIn("no failed", result["error"])
+        jobs_path = mock_gh.call_args_list[1].args[1]
+        self.assertIn("filter=latest", jobs_path)
+
+    @patch.object(server, "_github_request")
+    def test_full_single_page_of_successes_is_refused(self, mock_gh, mock_repo):
+        # Exactly 100 jobs that all passed: page 1 is full, page 2 is empty, and
+        # with nothing failed on either page the run is refused rather than
+        # rerun.
+        mock_gh.side_effect = [
+            self._run(),
+            self._jobs_page("success", 100),       # GET jobs page 1 (full)
+            self._jobs(),                          # GET jobs page 2 (empty)
+        ]
+        result = server.github_rerun_failed_jobs(run_id=99)
+        self.assertFalse(result["ok"])
+        self.assertIn("no failed", result["error"])
+        self.assertEqual(3, mock_gh.call_count)  # run + two job pages, no POST
+
+    @patch.object(server, "_github_request")
+    def test_unexpected_jobs_shape_is_surfaced_not_silently_empty(
+            self, mock_gh, mock_repo):
+        # A jobs response that is accepted but lacks the expected "jobs" list is
+        # an unexpected shape, not an empty run. Treating it as no jobs would
+        # refuse a possibly-rerunnable run with a misleading "nothing to rerun";
+        # instead the listing surfaces an error and no rerun POST follows.
+        mock_gh.side_effect = [
+            self._run(),                     # GET run
+            {"total_count": 3},              # GET jobs (missing "jobs" list)
+        ]
+        result = server.github_rerun_failed_jobs(run_id=99)
+        self.assertFalse(result["ok"])
+        self.assertIn("could not list jobs", result["error"])
+        self.assertNotIn("no failed", result["error"])
+        self.assertEqual(2, mock_gh.call_count)  # run + jobs, no POST
+
+    @patch.object(server, "_github_request")
+    def test_github_403_reports_actions_write(self, mock_gh, mock_repo):
+        mock_gh.side_effect = [
+            self._run(),
+            self._jobs("failure"),
+            {"ok": False, "error": "GitHub returned HTTP 403: Forbidden"},
+        ]
+        result = server.github_rerun_failed_jobs(run_id=99)
+        self.assertFalse(result["ok"])
+        self.assertIn("HTTP 403", result["error"])
+        self.assertIn("Actions write", result["error"])
+        self.assertIn("org/repo", result["error"])
+
+    @patch.object(server, "_github_request")
+    def test_non_403_rerun_error_is_not_augmented(self, mock_gh, mock_repo):
+        mock_gh.side_effect = [
+            self._run(),
+            self._jobs("failure"),
+            {"ok": False, "error": "GitHub returned HTTP 409: Conflict",
+             "status": 409},
+        ]
+        result = server.github_rerun_failed_jobs(run_id=99)
+        self.assertEqual(
+            {"ok": False, "error": "GitHub returned HTTP 409: Conflict"},
+            result)
+        self.assertEqual(3, mock_gh.call_count)
+
+    @patch.object(server, "_github_request")
+    def test_timed_out_job_is_rerunnable(self, mock_gh, mock_repo):
+        mock_gh.side_effect = [
+            self._run(),
+            self._jobs("success", "timed_out"),
+            {"ok": True, "status": 201},
+            self._run(attempt=2),
+        ]
+        result = server.github_rerun_failed_jobs(run_id=99)
+        self.assertTrue(result["ok"], msg=result.get("error"))
+        self.assertEqual(2, result["run_attempt"])
+        self.assertEqual("POST", mock_gh.call_args_list[2].args[0])
+
+    @patch.object(server, "_github_request")
+    def test_boolean_run_id_rejected(self, mock_gh, mock_repo):
+        result = server.github_rerun_failed_jobs(run_id=True)
+        self.assertFalse(result["ok"])
+        self.assertIn("run_id", result["error"])
+        mock_gh.assert_not_called()
+
+    @patch.object(server, "_github_request")
+    def test_negative_run_id_rejected(self, mock_gh, mock_repo):
+        result = server.github_rerun_failed_jobs(run_id=-5)
+        self.assertFalse(result["ok"])
+        self.assertIn("run_id", result["error"])
+        mock_gh.assert_not_called()
+
+    @patch.object(server, "_github_request")
+    def test_unexpected_run_shape_is_refused(self, mock_gh, mock_repo):
+        mock_gh.return_value = {"id": 99}
+        result = server.github_rerun_failed_jobs(run_id=99)
+        self.assertFalse(result["ok"])
+        self.assertIn("could not read workflow run 99 on org/repo",
+                      result["error"])
+        self.assertEqual({"id": 99}, result["returned"])
+        # Nothing beyond the run read happened: no jobs listing, no POST.
+        self.assertEqual(1, mock_gh.call_count)
+
+    @patch.object(server, "_github_request",
+                  return_value={"ok": False, "error": "GitHub returned HTTP 404"})
+    def test_run_read_error_propagated(self, mock_gh, mock_repo):
+        result = server.github_rerun_failed_jobs(run_id=99)
+        self.assertEqual({"ok": False, "error": "GitHub returned HTTP 404"},
+                         result)
+
+    @patch.object(server, "_github_request")
+    @patch.object(server, "_require_org_in_scope")
+    def test_org_scope_gate_for_direct_addressing(
+            self, mock_gate, mock_gh, mock_repo):
+        mock_gh.side_effect = [
+            self._run(),
+            self._jobs("failure"),
+            {"ok": True, "status": 201},
+            self._run(attempt=2),
+        ]
+        result = server.github_rerun_failed_jobs(
+            run_id=99, org="org", repo="repo")
+        self.assertTrue(result["ok"], msg=result.get("error"))
+        mock_gate.assert_called_once_with("org")
+
+    @patch.object(server, "_github_request")
+    @patch.object(server, "_require_org_in_scope",
+                  side_effect=PermissionError("out of scope"))
+    def test_out_of_scope_org_refused(self, mock_gate, mock_gh, mock_repo):
+        with self.assertRaises(PermissionError):
+            server.github_rerun_failed_jobs(
+                run_id=99, org="other", repo="repo")
+        mock_gh.assert_not_called()
+
+    @patch.object(server, "_github_request")
+    def test_attempt_unknown_when_refresh_fails(self, mock_gh, mock_repo):
+        # The rerun POST succeeded, but re-reading the run fails: rather than
+        # report the stale pre-rerun attempt (1), run_attempt stays None while
+        # the unchanged html_url is still carried through from the first read.
+        mock_gh.side_effect = [
+            self._run(attempt=1),            # GET run
+            self._jobs("failure"),           # GET jobs
+            {"ok": True, "status": 201},     # POST rerun-failed-jobs
+            {"ok": False, "error": "GitHub returned HTTP 500"},  # refresh fails
+        ]
+        result = server.github_rerun_failed_jobs(run_id=99)
+        self.assertTrue(result["ok"], msg=result.get("error"))
+        self.assertIsNone(result["run_attempt"])
+        self.assertEqual("https://run/99", result["html_url"])
+
+    @patch.object(server, "_github_request")
+    def test_attempt_unknown_when_refresh_reports_stale_attempt(
+            self, mock_gh, mock_repo):
+        # The rerun POST succeeded, but the immediate re-read is briefly stale
+        # and still reports the pre-rerun attempt (1). A rerun advances the
+        # attempt, so an unadvanced number cannot confirm the new attempt:
+        # run_attempt stays None rather than reporting the stale 1, while the
+        # unchanged html_url is still carried through.
+        mock_gh.side_effect = [
+            self._run(attempt=1),            # GET run
+            self._jobs("failure"),           # GET jobs
+            {"ok": True, "status": 201},     # POST rerun-failed-jobs
+            self._run(attempt=1),            # GET run (refreshed, still stale)
+        ]
+        result = server.github_rerun_failed_jobs(run_id=99)
+        self.assertTrue(result["ok"], msg=result.get("error"))
+        self.assertIsNone(result["run_attempt"])
+        self.assertEqual("https://run/99", result["html_url"])
+
+    @patch.object(server, "_github_request")
+    def test_workstream_follow_up_names_workstream_id(self, mock_gh, mock_repo):
+        # A call resolved from an explicit workstream_id (no org/repo) must
+        # carry that id into the status follow-up, or the follow-up falls back
+        # to token context and can resolve a different repo.
+        mock_gh.side_effect = [
+            self._run(attempt=1),
+            self._jobs("failure"),
+            {"ok": True, "status": 201},
+            self._run(attempt=2),
+        ]
+        result = server.github_rerun_failed_jobs(run_id=99, workstream_id="ws-7")
+        self.assertTrue(result["ok"], msg=result.get("error"))
+        self.assertEqual(
+            ["Follow the new attempt with github_workflow_run_status("
+             "run_id=99, workstream_id='ws-7')"],
+            result["next_steps"])
+
+    @patch.object(server, "_github_request")
+    @patch.object(server, "_require_org_in_scope")
+    def test_direct_addressed_follow_up_names_org_and_repo(
+            self, mock_gate, mock_gh, mock_repo):
+        # A direct org/repo call may have no workstream/token context, so the
+        # status follow-up must name org and repo for its resolver to use.
+        mock_gh.side_effect = [
+            self._run(),
+            self._jobs("failure"),
+            {"ok": True, "status": 201},
+            self._run(attempt=2),
+        ]
+        result = server.github_rerun_failed_jobs(
+            run_id=99, org="org", repo="repo")
+        self.assertTrue(result["ok"], msg=result.get("error"))
+        self.assertEqual(
+            ["Follow the new attempt with github_workflow_run_status("
+             "run_id=99, org='org', repo='repo')"],
+            result["next_steps"])
+
+
 if __name__ == "__main__":
     unittest.main()

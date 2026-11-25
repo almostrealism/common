@@ -230,13 +230,9 @@ public class CollectionSlotUpdateComputation extends TransitiveDeltaExpressionCo
 							+ " (delta expansion is not supported)");
 		}
 
-		return (CollectionProducerParallelProcess)
+		return copyConfigurationTo(
 				new CollectionSlotUpdateComputation(getShape(), blocks, blockSize, slotSize,
-						positionStride, base, values, positions)
-				.setPostprocessor(getPostprocessor())
-				.setDescription(getDescription())
-				.setShortCircuit(getShortCircuit())
-				.addAllDependentLifecycles(getDependentLifecycles());
+						positionStride, base, values, positions));
 	}
 
 	@Override

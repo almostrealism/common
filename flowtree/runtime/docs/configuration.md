@@ -425,6 +425,36 @@ The `channelOwnerUserId` is read by `FlowTreeController.loadConfig()` and passed
 
 Workstreams can be defined statically in the YAML file or created dynamically via the `POST /api/workstreams` registration endpoint. Dynamically created workstreams are persisted back to the YAML file.
 
+### Completion listeners in YAML
+
+Two per-workstream fields control completion listeners. `WorkstreamConfig.WorkstreamEntry` reads and writes both of them:
+
+| Field | Type | Default | Set on | Meaning |
+|-------|------|---------|--------|---------|
+| `completionListeners` | list of workstream IDs | empty (no wake-ups) | the **source** workstream | When a job on this workstream reaches a terminal status, submit a wake-up job to each listed workstream |
+| `dormantForCompletionListeners` | boolean | `false` | the **listener** workstream | When `true`, drop every wake-up aimed at this workstream. Manual submissions still work |
+
+```yaml
+workstreams:
+  - workstreamId: "ws-worker"
+    defaultBranch: "feature/worker-task"
+    completionListeners:
+      - "ws-orch"            # wake the orchestrator when a worker job finishes
+  - workstreamId: "ws-orch"
+    defaultBranch: "feature/orchestrator"
+    dispatchCapable: true    # lets the orchestrator's agents register and update workers
+    # dormantForCompletionListeners: true   # pause wake-ups to the orchestrator
+```
+
+Entries must be workstream IDs, not branch names. Blank entries are dropped by `Workstream.setCompletionListeners`. `ListenerCycleChecker` checks for cycles in edits made through the registration API (`POST /api/workstreams` and `POST /api/workstreams/{id}/update`, and the `workstream_register` / `workstream_update_config` MCP tools that call them). It does **not** check a hand-edited YAML file when the file is loaded, so a cycle written straight into the file is not caught. Prefer the API for listener changes.
+
+Not every relevant setting lives in this file:
+
+- The global off switch, `acceptAutomatedJobs` on `FlowTreeApiEndpoint`, is not a YAML setting. It starts as `true` every time the controller starts and is changed at runtime with `POST /api/config/accept-automated-jobs` or the `controller_update_config` MCP tool.
+- The fan-out limits in `CompletionListenerFanout` (30 s coalesce window, at most 6 wake-ups per listener per 600 s, a 300 s per-listener debounce, at most 25 wake-ups per source completion, chain depth 8) are compile-time constants, so they cannot be set here.
+
+See [CI Integration: Completion Listeners](ci-integration.md#completion-listeners) for the REST and MCP configuration, cycle rejection, the meaning of each limit, the kill switch, and how to read the `trigger_reason` column in the stats database.
+
 ---
 
 ## MCP Server Configuration

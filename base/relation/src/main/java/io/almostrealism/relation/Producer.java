@@ -215,8 +215,11 @@ public interface Producer<T> extends Supplier<Evaluable<? extends T>>, Computabl
 	}
 
 	/**
-	 * Returns {@code true} if this producer, or any producer among its inputs at any
-	 * depth, {@link #refersTo(Producer) refers to} the target.
+	 * Returns {@code true} if this producer, or any producer reached through
+	 * {@link #matchableInputs() matchable inputs} at any depth,
+	 * {@link #refersTo(Producer) refers to} the target. An input that a producer does not
+	 * present for matching is not searched, so a target reachable only through such an input
+	 * is not found.
 	 *
 	 * @param target the producer to search for
 	 * @return {@code true} if the target is found
@@ -226,14 +229,21 @@ public interface Producer<T> extends Supplier<Evaluable<? extends T>>, Computabl
 	}
 
 	/**
-	 * Returns the producers this producer is computed from, which are searched when
-	 * matching a target against its inputs. By default these are the producers among this
-	 * producer's {@link Process#getChildren() process children}. A producer that keeps
-	 * its inputs elsewhere, or whose process children present some inputs wrapped rather
-	 * than as producers, must override this method to expose them, or it will be reported
-	 * as independent of those inputs.
+	 * Returns the inputs of this producer that are searched when matching a target against
+	 * its inputs, which is how automatic differentiation finds the inputs through which this
+	 * producer depends on a variable. These are ordinarily all of the producers this producer
+	 * is computed from: by default, the producers among its
+	 * {@link Process#getChildren() process children} when it is a {@link Process}, and none
+	 * when it is not. A producer that keeps its inputs elsewhere, or whose process children
+	 * present some inputs wrapped rather than as producers, must override this method to
+	 * expose them, or it will be reported as independent of those inputs.
 	 *
-	 * @return the inputs of this producer, empty when it has none
+	 * <p>Being reported as independent is what a producer whose value is held constant with
+	 * respect to differentiation (a stop-gradient) asks for: it presents no inputs here,
+	 * whatever its value is computed from, so it {@link #cannotMatch(Producer) cannot match}
+	 * any target but itself.</p>
+	 *
+	 * @return the inputs through which a target may be matched, empty when there are none
 	 */
 	default Stream<? extends Producer<?>> matchableInputs() {
 		if (!(this instanceof Process)) return Stream.empty();
@@ -247,12 +257,12 @@ public interface Producer<T> extends Supplier<Evaluable<? extends T>>, Computabl
 	}
 
 	/**
-	 * Returns every one of this producer's {@link #matchableInputs() inputs} that
+	 * Returns every one of this producer's {@link #matchableInputs() matchable inputs} that
 	 * {@link #containsMatch(Producer) contains} the target. Used in automatic
 	 * differentiation to find the inputs through which this producer depends on a variable.
 	 *
 	 * @param target the producer to search for
-	 * @return the matching inputs, which is empty when this producer has no inputs
+	 * @return the matching inputs, which is empty when this producer has no matchable inputs
 	 */
 	default List<Producer<T>> matchingInputs(Producer<?> target) {
 		return matchableInputs()
@@ -262,8 +272,8 @@ public interface Producer<T> extends Supplier<Evaluable<? extends T>>, Computabl
 	}
 
 	/**
-	 * Returns the single input of this producer that {@link #containsMatch(Producer) contains}
-	 * the target.
+	 * Returns the single one of this producer's {@link #matchableInputs() matchable inputs}
+	 * that {@link #containsMatch(Producer) contains} the target.
 	 *
 	 * @param target the producer to search for
 	 * @return the matching input if exactly one exists, an empty {@link Optional} if none
@@ -287,7 +297,8 @@ public interface Producer<T> extends Supplier<Evaluable<? extends T>>, Computabl
 	 * the target. A producer that {@link #refersTo(Producer) refers to} the target depends
 	 * on it. Otherwise both are reduced to their {@link #getMatchRoot() match roots}: two
 	 * {@link #isMatchRoot() match roots} are independent, and any other producer is
-	 * independent of the target when none of its inputs contains it. The result is
+	 * independent of the target when none of its {@link #matchableInputs() matchable inputs}
+	 * contains it. The result is
 	 * {@code false} whenever independence cannot be established, including when several
 	 * inputs contain the target.
 	 *
