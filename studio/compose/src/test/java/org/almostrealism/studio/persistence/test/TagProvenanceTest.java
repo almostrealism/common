@@ -39,6 +39,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Stream;
@@ -294,6 +295,59 @@ public class TagProvenanceTest extends TestSuiteBase {
 			}
 		} finally {
 			reopened.close();
+		}
+	}
+
+	/**
+	 * An item that was never tagged reports no provenance keys and no stale
+	 * tags: {@link WaveDetails#getTagModelVersions()} is empty,
+	 * {@link WaveDetails#getTags(TagModelVersion)} is {@code null}, and both the
+	 * stale predicate and count are zero for any kept key.
+	 */
+	@Test(timeout = 60000)
+	public void untaggedItemHasNoTags() {
+		WaveDetails d = new WaveDetails("untagged-0", SAMPLE_RATE);
+
+		Assert.assertTrue("no keys on an untagged item", d.getTagModelVersions().isEmpty());
+		Assert.assertNull("no tags for any key", d.getTags(CURRENT));
+		Assert.assertEquals("no stale tag sets", 0, d.otherModelTagCount(CURRENT));
+		Assert.assertFalse("no stale tags to clean", d.hasOtherModelTags(CURRENT));
+
+		d.removeOtherModelTags(CURRENT);
+		Assert.assertTrue("removal on an untagged item is a no-op",
+				d.getTagModelVersions().isEmpty());
+	}
+
+	/**
+	 * Tag provenance and payload reject {@code null}, so that every tag set can
+	 * be persisted: a {@link TagModelVersion} needs both a model and a
+	 * vocabulary version, and a {@link WaveTags} rejects a null tag map, a null
+	 * label, and a null score (including a null value inside the map constructor).
+	 */
+	@Test(timeout = 60000)
+	public void rejectsNullTagData() {
+		assertRejectsNull("null model identifier", () -> new TagModelVersion(null, VOCAB));
+		assertRejectsNull("null vocabulary version", () -> new TagModelVersion(TAG_MODEL, null));
+
+		assertRejectsNull("null key", () -> new WaveTags(null));
+		assertRejectsNull("null tag map", () -> new WaveTags(CURRENT, null));
+
+		Map<String, Double> withNullScore = new HashMap<>();
+		withNullScore.put("kick", null);
+		assertRejectsNull("null score in map", () -> new WaveTags(CURRENT, withNullScore));
+
+		WaveTags tags = new WaveTags(CURRENT);
+		assertRejectsNull("null label", () -> tags.putTag(null, 0.1));
+		assertRejectsNull("null score", () -> tags.putTag("kick", null));
+	}
+
+	/** Asserts the action throws {@link NullPointerException}. */
+	private static void assertRejectsNull(String message, Runnable action) {
+		try {
+			action.run();
+			Assert.fail("expected NullPointerException: " + message);
+		} catch (NullPointerException expected) {
+			// the rejection under test
 		}
 	}
 }
