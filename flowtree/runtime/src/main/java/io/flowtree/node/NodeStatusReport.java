@@ -68,8 +68,8 @@ public final class NodeStatusReport {
 	/**
 	 * The structural delimiter characters of the status payload and the labels field. A label
 	 * key or value that contains any of them cannot be represented unambiguously in this flat
-	 * wire format (it would split into extra pairs or forge a status field), so such a label is
-	 * omitted from the report rather than emitted and corrupting the payload.
+	 * wire format (it would split into extra pairs or forge a status field), so a label set
+	 * containing one is reported as unknown rather than emitted and corrupting the payload.
 	 */
 	private static final String RESERVED = FIELD_SEPARATOR + VALUE_SEPARATOR
 			+ LABEL_SEPARATOR + LABEL_ASSIGNMENT;
@@ -121,35 +121,46 @@ public final class NodeStatusReport {
 
 	/**
 	 * Encodes this report's busy and label fields for appending to a
-	 * {@link io.flowtree.msg.Message#ServerStatus} payload. The returned text is the two
-	 * {@code key:value} fields joined by {@value #FIELD_SEPARATOR}, with no leading separator,
+	 * {@link io.flowtree.msg.Message#ServerStatus} payload. The returned text is the busy field,
+	 * followed by the labels field when it can be written (see below), joined by
+	 * {@value #FIELD_SEPARATOR}, with no leading separator,
 	 * so the caller joins it to the rest of the payload with one. A node builds a report of its
 	 * own state ({@code new NodeStatusReport(group.isWorking(), group.getLabels())}) to report
 	 * it; the busy field is written as {@code false} when {@link #busy()} is {@code null},
 	 * because a node reporting its own state always knows it.
 	 *
-	 * @return  the encoded fields, e.g. {@code "busy:false;labels:platform=linux,hostname=halo"}.
+	 * <p>The labels field is written only when the complete label set can be represented (see
+	 * {@link #encodeLabels}). When {@link #labels()} is {@code null}, or any label carries a
+	 * {@link #RESERVED structural delimiter}, the field is left out entirely, so the receiver
+	 * reads the labels as unknown rather than as an authoritative empty or partial set.</p>
+	 *
+	 * @return  the encoded fields, e.g. {@code "busy:false;labels:platform=linux,hostname=halo"},
+	 *          or just {@code "busy:false"} when the labels cannot be reported faithfully.
 	 */
 	public String encode() {
-		return BUSY_KEY + VALUE_SEPARATOR + Boolean.TRUE.equals(busy)
-				+ FIELD_SEPARATOR + LABELS_KEY + VALUE_SEPARATOR + encodeLabels(labels);
+		String fields = BUSY_KEY + VALUE_SEPARATOR + Boolean.TRUE.equals(busy);
+		String encodedLabels = encodeLabels(labels);
+		if (encodedLabels == null) return fields;
+		return fields + FIELD_SEPARATOR + LABELS_KEY + VALUE_SEPARATOR + encodedLabels;
 	}
 
 	/**
-	 * Encodes a label map as {@code key=value} pairs separated by {@value #LABEL_SEPARATOR}. A
-	 * label whose key or value contains a {@link #RESERVED structural delimiter} is omitted,
-	 * since this flat format cannot carry one without ambiguity; the report is best-effort
-	 * routing diagnostics, so dropping such a label is preferable to corrupting the payload.
+	 * Encodes a label map as {@code key=value} pairs separated by {@value #LABEL_SEPARATOR}. This
+	 * flat format cannot carry a label whose key or value contains a {@link #RESERVED structural
+	 * delimiter}, and silently dropping such a label would present the remaining labels as the
+	 * node's complete capability set; so when any label is unrepresentable the whole set is
+	 * reported as unknown instead.
 	 *
 	 * @param labels  the labels to encode; may be {@code null} or empty.
-	 * @return  the encoded labels, or the empty string when there are none to encode.
+	 * @return  the encoded labels (the empty string for an empty set), or {@code null} when the
+	 *          labels are unknown or cannot all be encoded.
 	 */
 	private static String encodeLabels(Map<String, String> labels) {
-		if (labels == null || labels.isEmpty()) return "";
+		if (labels == null) return null;
 
 		StringBuilder out = new StringBuilder();
 		for (Map.Entry<String, String> entry : labels.entrySet()) {
-			if (!isEncodable(entry.getKey()) || !isEncodable(entry.getValue())) continue;
+			if (!isEncodable(entry.getKey()) || !isEncodable(entry.getValue())) return null;
 			if (out.length() > 0) out.append(LABEL_SEPARATOR);
 			out.append(entry.getKey()).append(LABEL_ASSIGNMENT).append(entry.getValue());
 		}
@@ -180,7 +191,8 @@ public final class NodeStatusReport {
 	 * differs from the one in use. A malformed pair — one without a non-empty key ahead of its
 	 * {@value #LABEL_ASSIGNMENT} — makes the whole field unreliable, so the labels decode to
 	 * {@code null} ("unknown") rather than to a partial or empty set that would read as
-	 * authoritative; this mirrors the strict {@link #parseBusy} contract.
+	 * authoritative; this mirrors the strict {@link #parseBusy} contract. Empty pairs, including a
+	 * trailing one left by a dangling {@value #LABEL_SEPARATOR}, are malformed too.
 	 *
 	 * @param value  the encoded labels, e.g. {@code "platform=linux,hostname=halo"}.
 	 * @return  the decoded labels; an empty map when the field was blank, or {@code null} when a
@@ -190,7 +202,7 @@ public final class NodeStatusReport {
 		Map<String, String> labels = new LinkedHashMap<>();
 		if (value == null || value.isEmpty()) return labels;
 
-		for (String pair : value.split(LABEL_SEPARATOR)) {
+		for (String pair : value.split(LABEL_SEPARATOR, -1)) {
 			int eq = pair.indexOf(LABEL_ASSIGNMENT);
 			if (eq <= 0) return null;
 

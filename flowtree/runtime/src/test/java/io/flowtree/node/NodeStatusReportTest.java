@@ -158,24 +158,69 @@ public class NodeStatusReportTest extends TestSuiteBase {
 	}
 
 	/**
-	 * A label whose key or value carries one of the payload's structural delimiters is dropped
-	 * from the encoding, so it can neither split into spurious pairs nor forge a status field
-	 * such as {@code busy}. The surviving labels still round-trip unchanged.
+	 * A label whose key or value carries one of the payload's structural delimiters cannot be
+	 * encoded, so the labels field is left out entirely: it can neither split into spurious pairs
+	 * nor forge a status field such as {@code busy}, and the receiver reads the labels as unknown
+	 * rather than as an authoritative partial set made of the labels that happened to survive.
 	 */
 	@Test(timeout = 10000)
-	public void encodeOmitsLabelsCarryingDelimiters() {
+	public void encodeReportsLabelsUnknownWhenAnyCarriesDelimiter() {
 		Map<String, String> labels = new LinkedHashMap<>();
 		labels.put("platform", "linux");
 		labels.put("role", "a;busy=true");
 		labels.put("re,gion", "us");
 
 		String fields = new NodeStatusReport(false, labels).encode();
-		Assert.assertEquals("busy:false;labels:platform=linux", fields);
+		Assert.assertEquals("busy:false", fields);
 
 		NodeStatusReport parsed = NodeStatusReport.parse(fields);
 		Assert.assertEquals(Boolean.FALSE, parsed.busy());
-		Assert.assertEquals(1, parsed.labels().size());
-		Assert.assertEquals("linux", parsed.labels().get("platform"));
+		Assert.assertNull("a partially unrepresentable label set is unknown", parsed.labels());
+	}
+
+	/**
+	 * A label set made only of unrepresentable labels must not encode as an empty {@code labels:}
+	 * field, which the receiver would read as "known to have no labels".
+	 */
+	@Test(timeout = 10000)
+	public void encodeOfOnlyUnrepresentableLabelsIsNotEmptySet() {
+		Map<String, String> labels = new LinkedHashMap<>();
+		labels.put("role", "gpu:metal");
+
+		String fields = new NodeStatusReport(true, labels).encode();
+		Assert.assertEquals("busy:true", fields);
+		Assert.assertNull(NodeStatusReport.parse(fields).labels());
+	}
+
+	/**
+	 * Encoding distinguishes unknown labels from an empty set: {@code null} labels omit the field,
+	 * while an empty map emits an empty field that decodes back to an empty, non-null map.
+	 */
+	@Test(timeout = 10000)
+	public void encodeDistinguishesUnknownLabelsFromEmptySet() {
+		String unknown = new NodeStatusReport(false, null).encode();
+		Assert.assertEquals("busy:false", unknown);
+		Assert.assertNull(NodeStatusReport.parse(unknown).labels());
+
+		String empty = new NodeStatusReport(false, new LinkedHashMap<>()).encode();
+		Assert.assertEquals("busy:false;labels:", empty);
+		Map<String, String> decoded = NodeStatusReport.parse(empty).labels();
+		Assert.assertNotNull(decoded);
+		Assert.assertTrue(decoded.isEmpty());
+	}
+
+	/**
+	 * A dangling label separator leaves an empty trailing pair, which is malformed; the whole
+	 * labels field decodes to unknown instead of the pairs that preceded it.
+	 */
+	@Test(timeout = 10000)
+	public void parseOfTrailingEmptyLabelPairReportsUnknown() {
+		NodeStatusReport trailing = NodeStatusReport.parse("busy:false;labels:platform=linux,");
+		Assert.assertEquals(Boolean.FALSE, trailing.busy());
+		Assert.assertNull("a trailing empty pair is malformed", trailing.labels());
+
+		NodeStatusReport inner = NodeStatusReport.parse("busy:false;labels:platform=linux,,os=mac");
+		Assert.assertNull("an inner empty pair is malformed", inner.labels());
 	}
 
 	/**
