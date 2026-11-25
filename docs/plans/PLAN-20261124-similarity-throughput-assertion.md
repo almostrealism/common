@@ -44,10 +44,10 @@ In `engine/utils/src/test/java/org/almostrealism/collect/test/SimilarityOverhead
 
 - **Add** a new `@Test` method (proposed name `pairwiseSimilarityThroughputFloor`)
   that:
-  - keeps the existing GPU assumption guard
-    (`Assume.assumeTrue(... isAvailable(ComputeRequirement.GPU))`) so it runs only
-    where an accelerator is present, matching the configuration whose timing
-    matters;
+  - runs only where a Metal context is available
+    (`Assume.assumeTrue(... hasContext(MetalComputeContext.class, ComputeRequirement.MTL))`),
+    the one backend on which the floor has a measured baseline (see the resolved
+    open question on backend scoping below);
   - drives the **same** `productSimilarity(cp(a), cp(b), FRAMES)` helper the
     existing `pairwiseSimilarityAtScale` uses, so it measures the identical
     per-call expression-tree pattern (see the note under "Dependencies and open
@@ -160,11 +160,12 @@ Metal alone, but once merged it must also hold on the CUDA lane; a Metal-only
 measurement is not by itself evidence that the floor is safe there. The
 implementation session is given a macOS node to measure the Metal baseline
 (`task-20261124-213950-workstream.yaml`, `requiredLabels: platform: macos`) and
-has no CUDA node, so the CUDA throughput is unmeasured during implementation. That
-is what makes a generous margin (below) load-bearing rather than cosmetic: it is
-the only thing standing between the floor and a fresh flake on the CUDA lane after
-merge. See the open questions on the floor margin and on whether the floor should
-be scoped to a single backend.
+has no CUDA node, so the CUDA throughput is unmeasured during implementation.
+
+**Resolution:** the implemented method assumes a Metal context, so the floor is
+enforced on the `test-mac` lane only. On `test-cuda` the new method is skipped,
+and CUDA stays covered by `pairwiseSimilarityAtScale` as before. Measuring a CUDA
+baseline and extending the floor to CUDA is a tracked follow-up.
 
 ## Success criteria
 
@@ -177,7 +178,7 @@ be scoped to a single backend.
   unchanged except where unavoidable; no dimension, timeout, tolerance, depth, or
   assertion change to any existing method.
 - The new method passes on the CI lanes:
-  - skips cleanly (via the GPU assumption) on the Linux CPU lanes;
+  - skips cleanly (via the Metal assumption) on every Linux lane, CPU and CUDA;
   - runs and passes on the macOS/Metal lane with comfortable headroom below the
     timeout.
 - `test-integrity-check` passes (no detector fires), and the build validator
@@ -195,27 +196,17 @@ on the Metal lane. CI's macOS lane is the authoritative confirmation.
 - **Dependency: a macOS/Metal node for implementation.** The baseline must be
   measured where the GPU path actually runs. Captured in
   `docs/plans/task-20261124-213950-workstream.yaml`.
-- **Open question — floor margin.** How much safety margin below the measured
-  healthy rate? The margin has to absorb two sources of variance at once: ordinary
-  self-hosted-host contention on the Metal lane, and the *unmeasured* throughput of
-  the CUDA lane, where the test also runs after merge (see "Where the baseline must
-  be measured"). A floor set at a bare ~2x below the Metal healthy rate risks
-  simply relocating the timeout-flake to a throughput-floor-flake on either lane.
-  Recommended: derive the rate from a warm, steady-state region (exclude first-call
-  warmup) and set the floor **several-fold** below it rather than ~2x. The approver
-  may prefer a specific multiplier; the implementer sets the concrete number from
-  the Metal measurement and documents it.
-- **Open question — should the floor be backend-scoped?** Because the new method
-  runs on both Metal and CUDA but the baseline can only be measured on Metal, one
-  option is to restrict the throughput assertion to the Metal backend (an added
-  assumption on the Metal context) so the floor is a gate on the one hardware whose
-  healthy rate is known, and leave CUDA covered only by `pairwiseSimilarityAtScale`'s
-  timeout as today. The alternative — the plan's current default — is to run the
-  floor on every GPU backend and make the margin wide enough to cover CUDA sight
-  unseen. This is a genuine design trade-off (a narrower, better-characterised gate
-  vs. broader coverage with a looser threshold); the approver decides. Note a
-  backend scope here is a design choice for a *new* assertion, not a weakening of an
-  existing test — but it should be written so a reviewer can see that plainly.
+- **Resolved — floor margin.** The rate is measured over a warm region (200
+  untimed warmup comparisons first) and the floor, 150 comparisons/s, sits about
+  5.8x below the measured Metal rate of 852–882 comparisons/s, so ordinary
+  contention on the self-hosted Metal lane does not trip it.
+- **Resolved — the floor is backend-scoped to Metal.** An earlier CUDA profile
+  measured about 325 comparisons/s, only about 2x above the floor, and no current
+  CUDA baseline exists. So the assertion assumes a Metal context and gates only the
+  hardware whose healthy rate is known. CUDA stays covered by
+  `pairwiseSimilarityAtScale`'s timeout, as before. This scopes a *new* assertion and
+  weakens no existing test. Measuring a CUDA baseline so the floor can be extended
+  to CUDA is a tracked follow-up.
 - **Open question — is the 600 s budget actually near-full on the GPU lanes?**
   The premise that `pairwiseSimilarityAtScale` "nearly fills" its timeout rests
   on the ~0.8–1.5 ms/comparison the javadoc records for a **CPU-only host**; the
