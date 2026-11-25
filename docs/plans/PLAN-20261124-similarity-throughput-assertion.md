@@ -20,14 +20,18 @@ used before it was optimized — to measure the Java overhead of
 building `CollectionProducer` graphs versus native kernel execution.
 
 Its `pairwiseSimilarityAtScale` method runs 1000 tensors → ~499,500 comparisons
-under a deliberately tight `@Test(timeout = 600_000)`. At the measured baseline
-of roughly 1.2 ms/comparison that workload already consumes most of the 600 s
-budget, so the test has **no assertion about performance at all**: its only
-failure mechanism is the timeout. When a comparison runs slow (the method's own
-javadoc documents that waking native threads from deep CPU sleep on an idle
-host roughly doubles per-call cost), the run crosses 600 s and fails as an
-opaque timeout. That reads as a flake — there is no measured number saying "the
-path got slower," only "the test did not finish."
+under a deliberately tight `@Test(timeout = 600_000)`. The only per-call figure
+the method's javadoc records is ~0.8–1.5 ms/comparison measured **on a CPU-only
+host**, where waking native threads from deep CPU sleep on an otherwise-idle
+host roughly doubles the cost; at that order of magnitude the ~499,500-comparison
+workload already fills most of the 600 s budget. The test is GPU-gated (see
+"Where the baseline must be measured") precisely to avoid that CPU-only-host
+variance, so the per-call cost on the GPU lanes where it actually runs is not
+separately documented — but the workload is large enough that warmup or host/GPU
+contention on a busy self-hosted lane can still push a run across 600 s. Either
+way the test has **no assertion about performance at all**: its only failure
+mechanism is the timeout, which fails opaquely rather than reporting a measured
+number saying "the path got slower."
 
 The task asks for a real, measured guard: assert a floor on comparisons per
 second on the per-call `productSimilarity` path the test exercises, sized so a healthy run
@@ -213,6 +217,19 @@ on the Metal lane. CI's macOS lane is the authoritative confirmation.
   vs. broader coverage with a looser threshold); the approver decides. Note a
   backend scope here is a design choice for a *new* assertion, not a weakening of an
   existing test — but it should be written so a reviewer can see that plainly.
+- **Open question — is the 600 s budget actually near-full on the GPU lanes?**
+  The premise that `pairwiseSimilarityAtScale` "nearly fills" its timeout rests
+  on the ~0.8–1.5 ms/comparison the javadoc records for a **CPU-only host**; the
+  GPU lanes where the test actually runs have no separately documented per-call
+  cost. The implementation session measures the real GPU-lane per-call cost on
+  the Metal node anyway (to size `count`/`timeout`/`FLOOR`). If that cost turns
+  out to be well below the implied budget — the at-scale run finishing
+  comfortably inside 600 s on the GPU lanes — then the "opaque timeout flake"
+  this task sets out to replace is rarer than the motivation implies, and the
+  approver should weigh the throughput floor on its own merits (a measured
+  regression signal on the graph-building path) rather than as a timeout-flake
+  fix. Either way the floor is sized from the GPU-lane measurement, not from the
+  CPU-only-host figure.
 - **Open question — `blocked_by`.** The task record lists no blockers; nothing
   else needs to land first.
 - **Not a blocker, noted for context:** the production similarity path
