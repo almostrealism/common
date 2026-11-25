@@ -110,8 +110,8 @@ Out of scope (name as dependencies / follow-ups, do not widen this change):
   per-backend limits — all delivered and tested by the 2026-11-16 work.
 - Adding an argument limit to OpenCL/CUDA/native. Those report "no known limit" by design (no
   evidence-backed number); inventing one is explicitly forbidden by the prior plan.
-- Any substantial fix to a broken `isConstant()` implementation the audit might uncover. The 0.77
-  task review already flagged "split isConstant audit out"; if the audit finds a defect whose fix
+- Any substantial fix to a broken `isConstant()` implementation the audit might uncover. The previous
+  release's task review already flagged "split isConstant audit out"; if the audit finds a defect whose fix
   is more than a localized correction, file it as its own tracker task rather than growing this
   branch (see Open questions).
 
@@ -176,7 +176,7 @@ A reviewer can confirm the task is done when:
    the lowered-threshold path. If the approver reads Part 1 as already complete, the task collapses
    to Part 2 plus that one test. The task description should be corrected to reflect the landed
    mechanism (planning will note this on the tracker task).
-2. **Where does the `isConstant()` audit's fixes go?** The 0.77 task review recommends splitting the
+2. **Where does the `isConstant()` audit's fixes go?** The previous release's task review recommends splitting the
    `isConstant()` audit out of this task. The task's own "done when" allows findings to be *listed*
    rather than fixed. Proposed disposition: perform the audit here and list findings in the PR; if a
    non-trivial fix is discovered, file it as a separate tracker task (named here and in the PR) and
