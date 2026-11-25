@@ -92,7 +92,11 @@ FAMILY_TAGS = {
 
 
 def load(repo):
-    """Loads a CLAP2 checkpoint from the Hugging Face hub through open_clip."""
+    """Loads a CLAP2 checkpoint from the Hugging Face hub through open_clip.
+
+    For an audio checkpoint the second value open_clip returns is a factory, not the transform
+    itself: calling it with no arguments builds the evaluation transform, which then takes a
+    ``(waveform, sample_rate)`` pair and returns the patch dictionary ``encode_audio`` expects."""
     model, preprocess = open_clip.create_model_from_pretrained("hf-hub:" + repo)
     model.eval()
     return model, preprocess
