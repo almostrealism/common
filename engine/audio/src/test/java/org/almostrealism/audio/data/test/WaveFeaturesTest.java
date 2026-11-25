@@ -65,6 +65,25 @@ public class WaveFeaturesTest extends TestSuiteBase {
 	}
 
 	/**
+	 * Feature data stored as {@code [frames, bins, 1]}, the layout the audio library persists,
+	 * holds the same values as {@code [frames, bins]} and is pooled to the same per-bin mean.
+	 */
+	@Test(timeout = 60000)
+	public void meanPooledEmbeddingPoolsTrailingSingletonLayout() {
+		PackedCollection data = pack(1.0, 2.0, 3.0, 4.0,
+				5.0, 6.0, 7.0, 8.0,
+				3.0, 3.0, 3.0, 3.0).reshape(3, 4, 1);
+		PackedCollection embedding = new WaveFeatures("m", 10.0, 1, 4, 3, data).meanPooledEmbedding();
+
+		Assert.assertNotNull(embedding);
+		assertEquals(4, embedding.getMemLength());
+		assertEquals(3.0, embedding.toDouble(0));
+		assertEquals(11.0 / 3.0, embedding.toDouble(1));
+		assertEquals(13.0 / 3.0, embedding.toDouble(2));
+		assertEquals(5.0, embedding.toDouble(3));
+	}
+
+	/**
 	 * A clip of more than 63 latent frames (about six seconds of Stable Audio 3 latents) pools
 	 * without failing, and to the right mean. Pooling by chaining one addition per frame
 	 * overflowed the expansion width of the computation at 64 frames.

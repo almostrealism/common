@@ -183,15 +183,21 @@ public class WaveFeatures implements Destroyable {
 	 * with the clip length. Only the whole frames the feature memory holds are
 	 * summed; the sum is divided by the declared frame count.</p>
 	 *
+	 * <p>Data laid out as {@code [frames, bins, 1, ...]}, with every dimension
+	 * after the bins of size one, holds the same values as {@code [frames, bins]}
+	 * and is pooled the same way. Data whose later dimensions hold more than one
+	 * value per bin is not {@code [frames, bins]} data and is not pooled.</p>
+	 *
 	 * @return the {@code [bins]} mean, or {@code null} when there is no
 	 *         {@code [frames, bins]} feature data to pool
 	 */
 	public PackedCollection meanPooledEmbedding() {
-		if (featureData == null || featureData.getShape().getDimensions() != 2) return null;
+		if (featureData == null || featureData.getShape().getDimensions() < 2) return null;
 
 		int frames = featureData.getShape().length(0);
 		int bins = featureData.getShape().length(1);
 		if (frames == 0 || bins == 0) return null;
+		if (featureData.getShape().getTotalSizeLong() != (long) frames * bins) return null;
 
 		int available = Math.min(frames, featureData.getMemLength() / bins);
 		if (available == 0) return null;

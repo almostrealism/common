@@ -207,6 +207,7 @@ public class PrototypeDiversityDiagnosticTest extends TestSuiteBase implements G
 				frameAligned(clips, encoder.getLatentSampleRate()));
 		allFrames.destroy();
 		validFrames.destroy();
+		clips.forEach(clip -> clip.features().destroy());
 
 		encoder.destroy();
 		dictionary.destroy();
