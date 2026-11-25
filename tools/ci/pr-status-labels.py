@@ -50,6 +50,15 @@ chain's in-flight-workstream guard is not among them: the labeller holds no
 controller credentials, so the marker can show while a job is already in
 flight (in which case the switch would be refused).
 
+The marker is only valid beside a settled stage. A plan an agent is still
+validating, reviewing, testing or fixing is not ready to launch, so the marker
+is never added while the stage label is an in-progress one (``IN_PROGRESS``):
+``ci: ready to launch`` and ``ci: auto-review`` (or ``ci: validating`` /
+``ci: full tests`` / ``ci: auto-fix``) can never both be on a pull request.
+That exclusivity is enforced in ``label_changes`` from the stage label derived
+on the same pass, so a review starting on a later push removes the marker on
+the next call and the stateless recompute cannot leave the two together.
+
 The cap is read from the ``remediation-cap`` commit status that
 ``submit-agent-job.sh`` sets on the head commit when the controller refuses a
 remediation pass for that reason. The submit step itself stays green, and the
@@ -135,6 +144,17 @@ LABELS = {
 VALIDATE_SUBMITTERS = ("auto-review-submit", "auto-resolve-python-submit")
 TEST_SUBMITTERS = ("auto-resolve-python-submit",)
 STAGED_REQUEST = "auto-resolve-request"
+
+# The stage labels that mean an automated pass is in progress or about to run:
+# a validate run, a review agent's loop, the full test run, or a fix agent.
+# A plan in one of these is by definition not ready to launch — an agent is
+# still validating, reviewing, testing or fixing it — so the ready-to-launch
+# marker is never shown beside one of them. ``ci: auto-review`` and ``ci: ready
+# to launch`` can therefore never both sit on a pull request. These are exactly
+# the stages that can stall (the ones ``LABELS`` gives a non-None time budget);
+# the settled stages (``ci: ready for review``, ``ci: needs attention``,
+# ``ci: review limit``) never stall and are where the marker is allowed.
+IN_PROGRESS = frozenset({VALIDATING, AUTO_REVIEW, FULL_TESTS, AUTO_FIX})
 
 
 def parse_time(value):
@@ -306,12 +326,19 @@ def label_changes(current, label, stalled, ready=False):
     """The ``ci: `` labels to add and to remove, as two sorted lists.
 
     ``stalled`` and ``ready`` each add their marker beside the stage ``label``.
-    Every ``ci: `` label this script manages other than the wanted ones is
-    removed; labels outside that set are left alone."""
+    The ready-to-launch marker is suppressed while ``label`` is an in-progress
+    stage (see ``IN_PROGRESS``): a plan an agent is still validating, reviewing,
+    testing or fixing is not ready to launch, so ``ci: ready to launch`` and
+    ``ci: auto-review`` (or ``ci: validating`` / ``ci: full tests`` /
+    ``ci: auto-fix``) can never both be present. The rule lives here, the one
+    place that composes the wanted set, so every caller inherits it and the
+    freshly derived ``label`` decides it each time. Every ``ci: `` label this
+    script manages other than the wanted ones is removed; labels outside that
+    set are left alone."""
     wanted = {label}
     if stalled:
         wanted.add(STALLED)
-    if ready:
+    if ready and label not in IN_PROGRESS:
         wanted.add(READY_TO_LAUNCH)
     present = set(current) & set(LABELS)
     return sorted(wanted - present), sorted(present - wanted)
@@ -469,7 +496,8 @@ def main(argv=None):
             facts = gather(client, pr)
             label, since, reason = derive(facts, now)
             stalled = is_stalled(label, since, now)
-            ready = ready_to_launch(facts, client.repo)
+            ready = ready_to_launch(facts, client.repo) \
+                and label not in IN_PROGRESS
             add, remove = label_changes(
                 [item["name"] for item in pr.get("labels", [])], label, stalled,
                 ready)
