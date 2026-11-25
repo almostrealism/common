@@ -270,7 +270,6 @@ public class ConstantRepeatedDeltaComputation extends ConstantRepeatedProducerCo
 	 * @param offset The offset within the memory block
 	 * @return An {@link Expression} representing the destination memory location
 	 */
-	// TODO(review): add a deterministic regression test asserting delta destinations stay within the output buffer
 	@Override
 	protected Expression<?> getDestination(Expression<?> globalIndex, Expression<?> localIndex, Expression<?> offset) {
 		return super.getDestination(globalIndex, localIndex, localIndex.add(offset));
