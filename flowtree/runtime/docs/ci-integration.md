@@ -702,7 +702,15 @@ Things to know when reading these limits:
 - **The chain-depth limit cannot trip yet.** `computeChainDepth` returns only `0` (an ordinary job) or `1` (a job whose description starts with `wake-up:`), because `JobCompletionEvent` has no depth field. In practice the flood window and the debounce are what limit recurrence.
 - **Every listener woken by one completion shares a chain ID.** The ID (`ch-<uuid>`) is created once per source completion, so the 25 limit caps how many listeners a single completion can wake. It does not limit repeated wake-ups across completions.
 - **All of this state is in memory.** Coalesce, window, debounce and chain counters reset when the controller restarts.
-- **The fan-out never throws.** Any error is logged under a `wakeup_*` WARN line — the submission/dispatch failures `wakeup_dispatch_failed`, `wakeup_fanout_failed`, `wakeup_self_notify_failed` and `wakeup_submit_failed`, and the Slack thread-root failures `wakeup_listener_notifier_lookup_failed`, `wakeup_listener_notifier_missing` and `wakeup_submit_notify_failed` — and the source job's completion is still recorded. A thread-root failure never blocks the wake-up itself; the job is still submitted, only its Slack thread root is skipped.
+- **The limits are not atomic under concurrent completions.** `dispatchToListener` holds no lock across the gates: each one checks its state at one point (the coalesce map, the window deque's size, `wakeUpDispatchedAt`) and records the dispatch later, in step 9. Completions that arrive on different threads at the same moment can therefore all pass gates 4, 6, 7 and 8 before any of them records its wake-up. In that case a listener can get more than one wake-up inside the coalesce or debounce window, or more than 6 in 600 s. Read the numbers in the table as the limits for completions that arrive one after another, not as hard ceilings.
+- **The fan-out never throws.** Any error is logged under a `wakeup_*` WARN line, and the source job's completion is still recorded. The names are:
+  - submission and dispatch failures: `wakeup_dispatch_failed`, `wakeup_fanout_failed`, `wakeup_self_notify_failed`, `wakeup_submit_failed`
+  - a source workstream that is not registered: `wakeup_source_missing`
+  - a fan-out that has no server to submit to: `wakeup_no_server`
+  - Slack thread-root failures: `wakeup_listener_notifier_lookup_failed`, `wakeup_listener_notifier_missing`, `wakeup_submit_notify_failed`
+  - failure to mint the wake-up's ar-manager token: `wakeup_ar_token_failed`
+
+  A thread-root failure or a token failure does not block the wake-up. The job is still submitted. A thread-root failure only skips the job's Slack thread root, and a token failure only leaves the job without ar-manager credentials.
 
 A successful wake-up logs `Submitted wake-up chain=<id> source=<ws> listener=<ws> triggerJob=<job> wakeJob=<job>`. Grep the controller log for `wakeup_`, `ceiling_hit` and `Submitted wake-up` to follow a chain.
 
