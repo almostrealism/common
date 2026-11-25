@@ -180,6 +180,19 @@ public class ScopeInstructionsManager<K extends ExecutionKey>
 	/** List of callbacks to invoke when this manager is destroyed. */
 	private List<Runnable> destroyListeners;
 
+	/**
+	 * The number of dispatches currently using this manager's compiled instructions (see
+	 * {@link #retainForDispatch()}). While it is positive a {@link #destroy()} is deferred so a
+	 * running dispatch never has its instructions released out from under it. Guarded by {@code this}.
+	 */
+	private int dispatchesInFlight;
+
+	/**
+	 * Whether a {@link #destroy()} arrived while dispatches were in flight and is waiting for the
+	 * last to complete (see {@link #releaseAfterDispatch()}). Guarded by {@code this}.
+	 */
+	private boolean destroyRequested;
+
 	/** The Process associated with this manager for argument mapping. */
 	private Process<?, ?> process;
 
@@ -450,10 +463,53 @@ public class ScopeInstructionsManager<K extends ExecutionKey>
 	/**
 	 * {@inheritDoc}
 	 *
-	 * <p>Destroys the compiled instruction set and notifies all destroy listeners.</p>
+	 * <p>Marks a dispatch as reading this manager's compiled instructions. A {@link #destroy()}
+	 * that arrives while any dispatch is retained is deferred until the last completes, so an
+	 * eviction firing mid-dispatch never releases the native instruction set or the kernel
+	 * structure resources the running kernel reads.</p>
 	 */
 	@Override
-	public void destroy() {
+	public synchronized void retainForDispatch() {
+		dispatchesInFlight++;
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Releases a dispatch's hold on this manager's compiled instructions, performing a
+	 * {@link #destroy()} that was deferred while dispatches were in flight once the last completes.</p>
+	 */
+	@Override
+	public synchronized void releaseAfterDispatch() {
+		if (--dispatchesInFlight == 0 && destroyRequested) {
+			destroyRequested = false;
+			performDestroy();
+		}
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Destroys the compiled instruction set and notifies all destroy listeners, unless a dispatch
+	 * is currently using the instructions ({@link #retainForDispatch()}), in which case the destroy
+	 * is deferred until the last such dispatch completes (see {@link #releaseAfterDispatch()}).</p>
+	 */
+	@Override
+	public synchronized void destroy() {
+		if (dispatchesInFlight > 0) {
+			destroyRequested = true;
+			return;
+		}
+
+		performDestroy();
+	}
+
+	/**
+	 * Releases the compiled instruction set and the kernel structure resources, then notifies every
+	 * destroy listener. Called immediately by {@link #destroy()} when no dispatch is in flight, or
+	 * deferred to the last {@link #releaseAfterDispatch()} when one is.
+	 */
+	private void performDestroy() {
 		if (operators != null) {
 			operators.destroy();
 			operators = null;

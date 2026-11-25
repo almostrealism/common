@@ -101,8 +101,26 @@ compilation history, such as a full CI test group. The rebind is covered by
 `InstructionEvictionRebindTest`, and instruction-cache signature collisions throw
 `InstructionCacheCollisionException` (`InstructionCacheCollisionEnforcementTest`).
 
-Open issue: the eviction listener can fire while another thread is inside `apply` for the
-same operation.
+### Eviction waits for the dispatches reading the instructions
+
+Eviction and `apply` run on different threads, so an eviction can land while another thread
+is dispatching an operation bound to the evicted manager. Clearing the bindings (or freeing
+the manager's native instruction set and kernel-structure resources) at that moment would
+pull them out from under the running dispatch, including the kernel that runs asynchronously
+after `apply` returns and reads memory those instructions own.
+
+The coordination is at the manager, which owns the compiled instructions the whole dispatch
+depends on. `AcceleratedOperation.apply` retains the manager it binds to
+(`InstructionSetManager.retainForDispatch`) for the entire dispatch, releasing it only when
+the dispatch's completion settles. `ScopeInstructionsManager.destroy` defers — it records the
+request and returns — while any dispatch is retained, and performs the destroy (native
+instructions, structure resources, and the binding-reset listeners together) only once the
+last dispatch completes. The bindings are therefore never reset mid-dispatch, and because the
+manager is not freed and recompiled underneath a running dispatch, the retained bindings stay
+valid rather than going stale against a fresh compilation. The retain is a single
+`synchronized` increment per dispatch on a manager whose `getOperator` already synchronizes,
+so it adds no contention the dispatch did not already have. This is covered by
+`InstructionEvictionRebindTest.evictionDeferredDuringConcurrentApply`.
 
 ## Practical consequences
 
