@@ -475,6 +475,58 @@ class TestGithubRerunFailedJobs(unittest.TestCase):
         self.assertIn("Actions write", result["error"])
         self.assertIn("org/repo", result["error"])
 
+    @patch.object(server, "_github_request")
+    def test_non_403_rerun_error_is_not_augmented(self, mock_gh, mock_repo):
+        mock_gh.side_effect = [
+            self._run(),
+            self._jobs("failure"),
+            {"ok": False, "error": "GitHub returned HTTP 409: Conflict",
+             "status": 409},
+        ]
+        result = server.github_rerun_failed_jobs(run_id=99)
+        self.assertEqual(
+            {"ok": False, "error": "GitHub returned HTTP 409: Conflict"},
+            result)
+        self.assertEqual(3, mock_gh.call_count)
+
+    @patch.object(server, "_github_request")
+    def test_timed_out_job_is_rerunnable(self, mock_gh, mock_repo):
+        mock_gh.side_effect = [
+            self._run(),
+            self._jobs("success", "timed_out"),
+            {"ok": True, "status": 201},
+            self._run(attempt=2),
+        ]
+        result = server.github_rerun_failed_jobs(run_id=99)
+        self.assertTrue(result["ok"], msg=result.get("error"))
+        self.assertEqual(2, result["run_attempt"])
+        self.assertEqual("POST", mock_gh.call_args_list[2].args[0])
+
+    @patch.object(server, "_github_request")
+    def test_boolean_run_id_rejected(self, mock_gh, mock_repo):
+        result = server.github_rerun_failed_jobs(run_id=True)
+        self.assertFalse(result["ok"])
+        self.assertIn("run_id", result["error"])
+        mock_gh.assert_not_called()
+
+    @patch.object(server, "_github_request")
+    def test_negative_run_id_rejected(self, mock_gh, mock_repo):
+        result = server.github_rerun_failed_jobs(run_id=-5)
+        self.assertFalse(result["ok"])
+        self.assertIn("run_id", result["error"])
+        mock_gh.assert_not_called()
+
+    @patch.object(server, "_github_request")
+    def test_unexpected_run_shape_is_refused(self, mock_gh, mock_repo):
+        mock_gh.return_value = {"id": 99}
+        result = server.github_rerun_failed_jobs(run_id=99)
+        self.assertFalse(result["ok"])
+        self.assertIn("could not read workflow run 99 on org/repo",
+                      result["error"])
+        self.assertEqual({"id": 99}, result["returned"])
+        # Nothing beyond the run read happened: no jobs listing, no POST.
+        self.assertEqual(1, mock_gh.call_count)
+
     @patch.object(server, "_github_request",
                   return_value={"ok": False, "error": "GitHub returned HTTP 404"})
     def test_run_read_error_propagated(self, mock_gh, mock_repo):
