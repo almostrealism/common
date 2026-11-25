@@ -1043,4 +1043,147 @@ public class PhaseConfigResolverTest extends TestSuiteBase {
         Assert.assertEquals("job REVIEW runner must resolve to workspace claude",
                 "claude", job.getRunnerForPhase(Phase.REVIEW));
     }
+
+    // --- Per-job fallback level ----------------------------------------------
+
+    /**
+     * A workstream with no phase config of its own, plus a fallback: every
+     * phase resolves to the fallback. This is the cheap-setup case the fallback
+     * exists for — an unconfigured workstream runs on the submitter's fallback.
+     */
+    @Test(timeout = 5000)
+    public void fallbackAppliesWhenWorkstreamUnset() {
+        PhaseConfigBundle fallback = bundle(
+                new PhaseConfig(AgentRunnerRegistry.OPENCODE, "z-ai/glm-4.6", null, "openrouter"),
+                null, null);
+        PhaseConfigResolver r = PhaseConfigResolver.resolve(
+                PhaseConfigBundle.EMPTY, PhaseConfigBundle.EMPTY, fallback, PhaseConfigBundle.EMPTY);
+        assertNull(r.error());
+        PhaseConfig primary = r.forPhase(Phase.PRIMARY);
+        assertEquals(AgentRunnerRegistry.OPENCODE, primary.runner());
+        assertEquals("z-ai/glm-4.6", primary.model());
+        assertEquals("openrouter", primary.provider());
+        PhaseConfig review = r.forPhase(Phase.REVIEW);
+        Assert.assertEquals("every phase is unset, so every phase takes the fallback",
+                AgentRunnerRegistry.OPENCODE, review.runner());
+    }
+
+    /**
+     * A workstream that sets {@code phaseConfigs.primary}, plus a fallback:
+     * primary keeps the workstream's config, and every phase the workstream
+     * leaves unset takes the fallback.
+     */
+    @Test(timeout = 5000)
+    public void fallbackSkipsPhasesTheWorkstreamSets() {
+        PhaseConfigBundle ws = bundle(null, Phase.PRIMARY,
+                new PhaseConfig(AgentRunnerRegistry.CLAUDE, "claude-sonnet-5", "high"));
+        PhaseConfigBundle fallback = bundle(
+                new PhaseConfig(AgentRunnerRegistry.OPENCODE, "z-ai/glm-4.6", null, "openrouter"),
+                null, null);
+        PhaseConfigResolver r = PhaseConfigResolver.resolve(
+                PhaseConfigBundle.EMPTY, ws, fallback, PhaseConfigBundle.EMPTY);
+        assertNull(r.error());
+        // Primary keeps the workstream's claude config.
+        PhaseConfig primary = r.forPhase(Phase.PRIMARY);
+        assertEquals(AgentRunnerRegistry.CLAUDE, primary.runner());
+        assertEquals("claude-sonnet-5", primary.model());
+        assertEquals("high", primary.effort());
+        assertNull("primary must not pick up the fallback's openrouter provider",
+                primary.provider());
+        // Review is unset on the workstream, so it takes the fallback.
+        PhaseConfig review = r.forPhase(Phase.REVIEW);
+        assertEquals(AgentRunnerRegistry.OPENCODE, review.runner());
+        assertEquals("z-ai/glm-4.6", review.model());
+        assertEquals("openrouter", review.provider());
+    }
+
+    /**
+     * A workstream with a {@code defaultPhaseConfig} counts as setting every
+     * phase, so the fallback is ignored for all of them.
+     */
+    @Test(timeout = 5000)
+    public void fallbackIgnoredWhenWorkstreamHasDefault() {
+        PhaseConfigBundle ws = bundle(
+                new PhaseConfig(AgentRunnerRegistry.CLAUDE, "claude-sonnet-5", null), null, null);
+        PhaseConfigBundle fallback = bundle(
+                new PhaseConfig(AgentRunnerRegistry.OPENCODE, "z-ai/glm-4.6", null, "openrouter"),
+                null, null);
+        PhaseConfigResolver r = PhaseConfigResolver.resolve(
+                PhaseConfigBundle.EMPTY, ws, fallback, PhaseConfigBundle.EMPTY);
+        assertNull(r.error());
+        for (Phase phase : new Phase[] {Phase.PRIMARY, Phase.REVIEW, Phase.COMMIT_MESSAGE}) {
+            PhaseConfig resolved = r.forPhase(phase);
+            Assert.assertEquals("workstream default wins for " + phase.wireName(),
+                    AgentRunnerRegistry.CLAUDE, resolved.runner());
+            assertEquals("claude-sonnet-5", resolved.model());
+            assertNull("fallback's openrouter must not leak into " + phase.wireName(),
+                    resolved.provider());
+        }
+    }
+
+    /**
+     * A fallback that completes into an invalid runner/provider combination
+     * (claude with a non-anthropic provider) is rejected at submission, just as
+     * an explicit per-job config would be.
+     */
+    @Test(timeout = 5000)
+    public void fallbackInvalidCombinationIsRejected() {
+        PhaseConfigBundle fallback = bundle(
+                new PhaseConfig(AgentRunnerRegistry.CLAUDE, null, null, "openrouter"), null, null);
+        PhaseConfigResolver r = PhaseConfigResolver.resolve(
+                PhaseConfigBundle.EMPTY, PhaseConfigBundle.EMPTY, fallback, PhaseConfigBundle.EMPTY);
+        assertNotNull("claude + openrouter from the fallback must fail", r.error());
+        assertTrue(r.error(), r.error().contains("anthropic"));
+    }
+
+    /**
+     * An empty fallback changes nothing: resolution matches the three-argument
+     * overload exactly. This is the no-behaviour-change guarantee for every
+     * submission that sends no fallback.
+     */
+    @Test(timeout = 5000)
+    public void emptyFallbackResolvesAsWithoutFallback() {
+        PhaseConfigBundle ws = bundle(
+                new PhaseConfig(AgentRunnerRegistry.CLAUDE, "claude-opus-5-5", null), null, null);
+        PhaseConfig without = PhaseConfigResolver.resolve(
+                PhaseConfigBundle.EMPTY, ws, PhaseConfigBundle.EMPTY).forPhase(Phase.PRIMARY);
+        PhaseConfig withEmpty = PhaseConfigResolver.resolve(
+                PhaseConfigBundle.EMPTY, ws, PhaseConfigBundle.EMPTY, PhaseConfigBundle.EMPTY)
+                .forPhase(Phase.PRIMARY);
+        assertEquals(without, withEmpty);
+    }
+
+    /**
+     * The submit response carries a {@code fallbackResolution} fragment when a
+     * fallback was supplied, reporting per phase whether it was used and why;
+     * an empty fallback appends nothing.
+     */
+    @Test(timeout = 5000)
+    public void fallbackResolutionJsonReportsUseAndReason() {
+        PhaseConfigBundle ws = bundle(null, Phase.PRIMARY,
+                new PhaseConfig(AgentRunnerRegistry.CLAUDE, "claude-sonnet-5", null));
+        PhaseConfigBundle fallback = bundle(
+                new PhaseConfig(AgentRunnerRegistry.OPENCODE, "z-ai/glm-4.6", null, "openrouter"),
+                null, null);
+        PhaseConfigResolver r = PhaseConfigResolver.resolve(
+                PhaseConfigBundle.EMPTY, ws, fallback, PhaseConfigBundle.EMPTY);
+        assertNull(r.error());
+
+        StringBuilder json = new StringBuilder("{\"ok\":true");
+        r.appendFallbackResolutionJson(json);
+        json.append("}");
+        String result = json.toString();
+        assertTrue("reports fallback resolution", result.contains("\"fallbackResolution\""));
+        assertTrue("primary is kept by the workstream",
+                result.contains("workstream sets primary"));
+        assertTrue("review takes the fallback", result.contains("fallback applied"));
+
+        // An empty fallback appends nothing.
+        PhaseConfigResolver noFb = PhaseConfigResolver.resolve(
+                PhaseConfigBundle.EMPTY, ws, PhaseConfigBundle.EMPTY);
+        StringBuilder bare = new StringBuilder("{\"ok\":true");
+        noFb.appendFallbackResolutionJson(bare);
+        bare.append("}");
+        assertEquals("{\"ok\":true}", bare.toString());
+    }
 }

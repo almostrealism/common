@@ -492,6 +492,13 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 		assertTrue("workstream_submit_task must declare phase_configs in signature"
 			+ " so per-phase (runner, model, effort) overrides can be passed in",
 			submitParams.contains("phase_configs"));
+		assertTrue("workstream_submit_task must declare fallback_default_phase_config in"
+			+ " signature so a submission can carry a fallback applied only to phases"
+			+ " the workstream leaves unset",
+			submitParams.contains("fallback_default_phase_config"));
+		assertTrue("workstream_submit_task must declare fallback_phase_configs in signature"
+			+ " so per-phase fallback overrides can be passed in",
+			submitParams.contains("fallback_phase_configs"));
 		assertTrue("workstream_submit_task must declare allow_commit_language in signature"
 			+ " so callers can opt out of the commit-language linter when needed",
 			submitParams.contains("allow_commit_language"));

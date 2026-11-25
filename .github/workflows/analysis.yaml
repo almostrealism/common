@@ -4532,6 +4532,10 @@ jobs:
           # A follow-up job CI runs in a loop; the object-oriented design review
           # belongs to a branch's initial work, not each remediation pass.
           OBJECT_ORIENTED_REVIEW_ENABLED: "false"
+          # A cheaper runner/model for phases a workstream leaves unset; set the
+          # AR_CI_FALLBACK_PHASE_CONFIG repository variable to switch models while
+          # experimenting. Unset → nothing is sent and resolution is unchanged.
+          FALLBACK_PHASE_CONFIG: ${{ vars.AR_CI_FALLBACK_PHASE_CONFIG }}
           # This is a remediation pass: the controller counts it against the
           # per-PR cap and records its commit as the loop's own (the cap resets
           # on a commit no pass produced).
@@ -4983,6 +4987,10 @@ jobs:
           # A follow-up job CI runs in a loop; the object-oriented design review
           # belongs to a branch's initial work, not each remediation pass.
           OBJECT_ORIENTED_REVIEW_ENABLED: "false"
+          # A cheaper runner/model for phases a workstream leaves unset; set the
+          # AR_CI_FALLBACK_PHASE_CONFIG repository variable to switch models while
+          # experimenting. Unset → nothing is sent and resolution is unchanged.
+          FALLBACK_PHASE_CONFIG: ${{ vars.AR_CI_FALLBACK_PHASE_CONFIG }}
           # This is a remediation pass: the controller counts it against the
           # per-PR cap and records its commit as the loop's own (the cap resets
           # on a commit no pass produced).
