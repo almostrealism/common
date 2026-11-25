@@ -65,6 +65,15 @@ public final class NodeStatusReport {
 	/** Separator between a label's key and its value. */
 	private static final String LABEL_ASSIGNMENT = "=";
 
+	/**
+	 * The structural delimiter characters of the status payload and the labels field. A label
+	 * key or value that contains any of them cannot be represented unambiguously in this flat
+	 * wire format (it would split into extra pairs or forge a status field), so such a label is
+	 * omitted from the report rather than emitted and corrupting the payload.
+	 */
+	private static final String RESERVED = FIELD_SEPARATOR + VALUE_SEPARATOR
+			+ LABEL_SEPARATOR + LABEL_ASSIGNMENT;
+
 	/** Whether the peer is executing a job; {@code null} when the peer did not report. */
 	private final Boolean busy;
 
@@ -127,20 +136,39 @@ public final class NodeStatusReport {
 	}
 
 	/**
-	 * Encodes a label map as {@code key=value} pairs separated by {@value #LABEL_SEPARATOR}.
+	 * Encodes a label map as {@code key=value} pairs separated by {@value #LABEL_SEPARATOR}. A
+	 * label whose key or value contains a {@link #RESERVED structural delimiter} is omitted,
+	 * since this flat format cannot carry one without ambiguity; the report is best-effort
+	 * routing diagnostics, so dropping such a label is preferable to corrupting the payload.
 	 *
 	 * @param labels  the labels to encode; may be {@code null} or empty.
-	 * @return  the encoded labels, or the empty string when there are none.
+	 * @return  the encoded labels, or the empty string when there are none to encode.
 	 */
 	private static String encodeLabels(Map<String, String> labels) {
 		if (labels == null || labels.isEmpty()) return "";
 
 		StringBuilder out = new StringBuilder();
 		for (Map.Entry<String, String> entry : labels.entrySet()) {
+			if (!isEncodable(entry.getKey()) || !isEncodable(entry.getValue())) continue;
 			if (out.length() > 0) out.append(LABEL_SEPARATOR);
 			out.append(entry.getKey()).append(LABEL_ASSIGNMENT).append(entry.getValue());
 		}
 		return out.toString();
+	}
+
+	/**
+	 * Returns whether a label component (a key or a value) can be encoded without corrupting the
+	 * payload — that is, it contains none of the {@link #RESERVED structural delimiters}.
+	 *
+	 * @param component  a label key or value; may be {@code null}.
+	 * @return  {@code true} when the component carries no reserved character.
+	 */
+	private static boolean isEncodable(String component) {
+		if (component == null) return false;
+		for (int i = 0; i < RESERVED.length(); i++) {
+			if (component.indexOf(RESERVED.charAt(i)) >= 0) return false;
+		}
+		return true;
 	}
 
 	/**
@@ -202,7 +230,7 @@ public final class NodeStatusReport {
 			String value = field.substring(sep + VALUE_SEPARATOR.length());
 
 			if (BUSY_KEY.equals(key)) {
-				busy = Boolean.valueOf(value);
+				busy = parseBusy(value);
 				present = true;
 			} else if (LABELS_KEY.equals(key)) {
 				labels = decodeLabels(value);
@@ -211,6 +239,23 @@ public final class NodeStatusReport {
 		}
 
 		return present ? new NodeStatusReport(busy, labels) : null;
+	}
+
+	/**
+	 * Decodes a {@code busy} field value into the tri-state busy flag. Only the exact tokens
+	 * {@code true} and {@code false} that {@link #encode()} emits are accepted; any other value —
+	 * a malformed report from a misbehaving or incompatible peer — decodes to {@code null}
+	 * ("unknown") rather than to {@code false} ("idle"), so a garbled field never makes a peer
+	 * appear idle and mislead a submitter about why a matching job is waiting.
+	 *
+	 * @param value  the raw {@code busy} field value.
+	 * @return  {@link Boolean#TRUE} or {@link Boolean#FALSE} for a recognised token, else
+	 *          {@code null}.
+	 */
+	private static Boolean parseBusy(String value) {
+		if (Boolean.TRUE.toString().equals(value)) return Boolean.TRUE;
+		if (Boolean.FALSE.toString().equals(value)) return Boolean.FALSE;
+		return null;
 	}
 
 	/**

@@ -17,6 +17,9 @@
 package io.flowtree.node;
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import io.flowtree.msg.Message;
+import io.flowtree.msg.NodeProxy;
+import io.flowtree.test.HeaderOnlySocket;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
@@ -37,8 +40,6 @@ import java.util.Map;
  * @author Michael Murray
  */
 public class NodeStatusReportTest extends TestSuiteBase {
-
-	// TODO(review): no test covers the wiring — NodeGroupMessageHandler.handleServerStatus -> NodeProxy.setStatus/getStatus, nor AgentsQueryHandler assembling the nodes array.
 
 	/** The status fields a worker appends to a {@code ServerStatus} payload round-trip through parse. */
 	@Test(timeout = 10000)
@@ -107,5 +108,94 @@ public class NodeStatusReportTest extends TestSuiteBase {
 		Assert.assertFalse("a report renders no address field", json.has("address"));
 		Assert.assertTrue("unknown busy must be JSON null", json.get("busy").isNull());
 		Assert.assertTrue("unknown labels must be JSON null", json.get("labels").isNull());
+	}
+
+	/**
+	 * A {@code busy} field carrying anything other than {@code true}/{@code false} — a report
+	 * garbled by a misbehaving or incompatible peer — parses to unknown rather than idle, so a
+	 * malformed value never makes a peer appear available to take work.
+	 */
+	@Test(timeout = 10000)
+	public void parseOfMalformedBusyReportsUnknown() {
+		NodeStatusReport report = NodeStatusReport.parse("busy:maybe;labels:platform=linux");
+		Assert.assertNull("a malformed busy value is unknown, not idle", report.busy());
+		Assert.assertEquals("linux", report.labels().get("platform"));
+	}
+
+	/**
+	 * A label whose key or value carries one of the payload's structural delimiters is dropped
+	 * from the encoding, so it can neither split into spurious pairs nor forge a status field
+	 * such as {@code busy}. The surviving labels still round-trip unchanged.
+	 */
+	@Test(timeout = 10000)
+	public void encodeOmitsLabelsCarryingDelimiters() {
+		Map<String, String> labels = new LinkedHashMap<>();
+		labels.put("platform", "linux");
+		labels.put("role", "a;busy=true");
+		labels.put("re,gion", "us");
+
+		String fields = new NodeStatusReport(false, labels).encode();
+		Assert.assertEquals("busy:false;labels:platform=linux", fields);
+
+		NodeStatusReport parsed = NodeStatusReport.parse(fields);
+		Assert.assertEquals(Boolean.FALSE, parsed.busy());
+		Assert.assertEquals(1, parsed.labels().size());
+		Assert.assertEquals("linux", parsed.labels().get("platform"));
+	}
+
+	/**
+	 * Drives a full {@code ServerStatus} payload through {@link NodeGroupMessageHandler} and
+	 * asserts the parsed busy flag and labels land on the sending {@link NodeProxy}, so
+	 * {@link NodeProxy#getStatus()} reflects what the peer reported. The handler's status branch
+	 * does not touch its {@link NodeGroup}, so the group is unneeded here.
+	 */
+	@Test(timeout = 10000)
+	public void handlerAppliesReportedStatusToProxy() throws Exception {
+		NodeProxy proxy = new NodeProxy(new HeaderOnlySocket());
+		Message status = new Message(Message.ServerStatus, -1, proxy);
+		status.setString("jobtime:0.0;activity:1.0;busy:true;labels:platform=linux,hostname=halo");
+
+		boolean handled = new NodeGroupMessageHandler(null).recievedMessage(status, -1);
+
+		Assert.assertTrue("a status payload carrying report fields is handled", handled);
+		Assert.assertEquals(Boolean.TRUE, proxy.getStatus().busy());
+		Assert.assertEquals("halo", proxy.getStatus().labels().get("hostname"));
+		Assert.assertEquals("linux", proxy.getStatus().labels().get("platform"));
+	}
+
+	/**
+	 * A {@code ServerStatus} payload from a peer running an older build — only the legacy
+	 * job-time and activity fields, no busy or labels — leaves the proxy's status unknown
+	 * through the handler, never overwriting it with an all-unknown report that reads as idle.
+	 */
+	@Test(timeout = 10000)
+	public void handlerLeavesStatusUnknownForLegacyPayload() throws Exception {
+		NodeProxy proxy = new NodeProxy(new HeaderOnlySocket());
+		Message legacy = new Message(Message.ServerStatus, -1, proxy);
+		legacy.setString("jobtime:0.0;activity:1.0");
+
+		new NodeGroupMessageHandler(null).recievedMessage(legacy, -1);
+
+		Assert.assertNull("a legacy payload leaves busy unknown", proxy.getStatus().busy());
+		Assert.assertNull("a legacy payload leaves labels unknown", proxy.getStatus().labels());
+	}
+
+	/**
+	 * A peer renders itself for {@code GET /api/agents} as the handler-assembled {@code nodes}
+	 * entry: the {@link NodeProxy} owns the {@code address} and merges in the {@code busy} and
+	 * {@code labels} it last reported through its {@link NodeStatusReport status}.
+	 */
+	@Test(timeout = 10000)
+	public void proxyToJsonDescribesAddressAndReportedStatus() throws Exception {
+		NodeProxy proxy = new NodeProxy(new HeaderOnlySocket());
+		Map<String, String> labels = new LinkedHashMap<>();
+		labels.put("platform", "linux");
+		proxy.setStatus(new NodeStatusReport(true, labels));
+
+		ObjectNode json = proxy.toJson();
+		Assert.assertTrue("the node owns and renders its address", json.has("address"));
+		Assert.assertFalse("the address is populated", json.get("address").asText().isEmpty());
+		Assert.assertTrue("the reported busy flag is merged in", json.get("busy").asBoolean());
+		Assert.assertEquals("linux", json.get("labels").get("platform").asText());
 	}
 }
