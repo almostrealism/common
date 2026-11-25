@@ -165,7 +165,7 @@ public class PatternFeaturesFastFailTest extends TestSuiteBase implements Patter
 	 * leaves the cancellation request set so whoever requested it still observes it.
 	 */
 	@Test(timeout = 30_000)
-	public void interruptedRenderEvaluatesNoNote() {
+	public void cancelledRenderEvaluatesNoNote() {
 		AudioSceneContext ctx = minimalContext();
 		AtomicInteger requested = new AtomicInteger();
 
@@ -198,7 +198,7 @@ public class PatternFeaturesFastFailTest extends TestSuiteBase implements Patter
 	 * when abandoned evaluations do not fail.
 	 */
 	@Test(timeout = 30_000)
-	public void renderInterruptedMidwayStopsAtNextNote() {
+	public void renderCancelledMidwayStopsAtNextNote() {
 		AudioSceneContext ctx = minimalContext();
 		AtomicInteger requested = new AtomicInteger();
 

@@ -291,9 +291,7 @@ public interface PatternFeatures extends CodeFeatures {
 					int noteStart = note.getOffset();
 
 					// The signal is only read, so the canceller still observes its request
-					if (PatternRenderCancellation.currentlyCancelled()) {
-						throw new CancellationException("Pattern rendering cancelled at frame " + noteStart);
-					}
+					PatternRenderCancellation.requireNotCancelled(noteStart);
 
 					// Pre-filter: skip notes that cannot overlap the frame range
 					if (note.getExpectedFrameCount() > 0) {

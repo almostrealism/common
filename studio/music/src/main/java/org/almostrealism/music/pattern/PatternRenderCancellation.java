@@ -16,6 +16,8 @@
 
 package org.almostrealism.music.pattern;
 
+import java.util.concurrent.CancellationException;
+
 /**
  * A cooperative cancellation signal for an in-progress pattern render. A render polls the signal
  * at safe points (between notes) and stops promptly when cancellation has been requested, without
@@ -88,5 +90,20 @@ public class PatternRenderCancellation {
 	public static boolean currentlyCancelled() {
 		PatternRenderCancellation current = bound.get();
 		return current != null && current.cancelled;
+	}
+
+	/**
+	 * Throws {@link CancellationException} when the render running on the current thread has been
+	 * cancelled, and does nothing otherwise. This is the cancellation poll a render invokes at its
+	 * safe points (between notes, between batched sub-window dispatches) so a single definition of
+	 * the check and its message serves every point rather than each repeating it.
+	 *
+	 * @param frame the frame the render has reached, named in the exception message
+	 * @throws CancellationException if a signal is bound to the current thread and has been cancelled
+	 */
+	public static void requireNotCancelled(int frame) {
+		if (currentlyCancelled()) {
+			throw new CancellationException("Pattern rendering cancelled at frame " + frame);
+		}
 	}
 }
