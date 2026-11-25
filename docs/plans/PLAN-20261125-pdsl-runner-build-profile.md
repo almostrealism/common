@@ -15,10 +15,11 @@ PDSL mixdown model build (runnerBuildMs)*
 
 Building the PDSL mixdown model for the real-time runner takes about 16 s
 (`runnerBuildMs`) before the first buffer renders, and the cost has never been
-attributed. That delay is paid every time a scene's real-time runner is built —
-on every scene, since (as shown below) the compiled kernels are not reused
-across scenes. The task asks us to profile the build (compile vs optimisation vs
-instruction-set reuse), identify the dominant cost with profile evidence, and
+attributed. That delay is paid every time a scene's real-time runner is built,
+and it is expected to be paid on every scene, because the compiled kernels are
+not expected to be reused across scenes. That expectation is an unmeasured
+inference from the code, explained below. The task asks us to profile the
+build (compile vs optimisation vs instruction-set reuse), identify the dominant cost with profile evidence, and
 reduce `runnerBuildMs` — or record, with evidence, why it cannot be reduced.
 
 ## What `runnerBuildMs` actually measures
@@ -30,7 +31,8 @@ reduce `runnerBuildMs` — or record, with evidence, why it cannot be reduced.
 *construction* cost: `setup()` and `tick()` are run (and timed separately) only
 afterward.
 
-The harness sets `MixdownManager.enableEfx = true`, so the layer `createPdsl`
+The harness sets `MixdownManager.enableEfx = true` (and
+`enableEfxFilters = true`), so the layer `createPdsl`
 builds is **`mixdown_master_wet`** (input shape `[2 * channels, bufferSize]`,
 adapter constructed with the scene's `EfxManager`), not the single-input
 `mixdown_master`. The build-phase steps inside `createPdsl`, in the order the
@@ -146,7 +148,8 @@ Explicitly out of scope (candidate follow-ups, not this task):
 
 - **Cross-scene instruction reuse** via rebuilding the mixdown over
   `Input.value(...)` placeholders instead of provider leaves. This is the single
-  largest potential win (it would make the ~16 s a once-per-JVM cost), but it is
+  largest potential win (if the per-scene inference holds, it would make the
+  ~16 s a once-per-JVM cost), but it is
   an architectural change to how `MixdownManagerPdslAdapter`/the PDSL audio
   primitives bind buffers, with its own correctness/parity surface. It is named
   here as a dependency/open question, not folded into this task.
@@ -172,10 +175,10 @@ leaves unmeasured. `Model.compile(boolean backprop, OperationProfile)` already
 exists if a tighter capture of just the compile is wanted. The runner compiles
 with `backprop = false`, so use `compile(false, profile)`, not the
 single-argument `compile(OperationProfile)` overload, which builds the backward
-graph too. Calling it from the test needs the
-`compileMixdownModel` path to accept a profile, which is a small change to
-`AudioSceneRealtimeRunner`. The simplest route is the hardware-assigned
-profile, which needs no production change. The saved XML is then read with `ar-profile-analyzer`
+graph too. Calling it from the test needs the `compileMixdownModel` path to
+accept a profile, which is a small change to `AudioSceneRealtimeRunner`. The
+simplest route is the hardware-assigned profile, which needs no production
+change. The saved XML is then read with `ar-profile-analyzer`
 (`load_profile`, `find_slowest`, `find_slowest_by_category`, `get_source`) to
 name the dominant operations and confirm whether the cost is codegen,
 optimisation, or native compilation.
@@ -219,8 +222,13 @@ A reviewer can confirm the task is done when:
    - `MixdownManagerPdslVerificationTest` / `AudioScenePdslCutoverTest` confirm
      the mixdown output is unchanged (parity preserved) if any build-path code
      is touched.
-   These are `@TestDepth(1)`/`excludeProfiles = PIPELINE` curated-library
-   harnesses; run them as a bounded selection, not a module suite.
+   `PdslSetupBreakdownTest` and `KernelCacheReuseAcrossScenesTest` are
+   `@TestDepth(1)`, `excludeProfiles = PIPELINE` curated-library harnesses.
+   `AudioScenePdslCutoverTest`'s real-scene methods are `@TestDepth(2)`,
+   `excludeProfiles = PIPELINE` curated-library harnesses too. In
+   `MixdownManagerPdslVerificationTest` the methods are `@TestDepth(2)` with no
+   curated-library or `PIPELINE` exclusion, so CI runs them as well. Run all of
+   them as a bounded selection (named classes or methods), not a module suite.
 
 ## Dependencies and open questions
 
