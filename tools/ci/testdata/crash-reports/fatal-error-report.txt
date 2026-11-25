@@ -1,0 +1,68 @@
+#
+# A fatal error has been detected by the Java Runtime Environment:
+#
+#  SIGABRT (0x6) at pc=0x00007f3a1c49eb2c, pid=4242, tid=4251
+#
+# JRE version: OpenJDK Runtime Environment (21.0.2+13) (build 21.0.2+13)
+# Java VM: OpenJDK 64-Bit Server VM (21.0.2+13, mixed mode, sharing, tiered, compressed oops, g1 gc, linux-amd64)
+# Problematic frame:
+# C  [libc.so.6+0x9eb2c]  pthread_kill+0x11c
+#
+# Core dump will be written. Default location: Core dumps may be processed with "/usr/lib/systemd/systemd-coredump %P %u %g %s %t %c %h" (or dumping to /home/runner/work/common/common/engine/ml/core.4242)
+#
+# If you would like to submit a bug report, please visit:
+#   https://bugreport.java.com/bugreport/crash.jsp
+# The crash happened outside the Java Virtual Machine in native code.
+# See problematic frame for where to report the bug.
+#
+
+---------------  S U M M A R Y ------------
+
+Command Line: -Xmx8g org.apache.maven.surefire.booter.ForkedBooter
+
+Host: AMD EPYC 7763 64-Core Processor, 4 cores, 15G, Ubuntu 24.04 LTS
+Time: Wed Nov 25 10:00:00 2026 UTC elapsed time: 412.5 seconds (0d 0h 6m 52s)
+
+---------------  T H R E A D  ---------------
+
+Current thread (0x00007f3a14029b60):  JavaThread "main" [_thread_in_native, id=4251, stack(0x00007f3a1b5ff000,0x00007f3a1b6ff000) (1024K)]
+
+Stack: [0x00007f3a1b5ff000,0x00007f3a1b6ff000],  sp=0x00007f3a1b6fb2a0,  free space=1008k
+Native frames: (J=compiled Java code, j=interpreted, Vv=VM code, C=native code)
+C  [libc.so.6+0x9eb2c]  pthread_kill+0x11c
+C  [libc.so.6+0x4526e]  raise+0x1e
+C  [libc.so.6+0x288ff]  abort+0xdf
+C  [libc.so.6+0x297b6]  __libc_message_impl.cold+0x0
+C  [libc.so.6+0xa8fe5]  malloc_printerr+0x15
+C  [libc.so.6+0xab2ea]  _int_free_merge_chunk+0x1aa
+C  [libc.so.6+0xadd9e]  free+0x6e
+C  [GeneratedOperation12.so+0x1a40]  apply+0x80
+j  org.almostrealism.generated.GeneratedOperation12.apply(J[J[I[II)V+8
+j  org.almostrealism.generated.GeneratedOperation12.apply(J[J[I[II)V+9
+J 1010 c2 org.example.SyntheticFrame10.call()V (42 bytes) @ 0x00007f0000000a
+J 1011 c2 org.example.SyntheticFrame11.call()V (42 bytes) @ 0x00007f0000000b
+J 1012 c2 org.example.SyntheticFrame12.call()V (42 bytes) @ 0x00007f0000000c
+J 1013 c2 org.example.SyntheticFrame13.call()V (42 bytes) @ 0x00007f0000000d
+J 1014 c2 org.example.SyntheticFrame14.call()V (42 bytes) @ 0x00007f0000000e
+J 1015 c2 org.example.SyntheticFrame15.call()V (42 bytes) @ 0x00007f0000000f
+J 1016 c2 org.example.SyntheticFrame16.call()V (42 bytes) @ 0x00007f00000010
+J 1017 c2 org.example.SyntheticFrame17.call()V (42 bytes) @ 0x00007f00000011
+J 1018 c2 org.example.SyntheticFrame18.call()V (42 bytes) @ 0x00007f00000012
+J 1019 c2 org.example.SyntheticFrame19.call()V (42 bytes) @ 0x00007f00000013
+J 1020 c2 org.example.SyntheticFrame20.call()V (42 bytes) @ 0x00007f00000014
+J 1021 c2 org.example.SyntheticFrame21.call()V (42 bytes) @ 0x00007f00000015
+J 1022 c2 org.example.SyntheticFrame22.call()V (42 bytes) @ 0x00007f00000016
+J 1023 c2 org.example.SyntheticFrame23.call()V (42 bytes) @ 0x00007f00000017
+J 1024 c2 org.example.SyntheticFrame24.call()V (42 bytes) @ 0x00007f00000018
+J 1025 c2 org.example.SyntheticFrame25.call()V (42 bytes) @ 0x00007f00000019
+J 1026 c2 org.example.SyntheticFrame26.call()V (42 bytes) @ 0x00007f0000001a
+J 1027 c2 org.example.SyntheticFrame27.call()V (42 bytes) @ 0x00007f0000001b
+
+Java frames: (J=compiled Java code, j=interpreted, Vv=VM code)
+j  org.almostrealism.generated.GeneratedOperation12.apply(J[J[I[II)V+0
+j  org.almostrealism.time.SimulationRunnerTest.runsSteps()V+12
+
+siginfo: si_signo: 6 (SIGABRT), si_code: -6 (SI_TKILL), si_pid: 4242, si_uid: 1001
+
+Registers:
+RAX=0x0000000000000000, RBX=0x0000000000001093, RCX=0x00007f3a1c49eb2c, RDX=0x0000000000000006
