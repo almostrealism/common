@@ -293,13 +293,19 @@ class GitRepositorySetup implements ConsoleFeatures {
      * <p>Written as local config in the given repository so it holds on every
      * node regardless of the agent image's global git configuration.</p>
      *
+     * <p>Both writes must succeed: this protection is not best effort. If either
+     * {@code git config} command exits non-zero — for example because
+     * {@code .git/config} is not writable — preparation fails here rather than
+     * continuing to a checkout where a later bare push could still reach
+     * master's upstream.</p>
+     *
      * @param gitOps the {@link GitOperations} bound to the repository to configure
-     * @throws IOException          if a git command fails
+     * @throws IOException          if a git command fails or exits non-zero
      * @throws InterruptedException if a command is interrupted
      */
     private void configurePushDefaults(GitOperations gitOps) throws IOException, InterruptedException {
-        gitOps.execute("config", "push.default", "current");
-        gitOps.execute("config", "branch.autoSetupMerge", "false");
+        gitOps.executeForResult("config", "push.default", "current").requireSuccess();
+        gitOps.executeForResult("config", "branch.autoSetupMerge", "false").requireSuccess();
     }
 
     /**

@@ -27,6 +27,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 import java.util.stream.Stream;
@@ -68,21 +69,39 @@ public class GitRepositorySetupPushDefaultTest extends TestSuiteBase {
     public void setUp() throws IOException, InterruptedException {
         root = Files.createTempDirectory("git-repo-setup-push");
 
-        bare = root.resolve("origin.git");
-        git(root, "init", "-q", "--bare", "--initial-branch=master", bare.toString());
+        Path[] origin = seededOrigin("working");
+        bare = origin[0];
+        working = origin[1];
+    }
 
-        Path seed = Files.createDirectory(root.resolve("seed"));
+    /**
+     * Builds a bare origin seeded with one commit on {@code master} and a
+     * working clone of it, both children of {@link #root}.
+     *
+     * @param name the basename of the pair; the bare origin is
+     *             {@code <name>.git} and the clone is {@code <name>}, so a
+     *             dependent repo's clone matches the name
+     *             {@link WorkspaceResolver#extractRepoName(String)} derives
+     *             from its URL
+     * @return the pair {@code {bare, clone}}
+     */
+    private Path[] seededOrigin(String name) throws IOException, InterruptedException {
+        Path bareDir = root.resolve(name + ".git");
+        git(root, "init", "-q", "--bare", "--initial-branch=master", bareDir.toString());
+
+        Path seed = Files.createDirectory(root.resolve(name + "-seed"));
         git(seed, "init", "-q", "--initial-branch=master");
         configureIdentity(seed);
         Files.writeString(seed.resolve("README.md"), "seed\n", StandardCharsets.UTF_8);
         git(seed, "add", "README.md");
         git(seed, "commit", "-q", "-m", "seed");
-        git(seed, "remote", "add", "origin", bare.toString());
+        git(seed, "remote", "add", "origin", bareDir.toString());
         git(seed, "push", "-q", "origin", "master");
 
-        working = root.resolve("working");
-        git(root, "clone", "-q", bare.toString(), working.toString());
-        configureIdentity(working);
+        Path clone = root.resolve(name);
+        git(root, "clone", "-q", bareDir.toString(), clone.toString());
+        configureIdentity(clone);
+        return new Path[] {bareDir, clone};
     }
 
     /** Recursively deletes the temporary repositories. */
@@ -100,21 +119,13 @@ public class GitRepositorySetupPushDefaultTest extends TestSuiteBase {
      * After {@link GitRepositorySetup#prepare()} prepares the clone,
      * {@code git checkout -b x origin/master} creates an untracked branch and a
      * bare {@code git push} creates {@code origin/x}, leaving {@code master}'s
-     * upstream untouched.
+     * upstream untouched. This is the {@code branch.autoSetupMerge=false} path:
+     * the new branch never acquires an upstream in the first place.
      */
-    // TODO(review): also cover a branch that ALREADY tracks master, where push.default=current is the sole protection.
     @Test(timeout = 60000)
     public void preparedCheckoutPushesToCurrentBranchNotMaster()
             throws IOException, InterruptedException {
-        String masterBefore = git(working, "rev-parse", "refs/heads/master").trim();
-
-        CodingAgentJob job = new CodingAgentJob("ops", "pin push defaults");
-        job.setWorkingDirectory(working.toString());
-        job.setTargetBranch("master");
-        job.setGitUserName(JOB_NAME);
-        job.setGitUserEmail(JOB_EMAIL);
-
-        new GitRepositorySetup(job).prepare();
+        new GitRepositorySetup(primaryJob()).prepare();
 
         assertEquals("current", git(working, "config", "--local", "push.default").trim());
         assertEquals("false", git(working, "config", "--local", "branch.autoSetupMerge").trim());
@@ -125,12 +136,99 @@ public class GitRepositorySetupPushDefaultTest extends TestSuiteBase {
         assertFalse("branch x must not track any upstream: " + upstream.output(),
                 upstream.succeeded());
 
-        git(working, "push", "-q");
+        assertBarePushTargetsOwnBranch(working, bare, "x");
+    }
 
-        assertTrue("the push must create origin/x",
-                run(bare, "rev-parse", "--verify", "--quiet", "refs/heads/x").succeeded());
+    /**
+     * A branch that <em>already</em> tracks {@code origin/master} — the failure
+     * mode this configuration exists to close — still pushes to a remote branch
+     * of its own name. Here {@code branch.autoSetupMerge=false} cannot help,
+     * because the tracking link is established explicitly after the branch
+     * exists; {@code push.default=current} is the sole protection, and a bare
+     * {@code git push} must create {@code origin/y} rather than updating
+     * {@code origin/master}.
+     */
+    @Test(timeout = 60000)
+    public void preparedCheckoutTrackingMasterStillPushesToOwnBranch()
+            throws IOException, InterruptedException {
+        new GitRepositorySetup(primaryJob()).prepare();
+
+        git(working, "checkout", "-q", "-b", "y", "origin/master");
+        git(working, "branch", "--set-upstream-to=origin/master", "y");
+
+        Assert.assertEquals("branch y must track origin/master for this scenario",
+                "origin/master",
+                git(working, "rev-parse", "--abbrev-ref", "y@{upstream}").trim());
+
+        assertBarePushTargetsOwnBranch(working, bare, "y");
+    }
+
+    /**
+     * A dependent repo prepared by {@link GitRepositorySetup} receives the same
+     * push-target safety as the primary working tree. After
+     * {@link GitRepositorySetup#prepareDependentReposBranches()}, the dependent
+     * clone carries {@code push.default=current} and
+     * {@code branch.autoSetupMerge=false}, and a branch that already tracks
+     * {@code origin/master} there still bare-pushes to its own name — a
+     * regression at the dependent-repo configuration call would otherwise leave
+     * dependent-repo pushes unprotected.
+     */
+    @Test(timeout = 60000)
+    public void preparedDependentRepoPushesToCurrentBranchNotMaster()
+            throws IOException, InterruptedException {
+        Path[] dep = seededOrigin("dep");
+        Path depBare = dep[0];
+        Path depClone = dep[1];
+
+        CodingAgentJob job = primaryJob();
+        job.setDependentRepos(Collections.singletonList("https://example.com/dep.git"));
+
+        GitRepositorySetup setup = new GitRepositorySetup(job);
+        setup.prepareDependentRepos();
+        assertEquals(Collections.singletonList(depClone.toString()), setup.getDependentRepoPaths());
+        setup.prepareDependentReposBranches();
+
+        assertEquals("current", git(depClone, "config", "--local", "push.default").trim());
+        assertEquals("false", git(depClone, "config", "--local", "branch.autoSetupMerge").trim());
+
+        git(depClone, "checkout", "-q", "-b", "y", "origin/master");
+        git(depClone, "branch", "--set-upstream-to=origin/master", "y");
+        Assert.assertEquals("branch y must track origin/master for this scenario",
+                "origin/master",
+                git(depClone, "rev-parse", "--abbrev-ref", "y@{upstream}").trim());
+
+        assertBarePushTargetsOwnBranch(depClone, depBare, "y");
+    }
+
+    /**
+     * Asserts that a bare {@code git push} from {@code clone}, whose current
+     * branch is {@code branch}, creates {@code origin/<branch>} on
+     * {@code bareOrigin} while leaving {@code master}'s commit untouched.
+     *
+     * @param clone      the working clone whose current branch is pushed
+     * @param bareOrigin the bare origin the clone pushes to
+     * @param branch     the name of the current branch and expected remote branch
+     */
+    private void assertBarePushTargetsOwnBranch(Path clone, Path bareOrigin, String branch)
+            throws IOException, InterruptedException {
+        String masterBefore = git(bareOrigin, "rev-parse", "refs/heads/master").trim();
+
+        git(clone, "push", "-q");
+
+        assertTrue("the push must create origin/" + branch,
+                run(bareOrigin, "rev-parse", "--verify", "--quiet", "refs/heads/" + branch).succeeded());
         Assert.assertEquals("master's upstream must be untouched by the push",
-                masterBefore, git(bare, "rev-parse", "refs/heads/master").trim());
+                masterBefore, git(bareOrigin, "rev-parse", "refs/heads/master").trim());
+    }
+
+    /** A job preparing the primary working clone on {@code master}. */
+    private CodingAgentJob primaryJob() {
+        CodingAgentJob job = new CodingAgentJob("ops", "pin push defaults");
+        job.setWorkingDirectory(working.toString());
+        job.setTargetBranch("master");
+        job.setGitUserName(JOB_NAME);
+        job.setGitUserEmail(JOB_EMAIL);
+        return job;
     }
 
     /**
