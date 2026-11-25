@@ -711,7 +711,8 @@ public class PrototypeDiscovery implements ConsoleFeatures, GraphFeatures {
 	 *
 	 * <p>When {@code AR_PROTOTYPE_DIAGNOSTICS} is enabled, the community size
 	 * distribution, the membership and cohesion of the largest communities, and
-	 * the representatives that are each other's nearest neighbours are logged.</p>
+	 * the pairs of representatives where either lists the other among its
+	 * nearest neighbours are logged.</p>
 	 *
 	 * <p>At most {@link #maxClusters} prototypes are returned; this instance's
 	 * library, when present, names samples and supplies their embeddings in the
@@ -827,11 +828,13 @@ public class PrototypeDiscovery implements ConsoleFeatures, GraphFeatures {
 	}
 
 	/**
-	 * Logs every pair of returned representatives that are nearest neighbours of each other in
-	 * the similarity graph, with the similarity of that edge, and how many such pairs there are.
-	 * Representatives of distinct material should not appear in each other's K-NN lists; a
-	 * pair that does, at a similarity above {@link #DIAGNOSTIC_DUPLICATE_SIMILARITY}, is the
-	 * reported symptom of prototypes that are too similar to each other.
+	 * Logs every pair of returned representatives where either one lists the other among its
+	 * nearest neighbours in the similarity graph, with the larger of the two directed edge
+	 * weights, and how many such pairs there are. The graph's edges are directed (each node
+	 * holds its own K-NN list), and a single direction is enough to flag a pair: a
+	 * representative of distinct material should not appear in another's K-NN list at all. A
+	 * pair above {@link #DIAGNOSTIC_DUPLICATE_SIMILARITY} is the reported symptom of
+	 * prototypes that are too similar to each other.
 	 *
 	 * @param graph            the similarity graph
 	 * @param prototypeIndices the node index of each returned representative
@@ -885,8 +888,12 @@ public class PrototypeDiscovery implements ConsoleFeatures, GraphFeatures {
 		PackedCollection e = details == null ? null : details.meanPooledEmbedding(library.currentModelId());
 		if (e == null) return "-";
 
-		double[] head = e.toArray(0, Math.min(DIAGNOSTIC_EMBEDDING_COMPONENTS, e.getMemLength()));
-		return Arrays.toString(Arrays.stream(head).mapToObj(v -> String.format("%.3f", v)).toArray());
+		try {
+			double[] head = e.toArray(0, Math.min(DIAGNOSTIC_EMBEDDING_COMPONENTS, e.getMemLength()));
+			return Arrays.toString(Arrays.stream(head).mapToObj(v -> String.format("%.3f", v)).toArray());
+		} finally {
+			e.destroy();
+		}
 	}
 
 	/**

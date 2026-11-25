@@ -276,6 +276,7 @@ public class PrototypeDiversityDiagnosticTest extends TestSuiteBase implements G
 		int bins = latent.getShape().length(1);
 		int frames = latent.getShape().length(2);
 		PackedCollection features = cp(latent.reshape(bins, frames)).transpose().evaluate();
+		latent.destroy();
 
 		double seconds = Math.min(wave.getDuration(), MAX_SECONDS);
 		int valid = Math.max(1, Math.min(frames,
@@ -588,20 +589,20 @@ public class PrototypeDiversityDiagnosticTest extends TestSuiteBase implements G
 			int top = Math.min(10, reps.size());
 			log(String.format("pooling=%s K=%d resolution=%.1f communities=%d purity=%.3f nmi=%.3f "
 							+ "repTypicality=%.4f medoidTypicality=%.4f "
-							+ "top%dRepPairwise=%.4f top%dMedoidPairwise=%.4f top%dRandomPairwise=%.4f "
+							+ "top%dRepPairwise=%.4f top%dMedoidPairwise=%.4f top%dMiddlePairwise=%.4f "
 							+ "top%dRepMaxPair=%.4f top%dRepFamilies=%d",
 					label, k, resolution, members.size(), purity / n, nmi(members),
 					multi == 0 ? Double.NaN : typicalityRep / multi,
 					multi == 0 ? Double.NaN : typicalityMedoid / multi,
 					top, meanSim(reps.subList(0, top), reps.subList(0, top)),
 					top, meanSim(medoids.subList(0, top), medoids.subList(0, top)),
-					top, meanSim(randomMembers(members, top), randomMembers(members, top)),
+					top, meanSim(middleMembers(members, top), middleMembers(members, top)),
 					top, maxPair(reps.subList(0, top)),
 					top, reps.subList(0, top).stream().map(i -> clips.get(i).family()).distinct().count()));
 		}
 
 		/** @return the middle member of each of the largest {@code top} communities, a selection blind to centrality */
-		private List<Integer> randomMembers(List<List<Integer>> members, int top) {
+		private List<Integer> middleMembers(List<List<Integer>> members, int top) {
 			return members.subList(0, top).stream().map(m -> m.get(m.size() / 2)).toList();
 		}
 

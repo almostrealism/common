@@ -187,7 +187,7 @@ public class WaveFeatures implements Destroyable {
 	 *         {@code [frames, bins]} feature data to pool
 	 */
 	public PackedCollection meanPooledEmbedding() {
-		if (featureData == null || featureData.getShape().getDimensions() < 2) return null;
+		if (featureData == null || featureData.getShape().getDimensions() != 2) return null;
 
 		int frames = featureData.getShape().length(0);
 		int bins = featureData.getShape().length(1);

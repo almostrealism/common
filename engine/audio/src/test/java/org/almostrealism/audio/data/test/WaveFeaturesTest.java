@@ -55,6 +55,16 @@ public class WaveFeaturesTest extends TestSuiteBase {
 	}
 
 	/**
+	 * Feature data with more than two dimensions is not {@code [frames, bins]} data, so it is
+	 * not pooled by reading its first two dimensions as frames and bins.
+	 */
+	@Test(timeout = 60000)
+	public void meanPooledEmbeddingIsNullForHigherRankData() {
+		PackedCollection data = new PackedCollection(2, 3, 4).randnFill();
+		Assert.assertNull(new WaveFeatures("m", 10.0, 1, 3, 2, data).meanPooledEmbedding());
+	}
+
+	/**
 	 * A clip of more than 63 latent frames (about six seconds of Stable Audio 3 latents) pools
 	 * without failing, and to the right mean. Pooling by chaining one addition per frame
 	 * overflowed the expansion width of the computation at 64 frames.
