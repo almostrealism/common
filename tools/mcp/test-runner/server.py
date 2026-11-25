@@ -1401,12 +1401,13 @@ async def call_tool(name: str, arguments: dict):
             }
             # The forked JVM's effective extra arguments (space-joined, in
             # order), so a caller can confirm every jvm_args entry was carried
-            # into the fork's argLine rather than silently dropped. Joined the
-            # same way build_maven_command builds the -DargLine= value; splitting
-            # the rendered command string instead would re-break it on the very
-            # spaces that join the entries.
-            if jvm_args:
-                response["arg_line"] = " ".join(jvm_args)
+            # into the fork's argLine rather than silently dropped. Always
+            # present -- empty string when the run passes no jvm_args -- so a
+            # caller has one stable, checkable shape rather than an optional
+            # field. Joined the same way build_maven_command builds the
+            # -DargLine= value; splitting the rendered command string instead
+            # would re-break it on the very spaces that join the entries.
+            response["arg_line"] = " ".join(jvm_args)
             # Include instruction set output directory if it was auto-injected
             output_dir_prefix = "-DAR_INSTRUCTION_SET_OUTPUT_DIR="
             for part in command.split():

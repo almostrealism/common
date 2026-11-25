@@ -69,17 +69,12 @@ public class ForkedJvmArgumentsTest extends TestSuiteBase {
 				continue;
 			}
 
-			// TODO(review): indexOf returns the first global occurrence, so a repeated expected token would falsely fail this order check (harmless for today's distinct probe tokens).
-			int index = inputArguments.indexOf(token);
+			int relativeIndex = inputArguments.subList(searchFrom, inputArguments.size()).indexOf(token);
 			Assert.assertTrue(
-					"forked JVM is missing argument '" + token
-							+ "'; actual input arguments: " + inputArguments,
-					index >= 0);
-			Assert.assertTrue(
-					"forked JVM received argument '" + token + "' out of order; expected it at or "
-							+ "after position " + searchFrom + " but found it at " + index
-							+ "; actual input arguments: " + inputArguments,
-					index >= searchFrom);
+					"forked JVM is missing argument '" + token + "' at or after position "
+							+ searchFrom + "; actual input arguments: " + inputArguments,
+					relativeIndex >= 0);
+			int index = searchFrom + relativeIndex;
 			searchFrom = index + 1;
 		}
 	}
