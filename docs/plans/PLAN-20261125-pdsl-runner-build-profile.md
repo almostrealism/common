@@ -92,8 +92,8 @@ This section is an inference from the code and documentation. No measurement
 has confirmed it yet.
 
 Instruction-set reuse keys on a signature that, at provider leaves, includes the
-referenced buffer's `offset` and `memLength` (`CollectionProviderProducer.signature()`,
-plus `&aggRoot=<length>` for aggregated arguments). `INSTRUCTION_CACHING.md`
+referenced buffer's `offset` and `memLength` (`CollectionProviderProducer.signature()`
+in `compute/algebra`, plus `&aggRoot=<length>` for aggregated arguments). `INSTRUCTION_CACHING.md`
 documents this under "Buffer Offset Defeats Cross-Instance Reuse". The mixdown
 graph reads its arguments through `cp(x)`/`p(x)` provider leaves over
 `PackedCollection`s freshly allocated per scene, so two structurally identical
@@ -130,7 +130,8 @@ In scope:
    `ar-profile-analyzer` on an `OperationProfileNode` capture of the build, plus
    the Metal compile count and total time. On the Metal backend those come from
    `MetalProgram.compileTime`, the `mtlCompile` `TimingMetric`, via
-   `getCount()`/`getTotal()`. `NativeCompiler.getTotalInstructionSets()` counts
+   `getCount()`/`getTotal()`. Entries are recorded as `System.nanoTime()`
+   deltas, so convert them before comparing with `runnerBuildMs`. `NativeCompiler.getTotalInstructionSets()` counts
    only JNI native libraries, so it will not reflect Metal shader compiles.
 2. **Reduce the dominant cost** with the lowest-risk change the evidence
    supports, and record before/after `runnerBuildMs` from the same harness. The
@@ -186,8 +187,10 @@ optimisation, or native compilation.
 **Where a reduction would land.** Depending on the evidence:
 - intra-build reuse / signature fixes → the PDSL audio primitives or adapter in
   `studio/compose` (`org.almostrealism.studio.dsl.audio`,
-  `MixdownManagerPdslAdapter`), or the signature logic in `base/hardware` if a
-  general defect is found (to be raised separately, not widened into here);
+  `MixdownManagerPdslAdapter`), or the provider-leaf signature logic
+  (`CollectionProviderProducer` in `compute/algebra`) or the instruction cache
+  in `base/hardware` if a general defect is found (to be raised separately, not
+  widened into here);
 - redundant-work removal in the build path →
   `AudioSceneRealtimeRunner.createPdsl` / `compileMixdownModel`.
 
@@ -259,7 +262,14 @@ A reviewer can confirm the task is done when:
   question: it could be deferred to `setup()` or built lazily by
   `PatternRenderStream`. Either option moves cost from `runnerBuildMs` into
   `setupSeconds` without removing it. A reduction that only relocates work
-  between phases should be reported as such, not as a reduction.
+  between phases should be reported as such, not as a reduction. Related prior
+  work: `AudioSceneRealtimeRunner.preWarmMaxSeconds` (default `0`, so off)
+  is an existing setup-time render sweep. It was disabled because it
+  front-loaded real-time rendering into setup. Its javadoc names a bounded,
+  compile-only warm as the right replacement if compile stalls return. It runs
+  in `setup()`, so it does not affect `runnerBuildMs`. `KernelCacheReuseAcrossScenesTest`
+  pins it to `0` explicitly; `PdslSetupBreakdownTest` relies on the default.
+  The attribution runs must keep it at `0` so that `setupSeconds` stays comparable.
 - **If no reduction is achievable in scope,** the task's own "Done when" permits
   closing it on the profile evidence alone. The approver should confirm that
   outcome is acceptable before implementation, so the session does not stretch
