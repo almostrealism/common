@@ -64,6 +64,15 @@ public class RemediationStateStoreTest extends TestSuiteBase {
     }
 
     /**
+     * The default per-PR cap is ten dispatched remediation passes — the value the
+     * controller uses when {@link RemediationBudgetGuard#BUDGET_ENV} is unset.
+     */
+    @Test(timeout = 30000)
+    public void defaultBudgetIsTen() {
+        assertEquals(10, RemediationBudgetGuard.DEFAULT_BUDGET);
+    }
+
+    /**
      * Drives the store through {@code passes} dispatched remediation passes using
      * the self-sustaining own-commit loop: each pass dispatches (counted), then
      * records the commit it produced so the next pass is triggered by the loop's

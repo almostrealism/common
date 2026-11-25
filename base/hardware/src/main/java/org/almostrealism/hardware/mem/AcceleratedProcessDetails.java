@@ -30,6 +30,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.Executor;
+import java.util.function.Consumer;
 import java.util.function.IntFunction;
 import java.util.stream.Stream;
 
@@ -235,8 +236,28 @@ public class AcceleratedProcessDetails implements ConsoleFeatures {
 	 */
 	private volatile Throwable listenerFailure;
 
+	/**
+	 * The terminal argument-processing failure recorded by {@link #failListeners(Throwable)} when the
+	 * {@link #whenReady(Runnable)} listeners are discarded without running. This is distinct from
+	 * {@link #listenerFailure}, which is <em>also</em> set when a listener runs and then throws: a
+	 * {@link #whenReadyFailed(Consumer)} registration keys on this field alone, so it fires only on the
+	 * discard path its contract promises and never for a listener that actually ran. Guarded by
+	 * {@code this}.
+	 */
+	private Throwable processingFailure;
+
 	/** Listeners to notify when all arguments are ready. */
 	private List<Runnable> listeners;
+
+	/**
+	 * Handlers to run when the arguments can never become ready &mdash; i.e. when
+	 * {@link #failListeners(Throwable)} discards the {@link #whenReady(Runnable)} listeners
+	 * because processing the arguments failed, so the dispatch those listeners would issue
+	 * never runs. They let a caller that holds a resource across the dispatch (a retained
+	 * instruction manager) release it on this terminal-failure path, which neither the
+	 * discarded listener nor its completion can do. Guarded by {@code this}.
+	 */
+	private List<Consumer<Throwable>> readyFailureHandlers;
 
 	/**
 	 * Release callbacks for destination buffers leased to this invocation from a
@@ -263,6 +284,7 @@ public class AcceleratedProcessDetails implements ConsoleFeatures {
 		this.replacementManager = replacementManager;
 		this.executor = executor;
 		this.listeners = new ArrayList<>();
+		this.readyFailureHandlers = new ArrayList<>();
 	}
 
 	/**
@@ -619,10 +641,46 @@ public class AcceleratedProcessDetails implements ConsoleFeatures {
 	private void failListeners(Throwable failure) {
 		List<Runnable> pending = takeListeners();
 
-		listenerFailure = failure;
-		if (readyLatch == null) return;
+		List<Consumer<Throwable>> handlers;
+		synchronized (this) {
+			listenerFailure = failure;
+			processingFailure = failure;
+			handlers = readyFailureHandlers;
+			readyFailureHandlers = new ArrayList<>();
+		}
 
-		pending.forEach(r -> readyLatch.countDown());
+		if (readyLatch != null) {
+			pending.forEach(r -> readyLatch.countDown());
+		}
+
+		handlers.forEach(h -> h.accept(failure));
+	}
+
+	/**
+	 * Registers a handler to run if the arguments can never become ready and the
+	 * {@link #whenReady(Runnable)} listeners are therefore discarded rather than run (see
+	 * {@link #failListeners(Throwable)}). Unlike a {@code whenReady} listener, which runs only
+	 * on success, this fires only on that terminal-failure path &mdash; so a caller holding a
+	 * resource across the dispatch can release it when the dispatch will never be issued. If the
+	 * failure has already been recorded when this is called, the handler runs immediately.
+	 *
+	 * <p>A successful dispatch never invokes the handler; its caller releases such resources when
+	 * the dispatch's completion settles instead. A {@code whenReady} listener that runs and then
+	 * throws is also not this path &mdash; that failure surfaces to the listener itself.</p>
+	 *
+	 * @param handler the handler to run with the failure that prevented the dispatch
+	 */
+	public void whenReadyFailed(Consumer<Throwable> handler) {
+		Throwable failure;
+		synchronized (this) {
+			if (processingFailure == null) {
+				readyFailureHandlers.add(handler);
+				return;
+			}
+			failure = processingFailure;
+		}
+
+		handler.accept(failure);
 	}
 
 	/**

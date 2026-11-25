@@ -94,6 +94,50 @@ public class SetIntervalScaleMultiOctaveTest extends TestSuiteBase {
 	}
 
 	/**
+	 * A multi-octave scale rooted high enough that its upper notes run past the
+	 * top of the keyboard (C8) must still honor the {@link Scale} contract: every
+	 * position in {@code [0, length())} returns a note and {@link Scale#forEach}
+	 * walks the whole scale without throwing. Previously {@code length()} counted
+	 * the full {@code repetitions * intervals.length} positions, so {@code valueAt}
+	 * and {@code forEach} threw {@link IllegalStateException} for in-range positions
+	 * whose note would be above C8 (there is no {@code WesternChromatic.next()}
+	 * past C8). The scale now exposes only the notes that fit on the keyboard.
+	 */
+	@Test(timeout = 5000)
+	public void rootAboveRangeExposesOnlyReachableNotes() {
+		Scale<WesternChromatic> scale = WesternScales.major(WesternChromatic.C6, 3);
+
+		// forEach must not throw, and must visit exactly length() notes
+		List<WesternChromatic> collected = new ArrayList<>();
+		scale.forEach(collected::add);
+		Assert.assertEquals(scale.length(), collected.size());
+
+		// every in-range position returns a note (none throws)
+		for (int i = 0; i < scale.length(); i++) {
+			Assert.assertNotNull("Position " + i + " must return a note", scale.valueAt(i));
+			Assert.assertEquals("forEach and valueAt must agree at " + i,
+					collected.get(i), scale.valueAt(i));
+		}
+
+		// the reachable range runs from the root up to the top of the keyboard
+		Assert.assertEquals("First should be C6", WesternChromatic.C6, collected.get(0));
+		Assert.assertEquals("Last reachable note should be C8",
+				WesternChromatic.C8, collected.get(collected.size() - 1));
+	}
+
+	/**
+	 * A position past the reachable range of an overflowing scale throws
+	 * {@link IndexOutOfBoundsException} — the documented out-of-range signal —
+	 * rather than an undocumented {@link IllegalStateException} from walking off
+	 * the end of the keyboard.
+	 */
+	@Test(expected = IndexOutOfBoundsException.class, timeout = 5000)
+	public void positionPastReachableRangeThrowsIndexOutOfBounds() {
+		Scale<WesternChromatic> scale = WesternScales.major(WesternChromatic.C6, 3);
+		scale.valueAt(scale.length());
+	}
+
+	/**
 	 * Tests that accessing a position beyond the configured range throws
 	 * {@link IndexOutOfBoundsException} instead of silently wrapping.
 	 */
