@@ -194,6 +194,82 @@ class JmxMonitoringJvmArgsTest(unittest.TestCase):
         self.assertEqual(["FooTest", "BarTest", "BazTest#qux"], selectors)
 
 
+class JvmArgsReachForkTest(unittest.TestCase):
+    """Every jvm_args entry must reach the forked JVM, in order.
+
+    Regression for the defect where only the first jvm_args entry reached the
+    forked surefire JVM's argLine and every later entry silently became a
+    separate Maven -D property that never influenced the test JVM. The fix is
+    structural: build_maven_command space-joins all entries into a single
+    ``-DargLine=`` element, and start_run passes the command to
+    subprocess.Popen as a list (no shell), so that element reaches Maven whole
+    and surefire's argLine carries every entry. These tests pin that the
+    command carries exactly one argLine element holding every entry in order,
+    that no entry leaks as its own command token, and that arg_line_value --
+    the value start_run records in run metadata -- reports that same set.
+    """
+
+    def setUp(self):
+        self._runner = server.TestRunner()
+        self._tmpdir = tempfile.mkdtemp()
+
+    def tearDown(self):
+        shutil.rmtree(self._tmpdir, ignore_errors=True)
+
+    def _build(self, jvm_args):
+        config = server.RunConfig(
+            module="engine/utils", jvm_args=jvm_args,
+            test_classes=["FooTest"])
+        return self._runner.build_maven_command(
+            config, run_dir=Path(self._tmpdir), run_id="j1")
+
+    def test_all_jvm_args_join_into_one_argline_in_order(self):
+        jvm_args = ["-Xmx4g", "-XX:+UseZGC", "-Dfoo=bar"]
+        cmd = self._build(jvm_args)
+        argline_parts = [p for p in cmd if p.startswith(server.ARG_LINE_PREFIX)]
+        self.assertEqual(1, len(argline_parts))
+        self.assertEqual(
+            server.ARG_LINE_PREFIX + "-Xmx4g -XX:+UseZGC -Dfoo=bar",
+            argline_parts[0])
+
+    def test_no_jvm_arg_leaks_as_a_separate_token(self):
+        # The exact symptom of the bug: a later entry appearing as its own
+        # command token, which Maven reads as a separate -D property/goal that
+        # never reaches the fork. Every entry must live inside the one argLine.
+        jvm_args = ["-Xmx4g", "-XX:+UseZGC", "-Dfoo=bar"]
+        cmd = self._build(jvm_args)
+        argline = server.TestRunner.arg_line_value(cmd)
+        for part in cmd:
+            if part == server.ARG_LINE_PREFIX + argline:
+                continue
+            self.assertNotIn(
+                part, jvm_args,
+                f"jvm_arg {part!r} leaked as its own command token")
+
+    def test_arg_line_value_reports_every_entry(self):
+        # arg_line_value is what start_run records in run metadata, so a caller
+        # can confirm each entry reached the fork. It must report the full
+        # joined set, not just the first entry.
+        jvm_args = ["-Xmx4g", "-XX:+UseZGC", "-Dfoo=bar"]
+        cmd = self._build(jvm_args)
+        self.assertEqual(
+            "-Xmx4g -XX:+UseZGC -Dfoo=bar",
+            server.TestRunner.arg_line_value(cmd))
+
+    def test_arg_line_value_empty_without_jvm_args(self):
+        cmd = self._build([])
+        self.assertFalse(any(p.startswith(server.ARG_LINE_PREFIX) for p in cmd))
+        self.assertEqual("", server.TestRunner.arg_line_value(cmd))
+
+    def test_run_metadata_carries_arg_line_field(self):
+        # The field must exist (defaulting to empty) so every metadata record
+        # start_run writes can report the effective fork arguments.
+        metadata = server.RunMetadata(
+            run_id="r", config={}, status="running",
+            started_at=datetime.now().isoformat())
+        self.assertEqual("", metadata.arg_line)
+
+
 class DegradedConfigTest(unittest.TestCase):
     """Retrying without JMX must change only whether JMX is on.
 
