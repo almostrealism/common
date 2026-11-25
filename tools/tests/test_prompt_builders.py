@@ -61,6 +61,11 @@ _TODO_FINDINGS_MARKER = "## New TODOs are findings"
 # code-policy, quality-gates, docs-review, general-review) still sees it.
 _CONCEALMENT_MARKER = (
     "Generated code is a symptom — a fix anywhere but the expression is a defect")
+# A phrase unique to the route-independent concealment section's renderer-bug
+# carve-out, matching the exception in the root CLAUDE.md generated-code rule: a
+# renderer fix for a demonstrably correct tree that still emits invalid source is
+# not the concealment this guard rejects.
+_CONCEALMENT_EXCEPTION_MARKER = "establish which case you are in"
 
 # The builders behind the remediation jobs' prompts (auto-review,
 # auto-resolve-python, auto-resolve) — every one of them runs
@@ -365,6 +370,7 @@ class PromptBuilderTests(unittest.TestCase):
         """
         fragment = _read(os.path.join(_PROMPT_DIR, _PR_FEEDBACK_FRAGMENT))
         self.assertIn(_CONCEALMENT_MARKER, fragment)
+        self.assertIn(_CONCEALMENT_EXCEPTION_MARKER, fragment)
         for name in _AUTO_RESOLVE_BUILDERS:
             builder = os.path.join(_PROMPT_DIR, name)
             with self.subTest(builder=name):
@@ -373,6 +379,8 @@ class PromptBuilderTests(unittest.TestCase):
                 prompt = _read(self.output)
                 self.assertIn(_CONCEALMENT_MARKER, prompt)
                 self.assertEqual(1, prompt.count(_CONCEALMENT_MARKER))
+                self.assertIn(_CONCEALMENT_EXCEPTION_MARKER, prompt)
+                self.assertEqual(1, prompt.count(_CONCEALMENT_EXCEPTION_MARKER))
 
     def test_the_auto_resolve_tuple_matches_the_routes_carrying_branch_feedback(self):
         """`_AUTO_RESOLVE_BUILDERS` must stay in step with the builders that
