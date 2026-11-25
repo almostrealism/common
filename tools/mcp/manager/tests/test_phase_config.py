@@ -294,6 +294,36 @@ class TestClearingSemanticSentinels(unittest.TestCase):
         self.assertFalse(bool(parsed))
 
 
+class TestParamNameInErrors(unittest.TestCase):
+    """The ``param_name`` argument names the offending knob in error messages,
+    so the fallback variants report ``fallback_default_phase_config`` /
+    ``fallback_phase_configs`` rather than the override pair's names."""
+
+    def test_default_error_names_fallback_param(self):
+        parsed, err = _parse_default_phase_config_json(
+            '{"runner":"nope"}', "fallback_default_phase_config")
+        self.assertIsNone(parsed)
+        self.assertIn("fallback_default_phase_config", err["error"])
+
+    def test_phase_configs_error_names_fallback_param(self):
+        parsed, err = _parse_phase_configs_json(
+            '{"not-a-phase":{"runner":"opencode"}}', "fallback_phase_configs")
+        self.assertIsNone(parsed)
+        self.assertIn("fallback_phase_configs", err["error"])
+
+    def test_default_param_name_defaults_to_override_name(self):
+        parsed, err = _parse_default_phase_config_json('{"runner":"nope"}')
+        self.assertIsNone(parsed)
+        self.assertIn("default_phase_config", err["error"])
+
+    def test_valid_fallback_parses_the_same(self):
+        parsed, err = _parse_default_phase_config_json(
+            '{"runner":"opencode","provider":"openrouter"}',
+            "fallback_default_phase_config")
+        self.assertIsNone(err)
+        self.assertEqual(parsed, {"runner": "opencode", "provider": "openrouter"})
+
+
 class TestRejectRemovedConfigParams(unittest.TestCase):
     """Unit tests for ``_reject_removed_config_params``."""
 
