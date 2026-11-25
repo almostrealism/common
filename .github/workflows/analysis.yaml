@@ -439,14 +439,18 @@ jobs:
           # the flaky-test retry gate (rerun-flaky-tests.sh) and the auto-review
           # job use to tell an infrastructure failure from a defect in the commit.
           # Its standalone regression suite (tools/tests/test-infra-classification.sh)
-          # runs in python-tests, but none of those three files is a .py, so a
-          # change to the regex or the retry gate would not set python_changed.
-          # Give them their own flag so the classifier's suite runs whenever they
-          # change — the same reason the guard and agent-protection flags exist.
+          # and the Python wiring tests (test_remediation_job_exclusivity.py, which
+          # read this file's auto-review GATE_JOBS and suppression conditions —
+          # the classifier's other half) both run in python-tests, but none of
+          # these files is a .py, so a change to the regex, the retry gate, or
+          # this file's auto-review wiring would not set python_changed. Give them
+          # their own flag so the classifier's suites run whenever they change —
+          # the same reason the guard and agent-protection flags exist.
           INFRA_FILES=$(git diff --name-only "$BASE" HEAD -- \
             'tools/ci/infra-failure.sh' \
             'tools/ci/rerun-flaky-tests.sh' \
-            'tools/tests/test-infra-classification.sh' || true)
+            'tools/tests/test-infra-classification.sh' \
+            '.github/workflows/analysis.yaml' || true)
           if [ -n "$INFRA_FILES" ]; then
             echo "infra_classifier_changed=true" >> "$GITHUB_OUTPUT"
             echo "::notice::Infrastructure-failure classifier changed — running its regression suite"
@@ -2172,8 +2176,8 @@ jobs:
   # infra_classifier_changed, so the guard suites still run when only its shell
   # adapter, allowlist, or settings.json registration changed, the branch-check
   # suites run when an agent-protection script changed, and the infrastructure
-  # classifier's suite runs when only its shell scripts changed — none of which
-  # set python_changed.
+  # classifier's suites run when only its shell scripts or this file's
+  # auto-review wiring changed — none of which set python_changed.
   python-tests:
     needs: changes
     if: >-

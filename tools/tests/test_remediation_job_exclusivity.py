@@ -1081,6 +1081,19 @@ class InfrastructureFailureSharingTests(unittest.TestCase):
             with self.subTest(path=path):
                 self.assertIn(path, run)
 
+    def test_the_flag_also_detects_this_workflow_file(self):
+        """The auto-review GATE_JOBS and suppression conditions this very test
+        class reads live in analysis.yaml, which is not a .py, so a change to
+        that wiring alone would set neither python_changed nor (without this)
+        infra_classifier_changed — skipping python-tests and leaving the wiring
+        unexercised. analysis.yaml must be in the detection set so a change to
+        the classifier's other half runs its wiring tests."""
+        filter_step = next(s for s in _jobs()["changes"]["steps"]
+                           if s.get("id") == "filter")
+        run = filter_step["run"]
+        infra_block = run.split("INFRA_FILES=", 1)[1].split("ISO_FILES=", 1)[0]
+        self.assertIn(".github/workflows/analysis.yaml", infra_block)
+
 
 if __name__ == "__main__":
     unittest.main()
