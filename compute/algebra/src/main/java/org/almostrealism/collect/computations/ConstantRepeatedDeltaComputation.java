@@ -95,9 +95,6 @@ public class ConstantRepeatedDeltaComputation extends ConstantRepeatedProducerCo
 	/** The collection variable representing the target during scope preparation. */
 	private CollectionVariable<?> targetVariable;
 
-	/** The current row index used for destination addressing in multi-iteration contexts. */
-	private Expression row;
-
 	/** Optional fallback expression for value retrieval when direct computation is not available. */
 	private TraversableExpression<Double> fallback;
 
@@ -209,7 +206,7 @@ public class ConstantRepeatedDeltaComputation extends ConstantRepeatedProducerCo
 	 *
 	 * <p>The delta computation follows this pattern:</p>
 	 * <pre>
-	 * result = source.step(args, row + localIndex).delta(target).getValueAt(row + localIndex)
+	 * result = source.step(args, localIndex).delta(target).getValueAt(kernelIndex * deltaSize + localIndex)
 	 * </pre>
 	 *
 	 * @param args The traversable expressions representing input arguments
@@ -219,14 +216,14 @@ public class ConstantRepeatedDeltaComputation extends ConstantRepeatedProducerCo
 	 */
 	@Override
 	protected Expression<?> getExpression(TraversableExpression[] args, Expression globalIndex, Expression localIndex) {
-		CollectionExpression delta = source.getExpression(args, null, row.add(localIndex))
+		CollectionExpression delta = source.getExpression(args, null, localIndex)
 				.delta(targetVariable);
 
 		// Each kernel instance owns one gradient batch of the delta's size, so the
 		// position within the batch is addressed from the kernel index explicitly
 		return delta.getValueAt(new KernelIndex()
 				.multiply(delta.getShape().getSize())
-				.add(row.add(localIndex).toInt()));
+				.add(localIndex.toInt()));
 	}
 
 	/**
@@ -258,23 +255,25 @@ public class ConstantRepeatedDeltaComputation extends ConstantRepeatedProducerCo
 	}
 
 	/**
-	 * Computes the destination expression for writing delta results.
-	 * Calculates the row index based on the global index and iteration count,
-	 * then delegates to the parent implementation with the adjusted offset.
+	 * Computes the destination expression for writing delta results: each iteration writes
+	 * its own element of the executing kernel's gradient block, at position
+	 * {@code localIndex + offset} within that block.
 	 *
-	 * <p>The row calculation accounts for multiple iterations by multiplying
-	 * the global index by the iteration count, ensuring proper addressing
-	 * across all gradient accumulation iterations.</p>
+	 * <p>The block itself is located by the parent implementation, which already offsets the
+	 * output by {@code kernelIndex * out.length()}. No further offset derived from the kernel
+	 * index may be added here: doing so counts the block offset twice, so every kernel but the
+	 * first writes outside its block and the last ones write past the end of the output
+	 * buffer, corrupting whatever memory follows it.</p>
 	 *
 	 * @param globalIndex The global index in the overall computation space
-	 * @param localIndex The local index within the current iteration
-	 * @param offset The offset within the memory block (not used in this implementation)
+	 * @param localIndex The iteration index
+	 * @param offset The offset within the memory block
 	 * @return An {@link Expression} representing the destination memory location
 	 */
+	// TODO(review): add a deterministic regression test asserting delta destinations stay within the output buffer
 	@Override
 	protected Expression<?> getDestination(Expression<?> globalIndex, Expression<?> localIndex, Expression<?> offset) {
-		row = globalIndex.multiply(e(count));
-		return super.getDestination(globalIndex, localIndex, row.add(localIndex));
+		return super.getDestination(globalIndex, localIndex, localIndex.add(offset));
 	}
 
 	/**
