@@ -238,8 +238,8 @@ Checked against the converted `neurons.tsv` and the MaleCNS v1.0 annotation tabl
 ### Assets produced (scope item 2)
 
 The converted connectome was already on the host (`male-cns/csr`, 164,506 neurons, 25,135,616 edges,
-122,318,556 synapses, `min_count` 1). The Brian2 references were generated with Brian2 2.11.0 and
-the authors' `model.py` unchanged (sha256 `fc45837d…`):
+122,318,556 synapses, `min_count` 1). The Brian2 references were generated with Brian2 (its version is
+recorded as `brian2_version` in each reference's manifest) and the authors' `model.py` unchanged (sha256 `fc45837d…`):
 
     brian2_reference.py experiment --repo <Drosophila_brain_model> \
         --connectome <models-derived>/male-cns/csr --name male-cns_<rate>Hz \

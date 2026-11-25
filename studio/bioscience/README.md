@@ -109,8 +109,8 @@ directory named by the property in parentheses):
 | FlyWire 630 | `connectome_csr.py --dataset flywire-630 --source <flywire-783 directory>` | `flywire/csr-630` (`AR_FLYWIRE_630_CSR`) |
 | FlyWire 783 | `connectome_csr.py --dataset flywire-783 --source <flywire-783 directory>` | `flywire/csr-783` (`AR_FLYWIRE_783_CSR`) |
 | Cell types | `male_cns_cell_types.py --source <male-cns release>` | `male-cns/cell-type-matrix` (`AR_MALE_CNS_CELL_TYPES`) |
-| Brian2 sugar references | `brian2_reference.py sugar --repo <model repo> --rate <100, 150 or 200>` | `flywire/brian2-reference/sugarR_630_<rate>Hz` (`AR_FLYWIRE_BRIAN2_REFERENCE`, the parent directory) |
-| MaleCNS Brian2 references | `brian2_reference.py experiment --repo <model repo> --connectome <male-cns/csr> --name male-cns_<rate>Hz --stimulate-types LB3a,LB3b,LB3c,LB3d --rate <100, 150 or 200>` | `male-cns/brian2-reference/male-cns_<rate>Hz` (`AR_MALE_CNS_BRIAN2_REFERENCE`, the parent directory) |
+| Brian2 sugar references | `brian2_reference.py sugar --repo <model repo> --rate <100, 150 or 200> --output <models-derived>/flywire/brian2-reference/sugarR_630_<rate>Hz` | `flywire/brian2-reference/sugarR_630_<rate>Hz` (`AR_FLYWIRE_BRIAN2_REFERENCE`, the parent directory) |
+| MaleCNS Brian2 references | `brian2_reference.py experiment --repo <model repo> --connectome <male-cns/csr> --name male-cns_<rate>Hz --stimulate-types LB3a,LB3b,LB3c,LB3d --rate <100, 150 or 200> --trials 30 --output <models-derived>/male-cns/brian2-reference/male-cns_<rate>Hz` | `male-cns/brian2-reference/male-cns_<rate>Hz` (`AR_MALE_CNS_BRIAN2_REFERENCE`, the parent directory) |
 
 The committed sugar circuit fixtures are regenerated from the source tables and the 200 Hz
 reference with:
