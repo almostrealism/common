@@ -27,6 +27,7 @@ import io.almostrealism.expression.Expression;
 import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Producer;
+import io.almostrealism.uml.Signature;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 
@@ -290,5 +291,32 @@ public class ConstantRepeatedDeltaComputation extends ConstantRepeatedProducerCo
 	public ConstantRepeatedDeltaComputation generate(List<Process<?, ?>> children) {
 		return new ConstantRepeatedDeltaComputation(source, targetShape, target,
 				children.stream().skip(1).toArray(Producer[]::new));
+	}
+
+	/**
+	 * Extends the {@link RepeatedProducerComputation#signature() class-identified} signature with
+	 * the signatures of the {@link #source} being differentiated and the {@link #target} it is
+	 * differentiated with respect to, both of which determine this delta's loop body through
+	 * {@link #getExpression(TraversableExpression[], Expression, Expression)} yet are invisible to
+	 * the inherited signature: the source's own behaviour is not an input of this computation, and
+	 * the target is obtained during scope preparation rather than passed as an input. Only the
+	 * target <em>shape</em> reaches the inherited signature, through the appended output shape, so
+	 * without these two components the gradients of two different sources — or of one source with
+	 * respect to two same-shape targets — would share a signature and collide in the
+	 * signature-keyed instruction cache.
+	 *
+	 * @return the signature including the source and target, or {@code null} when the base
+	 *         signature or either component's signature is unavailable
+	 */
+	@Override
+	public String signature() {
+		String signature = super.signature();
+		if (signature == null) return null;
+
+		String sourceSignature = source.signature();
+		String targetSignature = Signature.of(target);
+		if (sourceSignature == null || targetSignature == null) return null;
+
+		return signature + "{source:" + sourceSignature + ",target:" + targetSignature + "}";
 	}
 }

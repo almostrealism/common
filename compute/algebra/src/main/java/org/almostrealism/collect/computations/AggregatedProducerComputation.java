@@ -523,7 +523,7 @@ public abstract class AggregatedProducerComputation extends TraversableRepeatedP
 		} else {
 			ConstantRepeatedDeltaComputation repeated = new ConstantRepeatedDeltaComputation(this, target);
 			TraversableDeltaComputation traversable = TraversableDeltaComputation.create("delta", getShape(), shape(target),
-					args -> CollectionExpression.create(getShape(), this::getValueAt), target,
+					args -> CollectionExpression.create(getShape(), this::getValueAt), signature(), target,
 					getInputs().stream().skip(1).toArray(Producer[]::new));
 			traversable.addDependentLifecycle(this);
 			repeated.setFallback(traversable);
