@@ -21,7 +21,9 @@ import io.almostrealism.code.Statement;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.expression.DoubleConstant;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.InstanceReference;
 import io.almostrealism.expression.StaticReference;
+import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.kernel.NoOpKernelStructureContext;
 import io.almostrealism.scope.Repeated;
@@ -485,6 +487,60 @@ public class LoopInvariantHoistingTest extends TestSuiteBase {
 		// f_independent should be hoisted
 		Assert.assertTrue("f_independent should be hoisted",
 				countDeclarationsNamed(simplified.getStatements(), "f_independent") > 0);
+	}
+
+	/**
+	 * Verifies that a declaration which reads an element of a buffer the loop writes is NOT
+	 * hoisted, even though the read registers no loop-variant <em>name</em>. The write and the
+	 * read both go through an {@link InstanceReference} to the same {@link ArrayVariable}: the
+	 * write records the buffer only by name, while an element read contributes no name at all, so
+	 * the name-based variance analysis judges the read invariant. Keying variance on the written
+	 * buffer's identity catches it.
+	 *
+	 * <p>Scope structure:</p>
+	 * <pre>
+	 * for (i = 0; i &lt; 100; i++) {
+	 *   {
+	 *     buffer[i] = i;                   // non-declaration write — mutates buffer each iteration
+	 *     double f_alias = buffer[0] + 1.0; // reads the mutated buffer — must stay in the loop
+	 *   }
+	 * }
+	 * </pre>
+	 *
+	 * <p>This test fails before the aliasing fix (the declaration is hoisted and reads a stale
+	 * value) and passes after it.</p>
+	 */
+	@Test(timeout = 30000)
+	public void declarationReadingLoopWrittenBufferNotHoisted() {
+		Variable<Integer, ?> idx = Variable.integer("_test_i");
+		Repeated<Void> loop = new Repeated<>(idx, idx.ref().lessThan(100));
+		loop.setName("bufferAliasTest");
+
+		// A buffer the loop both writes and reads.
+		ArrayVariable<Double> buffer = new ArrayVariable<>(Double.class, "_v_alias", e(8));
+
+		Scope<Void> child = new Scope<>("body");
+
+		// Non-declaration write: buffer[i] = i (mutates the buffer on every iteration). The
+		// loop-variant position keeps this a plain loop rather than an accumulator promotion.
+		child.getStatements().add(new ExpressionAssignment(
+				false,
+				new InstanceReference<>(buffer, idx.ref(), null),
+				new StaticReference<>(Double.class, "_test_i")));
+
+		// Declaration reading the same buffer at a constant position: f_alias = buffer[0] + 1.0.
+		// The read contributes no name, so without identity-keyed variance it looks invariant.
+		child.getStatements().add(new ExpressionAssignment(
+				true,
+				new StaticReference<>(Double.class, "f_alias"),
+				new InstanceReference<>(buffer, e(0), null).add(new DoubleConstant(1.0))));
+
+		loop.getChildren().add(child);
+
+		Repeated<Void> simplified = (Repeated<Void>) loop.simplify(new NoOpKernelStructureContext(), 0);
+
+		Assert.assertEquals("Declaration reading a buffer the loop writes must NOT be hoisted",
+				0, countDeclarationsNamed(simplified.getStatements(), "f_alias"));
 	}
 
 	/**

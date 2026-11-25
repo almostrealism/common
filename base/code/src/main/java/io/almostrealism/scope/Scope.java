@@ -1232,6 +1232,28 @@ public class Scope<T> extends ArrayList<Scope<T>>
 	}
 
 	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>The arrays are read off the scope itself: each of its {@link Statement statements} and
+	 * declarations adds the array it writes, and each child scope adds what its own content
+	 * writes.</p>
+	 */
+	@Override
+	public void appendWrittenArrays(Set<Variable<?, ?>> arrays) {
+		for (Statement<?> statement : getStatements()) {
+			statement.appendWrittenArrays(arrays);
+		}
+
+		for (ExpressionAssignment<?> declaration : getVariables()) {
+			declaration.appendWrittenArrays(arrays);
+		}
+
+		for (Scope<?> child : getChildren()) {
+			child.appendWrittenArrays(arrays);
+		}
+	}
+
+	/**
 	 * Returns the {@link Index} of every loop in this scope and its descendants, in traversal
 	 * order.
 	 *

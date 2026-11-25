@@ -66,6 +66,28 @@ public interface VariableReferenceSupport {
 	void appendAssignedNames(Set<String> names);
 
 	/**
+	 * Appends to {@code arrays}, which this method modifies, the {@link ArrayVariable} whose
+	 * storage this code may write, identified by the variable itself rather than by its name: the
+	 * identity-keyed counterpart to {@link #appendAssignedNames(Set)}. An analysis that must
+	 * decide whether a declaration reads memory the loop writes cannot do so by name, because an
+	 * element read through an {@link io.almostrealism.expression.InstanceReference} contributes no
+	 * name to {@link io.almostrealism.expression.ExpressionReferences#appendReferencedNames(Set)},
+	 * and because argument aggregation lets one buffer be reached through variables of different
+	 * names; comparing the written variable against a read with
+	 * {@link io.almostrealism.expression.ExpressionReferences#containsReference(Variable)}, which
+	 * matches on {@link Variable#hasSameRoot(Variable) shared storage}, answers both soundly.
+	 *
+	 * <p>This default adds nothing: an expression evaluated reads but does not write, and only the
+	 * code that writes a known array ({@link io.almostrealism.code.ExpressionAssignment} through
+	 * its destination, and {@link Scope} through its contents) contributes one. The name-based
+	 * {@link #appendAssignedNames(Set)} remains the conservative account the variance analysis also
+	 * consults for everything a precise array identity is not available for.</p>
+	 *
+	 * @param arrays the set to which the written arrays are added
+	 */
+	default void appendWrittenArrays(Set<Variable<?, ?>> arrays) { }
+
+	/**
 	 * Returns whether this code reads the value of an element of {@code array} at a position in
 	 * {@code [start, end)}: whether it references such an element anywhere other than as the
 	 * element an assignment writes. Positions are in the same frame as for
