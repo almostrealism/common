@@ -674,7 +674,12 @@ Before a `completionListeners` value is saved, the controller checks it with `Li
 | `A -> B`, then `B` lists `A` | rejected | `cycle: B -> A -> B` (the path is closed back to its first node) |
 | `A -> B`, `A -> C`, `B -> D`, `C -> D` (diamond) | allowed | — |
 
-A rejected register or update returns the error response and does not save anything. Listener IDs that don't belong to any registered workstream are **not** rejected when the config is saved. They are skipped at wake-up time with a `wakeup_listener_missing` warning.
+A rejected register or update returns the error response, and nothing is written to the YAML config. That does not mean the request has no effect:
+
+- **Update.** `handleUpdate` applies the other fields in the body (channel, branches, repository, planning document, plan instructions, phase configuration, required labels, dependent repos) to the live in-memory workstream *before* it runs the cycle check. When the check fails, those changes are not rolled back. They take effect at once, and the next successful persist writes them to disk. The `completionListeners` value is left unchanged, and so is every field the handler applies *after* the check (for example `dispatchCapable`, `trackerCapabilities`, `dormantForCompletionListeners` and `kind`), so a rejected update can apply only part of its body. To be safe, send a listener change in its own update request, or fix the cycle and resend the whole body.
+- **Register.** The workstream is never registered. But if the body named a `channelName`, the Slack channel was already created before the check ran, so it is left behind.
+
+Listener IDs that don't belong to any registered workstream are **not** rejected when the config is saved. They are skipped at wake-up time with a `wakeup_listener_missing` warning.
 
 To have a job wake its *own* workstream once, use a shell job submitted with `selfNotify` instead of a standing self-listing ([Job Completion Events: Self-Notify Field](events.md)). That path goes through `CompletionListenerFanout.fanoutSelf` and has the same limits as an ordinary listener.
 
