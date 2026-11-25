@@ -402,7 +402,8 @@ def _list_run_jobs(owner: str, repo: str, run_id: int):
 
     Returns:
         The list of raw job objects from every page, or the error dict from the
-        first request that failed.
+        first request that failed or returned something other than the expected
+        ``{"jobs": [...]}`` shape.
     """
     all_jobs = []
     page = 1
@@ -413,7 +414,15 @@ def _list_run_jobs(owner: str, repo: str, run_id: int):
             f"?per_page=100&page={page}&filter=latest")
         if isinstance(result, dict) and result.get("ok") is False:
             return result
-        jobs = result.get("jobs", []) if isinstance(result, dict) else []
+        if not isinstance(result, dict) or not isinstance(
+                result.get("jobs"), list):
+            return {
+                "ok": False,
+                "error": (f"could not list jobs of workflow run {run_id} on "
+                          f"{owner}/{repo}"),
+                "returned": result,
+            }
+        jobs = result["jobs"]
         all_jobs.extend(jobs)
         if len(jobs) < 100:
             return all_jobs

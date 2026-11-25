@@ -423,6 +423,23 @@ class TestGithubRerunFailedJobs(unittest.TestCase):
         self.assertEqual(3, mock_gh.call_count)  # run + two job pages, no POST
 
     @patch.object(server, "_github_request")
+    def test_unexpected_jobs_shape_is_surfaced_not_silently_empty(
+            self, mock_gh, mock_repo):
+        # A jobs response that is accepted but lacks the expected "jobs" list is
+        # an unexpected shape, not an empty run. Treating it as no jobs would
+        # refuse a possibly-rerunnable run with a misleading "nothing to rerun";
+        # instead the listing surfaces an error and no rerun POST follows.
+        mock_gh.side_effect = [
+            self._run(),                     # GET run
+            {"total_count": 3},              # GET jobs (missing "jobs" list)
+        ]
+        result = server.github_rerun_failed_jobs(run_id=99)
+        self.assertFalse(result["ok"])
+        self.assertIn("could not list jobs", result["error"])
+        self.assertNotIn("no failed", result["error"])
+        self.assertEqual(2, mock_gh.call_count)  # run + jobs, no POST
+
+    @patch.object(server, "_github_request")
     def test_github_403_reports_actions_write(self, mock_gh, mock_repo):
         mock_gh.side_effect = [
             self._run(),
