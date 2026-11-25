@@ -739,7 +739,12 @@ The `job_timing` table in `JobStatsStore` has a `trigger_reason VARCHAR(64)` col
 | `manual` | the default, for every job that nothing marked otherwise (including CI and other automated submissions) |
 | `completion_listener` | `CompletionListenerFanout`, through `JobStatsStore.setTriggerReason(jobId, "completion_listener")`, right before the wake-up is submitted |
 
-The `setTriggerReason` javadoc also mentions `auto_resolve`, but nothing in the code writes that value yet. A wake-up's `STARTED` event can arrive before `setTriggerReason` is called, so the reason is held in memory and applied when the row is first inserted, and is also written to any row that already exists. Either way, the row ends up labelled correctly.
+The `setTriggerReason` javadoc also mentions `auto_resolve`, but nothing in the code writes that value yet. A wake-up's `STARTED` event can arrive before `setTriggerReason` is called, so the reason is held in memory and applied when `recordJobStarted` inserts the row, and is also written to any row that already exists. That covers the usual orderings, but not every one:
+
+- When no row exists by the time the job completes (the controller restarted while the wake-up was running, or its `STARTED` event never reached the controller), `recordJobCompleted` inserts the row itself, and that insert does not set `trigger_reason`. The row gets the default `'manual'` even though it was a wake-up.
+- The pending reasons are held only in memory, so a controller restart between `setTriggerReason` and the job's first row loses them as well.
+
+So `trigger_reason = 'completion_listener'` reliably finds wake-ups, but `trigger_reason <> 'completion_listener'` can still include a few of them. Where that matters, also exclude descriptions that start with `wake-up:` (see below).
 
 No REST endpoint or MCP tool returns this column. Query the HSQLDB file database directly. It is named `stats` and lives in the controller's data directory: the directory holding `workstreams.yaml`, or `~/.flowtree` when the controller runs without a config file (`FlowTreeController.dataDirectory`). The connection URL is `jdbc:hsqldb:file:<dataDir>/stats` with user `SA` and an empty password. A running controller holds the database lock, so query a copy of the `stats.*` files or stop the controller first.
 
@@ -755,6 +760,7 @@ GROUP BY workstream_id;
 SELECT job_id, workstream_id, status, description
 FROM job_timing
 WHERE trigger_reason <> 'completion_listener'
+  AND (description IS NULL OR description NOT LIKE 'wake-up:%')
 ORDER BY started_at DESC;
 ```
 
