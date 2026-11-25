@@ -1437,8 +1437,9 @@ public class SlackListener implements ConsoleFeatures {
 
     /**
      * Handles {@code /flowtree archive [keep-channel]}. Archives the
-     * workstream bound to the channel the command was invoked from, and
-     * archives that Slack channel too unless {@code keep-channel} is passed.
+     * workstream bound to the channel the command was invoked from. Unless
+     * {@code keep-channel} is passed, it replies first and then archives that
+     * channel after a short delay via {@link SlackNotifier#scheduleChannelArchive}.
      *
      * <p>Applies the same guard as
      * {@code POST /api/workstreams/{id}/archive}: a workstream with a running
@@ -1476,21 +1477,21 @@ public class SlackListener implements ConsoleFeatures {
         if (!persistOrWarn(ctx)) return;
 
         boolean keepChannel = args != null && "keep-channel".equalsIgnoreCase(args.trim());
+        boolean openChannel = keepChannel || ws.getChannelId() == null || ws.getChannelId().isEmpty();
         StringBuilder sb = new StringBuilder(":white_check_mark: *Workstream archived*\n");
         sb.append("   Workstream ID: `").append(ws.getWorkstreamId()).append("`\n");
-
-        if (keepChannel || ws.getChannelId() == null || ws.getChannelId().isEmpty()) {
-            sb.append("   This channel was left open.");
-        } else {
-            // Archiving the channel is done last so the reply is composed
-            // before the conversation it describes closes. The response URL
-            // still delivers afterwards.
-            String error = wsNotifier.archiveChannel(ws.getChannelId());
-            sb.append(error == null ? "   This channel has been archived."
-                : "   The channel could not be archived: " + error);
-        }
-
+        sb.append(openChannel ? "   This channel was left open."
+            : "   Archiving this channel momentarily…");
         ctx.respond(sb.toString());
+        if (!openChannel) {
+            wsNotifier.scheduleChannelArchive(ws.getChannelId(), error -> {
+                try {
+                    ctx.respond(":warning: The channel could not be archived: " + error);
+                } catch (IOException e) {
+                    warn("Delayed channel archive report failed: " + e.getMessage());
+                }
+            });
+        }
     }
 
     /**

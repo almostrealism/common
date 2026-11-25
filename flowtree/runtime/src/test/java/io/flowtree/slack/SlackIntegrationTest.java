@@ -37,6 +37,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
 import io.flowtree.api.FlowTreeApiEndpoint;
@@ -1284,6 +1285,50 @@ public class SlackIntegrationTest extends TestSuiteBase {
         assertFalse("an active job must block the archive", ws.isArchived());
         assertTrue(response.get().contains("Cannot archive"));
         assertTrue(response.get().contains("job-active"));
+    }
+
+    /**
+     * /flowtree archive acknowledges and replies before the channel is archived,
+     * and the archive runs only on the deferred executor after the configured
+     * delay. This is the ordering guarantee that keeps the Slack client from
+     * leaving "/flowtree archive" as an unsent draft in a channel that has
+     * already disappeared.
+     */
+    @Test(timeout = 10000)
+    public void testSlashCommandArchiveDefersChannelArchive() {
+        List<String> order = new ArrayList<>();
+        SlackNotifier notifier = new SlackNotifier(null) {
+            @Override
+            public String archiveChannel(String channelId) {
+                order.add("archive");
+                return null;
+            }
+        };
+        AtomicReference<Runnable> deferred = new AtomicReference<>();
+        AtomicLong delay = new AtomicLong(-1);
+        notifier.setDeferredExecutor((delayMillis, task) -> {
+            delay.set(delayMillis);
+            deferred.set(task);
+        });
+
+        SlackListener listener = new SlackListener(notifier);
+        Workstream ws = new Workstream("C_ARCH_DEFER", "#archive-channel");
+        listener.registerWorkstream(ws);
+
+        AtomicReference<String> response = new AtomicReference<>();
+        listener.handleSlashCommand("archive", "C_ARCH_DEFER", "#archive-channel",
+                text -> { order.add("respond"); response.set(text); });
+
+        assertTrue("the reply must be sent before the channel is archived",
+                List.of("respond").equals(order));
+        assertTrue(response.get().contains("Archiving this channel"));
+        assertTrue("the archive must be deferred by the named delay",
+                delay.get() == SlackNotifier.CHANNEL_ARCHIVE_DELAY_MILLIS);
+        assertNotNull("the archive must be deferred, not run inline", deferred.get());
+
+        deferred.get().run();
+        assertTrue("the archive must happen only after the deferred task runs",
+                List.of("respond", "archive").equals(order));
     }
 
     /** The /flowtree help listing advertises the archive subcommand. */
