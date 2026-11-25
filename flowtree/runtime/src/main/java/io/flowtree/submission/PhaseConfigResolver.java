@@ -189,21 +189,30 @@ public final class PhaseConfigResolver {
     /**
      * Appends a single phase's resolved config plus its fallback status
      * ({@code fallbackUsed} and a human-readable {@code reason}) as a JSON
-     * object. The fallback is used for a phase only when the workstream leaves
-     * it unset and the fallback has a non-empty entry for it.
+     * object. The fallback is reported used for a phase only when it actually
+     * affects the effective config: the workstream leaves the phase unset, the
+     * fallback has a non-empty entry for it, and a higher-precedence per-job
+     * request override does not shadow it into irrelevance. A fallback that is
+     * fully overridden by the request resolves to the same config it would
+     * without the fallback, so it is reported unused with a {@code reason}
+     * naming the request override.
      */
     private void appendPhaseFallbackStatusJson(StringBuilder json, Phase phase) {
         PhaseConfig resolved = forPhase(phase);
         boolean workstreamSets = workstreamBundle.setsPhase(phase);
         boolean fallbackContributes = !fallbackBundle.forPhase(phase).isEmpty();
-        boolean used = !workstreamSets && fallbackContributes;
+        boolean shadowed = fallbackContributes && !workstreamSets
+                && resolved.equals(resolveWithoutFallback(phase));
+        boolean used = fallbackContributes && !workstreamSets && !shadowed;
         String reason;
         if (workstreamSets) {
             reason = "workstream sets " + phase.wireName();
-        } else if (fallbackContributes) {
-            reason = "fallback applied";
-        } else {
+        } else if (!fallbackContributes) {
             reason = "fallback has no entry for this phase";
+        } else if (shadowed) {
+            reason = "request overrides " + phase.wireName();
+        } else {
+            reason = "fallback applied";
         }
         json.append("{");
         appendResolvedField(json, true, "runner", resolved.runner());
@@ -244,6 +253,28 @@ public final class PhaseConfigResolver {
         PhaseConfig middle = workstreamBundle.setsPhase(phase)
                 ? workstreamBundle.forPhase(phase)
                 : fallbackBundle.forPhase(phase);
+        return requestBundle.forPhase(phase)
+                .overlayOnClearingInheritedProvider(middle)
+                .overlayOnClearingInheritedProvider(workspaceBundle.forPhase(phase))
+                .overlayOn(CONTROLLER_DEFAULT);
+    }
+
+    /**
+     * Resolves {@code phase} as if no per-job fallback were supplied: the
+     * fallback is dropped from the middle layer, so a phase the workstream
+     * leaves unset falls straight through to the workspace / controller levels.
+     * Used only by {@link #appendPhaseFallbackStatusJson(StringBuilder, Phase)}
+     * to decide whether the fallback actually affected the effective config —
+     * when the result equals {@link #forPhase(Phase)}, a higher-precedence
+     * request override has shadowed the fallback and it is reported unused.
+     *
+     * @param phase the phase to resolve; never {@code null} in callers
+     * @return the config this phase would resolve to without the fallback
+     */
+    private PhaseConfig resolveWithoutFallback(Phase phase) {
+        PhaseConfig middle = workstreamBundle.setsPhase(phase)
+                ? workstreamBundle.forPhase(phase)
+                : PhaseConfig.EMPTY;
         return requestBundle.forPhase(phase)
                 .overlayOnClearingInheritedProvider(middle)
                 .overlayOnClearingInheritedProvider(workspaceBundle.forPhase(phase))

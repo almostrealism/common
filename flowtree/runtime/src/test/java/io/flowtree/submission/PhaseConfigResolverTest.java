@@ -1234,4 +1234,71 @@ public class PhaseConfigResolverTest extends TestSuiteBase {
         bare.append("}");
         assertEquals("{\"ok\":true}", bare.toString());
     }
+
+    /**
+     * A per-job request default that fully specifies every field shadows the
+     * fallback: the effective config is the request's regardless of the
+     * fallback, so {@code fallbackResolution} must report the fallback as
+     * unused with a reason naming the request override — not {@code used=true}
+     * just because the workstream left the phase unset and the fallback had an
+     * entry.
+     */
+    @Test(timeout = 5000)
+    public void fallbackReportedUnusedWhenRequestOverrides() {
+        PhaseConfigBundle req = bundle(
+                new PhaseConfig(AgentRunnerRegistry.CLAUDE, "claude-sonnet-5", "high", "anthropic"),
+                null, null);
+        PhaseConfigBundle fallback = bundle(
+                new PhaseConfig(AgentRunnerRegistry.OPENCODE, "z-ai/glm-4.6", null, "openrouter"),
+                null, null);
+        PhaseConfigResolver r = PhaseConfigResolver.resolve(
+                req, PhaseConfigBundle.EMPTY, fallback, PhaseConfigBundle.EMPTY);
+        assertNull(r.error());
+
+        // The request fully overrides every phase, so the resolved config is
+        // the request's claude config and the fallback changes nothing.
+        PhaseConfig primary = r.forPhase(Phase.PRIMARY);
+        assertEquals(AgentRunnerRegistry.CLAUDE, primary.runner());
+        assertEquals("claude-sonnet-5", primary.model());
+
+        StringBuilder json = new StringBuilder("{\"ok\":true");
+        r.appendFallbackResolutionJson(json);
+        json.append("}");
+        String result = json.toString();
+        assertTrue("reports fallback resolution", result.contains("\"fallbackResolution\""));
+        assertTrue("names the request override as the reason",
+                result.contains("request overrides primary"));
+        assertFalse("fallback must not be reported used when the request shadows it",
+                result.contains("\"fallbackUsed\":true"));
+    }
+
+    /**
+     * A per-job request that overrides only part of a phase still leaves the
+     * fallback contributing the fields the request omits, so the fallback is
+     * reported used. This guards the shadow detection from over-reporting
+     * "unused": a partial request override does not shadow the fallback.
+     */
+    @Test(timeout = 5000)
+    public void fallbackReportedUsedWhenRequestOverridesPartially() {
+        PhaseConfigBundle req = bundle(
+                new PhaseConfig(null, null, "high", null), null, null);
+        PhaseConfigBundle fallback = bundle(
+                new PhaseConfig(AgentRunnerRegistry.OPENCODE, "z-ai/glm-4.6", null, "openrouter"),
+                null, null);
+        PhaseConfigResolver r = PhaseConfigResolver.resolve(
+                req, PhaseConfigBundle.EMPTY, fallback, PhaseConfigBundle.EMPTY);
+        assertNull(r.error());
+
+        // The fallback supplies runner/model/provider; the request only adds effort.
+        PhaseConfig primary = r.forPhase(Phase.PRIMARY);
+        assertEquals(AgentRunnerRegistry.OPENCODE, primary.runner());
+        assertEquals("z-ai/glm-4.6", primary.model());
+        assertEquals("high", primary.effort());
+
+        StringBuilder json = new StringBuilder("{\"ok\":true");
+        r.appendFallbackResolutionJson(json);
+        json.append("}");
+        assertTrue("partial request override must still report the fallback applied",
+                json.toString().contains("fallback applied"));
+    }
 }
