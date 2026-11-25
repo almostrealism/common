@@ -640,6 +640,44 @@ public class LoopInvariantHoistingTest extends TestSuiteBase {
 	}
 
 	/**
+	 * Verifies that a write among the loop scope's <em>own</em> statements (not inside a child)
+	 * still blocks hoisting of a child declaration that reads that buffer. The accumulation builder
+	 * emits such writes with {@code loop.getStatements().add(...)}, and the hoisted declarations are
+	 * inserted ahead of them, so a read hoisted past the write would see a stale value.
+	 *
+	 * <pre>
+	 * buffer[0] = _test_i;                 // loop's own statement
+	 * for (i = 0; i &lt; 100; i++) {
+	 *   { double f_alias = buffer[0] + 1.0; }  // must stay in the loop
+	 * }
+	 * </pre>
+	 */
+	@Test(timeout = 30000)
+	public void declarationReadingBufferWrittenByOwnStatementNotHoisted() {
+		Variable<Integer, ?> idx = Variable.integer("_test_i");
+		Repeated<Void> loop = new Repeated<>(idx, idx.ref().lessThan(100));
+		loop.setName("ownStatementWriteTest");
+
+		ArrayVariable<Double> buffer = new ArrayVariable<>(Double.class, "_v_own", e(8));
+
+		// Write among the loop's own statements, not within a child scope.
+		loop.getStatements().add(new ExpressionAssignment(false,
+				new InstanceReference<>(buffer, e(0), null),
+				new StaticReference<>(Double.class, "_test_i")));
+
+		Scope<Void> child = new Scope<>("body");
+		child.getStatements().add(new ExpressionAssignment(true,
+				new StaticReference<>(Double.class, "f_alias"),
+				new InstanceReference<>(buffer, e(0), null).add(new DoubleConstant(1.0))));
+		loop.getChildren().add(child);
+
+		Repeated<Void> simplified = (Repeated<Void>) loop.simplify(new NoOpKernelStructureContext(), 0);
+
+		Assert.assertEquals("Declaration reading a buffer the loop writes in its own statements must NOT be hoisted",
+				0, countDeclarationsNamed(simplified.getStatements(), "f_alias"));
+	}
+
+	/**
 	 * Builds and simplifies a loop over {@code _test_i} whose body performs {@code write} and then
 	 * declares {@code f_alias = read}, the shape shared by the buffer-aliasing tests.
 	 *

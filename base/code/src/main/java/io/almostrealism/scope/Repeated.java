@@ -284,16 +284,9 @@ public class Repeated<T> extends Scope<T> {
 
 		Set<String> variantNames = collectBaseVariantNames(allDeclarations);
 
-		// The arrays the loop body may write. A declaration that reads one of them is loop-variant
-		// even though an element read contributes no name to the name-based set above.
-		List<ArrayVariable<?>> writtenArrays = new ArrayList<>();
-		for (Scope<T> child : getChildren()) {
-			for (ArrayVariable<?> array : child.collectWrittenArrays()) {
-				if (!writtenArrays.contains(array)) writtenArrays.add(array);
-			}
-		}
+		// Arrays the loop may write, from this scope so its own statements count.
+		List<ArrayVariable<?>> writtenArrays = collectWrittenArrays();
 
-		// Collect all loop indices (this scope's index plus nested loop indices)
 		List<Index> loopIndices = collectLoopIndices();
 
 		// Phase 2: propagate variance through declaration dependency chains (fixed-point).
@@ -1015,6 +1008,14 @@ public class Repeated<T> extends Scope<T> {
 	 *       that names no array and a read through an aggregated view are both caught)</li>
 	 * </ul>
 	 *
+	 * <p>The written-array read test
+	 * ({@link VariableReferenceSupport#containsReadOfAny(java.util.Collection)}) costs nothing when
+	 * the loop writes no buffers (the overwhelmingly common case), and otherwise one walk of
+	 * {@code expr} per written buffer. Phase 4 calls this at each node it descends into, so for a
+	 * loop that writes buffers the sub-expression scan does that per-buffer walk at every level; a
+	 * single-traversal read-set collection would remove the repetition but is not required for
+	 * correctness.</p>
+	 *
 	 * @param expr the expression to check
 	 * @param loopAssignedVariables names of variables assigned inside the loop
 	 * @param writtenArrays the arrays the loop body may write
@@ -1024,7 +1025,6 @@ public class Repeated<T> extends Scope<T> {
 	private boolean isLoopInvariant(Expression<?> expr, Set<String> loopAssignedVariables,
 									List<ArrayVariable<?>> writtenArrays, List<Index> loopIndices) {
 		if (index == null) return false;
-		// TODO(review): containsReadOfAny walks the subtree once per written array, at every recursion level of Phase 4.
 		return expr.isLoopInvariant(loopAssignedVariables, Collections.emptyList(), loopIndices)
 				&& !expr.containsReadOfAny(writtenArrays);
 	}
