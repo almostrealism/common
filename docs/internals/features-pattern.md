@@ -52,7 +52,8 @@ SlicingFeatures                   subset(), reshape()
 ArithmeticFeatures                add(), multiply(), minus(), exp(), log(),
                                   floor(), min(), max(), abs(), sigmoid()
   ^
-AggregationFeatures               sum(), mean()
+AggregationFeatures               sum(), mean(), max(), min(),
+                                  indexOfMax(), indexOfMin()
   ^
 ComparisonFeatures                greaterThan(), lessThan(), conditional()
   ^
@@ -75,7 +76,7 @@ A class that only needs shapes can implement `ShapeFeatures` alone.
 | `CollectionCreationFeatures` | `pack(double...)`, `c(double...)`, `cp(PackedCollection)` |
 | `SlicingFeatures`            | `subset(TraversalPolicy, Producer, int)`, `reshape()`|
 | `ArithmeticFeatures`         | `add()`, `multiply()`, `minus()`, `exp()`, `log()`, `floor()`, `min()`, `max()`, `abs()` |
-| `AggregationFeatures`        | `sum()`, `mean()`                                   |
+| `AggregationFeatures`        | `sum()`, `mean()`, `max()`, `min()`, `indexOfMax()`, `indexOfMin()` |
 | `ComparisonFeatures`         | `greaterThan()`, `lessThan()`, `conditional()`      |
 | `CollectionFeatures`         | All of the above plus `c(Producer)`, `assign()`, `random()`, `enumerate()`, `repeat()` |
 

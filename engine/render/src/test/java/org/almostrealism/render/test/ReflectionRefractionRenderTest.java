@@ -43,15 +43,20 @@ import org.junit.Test;
  * somewhere in the sphere's disc, so the disc must not be entirely black.
  *
  * <p>Known issue: the refraction case still does not finish. The refracted ray is traced into
- * the sphere, out through its far side and on to the floor. Memoizing the argument-reset
- * traversal removed the compile's former bottleneck — it no longer spends its budget in
- * {@code ScopeLifecycle.resetArguments} revisiting shared nodes once per path — but the
- * refraction graph then reaches a second, independent wall in expression simplification:
- * compiling the aggregated exit-ray selection throws {@code ExpressionException: Large
- * expression not improved by simplification}. That expression-size blow-up is a distinct
- * mechanism from the reset traversal (it also afflicts the non-identity-transform reflection
- * and multi-sphere cases) and is tracked separately; until it is addressed the refraction
- * render cannot be un-flagged.</p>
+ * the sphere, out through its far side and on to the floor, and the colour seen along it is the
+ * closest hit among the other surfaces, selected by
+ * {@link org.almostrealism.raytrace.LightingEngineAggregator}. In kernel
+ * mode that aggregator compiles the chosen engine's colour through the unoptimized
+ * {@link io.almostrealism.relation.Producer#get()}, so the heavily-shared refraction sub-graph
+ * (the exit ray feeds the selection's rank twice and its colour once) is inlined rather than
+ * folded behind kernel boundaries, and compiling it throws {@code ExpressionException: Large
+ * expression not improved by simplification}. Routing that colour through the optimizing
+ * {@link io.almostrealism.relation.Producer#evaluate(Object...)} removes the expression-size
+ * throw, but optimizing this particular graph currently exercises isolation paths that several
+ * of its node types do not yet support (a ranked-choice selection whose zero default branch may
+ * not be isolated, and colour/rank wrappers that are not themselves optimization-visible). That
+ * broader optimizer work is tracked separately; until it is addressed the refraction render
+ * cannot be un-flagged.</p>
  */
 public class ReflectionRefractionRenderTest extends TestSuiteBase implements RGBFeatures {
 	/** The width and height of the image, in pixels. */

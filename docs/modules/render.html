@@ -203,10 +203,16 @@
 
                 <h3>LightingEngine</h3>
                 <p>Computes lighting contributions with optional shadow rays.</p>
-                <pre><code class="language-java">public class LightingEngine&lt;T extends ContinuousField&gt; {
-    public LightingEngine(Surface surface, Light light);
+                <pre><code class="language-java">public class LightingEngine&lt;T extends ContinuousField&gt;
+        extends ProducerWithRankAdapter&lt;PackedCollection&gt; {
+    // One surface-light pair; intersection distance becomes the rank
+    // used by LightingEngineAggregator for closest-surface selection.
+    public LightingEngine(T intersections,
+                          ShadableSurface surface,
+                          Collection&lt;? extends ShadableSurface&gt; otherSurfaces,
+                          Light light, Iterable&lt;Light&gt; otherLights, ShaderContext p);
 
-    public Producer&lt;RGB&gt; shade(Producer&lt;Ray&gt; ray);
+    // Color producer and rank come from getProducer()/getRank().
 
     // Enable shadow computation
     public static boolean enableShadows = false;
@@ -343,7 +349,7 @@ ReflectionShader reflection = new ReflectionShader();
 reflection.setReflectivity(0.95);           // 95% reflective
 reflection.setReflectiveColor(white());
 reflection.setBlur(0.0);                    // Perfect mirror
-reflection.setMaxReflections(4);            // Recursion depth
+ReflectionShader.maxReflections = 4;        // Recursion depth (static)
 
 mirrorSphere.setShaders(new Shader[] { reflection });
 
@@ -357,7 +363,6 @@ Sphere glassSphere = new Sphere(new Vector(0, 0, 0), 1.0, new RGB(1, 1, 1));
 RefractionShader glass = new RefractionShader();
 glass.setIndexOfRefraction(1.5);            // Glass IOR
 glass.setAttenuationFactors(0.95, 0.95, 0.98);  // Slight blue-green tint
-glass.setTransmitAbsorb(true);
 
 glassSphere.setShaders(new Shader[] { glass });
 glassSphere.setRefractedPercentage(0.9);    // 90% transparent
