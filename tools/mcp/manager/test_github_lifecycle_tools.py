@@ -320,6 +320,11 @@ class TestGithubRerunFailedJobs(unittest.TestCase):
         self.assertEqual("org/repo", result["repo"])
         self.assertEqual(2, result["run_attempt"])
         self.assertEqual("https://run/99", result["html_url"])
+        # A contextual (no org/repo) call's follow-up carries only the run id.
+        self.assertEqual(
+            ["Follow the new attempt with "
+             "github_workflow_run_status(run_id=99)"],
+            result["next_steps"])
         # The rerun POST hit the rerun-failed-jobs endpoint with no payload.
         post_call = mock_gh.call_args_list[2]
         self.assertEqual("POST", post_call.args[0])
@@ -444,6 +449,42 @@ class TestGithubRerunFailedJobs(unittest.TestCase):
             server.github_rerun_failed_jobs(
                 run_id=99, org="other", repo="repo")
         mock_gh.assert_not_called()
+
+    @patch.object(server, "_github_request")
+    def test_attempt_unknown_when_refresh_fails(self, mock_gh, mock_repo):
+        # The rerun POST succeeded, but re-reading the run fails: rather than
+        # report the stale pre-rerun attempt (1), run_attempt stays None while
+        # the unchanged html_url is still carried through from the first read.
+        mock_gh.side_effect = [
+            self._run(attempt=1),            # GET run
+            self._jobs("failure"),           # GET jobs
+            {"ok": True, "status": 201},     # POST rerun-failed-jobs
+            {"ok": False, "error": "GitHub returned HTTP 500"},  # refresh fails
+        ]
+        result = server.github_rerun_failed_jobs(run_id=99)
+        self.assertTrue(result["ok"], msg=result.get("error"))
+        self.assertIsNone(result["run_attempt"])
+        self.assertEqual("https://run/99", result["html_url"])
+
+    @patch.object(server, "_github_request")
+    @patch.object(server, "_require_org_in_scope")
+    def test_direct_addressed_follow_up_names_org_and_repo(
+            self, mock_gate, mock_gh, mock_repo):
+        # A direct org/repo call may have no workstream/token context, so the
+        # status follow-up must name org and repo for its resolver to use.
+        mock_gh.side_effect = [
+            self._run(),
+            self._jobs("failure"),
+            {"ok": True, "status": 201},
+            self._run(attempt=2),
+        ]
+        result = server.github_rerun_failed_jobs(
+            run_id=99, org="org", repo="repo")
+        self.assertTrue(result["ok"], msg=result.get("error"))
+        self.assertEqual(
+            ["Follow the new attempt with github_workflow_run_status("
+             "run_id=99, org='org', repo='repo')"],
+            result["next_steps"])
 
 
 if __name__ == "__main__":

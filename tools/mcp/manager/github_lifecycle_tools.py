@@ -526,16 +526,26 @@ def github_rerun_failed_jobs(
         return {"ok": False, "error": error}
 
     # The rerun endpoint answers 201 with no body, so the attempt number the
-    # rerun produced comes from re-reading the run. Its identity and URL are
-    # unchanged, so the pre-rerun read supplies html_url when the re-read is
-    # unavailable.
+    # rerun produced comes from re-reading the run. The pre-rerun read's
+    # run_attempt is the old attempt, so it is not a usable fallback: when the
+    # re-read cannot confirm the new attempt, run_attempt stays None rather than
+    # reporting a stale value the caller might act on. The run's identity and
+    # URL do not change, so the pre-rerun read still supplies html_url.
     refreshed = server._github_request(
         "GET", f"/repos/{owner}/{repo_name}/actions/runs/{run_id}")
-    attempt = run.get("run_attempt")
+    attempt = None
     html_url = run.get("html_url")
     if isinstance(refreshed, dict) and refreshed.get("ok") is not False:
-        attempt = refreshed.get("run_attempt", attempt)
+        attempt = refreshed.get("run_attempt")
         html_url = refreshed.get("html_url", html_url)
+
+    # A direct-addressed call may carry no workstream or token context, so the
+    # follow-up must name org/repo itself or its resolver has nothing to go on.
+    if direct_addressing:
+        follow_up = (f"github_workflow_run_status(run_id={run_id}, "
+                     f"org='{owner}', repo='{repo_name}')")
+    else:
+        follow_up = f"github_workflow_run_status(run_id={run_id})"
 
     return {
         "ok": True,
@@ -544,7 +554,6 @@ def github_rerun_failed_jobs(
         "run_attempt": attempt,
         "html_url": html_url,
         "next_steps": [
-            "Follow the new attempt with "
-            f"github_workflow_run_status(run_id={run_id})",
+            f"Follow the new attempt with {follow_up}",
         ],
     }
