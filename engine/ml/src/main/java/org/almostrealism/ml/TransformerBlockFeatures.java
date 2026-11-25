@@ -24,7 +24,6 @@ import org.almostrealism.graph.Receptor;
 import org.almostrealism.layers.NormalizationType;
 import org.almostrealism.layers.ProjectionFactory;
 import org.almostrealism.model.Block;
-import org.almostrealism.model.SequentialBlock;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -96,6 +95,24 @@ public interface TransformerBlockFeatures extends AttentionFeatures {
 	 * family it is asked for.
 	 */
 	String CROSS_ATTENTION_SUBLAYER_LAYER = "cross_attention_sublayer";
+
+	/**
+	 * Classpath location of the asset describing the block-level composition of a pre-norm transformer
+	 * block: the self-attention sub-layer, an optional cross-attention sub-layer, an optional
+	 * per-position local conditioning add, and the feed-forward sub-layer, in sequence. Its layers are
+	 * the single definition of how {@link #transformerBlockStack} sequences the residual sub-layers the
+	 * {@link #transformerBlock} assembler has built; it replaces the {@code SequentialBlock} that
+	 * {@code transformerBlock} used to stack them with.
+	 */
+	String TRANSFORMER_BLOCK_ASSET = "/pdsl/transformer_block.pdsl";
+
+	/**
+	 * Name stem of the four {@link #TRANSFORMER_BLOCK_ASSET} layers describing the transformer block,
+	 * distinguished by which optional sub-layers are present: {@code _cross} for the cross-attention
+	 * sub-layer and {@code _local} for the per-position local conditioning add, appended in that order.
+	 * {@link #transformerBlockStack} builds the layer whose optional sub-layers it is given.
+	 */
+	String TRANSFORMER_BLOCK_LAYER = "transformer_block";
 
 	/**
 	 * Builds the pre-norm residual self-attention sub-layer of a transformer block as a {@link Block}
@@ -254,6 +271,52 @@ public interface TransformerBlockFeatures extends AttentionFeatures {
 				+ (normType == NormalizationType.RMS ? "_rmsnorm" : "_layernorm");
 		PdslLoader loader = new PdslLoader();
 		return loader.buildLayer(loader.parseResource(CROSS_ATTENTION_SUBLAYER_ASSET), layer, blockShape, args);
+	}
+
+	/**
+	 * Builds the pre-norm transformer block as a {@link Block} from the {@link #TRANSFORMER_BLOCK_ASSET}
+	 * asset, sequencing the residual sub-layers the caller has built.
+	 *
+	 * <p>The ordering is not assembled here: the asset places the self-attention sub-layer, the optional
+	 * cross-attention sub-layer, the optional per-position local conditioning add and the feed-forward
+	 * sub-layer in sequence, and this method loads the layer whose optional sub-layers are present. It
+	 * binds only the sub-layer blocks; each sub-layer's own structure (the normalization, the adaLN
+	 * modulation and gate, the attention or feed-forward body, the residual) belongs to the sub-layer
+	 * build — see {@link #selfAttentionResidualSublayer}, {@link #crossAttentionResidualSublayer} and
+	 * {@link #feedForwardResidualSublayer} — not to this ordering. It is the block-level counterpart of
+	 * those sub-layer loaders: where they replaced the Java {@code residual(...)} of each sub-layer,
+	 * this replaces the {@code SequentialBlock} {@link #transformerBlock} used to stack them.</p>
+	 *
+	 * @param blockShape             the block input and output shape {@code [batch, seqLen, dim]}
+	 * @param selfAttentionSublayer  the residual self-attention sub-layer, mapping {@code blockShape} to
+	 *                               {@code blockShape}
+	 * @param crossAttentionSublayer the residual cross-attention sub-layer, or {@code null} when the
+	 *                               block has no cross-attention
+	 * @param localConditioning      the per-position local conditioning add {@code x + conditioning}, or
+	 *                               {@code null} when the block has no local conditioning
+	 * @param feedForwardSublayer    the residual feed-forward sub-layer, mapping {@code blockShape} to
+	 *                               {@code blockShape}
+	 * @return the assembled transformer block
+	 */
+	default Block transformerBlockStack(TraversalPolicy blockShape,
+										Block selfAttentionSublayer, Block crossAttentionSublayer,
+										Block localConditioning, Block feedForwardSublayer) {
+		Map<String, Object> args = new HashMap<>();
+		args.put("self_attention_sublayer", selfAttentionSublayer);
+		args.put("feed_forward_sublayer", feedForwardSublayer);
+
+		String layer = TRANSFORMER_BLOCK_LAYER;
+		if (crossAttentionSublayer != null) {
+			args.put("cross_attention_sublayer", crossAttentionSublayer);
+			layer += "_cross";
+		}
+		if (localConditioning != null) {
+			args.put("local_conditioning", localConditioning);
+			layer += "_local";
+		}
+
+		PdslLoader loader = new PdslLoader();
+		return loader.buildLayer(loader.parseResource(TRANSFORMER_BLOCK_ASSET), layer, blockShape, args);
 	}
 
 	/**
@@ -759,7 +822,6 @@ public interface TransformerBlockFeatures extends AttentionFeatures {
 								   Producer<PackedCollection> paddingMask,
 								   boolean causal) {
 		TraversalPolicy blockShape = shape(batchSize, seqLen, dim);
-		SequentialBlock block = new SequentialBlock(blockShape);
 
 		Producer<PackedCollection> scaleSelf = modulation == null ? null : residualScale(modulationComponent(modulation, batchSize, dim, 0));
 		Producer<PackedCollection> shiftSelf = modulation == null ? null : modulationComponent(modulation, batchSize, dim, 1);
@@ -775,10 +837,11 @@ public interface TransformerBlockFeatures extends AttentionFeatures {
 				selfQNormWeight, selfQNormBias,
 				selfKNormWeight, selfKNormBias,
 				invFreq, diffLambda, projectionFactory, normType, paddingMask, causal);
-		block.add(selfAttentionResidualSublayer(blockShape, normType, preNormWeight, preNormBias,
-				scaleSelf, shiftSelf, gateSelf, selfAttentionBlock));
+		Block selfAttentionSublayer = selfAttentionResidualSublayer(blockShape, normType, preNormWeight, preNormBias,
+				scaleSelf, shiftSelf, gateSelf, selfAttentionBlock);
 
 		// Python: x = x + cross_attn(cross_attend_norm(x)), never modulated
+		Block crossAttentionSublayer = null;
 		if (crossAttend) {
 			if (context == null) {
 				throw new IllegalArgumentException("Context block cannot be null for cross-attention");
@@ -790,19 +853,20 @@ public interface TransformerBlockFeatures extends AttentionFeatures {
 					crossQNormWeight, crossQNormBias,
 					crossKNormWeight, crossKNormBias,
 					context, attentionScores, projectionFactory, normType);
-			block.add(crossAttentionResidualSublayer(blockShape, normType,
-					crossAttPreNormWeight, crossAttPreNormBias, crossAttention));
+			crossAttentionSublayer = crossAttentionResidualSublayer(blockShape, normType,
+					crossAttPreNormWeight, crossAttPreNormBias, crossAttention);
 		}
 
-		if (localAddition != null) {
-			block.add(layer("localAddCond", blockShape, blockShape, in -> add(c(in), c(localAddition))));
-		}
+		// Per-position local additive conditioning: x = x + localAddition
+		Block localConditioning = localAddition == null ? null :
+				layer("localAddCond", blockShape, blockShape, in -> add(c(in), c(localAddition)));
 
 		// Python: x = x + sigmoid(1 - gate_ff) * ff((1 + scale_ff) * ff_norm(x) + shift_ff)
 		Block feedForward = gluFeedForward(blockShape, w1, w1Bias, w2, w2Bias, silu(), projectionFactory);
-		block.add(feedForwardResidualSublayer(blockShape, normType, ffnNormWeight, ffnNormBias,
-				scaleFf, shiftFf, gateFf, feedForward));
+		Block feedForwardSublayer = feedForwardResidualSublayer(blockShape, normType, ffnNormWeight, ffnNormBias,
+				scaleFf, shiftFf, gateFf, feedForward);
 
-		return block;
+		return transformerBlockStack(blockShape, selfAttentionSublayer, crossAttentionSublayer,
+				localConditioning, feedForwardSublayer);
 	}
 }
