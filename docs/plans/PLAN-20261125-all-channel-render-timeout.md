@@ -28,7 +28,9 @@ exclusion, so the suite again gates on sustained rendering.
 ## Background: how the timeout arises
 
 `renderAllChannelsContinuousToFile` sets `AR_RT_CHANNELS=0..5`, `AR_RT_MEASURES=64`,
-`AR_RT_HOURS=5/60` and calls `RealtimeContinuousRenderer.main`. The renderer:
+`AR_RT_HOURS=5/60`, `AR_RT_LIVE_OUTPUT=true` (which is what makes the renderer write the
+looped `results/rt-live.wav` the test asserts on) and `AR_RT_LOG_EVERY=32`, then calls
+`RealtimeContinuousRenderer.main`. The renderer:
 
 - builds one 64-measure arrangement (~2 min of audio) and **loops it** for the target
   duration — `AR_RT_SWITCH_LOOPS` defaults to `0`, so the arrangement never changes;
