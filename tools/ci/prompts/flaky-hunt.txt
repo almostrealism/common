@@ -129,7 +129,7 @@ wildcard, or a CI shard selector (that is CI-shard partitioning, not yours to
 use):
 
     mcp__ar-test-runner__start_test_run module:"<module>" test_classes:["FooTest","BarTest"]
-    mcp__ar-test-runner__start_test_run module:"<module>" test_methods:["FooTest#a","FooTest#b"]
+    mcp__ar-test-runner__start_test_run module:"<module>" test_classes:["FooTest#a","FooTest#b"]
 
 Give every run an explicit timeout of at most 2400 seconds. Repeat the SAME
 small selection several times (begin with five to ten runs) rather than
@@ -166,7 +166,7 @@ argument, as the ONLY `jvm_args` entry on a dedicated run so it reaches the
 forked test JVM reliably (the runner concatenates every `jvm_args` entry into
 one Maven `argLine`):
 
-    mcp__ar-test-runner__start_test_run module:"<module>" test_methods:["FooTest#bar"] jvm_args:["-DAR_TEST_SEED=random"]
+    mcp__ar-test-runner__start_test_run module:"<module>" test_classes:["FooTest#bar"] jvm_args:["-DAR_TEST_SEED=random"]
 
 `AR_TEST_SEED` is a per-test seed, not a CI-shard variable, and is accepted
 here. Keep the selection just as narrow, give it the same bounded timeout (at
@@ -179,7 +179,7 @@ value that was logged for the method that failed in that run's output.
 failing `Class#method`, pinning the seed you recorded, so the failure
 reproduces every time rather than one run in ten:
 
-    mcp__ar-test-runner__start_test_run module:"<module>" test_methods:["FooTest#bar"] jvm_args:["-DAR_TEST_SEED=<seed>"]
+    mcp__ar-test-runner__start_test_run module:"<module>" test_classes:["FooTest#bar"] jvm_args:["-DAR_TEST_SEED=<seed>"]
 
 A failure that reproduces under that one seed but passes under the default seed
 is a real, now-deterministic, seed-sensitive defect — not noise — and you
