@@ -380,14 +380,16 @@ def _run_has_rerunnable_job(jobs: list) -> bool:
     )
 
 
-def _list_run_jobs(owner: str, repo: str, run_id: int):
-    """List the latest attempt's jobs of a workflow run, following pagination.
+def _run_has_rerunnable_jobs(owner: str, repo: str, run_id: int):
+    """Report whether a workflow run has a rerunnable job, paging as needed.
 
     GitHub's run-jobs endpoint returns at most 100 jobs per page, so a run with
     more than 100 jobs carries its later jobs — and any failure among them — on
-    the pages after the first. Reading every page is what lets a caller reason
-    about the run's full set of job conclusions; stopping at the first page can
-    miss a failure that sits beyond it.
+    the pages after the first. A rerun needs only a single failed, cancelled or
+    timed-out job to be justified, so paging stops at the first page that
+    carries one rather than reading every page of a large matrix run; a run with
+    no rerunnable job is confirmed only after its last (short) page, so a failure
+    that sits beyond the first page is never missed.
 
     The request pins ``filter=latest`` so only the most recent attempt's jobs
     are returned. That is already the endpoint's default, but a rerun decision
@@ -401,11 +403,11 @@ def _list_run_jobs(owner: str, repo: str, run_id: int):
         run_id: The numeric workflow run id.
 
     Returns:
-        The list of raw job objects from every page, or the error dict from the
-        first request that failed or returned something other than the expected
-        ``{"jobs": [...]}`` shape.
+        ``True`` as soon as a page carries a failed, cancelled or timed-out job;
+        ``False`` when the run's latest attempt has none; or the error dict from
+        the first request that failed or returned something other than the
+        expected ``{"jobs": [...]}`` shape.
     """
-    all_jobs = []
     page = 1
     while True:
         result = server._github_request(
@@ -423,9 +425,10 @@ def _list_run_jobs(owner: str, repo: str, run_id: int):
                 "returned": result,
             }
         jobs = result["jobs"]
-        all_jobs.extend(jobs)
+        if _run_has_rerunnable_job(jobs):
+            return True
         if len(jobs) < 100:
-            return all_jobs
+            return False
         page += 1
 
 
@@ -519,11 +522,10 @@ def github_rerun_failed_jobs(
                       "wait for it to finish before rerunning its failed jobs"),
         }
 
-    jobs_result = _list_run_jobs(owner, repo_name, run_id)
-    if isinstance(jobs_result, dict) and jobs_result.get("ok") is False:
-        return jobs_result
-    jobs = jobs_result if isinstance(jobs_result, list) else []
-    if not _run_has_rerunnable_job(jobs):
+    rerunnable = _run_has_rerunnable_jobs(owner, repo_name, run_id)
+    if isinstance(rerunnable, dict) and rerunnable.get("ok") is False:
+        return rerunnable
+    if not rerunnable:
         return {
             "ok": False,
             "error": (f"workflow run {run_id} has no failed, cancelled or "

@@ -392,6 +392,29 @@ class TestGithubRerunFailedJobs(unittest.TestCase):
         self.assertEqual("POST", mock_gh.call_args_list[3].args[0])
 
     @patch.object(server, "_github_request")
+    def test_paging_stops_at_first_page_with_a_rerunnable_job(
+            self, mock_gh, mock_repo):
+        # A full first page that already carries a failure is enough to decide a
+        # rerun; the scan must not read further pages (saving API calls and
+        # rate-limit budget on large matrix runs). Page 1 is 99 successes plus a
+        # failure (a full 100), and no page-2 response is queued — reading one
+        # would raise StopIteration and fail the test.
+        page1 = {"jobs": [{"conclusion": "success"} for _ in range(99)]
+                 + [{"conclusion": "failure"}]}
+        mock_gh.side_effect = [
+            self._run(),                     # GET run
+            page1,                           # GET jobs page 1 (full, has failure)
+            {"ok": True, "status": 201},     # POST rerun-failed-jobs
+            self._run(attempt=2),            # GET run (refreshed)
+        ]
+        result = server.github_rerun_failed_jobs(run_id=99)
+        self.assertTrue(result["ok"], msg=result.get("error"))
+        # Only page 1 was read, then the POST — page 2 was never requested.
+        self.assertIn("page=1", mock_gh.call_args_list[1].args[1])
+        self.assertEqual("POST", mock_gh.call_args_list[2].args[0])
+        self.assertEqual(4, mock_gh.call_count)
+
+    @patch.object(server, "_github_request")
     def test_jobs_listing_pins_latest_attempt(self, mock_gh, mock_repo):
         # The jobs listing must scope to the latest attempt so a failure left
         # behind by an earlier attempt — that the latest attempt has since
