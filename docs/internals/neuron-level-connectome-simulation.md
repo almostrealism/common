@@ -323,8 +323,12 @@ allowance above (an FP64 NumPy run reproduces every spike; an FP32 run shifts ex
 the exact match the synthetic fixture gets. The two committed fixtures therefore carry different
 per-fixture contracts: the synthetic connectome exact, the sugar circuit exact up to a single
 one-step FP32 shift. Both fixtures ship committed, so these run everywhere. Neither is a
-reproduction of the full published whole-brain experiment — that is a larger, rate-based
-validation on the curated datasets (section 7), still open tracker work.
+reproduction of the full published whole-brain experiment. That is the rate-based validation on the
+curated datasets in `ConnectomeNetworkDatasetTest`, which compares trial-averaged rates with the
+authors' `model.run_exp` run in Brian2 on the same connectome. It passes on Metal for FlyWire 630
+(the paper's 21 sugar GRNs) and for MaleCNS (the sugar GRN types `LB3a`–`LB3d`, both sides) at 100,
+150 and 200 Hz: MN9 within 5%, a median relative difference of at most 1.3% and a 90th
+percentile of at most 4.3% over every neuron above 10 Hz.
 
 ---
 
@@ -347,9 +351,14 @@ validation on the curated datasets (section 7), still open tracker work.
   replicas of FlyWire 630 (a 72.6M-element delay line) runs every trial of an experiment in one
   pass. A `Recording`'s sample count (its `capacity`) is still a floating-point counter and shares
   the step counter's 2^24 bound, but its element count (`capacity * width`) is not.
-- **The whole-brain reproduction is larger work.** The MaleCNS whole-brain ingest and the full Shiu
-  et al. reproduction, with its performance benchmark, are open tracker tasks for a later release
-  and build on this pipeline. The dataset tests
+- **MaleCNS is not a sparse regime for this model.** With the Shiu et al. synapse weight and every
+  edge kept, MaleCNS (about 743 synapses per neuron, against 414 in FlyWire 630) ignites widespread
+  activity (about 13k neurons above 10 Hz) under any input of the size of the sugar GRN set. MN9
+  still separates sugar input from other input by a factor of 20 or more, but the negative control
+  finds it at a few hertz rather than silent, in Brian2 as in the platform. Under that weaker input
+  the trial-to-trial variance is large: two Brian2 runs differ by a median of about 24%. The
+  criterion for MaleCNS, or its adaptation (a synapse-count threshold or weight), is open tracker
+  work, as is the performance benchmark. The dataset tests
   (`NeuronConnectomeDatasetTest`, `ConnectomeNetworkDatasetTest`) require their curated datasets on
   every host — a missing dataset fails the test, it is never gated into a skip — and are excluded
   from the pipeline profile as long-running.
