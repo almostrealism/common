@@ -1,7 +1,7 @@
 ---
-status: proposed
+status: completed
 created: 2026-11-25
-closed:
+closed: 2026-11-25
 tracker: [99084539-5161-483e-9fd5-61aa01d9f513]
 ---
 
@@ -9,7 +9,8 @@ tracker: [99084539-5161-483e-9fd5-61aa01d9f513]
 
 Plans tracker task **99084539-5161-483e-9fd5-61aa01d9f513** —
 *"Fail clearly when a kernel's argument count exceeds the device buffer limit"* —
-in release **Common 0.78**.
+in the release currently under development (the `Common` release whose name matches the
+version in the root `pom.xml`).
 
 ## Motivation
 
@@ -95,6 +96,7 @@ In scope:
    - `ReshapeProducer.isConstant()` → delegate;
    - `TraversableExpressionComputation.isConstant()` → all inputs after the destination;
    - `CollectionProducerComputation`'s inner operator → `op.isConstant()`;
+   - `CollectionProducerComputation.IsolatedProcess.isConstant()` → delegate (`op.isConstant()`);
    - any leaf producer that forces `true` (none found in a first pass; the enumeration must be
      exhaustive, since `isConstant()` propagates from leaves).
 
