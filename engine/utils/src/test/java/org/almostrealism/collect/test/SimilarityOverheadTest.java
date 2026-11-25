@@ -140,6 +140,75 @@ public class SimilarityOverheadTest extends TestSuiteBase {
 	}
 
 	/**
+	 * Minimum acceptable throughput, in comparisons per second, of the per-call
+	 * {@link #productSimilarity(CollectionProducer, CollectionProducer, int)} path
+	 * measured by {@link #pairwiseSimilarityThroughputFloor()}.
+	 *
+	 * <p>Baseline: 852 to 882 comparisons/s (1.13 to 1.17 ms/comparison) over three
+	 * runs of 19,900 comparisons on an Apple silicon macOS host with Metal, measured
+	 * after warmup. The floor is about 5.8x below that rate so that ordinary contention
+	 * on a shared self-hosted runner, and other GPU backends (such as CUDA) on which
+	 * no baseline was taken, do not trip it; only a substantial regression in the cost
+	 * of building and evaluating the similarity graph does. At the floor the workload
+	 * takes about 133 s, inside the test timeout, so the assertion reports a slowdown
+	 * before the timeout can.</p>
+	 */
+	// TODO(review): an earlier CUDA profile measured ~3.1 ms/comparison (~325/s), only ~2x above this floor; confirm on test-cuda.
+	private static final double THROUGHPUT_FLOOR = 150.0;
+
+	/**
+	 * Asserts that the per-call {@code productSimilarity} path sustains at least
+	 * {@link #THROUGHPUT_FLOOR} comparisons per second.
+	 *
+	 * <p>This exercises the same expression-tree-per-comparison pattern as
+	 * {@link #pairwiseSimilarityAtScale()}, on a workload sized to finish in a small
+	 * fraction of its timeout, so that a slowdown fails with the measured throughput
+	 * rather than with an opaque timeout. The first comparisons are run untimed so
+	 * that kernel compilation and first-call warmup do not count against the rate.
+	 * Like the at-scale test it runs only where an accelerator is available.</p>
+	 */
+	@Test(timeout = 300_000)
+	public void pairwiseSimilarityThroughputFloor() {
+		Assume.assumeTrue("Runs only where an accelerator is available",
+				Hardware.getLocalHardware().isAvailable(ComputeRequirement.GPU));
+
+		int count = 200;
+		int warmup = 200;
+		PackedCollection[] tensors = createRandomTensors(count, FRAMES, BINS);
+
+		for (int w = 0; w < warmup; w++) {
+			productSimilarity(cp(tensors[w % count]), cp(tensors[(w + 1) % count]), FRAMES);
+		}
+
+		long totalComparisons = 0;
+		long startTime = System.nanoTime();
+
+		for (int i = 0; i < count; i++) {
+			for (int j = i + 1; j < count; j++) {
+				productSimilarity(cp(tensors[i]), cp(tensors[j]), FRAMES);
+				totalComparisons++;
+			}
+		}
+
+		long elapsed = System.nanoTime() - startTime;
+		double seconds = elapsed / 1_000_000_000.0;
+		double comparisonsPerSecond = totalComparisons / seconds;
+		log("Throughput: " + totalComparisons + " comparisons in " +
+				String.format("%.1f", seconds) + "s (" +
+				String.format("%.3f", elapsed / (double) totalComparisons / 1_000_000.0) +
+				" ms/comparison, " + String.format("%.0f", comparisonsPerSecond) +
+				" comparisons/s, floor " + String.format("%.0f", THROUGHPUT_FLOOR) + ")");
+
+		Assert.assertTrue("Pairwise similarity throughput " +
+						String.format("%.0f", comparisonsPerSecond) +
+						" comparisons/s is below the floor of " +
+						String.format("%.0f", THROUGHPUT_FLOOR) + " comparisons/s (" +
+						totalComparisons + " comparisons in " +
+						String.format("%.1f", seconds) + "s)",
+				comparisonsPerSecond >= THROUGHPUT_FLOOR);
+	}
+
+	/**
 	 * Smaller-scale test (100 tensors, ~5K comparisons) that runs at
 	 * default test depth to verify the comparison pipeline works and
 	 * provide baseline timing data.
