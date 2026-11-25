@@ -15,10 +15,16 @@ tracker: [f155a689-cf76-4d72-8007-17d61f6a1b21]
 The owner's note asks for this to be checked before anything else. It is **not** done on
 current master (`792e9a508`, which this branch matches):
 
-- **No pan anywhere.** No `pan` appears in any `pdsl/audio/*.pdsl`
+- **No pan in the mixdown.** No `pan` appears in any `pdsl/audio/*.pdsl`
   (`engine/ml/src/main/resources/pdsl/audio/`, or the test resources under
-  `studio/compose/src/test/resources/pdsl/audio/`), and no pan concept exists in Java
-  under `studio/` or `engine/audio`. That covers the legacy `CellList` path too.
+  `studio/compose/src/test/resources/pdsl/audio/`), and `MixdownManager` has no pan
+  gene, field or setting. Its `initRanges` javadoc still lists "volume, pan, delay,
+  and filter", but the method sets ranges only for volume, wet-in, transmission,
+  wet-out, delay, delay-dynamics and the wet filter — there is no pan range, so that
+  javadoc word is aspirational and nothing is wired. That covers the legacy `CellList`
+  path too. The only `pan` in `engine/audio` is unrelated to mixdown placement — MIDI
+  CC 10 (`MidiInputListener.PAN`) and the synth `ModulationSlot.PAN` — neither reaches
+  the mixdown's stereo field.
 - **The sink renders one mono master.** `AudioSceneRealtimeRunner.createPdsl` passes only
   the first `2N` rows of the consolidated render buffer (LEFT-MAIN, LEFT-WET) to
   `mixdown_master_wet`, which outputs `[1, signal_size]`. It then pushes that one frame to
@@ -187,9 +193,11 @@ budget still holds at `AudioScene.DEFAULT_REALTIME_BUFFER_SIZE`.
 
 ## Dependencies
 
-None blocking: the task has no `blocked_by` entries, and the primitives it needs
-(`permute`, `slice`, rectangular `route`, `repeat_each`, `concat_blocks`) are already in
-the PDSL builtins (`PdslBuiltins`) and the audio primitives (`AudioDspPrimitives`).
+None blocking: the task has no `blocked_by` entries, and the primitives it needs are
+already available — `reshape`, `permute`, `slice` and `repeat_each` in the PDSL builtins
+(`PdslBuiltins`), and the rectangular `route` in the audio primitives
+(`AudioDspPrimitives`), which the existing `mixdown_efx_bus_rectangular` layer already
+exercises.
 
 No settings file is written for this branch. The tests run on the CPU/OpenCL backends as
 well as Metal, so no specific machine is needed.
