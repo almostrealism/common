@@ -147,13 +147,17 @@ public class SimilarityOverheadTest extends TestSuiteBase {
 	 * <p>Baseline: 852 to 882 comparisons/s (1.13 to 1.17 ms/comparison) over three
 	 * runs of 19,900 comparisons on an Apple silicon macOS host with Metal, measured
 	 * after warmup. The floor is about 5.8x below that rate so that ordinary contention
-	 * on a shared self-hosted runner, and other GPU backends (such as CUDA) on which
-	 * no baseline was taken, do not trip it; only a substantial regression in the cost
-	 * of building and evaluating the similarity graph does. At the floor the workload
-	 * takes about 133 s, inside the test timeout, so the assertion reports a slowdown
-	 * before the timeout can.</p>
+	 * on a shared self-hosted runner does not trip it; only a substantial regression in
+	 * the cost of building and evaluating the similarity graph does. At the floor the
+	 * workload takes about 133 s, inside the test timeout, so the assertion reports a
+	 * slowdown before the timeout can.</p>
+	 *
+	 * <p>Because the baseline was measured only with Metal, the floor is enforced only
+	 * where a Metal context is available. An earlier CUDA profile measured about
+	 * 3.1 ms/comparison (about 325 comparisons/s), only about 2x above this floor, so
+	 * applying it to CUDA without a current CUDA baseline would either flake or need a
+	 * floor too low to detect a Metal regression.</p>
 	 */
-	// TODO(review): an earlier CUDA profile measured ~3.1 ms/comparison (~325/s), only ~2x above this floor; confirm on test-cuda.
 	private static final double THROUGHPUT_FLOOR = 150.0;
 
 	/**
@@ -165,12 +169,14 @@ public class SimilarityOverheadTest extends TestSuiteBase {
 	 * fraction of its timeout, so that a slowdown fails with the measured throughput
 	 * rather than with an opaque timeout. The first comparisons are run untimed so
 	 * that kernel compilation and first-call warmup do not count against the rate.
-	 * Like the at-scale test it runs only where an accelerator is available.</p>
+	 * It runs only where a Metal context is available, the one backend on which
+	 * {@link #THROUGHPUT_FLOOR} has a measured baseline; other GPU backends remain
+	 * covered by {@link #pairwiseSimilarityAtScale()}.</p>
 	 */
 	@Test(timeout = 300_000)
 	public void pairwiseSimilarityThroughputFloor() {
-		Assume.assumeTrue("Runs only where an accelerator is available",
-				Hardware.getLocalHardware().isAvailable(ComputeRequirement.GPU));
+		Assume.assumeTrue("The throughput floor has a measured baseline only on Metal",
+				hasContext(MetalComputeContext.class, ComputeRequirement.MTL));
 
 		int count = 200;
 		int warmup = 200;

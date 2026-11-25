@@ -9,7 +9,6 @@ tracker: [ac6793a5-dfdf-499a-8ca9-292ed2e602f9]
 
 **Tracker task:** ac6793a5-dfdf-499a-8ca9-292ed2e602f9 — *Give pairwiseSimilarityAtScale
 a throughput assertion instead of relying on its timeout*
-**Release:** Common 0.78
 
 ## Motivation
 
