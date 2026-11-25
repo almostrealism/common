@@ -48,9 +48,6 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import io.flowtree.controller.FlowTreeController;
 import io.flowtree.controller.JobStatsStore;
@@ -257,80 +254,33 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
         }
     }
 
-    /**
-     * Delay between acknowledging a {@code /flowtree archive} command and
-     * archiving its Slack channel. The reply is sent immediately; archiving is
-     * deferred by this interval so the Slack client registers the acknowledged
-     * command before its channel disappears, instead of leaving the typed
-     * command as an unsent draft in a channel that is no longer reachable.
-     */
-    public static final long CHANNEL_ARCHIVE_DELAY_MILLIS = 4000L;
+    /** Defers channel archiving so a {@code /flowtree archive} is acked first; lazily created. */
+    private ChannelArchiveScheduler channelArchiveScheduler;
 
     /**
-     * Runs a task after a delay. Abstracts the scheduled executor so tests can
-     * drive {@link #scheduleChannelArchive} without a real wait.
-     */
-    @FunctionalInterface
-    public interface DeferredExecutor {
-        /**
-         * Schedules {@code task} to run once, approximately {@code delayMillis}
-         * from now.
-         *
-         * @param delayMillis delay before the task runs, in milliseconds
-         * @param task        the task to run
-         */
-        void executeAfter(long delayMillis, Runnable task);
-    }
-
-    /** Executor used to defer channel archiving; lazily created, overridable for tests. */
-    private DeferredExecutor deferredExecutor;
-
-    /**
-     * Archives {@code channelId} after {@link #CHANNEL_ARCHIVE_DELAY_MILLIS},
-     * reporting any failure through {@code onFailure}.
-     *
-     * <p>The caller is expected to have already replied to the user and let the
-     * command be acknowledged; deferring the archive keeps the channel reachable
-     * until that reply has been delivered. A failure from the delayed
-     * {@link #archiveChannel} is surfaced through {@code onFailure} rather than
-     * lost, since the original command has already returned.</p>
+     * Archives {@code channelId} shortly after the {@code /flowtree archive}
+     * command that requested it has been acknowledged, reporting any failure
+     * through {@code onFailure}. Delegates to {@link ChannelArchiveScheduler},
+     * which keeps the channel reachable until the reply has been delivered.
      *
      * @param channelId the Slack channel to archive
      * @param onFailure invoked with the error string when the delayed archive fails
      */
-    public synchronized void scheduleChannelArchive(String channelId, Consumer<String> onFailure) {
-        if (deferredExecutor == null) {
-            deferredExecutor = defaultDeferredExecutor();
+    public void scheduleChannelArchive(String channelId, Consumer<String> onFailure) {
+        channelArchiveScheduler().schedule(channelId, onFailure);
+    }
+
+    /**
+     * The scheduler that defers channel archiving for this notifier, created on
+     * first use and bound to this notifier's {@link #archiveChannel}.
+     *
+     * @return this notifier's {@link ChannelArchiveScheduler}
+     */
+    synchronized ChannelArchiveScheduler channelArchiveScheduler() {
+        if (channelArchiveScheduler == null) {
+            channelArchiveScheduler = new ChannelArchiveScheduler(this::archiveChannel);
         }
-        deferredExecutor.executeAfter(CHANNEL_ARCHIVE_DELAY_MILLIS, () -> {
-            String error = archiveChannel(channelId);
-            if (error != null) onFailure.accept(error);
-        });
-    }
-
-    /**
-     * Overrides the executor used by {@link #scheduleChannelArchive}. Intended
-     * for tests that need to observe or control the deferred archive.
-     *
-     * @param executor the executor to use
-     */
-    void setDeferredExecutor(DeferredExecutor executor) {
-        this.deferredExecutor = executor;
-    }
-
-    /**
-     * Builds the default deferred executor: a single daemon thread that runs
-     * each task after the requested delay.
-     *
-     * @return a new {@link DeferredExecutor} backed by a scheduled thread
-     */
-    private static DeferredExecutor defaultDeferredExecutor() {
-        ScheduledExecutorService service = Executors.newSingleThreadScheduledExecutor(runnable -> {
-            Thread thread = new Thread(runnable, "slack-channel-archive");
-            thread.setDaemon(true);
-            return thread;
-        });
-        return (delayMillis, task) -> service.schedule(task, delayMillis, TimeUnit.MILLISECONDS);
+        return channelArchiveScheduler;
     }
 
     /**
