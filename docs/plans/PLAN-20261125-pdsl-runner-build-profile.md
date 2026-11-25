@@ -30,67 +30,106 @@ reduce `runnerBuildMs` — or record, with evidence, why it cannot be reduced.
 *construction* cost: `setup()` and `tick()` are run (and timed separately) only
 afterward.
 
-The build-phase steps inside `createPdsl`, in order, are:
+The harness sets `MixdownManager.enableEfx = true`, so the layer `createPdsl`
+builds is **`mixdown_master_wet`** (input shape `[2 * channels, bufferSize]`,
+adapter constructed with the scene's `EfxManager`), not the single-input
+`mixdown_master`. The build-phase steps inside `createPdsl`, in the order the
+code runs them, are:
 
 1. **`scene.prepareRenderBuffers(channels, bufferSize, frameSupplier)`**
-   (`AudioScene`) — constructs the render-cell graph for both stereo sides and
-   consolidates the render/filter buffers. It returns a *deferred* setup
-   `Supplier<Runnable>` (run later in `setup()`), but the graph construction and
-   buffer allocation happen synchronously here.
-2. **`adapter.buildArgsMap()`** (`MixdownManagerPdslAdapter`) — allocates the
-   argument `PackedCollection`s (FIR coefficient banks, transmission grid, delay
-   buffers, automation slots, …).
-3. **`loader.parseResource("/pdsl/audio/mixdown_manager.pdsl")`** — memoised in
+   (`AudioScene`) — consolidates the render and efx-filter buffers and creates
+   the render cells for both stereo sides (MAIN and, with efx on, WET voicings).
+   It returns a *deferred* setup `OperationList` (run later in `setup()`), but
+   the cell construction and buffer allocation happen synchronously here. This
+   call is already timed by `AudioScene`'s `getCells` `TimingMetric`.
+2. **`new MixdownManagerPdslAdapter(...)`** and the zero-copy input view
+   `consolidated.range(inputShape, 0)` — construction only.
+3. **`renderOps.get()`** — builds the pattern render-ahead `Runnable` (a
+   `consolidated.clear()` plus one `prepareBatch(false)` per render cell). This
+   is a `get()` on an `OperationList` executed at build time, so any operation
+   compilation it performs is part of `runnerBuildMs`; it must be measured, not
+   assumed negligible.
+4. **`loader.parseResource("/pdsl/audio/mixdown_manager.pdsl")`** — memoised in
    `PdslLoader.RESOURCE_CACHE`; cheap after the first build in a JVM.
-4. **`compileMixdownModel(...)`** — `loader.buildLayer(...)` interprets the PDSL
+5. **`adapter.buildArgsMap()`** — allocates the argument `PackedCollection`s
+   (FIR coefficient banks, transmission grid, delay buffers, automation slots,
+   stem buffers, …).
+6. **`compileMixdownModel(...)`** — `loader.buildLayer(...)` interprets the PDSL
    and builds the whole DSP `Block` graph (per-channel FIR filters of order
-   `pdslFilterOrder = 40`, the delay network, reverb), then `model.compile(false)`
-   → `CompiledModel.compile`, which runs `Process.optimized(setup).get()` and
-   `forward.flatten().optimize()` followed by `p.get()` (scope generation and
-   code generation for the setup and forward passes).
-5. **`compiled.forward(pdslInput)`** — a throwaway pass used only to capture the
-   stable output handle. Because instruction sets compile lazily on first
-   `getOperator()` (see `INSTRUCTION_CACHING.md`), this first forward is where
-   native kernel compilation (Metal shader compilation) actually fires for every
-   distinct kernel in the forward pass.
-6. **`new PatternRenderStream(...)`** — allocates the render-ahead ring only; the
-   per-slot copy kernels (`slotCopies`) are built lazily on first use, so
-   `renderAheadSlots = 24` does **not** add build-time compilation.
+   `pdslFilterOrder = 40`, the efx chain, the delay network/reverb), then
+   `model.compile(false)` → `CompiledModel`, which runs
+   `Process.optimized(setupPass).get()` and `forward.flatten().optimize()`
+   followed by `get()` on the result (scope generation and code generation for
+   the setup and forward passes).
+7. **`adapter.automationRefresh(args)`** — returns a `Supplier` only; it is not
+   built (`get()`) until `tick().get()`, so it is outside `runnerBuildMs`.
+8. **`compiled.forward(pdslInput)`** — a throwaway pass used only to capture the
+   stable output handle. Instruction sets compile lazily on first
+   `getOperator()` (see `base/hardware/docs/INSTRUCTION_CACHING.md`), so this
+   first forward is *expected* to be where Metal shader compilation fires for
+   kernels not already compiled in step 6. Whether native compilation lands in
+   step 6 or step 8 is one of the things the profile must establish.
+9. **Output-loop and stem-append construction** — builds `OperationList`s only;
+   they are compiled by `tick().get()`, outside `runnerBuildMs`.
+10. **`new PatternRenderStream(...)`** — allocates the render-ahead ring only;
+    the per-slot copy kernels (`slotCopies`) are built lazily on first use, so
+    `renderAheadSlots = 24` does **not** add build-time compilation.
 
 ### Prior hypothesis, already grounded in code
 
 The dominant cost is expected to be **native kernel compilation of the DSP
-graph** — steps 4–5 — not optimisation-pass count or Java graph construction.
+graph** — steps 6 and 8 — not optimisation-pass count or Java graph construction.
 This is consistent with `INSTRUCTION_CACHING.md`: "Compiling a computation to
 native code (JNI, OpenCL, Metal) is expensive: it involves scope generation,
 simplification, code generation, and compilation." The profiling step must
 confirm this with evidence rather than assume it.
 
-### Why it is paid once *per scene*, not once *per JVM*
+### Why it is expected to be paid once *per scene*, not once *per JVM*
 
-`KernelCacheReuseAcrossScenesTest` already asks whether a second `AudioScene`
-reuses the first scene's compiled kernels. It does not: instruction-set reuse
-keys on a signature that, at provider leaves, includes the referenced buffer's
-`offset` and `memLength` (`CollectionProviderProducer.signature()`), documented
-in `INSTRUCTION_CACHING.md` under "Buffer Offset Defeats Cross-Instance Reuse."
-The mixdown graph reads its arguments through `cp(x)`/`p(x)` provider leaves over
+This section is an inference from the code and documentation. No measurement
+has confirmed it yet.
+
+Instruction-set reuse keys on a signature that, at provider leaves, includes the
+referenced buffer's `offset` and `memLength` (`CollectionProviderProducer.signature()`,
+plus `&aggRoot=<length>` for aggregated arguments). `INSTRUCTION_CACHING.md`
+documents this under "Buffer Offset Defeats Cross-Instance Reuse". The mixdown
+graph reads its arguments through `cp(x)`/`p(x)` provider leaves over
 `PackedCollection`s freshly allocated per scene, so two structurally identical
-scenes produce different signatures and recompile every kernel. The doc names
-the escape: computations built over `Input.value(shape, argIndex)` placeholders
-(runtime arguments) instead of provider leaves avoid the buffer-layout
-dependence entirely.
+scenes are expected to produce different signatures and recompile every kernel.
+The doc names the escape: computations built over `Input.value(shape, argIndex)`
+placeholders (runtime arguments) instead of provider leaves avoid the
+buffer-layout dependence entirely.
+
+`KernelCacheReuseAcrossScenesTest` is the existing cross-scene probe, but it
+does not answer the `runnerBuildMs` question as written:
+
+- it calls `scene.runnerRealTime(...)`, `setup().get()` and `tick().get()`
+  *outside* its timed region, and times only `setup.run()`, the first tick and
+  the render loop;
+- despite its javadoc, it logs no distinct-kernel compile count;
+- no recorded result of the probe exists in the repository.
+
+The `PdslSetupBreakdownTest` javadoc also records that this probe showed
+`setupSeconds` is per-scene *rendering* work, not kernel compilation. That is a
+different phase from `runnerBuildMs`, and it does not contradict the hypothesis
+above, but it is the only cross-scene evidence on record. The attribution run
+(Approach) must therefore measure build-time recompilation for a second scene
+directly, not cite this test as having shown it.
 
 ## Scope
 
 In scope:
 
-1. **Attribute `runnerBuildMs`** to its sub-phases (1–6 above) with profile
-   evidence, separating: PDSL interpretation / graph construction (`buildLayer`),
-   `Process.optimize` (optimisation passes), and native kernel compilation
-   (`getOperator`/first-forward). Use `ar-profile-analyzer` on an
-   `OperationProfile`/`OperationProfileNode` capture of the compile, plus a
-   distinct-kernel compile count (`NativeCompiler.getTotalInstructionSets()` /
-   the instruction-cache listeners referenced by `INSTRUCTION_CACHING.md`).
+1. **Attribute `runnerBuildMs`** to its sub-phases (steps 1–10 above) with
+   profile evidence, separating: render-buffer and cell construction (step 1),
+   the build-time render op `get()` (step 3), PDSL interpretation / `Block`
+   construction (`buildLayer`), `Process.optimize` (optimisation passes), and
+   native kernel compilation (`getOperator`, in compile or first forward). Use
+   `ar-profile-analyzer` on an `OperationProfileNode` capture of the build, plus
+   the Metal compile count and total time. On the Metal backend those come from
+   `MetalProgram.compileTime`, the `mtlCompile` `TimingMetric`, via
+   `getCount()`/`getTotal()`. `NativeCompiler.getTotalInstructionSets()` counts
+   only JNI native libraries, so it will not reflect Metal shader compiles.
 2. **Reduce the dominant cost** with the lowest-risk change the evidence
    supports, and record before/after `runnerBuildMs` from the same harness. The
    candidate levers, in increasing scope:
@@ -125,11 +164,18 @@ stage-by-stage) rather than adding a new test class. The build itself is a
 single opaque call today; the plan is to wrap the `createPdsl` build in an
 `OperationProfileNode` the way `MixdownLayerPerformanceTest.reverbBusForwardProfile`
 does — `Hardware.getLocalHardware().assignProfile(profile)` before the build,
-`profile.save("results/...xml")` after — and to log the distinct-kernel compile
-count delta across the build and across a second scene (reproducing
-`KernelCacheReuseAcrossScenesTest`'s cross-scene question inside the attribution
-run). `Model.compile(OperationProfile)` already exists if a tighter capture of
-just the compile is wanted. The saved XML is then read with `ar-profile-analyzer`
+`profile.save("results/...xml")` after — and to log the `mtlCompile` count and
+total-time deltas across the build, for this scene and for a second
+identically configured scene built in the same JVM. That second build answers,
+for the build phase, the cross-scene question `KernelCacheReuseAcrossScenesTest`
+leaves unmeasured. `Model.compile(boolean backprop, OperationProfile)` already
+exists if a tighter capture of just the compile is wanted. The runner compiles
+with `backprop = false`, so use `compile(false, profile)`, not the
+single-argument `compile(OperationProfile)` overload, which builds the backward
+graph too. Calling it from the test needs the
+`compileMixdownModel` path to accept a profile, which is a small change to
+`AudioSceneRealtimeRunner`. The simplest route is the hardware-assigned
+profile, which needs no production change. The saved XML is then read with `ar-profile-analyzer`
 (`load_profile`, `find_slowest`, `find_slowest_by_category`, `get_source`) to
 name the dominant operations and confirm whether the cost is codegen,
 optimisation, or native compilation.
@@ -157,7 +203,10 @@ A reviewer can confirm the task is done when:
    attribution), distinguishing graph construction vs optimisation vs native
    compilation.
 2. Either `runnerBuildMs` is measurably reduced — shown by before/after numbers
-   from `PdslSetupBreakdownTest.setupBreakdown` on the same scene and machine —
+   from `PdslSetupBreakdownTest.setupBreakdown` on the same scene and machine,
+   each taken as the median of at least three fresh-JVM runs (the first build in
+   a JVM is the one measured, so in-JVM repetition would hit warm caches), with
+   the run-to-run spread reported so a reduction can be told apart from noise —
    **or** the plan/PR records, with that same evidence, why it cannot be reduced
    within scope (e.g. the cost is irreducible first-encounter native compilation
    and the only material lever is the out-of-scope cross-scene-reuse change).
@@ -192,6 +241,17 @@ A reviewer can confirm the task is done when:
   the approver:** should this task deliver only the profile + any low-risk
   reduction, with cross-scene reuse filed as a dependency, or should the
   cross-scene change be pulled in and the task re-scoped as large?
+- **The ~16 s baseline comes from the task description.** It has not been
+  reproduced on this branch, and nothing in the repository records the machine
+  or configuration it was taken on. The first implementation step is to capture
+  the "before" number with the protocol in Success criteria 2. If that number
+  differs materially from 16 s, record it here before choosing a lever.
+- **Step 3 (`renderOps.get()`) is a build-time compile the original draft of
+  this plan omitted.** If it turns out to be material, moving it is a design
+  question: it could be deferred to `setup()` or built lazily by
+  `PatternRenderStream`. Either option moves cost from `runnerBuildMs` into
+  `setupSeconds` without removing it. A reduction that only relocates work
+  between phases should be reported as such, not as a reduction.
 - **If no reduction is achievable in scope,** the task's own "Done when" permits
   closing it on the profile evidence alone. The approver should confirm that
   outcome is acceptable before implementation, so the session does not stretch
