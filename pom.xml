@@ -21,6 +21,15 @@
 		<!-- TODO - These should not be necessary -->
 		<javafx.version>21</javafx.version>
 		<javafx.classifier>mac-aarch64</javafx.classifier>
+
+		<!--
+		Surefire argLine pieces. argLine stays free for callers (-DargLine=...);
+		jacoco prepare-agent writes its agent into jacocoArgLine instead, so
+		neither replaces the other. Both default to empty so the references in
+		the surefire configuration resolve when prepare-agent does not run.
+		-->
+		<argLine></argLine>
+		<jacocoArgLine></jacocoArgLine>
 	</properties>
 
 	<modules>
@@ -89,8 +98,7 @@
 				<artifactId>maven-compiler-plugin</artifactId>
 				<version>3.13.0</version>
 				<configuration>
-					<source>17</source>
-					<target>17</target>
+					<release>17</release>
 					<encoding>UTF-8</encoding>
 					<fork>true</fork>
 					<compilerArgs>
@@ -135,6 +143,13 @@
 					Override per-invocation with -Dsurefire.failIfNoSpecifiedTests=true.
 					-->
 					<failIfNoSpecifiedTests>false</failIfNoSpecifiedTests>
+					<!--
+					The hardware backends load native libraries, which JDK 24 and later
+					restrict unless the launcher grants native access. @{jacocoArgLine}
+					is substituted late, after prepare-agent; ${argLine} is a caller's
+					-DargLine. The grant is literal, so neither can drop it.
+					-->
+					<argLine>@{jacocoArgLine} ${argLine} --enable-native-access=ALL-UNNAMED</argLine>
 				</configuration>
 			</plugin>
 			<plugin>
@@ -146,6 +161,9 @@
 						<goals>
 							<goal>prepare-agent</goal>
 						</goals>
+						<configuration>
+							<propertyName>jacocoArgLine</propertyName>
+						</configuration>
 					</execution>
 					<execution>
 						<id>report</id>

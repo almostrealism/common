@@ -42,5 +42,5 @@ EXPOSE 7766
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
     CMD curl -sf http://localhost:7780/api/health || exit 1
 
-ENTRYPOINT ["java", "-cp", "/app/lib/*", "io.flowtree.controller.FlowTreeController", \
+ENTRYPOINT ["java", "--enable-native-access=ALL-UNNAMED", "-cp", "/app/lib/*", "io.flowtree.controller.FlowTreeController", \
     "--config", "/config/workstreams.yaml"]
