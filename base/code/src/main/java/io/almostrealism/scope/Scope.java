@@ -657,11 +657,9 @@ public class Scope<T> extends ArrayList<Scope<T>>
 			throw new IllegalArgumentException("Array size cannot be less than 1");
 		}
 
-		getStatements().add(new ArrayDeclaration(Double.class, name, size));
-
-		ArrayVariable v = new ArrayVariable<>(Double.class, name, size);
-		v.setDisableOffset(true);
-		return v;
+		ArrayDeclaration<Double> declaration = new ArrayDeclaration<>(Double.class, name, size);
+		getStatements().add(declaration);
+		return declaration.getVariable();
 	}
 
 	/**
@@ -1244,21 +1242,52 @@ public class Scope<T> extends ArrayList<Scope<T>>
 	 * analysis of {@link Repeated}, therefore cannot miss a write the scope can make to an array it
 	 * refers to.</p>
 	 *
-	 * @return a new list of the arrays this scope may write, in dependency order
+	 * <p>An array declared within this scope or a descendant ({@link #declareArray(String, Expression)})
+	 * is local storage, which {@link #getDependencies()} omits, so the arrays those
+	 * {@link ArrayDeclaration}s declare are considered as well, after the dependencies.</p>
+	 *
+	 * @return a new list of the arrays this scope may write, dependencies first and then declared
+	 *         arrays in traversal order
 	 */
 	public List<ArrayVariable<?>> collectWrittenArrays() {
-		List<ArrayVariable<?>> written = new ArrayList<>();
+		List<ArrayVariable<?>> candidates = new ArrayList<>();
 
 		for (Argument<?> dependency : getDependencies()) {
-			if (!(dependency.getVariable() instanceof ArrayVariable)) continue;
+			if (dependency.getVariable() instanceof ArrayVariable) {
+				candidates.add((ArrayVariable<?>) dependency.getVariable());
+			}
+		}
 
-			ArrayVariable<?> array = (ArrayVariable<?>) dependency.getVariable();
+		appendDeclaredArrays(candidates);
+
+		List<ArrayVariable<?>> written = new ArrayList<>();
+
+		for (ArrayVariable<?> array : candidates) {
 			if (!written.contains(array) && containsAssignment(array, Long.MIN_VALUE, Long.MAX_VALUE)) {
 				written.add(array);
 			}
 		}
 
 		return written;
+	}
+
+	/**
+	 * Adds to {@code arrays} the {@link ArrayDeclaration#getVariable() variable} of every
+	 * {@link ArrayDeclaration} among the statements of this scope and its descendants, in
+	 * traversal order.
+	 *
+	 * @param arrays the list to add the declared arrays to
+	 */
+	public void appendDeclaredArrays(List<ArrayVariable<?>> arrays) {
+		for (Statement<?> statement : getStatements()) {
+			if (statement instanceof ArrayDeclaration) {
+				arrays.add(((ArrayDeclaration<?>) statement).getVariable());
+			}
+		}
+
+		for (Scope<?> child : getChildren()) {
+			child.appendDeclaredArrays(arrays);
+		}
 	}
 
 	/**

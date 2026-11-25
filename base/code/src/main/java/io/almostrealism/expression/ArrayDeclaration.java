@@ -100,6 +100,20 @@ public class ArrayDeclaration<T> implements Statement<ArrayDeclaration<T>> {
 	}
 
 	/**
+	 * Returns the {@link ArrayVariable} this statement declares: a local array of this
+	 * declaration's type, name and size, which is addressed without an offset. Variables match on
+	 * {@link Variable#hasSameRoot(Variable) shared storage}, so the result identifies the declared
+	 * array to any analysis of the code that reads or writes it.
+	 *
+	 * @return a new variable for the declared array
+	 */
+	public ArrayVariable<T> getVariable() {
+		ArrayVariable<T> variable = new ArrayVariable<>(type, name, (Expression<Integer>) size);
+		variable.setDisableOffset(true);
+		return variable;
+	}
+
+	/**
 	 * Generates the array declaration statement for the target language.
 	 * <p>
 	 * Delegates to the language operations to produce the appropriate
