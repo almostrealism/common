@@ -250,17 +250,7 @@ class ObjectOrientedDesignRule implements EnforcementRule {
 
         sessionsRun++;
         Set<String> files = verdictFiles(pending);
-        Set<String> verdicts = verdictLines(job, files);
-        for (Candidate candidate : pending) {
-            String settled = candidate.settledVerdict(verdicts);
-            if (settled == null) continue;
-            reviewed.add(candidate.path);
-            ledger(job).record(candidate.path, candidate.blobId, settled);
-            String after = blobId(job, candidate.path);
-            if (after != null && !after.equals(candidate.blobId)) {
-                ledger(job).record(candidate.path, after, settled);
-            }
-        }
+        recordVerdicts(job, pending, verdictLines(job, files));
         discardVerdictFiles(job, files);
         reportSession(job, pending);
         pending = null;
@@ -271,6 +261,65 @@ class ObjectOrientedDesignRule implements EnforcementRule {
             job.warn(message);
             job.harnessStatus().unusual(message);
         }
+    }
+
+    /**
+     * Settles each pending class a verdict line identifies, recording it in {@link #reviewed} and the
+     * ledger (keyed by both the content it was reviewed at and the content the session left behind).
+     *
+     * <p>A line that names a class by its full repository-relative path settles that class, which is
+     * unambiguous because paths are unique. A line that uses a looser form — a bare simple name, a
+     * {@code .java} file name, a path suffix, or a fully-qualified name — settles a class only when it
+     * identifies exactly one pending candidate ({@link #resolve}), so a verdict for one {@code Window}
+     * never silently settles another {@code Window} in a different package that the session did not
+     * review. A looser identifier that matches more than one pending candidate settles none of them,
+     * leaving each to be offered again rather than recorded as reviewed without having been.</p>
+     *
+     * @param job          the job after the review session
+     * @param pending      the classes the session was asked to review
+     * @param verdictLines the trimmed verdict lines the session wrote
+     */
+    private void recordVerdicts(CodingAgentJob job, List<Candidate> pending, Set<String> verdictLines) {
+        for (String line : verdictLines) {
+            String stripped = Candidate.stripDecoration(line);
+            int colon = stripped.indexOf(':');
+            if (colon < 0) continue;
+            String word = Candidate.leadingWord(stripped.substring(colon + 1));
+            if (!ObjectOrientedReviewLedger.REVIEW_VERDICTS.contains(word)) continue;
+            Candidate target = resolve(pending, Candidate.stripDecoration(stripped.substring(0, colon)));
+            if (target == null) continue;
+            reviewed.add(target.path);
+            ledger(job).record(target.path, target.blobId, word);
+            String after = blobId(job, target.path);
+            if (after != null && !after.equals(target.blobId)) {
+                ledger(job).record(target.path, after, word);
+            }
+        }
+    }
+
+    /**
+     * Finds the one pending candidate a verdict identifier names: the candidate whose full
+     * repository-relative path it equals, or — failing an exact path — the single candidate it matches
+     * by a looser form. A looser form that matches more than one pending candidate is ambiguous and
+     * resolves to nothing, so a same-named class the session did not review is never settled by
+     * another's verdict.
+     *
+     * @param pending    the classes the session was asked to review
+     * @param identifier the text before a verdict's colon, with decoration removed
+     * @return the one candidate it identifies, or {@code null} when none or more than one match loosely
+     */
+    private static Candidate resolve(List<Candidate> pending, String identifier) {
+        for (Candidate candidate : pending) {
+            if (candidate.matchesPath(identifier)) return candidate;
+        }
+        Candidate loose = null;
+        for (Candidate candidate : pending) {
+            if (candidate.matchesLeniently(identifier)) {
+                if (loose != null) return null;
+                loose = candidate;
+            }
+        }
+        return loose;
     }
 
     /**
@@ -749,41 +798,34 @@ class ObjectOrientedDesignRule implements EnforcementRule {
         private String simpleName() { return ObjectOrientedDesignRule.simpleName(path); }
 
         /**
-         * Returns the verdict a review session recorded for this class, or {@code null} when none was.
+         * Whether a verdict identifier is this class's full repository-relative path. Paths are
+         * unique, so a path identifier names exactly this class and settles it unambiguously.
          *
-         * <p>A session names the class on its verdict line in whatever form reads naturally into the
-         * markdown scratch file: the full repository-relative path the prompt lists, the bare simple
-         * name, the simple name with its {@code .java} suffix, or a fully-qualified name, and often
-         * behind a markdown bullet or backticks. Any of those identifies this class. The matching is
-         * deliberately lenient about the identifier and the decoration around it, because a verdict the
-         * rule cannot read is a class it never settles and so reviews again and again — the defect this
-         * leniency exists to prevent. The verdict word after the first colon must still be exactly
-         * {@code CLEAN} or {@code FIXED}; any other word leaves the class unsettled.</p>
-         *
-         * @param verdictLines the trimmed verdict lines read from the working tree
-         * @return {@code "CLEAN"}, {@code "FIXED"}, or {@code null}
+         * @param identifier the text before a verdict's colon, with decoration already removed
+         * @return whether it is this class's full repository-relative path
          */
-        String settledVerdict(Set<String> verdictLines) {
-            for (String line : verdictLines) {
-                String stripped = stripDecoration(line);
-                int colon = stripped.indexOf(':');
-                if (colon < 0) continue;
-                if (!identifies(stripDecoration(stripped.substring(0, colon)))) continue;
-                String verdict = leadingWord(stripped.substring(colon + 1));
-                if (ObjectOrientedReviewLedger.REVIEW_VERDICTS.contains(verdict)) return verdict;
-            }
-            return null;
-        }
+        boolean matchesPath(String identifier) { return identifier.equals(path); }
 
         /**
-         * @param identifier the text before the verdict's colon, with decoration already removed
-         * @return whether it names this class by path, simple name, {@code .java} file, or FQN
+         * Whether a verdict identifier names this class by a looser form than its full path: its bare
+         * simple name, its simple name with the {@code .java} suffix, a path ending in that file name,
+         * or a fully-qualified name ending in that simple name.
+         *
+         * <p>A session writes the class name in whatever form reads naturally into the markdown scratch
+         * file, so these looser forms must be recognised or a verdict the rule cannot read becomes a
+         * class it never settles and reviews again and again. But a looser form can name more than one
+         * class — two {@code Window} classes in different packages share a simple name, a file name, and
+         * an FQN suffix — so the rule settles a class by a looser form only when it matches exactly one
+         * pending candidate ({@link ObjectOrientedDesignRule#resolve}). The verdict word after the first
+         * colon must still be exactly {@code CLEAN} or {@code FIXED}; any other word leaves the class
+         * unsettled.</p>
+         *
+         * @param identifier the text before a verdict's colon, with decoration already removed
+         * @return whether the identifier names this class by a non-path form
          */
-        private boolean identifies(String identifier) {
-            // TODO(review): bare simple-name verdict settles all same-named candidates in a session.
+        boolean matchesLeniently(String identifier) {
             String simple = simpleName();
-            return identifier.equals(path)
-                    || identifier.equals(simple)
+            return identifier.equals(simple)
                     || identifier.equals(simple + ".java")
                     || identifier.endsWith("/" + simple + ".java")
                     || identifier.endsWith("." + simple);
@@ -791,20 +833,28 @@ class ObjectOrientedDesignRule implements EnforcementRule {
 
         /**
          * Removes markdown bullets, emphasis, backticks and surrounding whitespace that a session may
-         * wrap a verdict line or identifier in, so the identifier and verdict can be read plainly.
+         * wrap a verdict line or identifier in, so the identifier and verdict can be read plainly. Both
+         * ends are stripped: an emphasised identifier such as {@code **Window**} leaves decoration after
+         * the name as well as before it, and a trailing {@code **} left on the identifier would stop it
+         * matching the class.
          *
          * @param text a verdict line or the identifier portion of one
-         * @return the text without leading/trailing markdown decoration
+         * @return the text without leading or trailing markdown decoration
          */
-        private static String stripDecoration(String text) {
-            return text.replace("`", "").replaceAll("^[\\s\\-*>#.]+", "").trim();
+        static String stripDecoration(String text) {
+            return text.replace("`", "")
+                    .replaceAll("^[\\s\\-*>#.]+", "")
+                    .replaceAll("[\\s*>#]+$", "")
+                    .trim();
         }
 
         /**
+         * Returns the verdict word a line carries after the class's colon.
+         *
          * @param text the portion of a verdict line after the class's colon
          * @return its leading run of letters, upper-cased, or empty when it starts with no letter
          */
-        private static String leadingWord(String text) {
+        static String leadingWord(String text) {
             int start = 0;
             while (start < text.length() && !Character.isLetter(text.charAt(start))) start++;
             int end = start;

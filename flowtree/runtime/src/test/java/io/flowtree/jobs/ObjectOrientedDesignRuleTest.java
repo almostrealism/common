@@ -354,6 +354,77 @@ public class ObjectOrientedDesignRuleTest extends TestSuiteBase {
 	}
 
 	/**
+	 * A bare simple name (or any other form that does not uniquely identify one class) is ambiguous
+	 * when two changed classes in different packages share it. Such a verdict settles neither class,
+	 * so a session that wrote only {@code Window: CLEAN} does not silently record the other
+	 * {@code Window} it never reviewed; each is settled only by its own full repository-relative path.
+	 *
+	 * @throws IOException if the temporary tree cannot be written
+	 */
+	@Test(timeout = 30000)
+	public void ambiguousSimpleNameVerdictSettlesNeitherSameNamedClass() throws IOException {
+		Path root = Files.createTempDirectory("oop-rule");
+		try {
+			String foo = "engine/ml/src/main/java/org/foo/Window.java";
+			String bar = "engine/ml/src/main/java/org/bar/Window.java";
+			for (String path : List.of(foo, bar)) {
+				Files.createDirectories(root.resolve(path).getParent());
+				Files.writeString(root.resolve(path), "class Window {}");
+			}
+			StubJob job = new StubJob(root, new ArrayList<>(List.of(foo, bar)));
+			FakeRule rule = new FakeRule(root.resolve("ledger.tsv"))
+					.with(foo, "f1", ObjectOrientedRiskGate.Signal.NEW_CLASS)
+					.with(bar, "b1", ObjectOrientedRiskGate.Signal.NEW_CLASS);
+
+			rule.buildCorrectionPrompt(job);
+			// A bare simple name matches both same-named classes, so it settles neither.
+			appendVerdict(root, VERDICT_FILE, "Window: CLEAN");
+			rule.onCorrectionAttempted(job);
+			assertTrue("an ambiguous simple-name verdict must settle no same-named class",
+					rule.getReviewed().isEmpty());
+			assertTrue(rule.isViolated(job));
+
+			rule.buildCorrectionPrompt(job);
+			appendVerdict(root, VERDICT_FILE, foo + ": CLEAN");
+			appendVerdict(root, VERDICT_FILE, bar + ": FIXED - made it a factory");
+			rule.onCorrectionAttempted(job);
+			assertEquals(Set.of(foo, bar), rule.getReviewed());
+			assertFalse("each same-named class is settled by its own full path", rule.isViolated(job));
+		} finally {
+			delete(root);
+		}
+	}
+
+	/**
+	 * Markdown emphasis wraps an identifier on both sides, so a verdict such as {@code **Beta**: CLEAN}
+	 * leaves a trailing {@code **} on the identifier that must be stripped before it can match the
+	 * class. The verdict is recorded and the class is not re-reviewed.
+	 *
+	 * @throws IOException if the temporary tree cannot be written
+	 */
+	@Test(timeout = 30000)
+	public void verdictWithTrailingMarkdownEmphasisIsRecorded() throws IOException {
+		Path root = Files.createTempDirectory("oop-rule");
+		try {
+			String target = "engine/ml/src/main/java/org/example/Beta.java";
+			Files.createDirectories(root.resolve(target).getParent());
+			Files.writeString(root.resolve(target), "class Beta {}");
+			StubJob job = new StubJob(root, new ArrayList<>(List.of(target)));
+			FakeRule rule = new FakeRule(root.resolve("ledger.tsv"))
+					.with(target, "b1", ObjectOrientedRiskGate.Signal.NEW_CLASS);
+
+			rule.buildCorrectionPrompt(job);
+			appendVerdict(root, VERDICT_FILE, "**Beta**: CLEAN");
+			rule.onCorrectionAttempted(job);
+
+			assertEquals(Set.of(target), rule.getReviewed());
+			assertFalse(rule.isViolated(job));
+		} finally {
+			delete(root);
+		}
+	}
+
+	/**
 	 * The per-job session cap is a hard backstop: when every session reports a verdict the rule
 	 * cannot record — so no class ever leaves the unreviewed set — the rule still dispatches at most
 	 * {@link ObjectOrientedDesignRule#MAX_SESSIONS_PER_JOB} sessions and then reports that it stopped
