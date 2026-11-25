@@ -1021,6 +1021,21 @@ class InfrastructureFailureSharingTests(unittest.TestCase):
             with self.subTest(route=route):
                 self.assertIn("route == '%s'" % route, condition)
 
+    def test_every_finding_producing_gate_is_classified(self):
+        """A gate whose failure check-quality-gates.sh can turn into a finding
+        must appear in GATE_JOBS, or an infrastructure failure in another gate
+        could set infra_only=true and suppress the agent that should handle the
+        genuine finding. The integrity checks (test-integrity-check,
+        agent-commit-validation) drive the quality-gates route just as the Maven
+        gates do, so they must be classified too."""
+        step = next(s for s in _jobs()["auto-review"]["steps"] if s.get("id") == "infra")
+        gate_jobs = step["env"]["GATE_JOBS"].split()
+        for gate in ("build", "code-policy-check", "test-timeout-check",
+                     "duplicate-code-check", "checkstyle",
+                     "test-integrity-check", "agent-commit-validation"):
+            with self.subTest(gate=gate):
+                self.assertIn(gate, gate_jobs)
+
     def test_the_failure_routes_suppress_dispatch_on_an_infra_only_failure(self):
         steps = _jobs()["auto-review"]["steps"]
         for route in ("build failure", "code policy violations", "quality gates"):

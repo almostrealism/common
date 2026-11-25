@@ -4688,11 +4688,20 @@ jobs:
           REPO: ${{ github.repository }}
           RUN_ID: ${{ github.run_id }}
           RUN_ATTEMPT: ${{ github.run_attempt }}
-          # The Maven-running gate jobs whose failure this run routes to an
-          # agent. A non-Maven check (test-integrity-check, deception-audit,
-          # agent-commit-validation) reaches an agent only through the general
-          # review, never a failure route, so it is not classified here.
-          GATE_JOBS: "build code-policy-check test-timeout-check duplicate-code-check checkstyle"
+          # Every job whose failure check-quality-gates.sh can turn into a
+          # finding this run routes to an agent. That is the Maven gates
+          # (build, code-policy-check, test-timeout-check, duplicate-code-check,
+          # checkstyle) and the non-Maven integrity checks test-integrity-check
+          # (test-hiding, enforcement-tampering, exfil-guard, python-test-hiding)
+          # and agent-commit-validation (only_base_test_edits) — each of which
+          # drives the quality-gates route. All must be classified: a real
+          # integrity finding alongside an infrastructure gate failure has to
+          # register as genuine so the agent is still dispatched. (Their logs
+          # carry detector output, not infrastructure signatures, so a readable
+          # genuine failure classifies as deterministic and sets genuine_seen.)
+          # deception-audit is omitted on purpose: it is informational and never
+          # contributes a finding that routes here.
+          GATE_JOBS: "build code-policy-check test-timeout-check duplicate-code-check checkstyle test-integrity-check agent-commit-validation"
         run: |
           if [ ! -f ./tools/ci/infra-failure.sh ]; then
             echo "::notice::infra-failure.sh absent from this checkout — not classifying gate failures as infrastructure"
