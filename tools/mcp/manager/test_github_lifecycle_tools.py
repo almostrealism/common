@@ -288,5 +288,126 @@ class TestGithubStartTestRun(unittest.TestCase):
         mock_gh.assert_not_called()
 
 
+@patch.object(server, "_resolve_github_repo",
+              return_value=("org", "repo", "feature/x", None))
+class TestGithubRerunFailedJobs(unittest.TestCase):
+    """Rerunning the failed jobs of an existing run, in place."""
+
+    def setUp(self):
+        _grant_all_scopes()
+
+    def _run(self, status="completed", attempt=1):
+        return {"id": 99, "status": status, "conclusion": "failure",
+                "run_attempt": attempt, "html_url": "https://run/99"}
+
+    def _jobs(self, *conclusions):
+        return {"jobs": [{"conclusion": c} for c in conclusions]}
+
+    @patch.object(server, "_github_request")
+    def test_happy_path_reruns_failed_jobs(self, mock_gh, mock_repo):
+        mock_gh.side_effect = [
+            self._run(attempt=1),            # GET run
+            self._jobs("success", "failure"),  # GET jobs
+            {"ok": True, "status": 201},     # POST rerun-failed-jobs
+            self._run(attempt=2),            # GET run (refreshed)
+        ]
+        result = server.github_rerun_failed_jobs(run_id=99)
+        self.assertTrue(result["ok"], msg=result.get("error"))
+        self.assertEqual(99, result["run_id"])
+        self.assertEqual("org/repo", result["repo"])
+        self.assertEqual(2, result["run_attempt"])
+        self.assertEqual("https://run/99", result["html_url"])
+        # The rerun POST hit the rerun-failed-jobs endpoint with no payload.
+        post_call = mock_gh.call_args_list[2]
+        self.assertEqual("POST", post_call.args[0])
+        self.assertEqual(
+            "/repos/org/repo/actions/runs/99/rerun-failed-jobs",
+            post_call.args[1])
+        self.assertEqual(2, len(post_call.args))  # method and path, no payload
+
+    @patch.object(server, "_github_request")
+    def test_zero_run_id_rejected(self, mock_gh, mock_repo):
+        result = server.github_rerun_failed_jobs(run_id=0)
+        self.assertFalse(result["ok"])
+        self.assertIn("run_id", result["error"])
+        mock_gh.assert_not_called()
+
+    @patch.object(server, "_github_request")
+    def test_refused_while_run_in_progress(self, mock_gh, mock_repo):
+        mock_gh.return_value = self._run(status="in_progress")
+        result = server.github_rerun_failed_jobs(run_id=99)
+        self.assertFalse(result["ok"])
+        self.assertIn("in_progress", result["error"])
+        # The run was read; no jobs listing and no rerun POST followed.
+        self.assertEqual(1, mock_gh.call_count)
+
+    @patch.object(server, "_github_request")
+    def test_refused_when_nothing_failed(self, mock_gh, mock_repo):
+        mock_gh.side_effect = [
+            self._run(),
+            self._jobs("success", "success"),
+        ]
+        result = server.github_rerun_failed_jobs(run_id=99)
+        self.assertFalse(result["ok"])
+        self.assertIn("no failed", result["error"])
+        # Read the run and its jobs, but did not POST a rerun.
+        self.assertEqual(2, mock_gh.call_count)
+
+    @patch.object(server, "_github_request")
+    def test_cancelled_job_is_rerunnable(self, mock_gh, mock_repo):
+        mock_gh.side_effect = [
+            self._run(),
+            self._jobs("success", "cancelled"),
+            {"ok": True, "status": 201},
+            self._run(attempt=2),
+        ]
+        result = server.github_rerun_failed_jobs(run_id=99)
+        self.assertTrue(result["ok"], msg=result.get("error"))
+
+    @patch.object(server, "_github_request")
+    def test_github_403_reports_actions_write(self, mock_gh, mock_repo):
+        mock_gh.side_effect = [
+            self._run(),
+            self._jobs("failure"),
+            {"ok": False, "error": "GitHub returned HTTP 403: Forbidden"},
+        ]
+        result = server.github_rerun_failed_jobs(run_id=99)
+        self.assertFalse(result["ok"])
+        self.assertIn("HTTP 403", result["error"])
+        self.assertIn("Actions write", result["error"])
+        self.assertIn("org/repo", result["error"])
+
+    @patch.object(server, "_github_request",
+                  return_value={"ok": False, "error": "GitHub returned HTTP 404"})
+    def test_run_read_error_propagated(self, mock_gh, mock_repo):
+        result = server.github_rerun_failed_jobs(run_id=99)
+        self.assertEqual({"ok": False, "error": "GitHub returned HTTP 404"},
+                         result)
+
+    @patch.object(server, "_github_request")
+    @patch.object(server, "_require_org_in_scope")
+    def test_org_scope_gate_for_direct_addressing(
+            self, mock_gate, mock_gh, mock_repo):
+        mock_gh.side_effect = [
+            self._run(),
+            self._jobs("failure"),
+            {"ok": True, "status": 201},
+            self._run(attempt=2),
+        ]
+        result = server.github_rerun_failed_jobs(
+            run_id=99, org="org", repo="repo")
+        self.assertTrue(result["ok"], msg=result.get("error"))
+        mock_gate.assert_called_once_with("org")
+
+    @patch.object(server, "_github_request")
+    @patch.object(server, "_require_org_in_scope",
+                  side_effect=PermissionError("out of scope"))
+    def test_out_of_scope_org_refused(self, mock_gate, mock_gh, mock_repo):
+        with self.assertRaises(PermissionError):
+            server.github_rerun_failed_jobs(
+                run_id=99, org="other", repo="repo")
+        mock_gh.assert_not_called()
+
+
 if __name__ == "__main__":
     unittest.main()

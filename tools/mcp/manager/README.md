@@ -106,6 +106,7 @@ resolved issues). Requires `security_events: write` permission on the PAT.
 | `github_update_pr` | github | Change an existing PR's title and/or description |
 | `github_set_pr_state` | github | Close a pull request, or reopen one that was closed without merging (state only; a merged PR cannot be reopened) |
 | `github_start_test_run` | github | Start a branch's CI test run by deploying it to the `test` environment through the controller's own GitHub credential; refuses a raw SHA, a pull ref, or a fork, and resolves the branch against `refs/heads` first |
+| `github_rerun_failed_jobs` | github | Rerun only the failed/cancelled/timed-out jobs of an existing workflow run in place (a new attempt of the same run), through the controller's GitHub credential; refuses a run still queued or in progress or one with nothing failed. Use instead of `github_start_test_run` when a run already exists and some jobs failed |
 | `github_request_copilot_review` | github | Request a Copilot automated review on a PR |
 | `github_read_file` | github | Read a file from a GitHub repo at a branch/ref |
 | `project_read_plan` | github | Read the planning document for a workstream |
