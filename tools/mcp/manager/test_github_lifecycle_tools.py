@@ -303,6 +303,9 @@ class TestGithubRerunFailedJobs(unittest.TestCase):
     def _jobs(self, *conclusions):
         return {"jobs": [{"conclusion": c} for c in conclusions]}
 
+    def _jobs_page(self, conclusion, count):
+        return {"jobs": [{"conclusion": conclusion} for _ in range(count)]}
+
     @patch.object(server, "_github_request")
     def test_happy_path_reruns_failed_jobs(self, mock_gh, mock_repo):
         mock_gh.side_effect = [
@@ -363,6 +366,40 @@ class TestGithubRerunFailedJobs(unittest.TestCase):
         ]
         result = server.github_rerun_failed_jobs(run_id=99)
         self.assertTrue(result["ok"], msg=result.get("error"))
+
+    @patch.object(server, "_github_request")
+    def test_failure_on_a_later_job_page_is_found(self, mock_gh, mock_repo):
+        # A run with more than 100 jobs whose only failure sits on the second
+        # page must still be rerun: the jobs listing follows pagination rather
+        # than deciding from the first page of all-successes alone.
+        mock_gh.side_effect = [
+            self._run(),                           # GET run
+            self._jobs_page("success", 100),       # GET jobs page 1 (full)
+            self._jobs("success", "failure"),      # GET jobs page 2 (short)
+            {"ok": True, "status": 201},           # POST rerun-failed-jobs
+            self._run(attempt=2),                  # GET run (refreshed)
+        ]
+        result = server.github_rerun_failed_jobs(run_id=99)
+        self.assertTrue(result["ok"], msg=result.get("error"))
+        # Both job pages were read, with page in the second request's path.
+        self.assertIn("page=2", mock_gh.call_args_list[2].args[1])
+        # The POST landed only after paginating, not before.
+        self.assertEqual("POST", mock_gh.call_args_list[3].args[0])
+
+    @patch.object(server, "_github_request")
+    def test_full_single_page_of_successes_is_refused(self, mock_gh, mock_repo):
+        # Exactly 100 jobs that all passed: page 1 is full, page 2 is empty, and
+        # with nothing failed on either page the run is refused rather than
+        # rerun.
+        mock_gh.side_effect = [
+            self._run(),
+            self._jobs_page("success", 100),       # GET jobs page 1 (full)
+            self._jobs(),                          # GET jobs page 2 (empty)
+        ]
+        result = server.github_rerun_failed_jobs(run_id=99)
+        self.assertFalse(result["ok"])
+        self.assertIn("no failed", result["error"])
+        self.assertEqual(3, mock_gh.call_count)  # run + two job pages, no POST
 
     @patch.object(server, "_github_request")
     def test_github_403_reports_actions_write(self, mock_gh, mock_repo):

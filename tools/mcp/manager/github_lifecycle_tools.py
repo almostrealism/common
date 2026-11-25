@@ -380,6 +380,40 @@ def _run_has_rerunnable_job(jobs: list) -> bool:
     )
 
 
+def _list_run_jobs(owner: str, repo: str, run_id: int):
+    """List every job of a workflow run, following pagination.
+
+    GitHub's run-jobs endpoint returns at most 100 jobs per page, so a run with
+    more than 100 jobs carries its later jobs — and any failure among them — on
+    the pages after the first. Reading every page is what lets a caller reason
+    about the run's full set of job conclusions; stopping at the first page can
+    miss a failure that sits beyond it.
+
+    Args:
+        owner: The repository owner.
+        repo: The repository name.
+        run_id: The numeric workflow run id.
+
+    Returns:
+        The list of raw job objects from every page, or the error dict from the
+        first request that failed.
+    """
+    all_jobs = []
+    page = 1
+    while True:
+        result = server._github_request(
+            "GET",
+            f"/repos/{owner}/{repo}/actions/runs/{run_id}/jobs"
+            f"?per_page=100&page={page}")
+        if isinstance(result, dict) and result.get("ok") is False:
+            return result
+        jobs = result.get("jobs", []) if isinstance(result, dict) else []
+        all_jobs.extend(jobs)
+        if len(jobs) < 100:
+            return all_jobs
+        page += 1
+
+
 @mcp.tool()
 def github_rerun_failed_jobs(
     run_id: int = 0,
@@ -470,12 +504,10 @@ def github_rerun_failed_jobs(
                       "wait for it to finish before rerunning its failed jobs"),
         }
 
-    jobs_result = server._github_request(
-        "GET",
-        f"/repos/{owner}/{repo_name}/actions/runs/{run_id}/jobs?per_page=100")
+    jobs_result = _list_run_jobs(owner, repo_name, run_id)
     if isinstance(jobs_result, dict) and jobs_result.get("ok") is False:
         return jobs_result
-    jobs = jobs_result.get("jobs", []) if isinstance(jobs_result, dict) else []
+    jobs = jobs_result if isinstance(jobs_result, list) else []
     if not _run_has_rerunnable_job(jobs):
         return {
             "ok": False,
