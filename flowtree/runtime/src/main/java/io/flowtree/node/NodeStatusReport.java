@@ -131,8 +131,8 @@ public final class NodeStatusReport {
 	 *
 	 * <p>The labels field is written only when the complete label set can be represented (see
 	 * {@link #encodeLabels}). When {@link #labels()} is {@code null}, or any label carries a
-	 * {@link #RESERVED structural delimiter}, the field is left out entirely, so the receiver
-	 * reads the labels as unknown rather than as an authoritative empty or partial set.</p>
+	 * {@link #RESERVED structural delimiter} or an empty key, the field is left out entirely, so the
+	 * receiver reads the labels as unknown rather than as an authoritative empty or partial set.</p>
 	 *
 	 * @return  the encoded fields, e.g. {@code "busy:false;labels:platform=linux,hostname=halo"},
 	 *          or just {@code "busy:false"} when the labels cannot be reported faithfully.
@@ -147,8 +147,10 @@ public final class NodeStatusReport {
 	/**
 	 * Encodes a label map as {@code key=value} pairs separated by {@value #LABEL_SEPARATOR}. This
 	 * flat format cannot carry a label whose key or value contains a {@link #RESERVED structural
-	 * delimiter}, and silently dropping such a label would present the remaining labels as the
-	 * node's complete capability set; so when any label is unrepresentable the whole set is
+	 * delimiter}, nor one whose key is empty — {@link #decodeLabels} requires a non-empty key ahead
+	 * of the {@value #LABEL_ASSIGNMENT} and treats an empty one as malformed, so the two paths agree
+	 * on what is representable. Silently dropping such a label would present the remaining labels as
+	 * the node's complete capability set; so when any label is unrepresentable the whole set is
 	 * reported as unknown instead.
 	 *
 	 * @param labels  the labels to encode; may be {@code null} or empty.
@@ -160,9 +162,13 @@ public final class NodeStatusReport {
 
 		StringBuilder out = new StringBuilder();
 		for (Map.Entry<String, String> entry : labels.entrySet()) {
-			if (!isEncodable(entry.getKey()) || !isEncodable(entry.getValue())) return null;
+			String key = entry.getKey();
+			if (key == null || key.isEmpty()
+					|| !isEncodable(key) || !isEncodable(entry.getValue())) {
+				return null;
+			}
 			if (out.length() > 0) out.append(LABEL_SEPARATOR);
-			out.append(entry.getKey()).append(LABEL_ASSIGNMENT).append(entry.getValue());
+			out.append(key).append(LABEL_ASSIGNMENT).append(entry.getValue());
 		}
 		return out.toString();
 	}

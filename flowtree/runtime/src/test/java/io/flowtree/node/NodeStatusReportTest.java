@@ -193,6 +193,24 @@ public class NodeStatusReportTest extends TestSuiteBase {
 	}
 
 	/**
+	 * A label with an empty key cannot be decoded back — {@link NodeStatusReport#parse} requires a
+	 * non-empty key ahead of the {@code =} — so the encoder treats it as unrepresentable and leaves
+	 * the whole labels field out, rather than emitting a {@code labels:=value} field the receiver
+	 * would reject as unknown anyway. Encode and decode therefore agree on what is representable.
+	 */
+	@Test(timeout = 10000)
+	public void encodeReportsLabelsUnknownWhenKeyIsEmpty() {
+		Map<String, String> labels = new LinkedHashMap<>();
+		labels.put("platform", "linux");
+		labels.put("", "orphan");
+
+		String fields = new NodeStatusReport(true, labels).encode();
+		Assert.assertEquals("busy:true", fields);
+		Assert.assertNull("an empty-key label set is unknown, not partial",
+				NodeStatusReport.parse(fields).labels());
+	}
+
+	/**
 	 * Encoding distinguishes unknown labels from an empty set: {@code null} labels omit the field,
 	 * while an empty map emits an empty field that decodes back to an empty, non-null map.
 	 */
