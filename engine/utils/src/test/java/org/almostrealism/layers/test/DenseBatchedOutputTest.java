@@ -406,4 +406,40 @@ public class DenseBatchedOutputTest extends TestSuiteBase implements LayerFeatur
 		log("");
 		log("Test 5 PASSED - Dense layer produces correct batched output");
 	}
+
+	/**
+	 * The bias of a batched dense layer is added whole to every row whatever traversal the bias
+	 * collection carries. A bias that traverses each of its elements (as one written through
+	 * {@code into(bias.traverseEach())} does) must give the same output as a plain one; were it
+	 * repeated element by element instead of as one vector, every row after the first would
+	 * receive the wrong bias.
+	 */
+	@Test(timeout = 30000)
+	public void testDenseBiasIgnoresTraversal() {
+		int inputSize = 2;
+		int outputSize = 4;
+		int batchSize = 3;
+
+		PackedCollection weights = pack(1.0, 0.0, 0.0, 1.0, 1.0, 1.0, 2.0, 3.0)
+				.reshape(shape(outputSize, inputSize));
+		PackedCollection input = pack(1.0, 2.0, 3.0, 4.0, 5.0, 6.0)
+				.reshape(shape(batchSize, inputSize));
+		PackedCollection plain = pack(10.0, 20.0, 30.0, 40.0);
+		PackedCollection eachElement = new PackedCollection(shape(outputSize));
+		cp(plain).into(eachElement.traverseEach()).evaluate();
+		eachElement = eachElement.traverseEach();
+
+		double[] expected = {11, 22, 33, 48, 13, 24, 37, 58, 15, 26, 41, 68};
+		for (PackedCollection bias : new PackedCollection[] {plain, eachElement}) {
+			TraversalPolicy inputShape = shape(batchSize, inputSize);
+			Model model = new Model(inputShape);
+			model.add(dense(weights, bias));
+			CompiledModel compiled = model.compile();
+			PackedCollection output = compiled.forward(input);
+			for (int i = 0; i < expected.length; i++) {
+				assertEquals("bias traversal " + bias.getShape() + " output " + i, expected[i], output.toDouble(i));
+			}
+			compiled.destroy();
+		}
+	}
 }

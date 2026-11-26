@@ -1,7 +1,7 @@
 ---
-status: proposed
+status: completed
 created: 2026-11-25
-closed:
+closed: 2026-11-25
 tracker: [ff43ddd4-57d8-4320-a392-21b863519928]
 ---
 
@@ -301,6 +301,43 @@ test_classes:["Clap2TaggingTest"]` (the new synthetic/parity class).
    against the vocabulary before the embedding gather"* (the native tokenizer of
    piece 1 is what produces those ids). Neither is in this task's scope, but the
    owner should be aware they interact with it.
+
+## Implementation outcome
+
+Implemented on this branch; every success criterion is checked by a test.
+
+- **Tokenizer (piece 1, Q2).** No new binary format was needed: a CLAP2 checkpoint ships its own
+  tiktoken rank file (`open_clip_tiktoken/r50k_base.tiktoken`), and the native tokenizer reads it as
+  it is. The rank-file reading and rank-ordered merging are general tiktoken behaviour, so they live
+  in a new `TiktokenBPETokenizer` in `org.almostrealism.ml.tokenization`; `Clap2Tokenizer` adds only
+  the CLAP2 control ids. The base class gained a pair-wise `getMergePriority(left, right)` hook (the
+  default reads the merge list as before), `ByteLevelEncoder.encode(byte[])` maps raw token bytes,
+  and `RegexPreTokenizer.r50k()` holds the `r50k_base` split pattern (the default pattern is the
+  Qwen/cl100k one and gives different ids). `export_clap2_tokenizer.py` validates and exports the
+  rank file, and writes the CI parity resource: the reference ids of 32 captions, produced by
+  OpenCLIP's own `TikTokenTokenizer`, plus the 985-token subset of the vocabulary that encodes them
+  exactly (about 10 KB rather than the 835 KB full file).
+- **Caption averaging (piece 2, Q4).** The reference zero-shot classifier normalizes each caption
+  embedding, takes the mean and renormalizes; `Clap2.embed(TagVocabulary)` does the same on the
+  device and caches the result per vocabulary (version plus tags).
+- **Fixed window (piece 3).** `Clap2AudioEncoder.encodeClip` compiles one model for the window and
+  reads the clip length at run time: the buffer is reflect-padded at the clip's own end
+  (`TemporalFeatures.reflectPad` with a run-time valid length, and `logMelFrames`), frames beyond the
+  clip take the clip's minimum, and the key and pool masks (collections rewritten per window)
+  exclude every patch beyond the clip. A padded short clip therefore embeds exactly as the clip
+  alone, which answers the review comment that padding would otherwise change the score. Longer
+  clips average the normalized window embeddings, accumulated on the device into buffers the
+  encoder owns, which answers the comment about the encoders' reused output buffers.
+- **API (piece 4, Q3).** `Clap2.score(waveform, TagVocabulary | List<String>)` returns the raw
+  cosine per tag; `logits` stays available, and per-tag centering is left to the consumer.
+- **Real weights (criterion 4, Q5).** `Clap2NativeTaggingTest` on CLAP2-S: the fixed-window audio
+  embedding of every probe clip matches the reference at a cosine of at least 0.999998, the native
+  tokenizer reproduces the dump's ids, every drum clip has its tag in its top three, and 16 of 27
+  clips overall (the reference model's own figure).
+- **Framework defect found on the way.** `LayerFeatures.denseOperator` repeated its bias by the
+  collection's traversal items, so a bias that traverses each element was added wrongly to every row
+  after the first. Loaded weights were unaffected; synthetic weights written through
+  `traverseEach()` were not. Fixed, with `DenseBatchedOutputTest.testDenseBiasIgnoresTraversal`.
 
 ## Estimated complexity
 
