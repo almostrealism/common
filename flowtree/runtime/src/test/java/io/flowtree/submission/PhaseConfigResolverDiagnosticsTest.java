@@ -222,6 +222,33 @@ public class PhaseConfigResolverDiagnosticsTest extends TestSuiteBase {
     }
 
     /**
+     * Provider provenance accounts for runner-aware clearing: when a job
+     * per-phase runner clears the job default's provider (because the runner
+     * differs), the surviving provider is credited to the workspace default that
+     * actually supplied it — not to the equal-valued job default whose provider
+     * was discarded. Reproduces the attribution bug that value-matching a
+     * flattened layer list after the merge could not see.
+     */
+    @Test(timeout = 5000)
+    public void providerSourceAccountsForRunnerAwareClearing() {
+        PhaseConfigBundle job = bundle(
+                new PhaseConfig(null, null, null, "openrouter"),
+                Phase.REVIEW,
+                new PhaseConfig(AgentRunnerRegistry.OPENCODE, null, null));
+        PhaseConfigBundle workspace = bundle(
+                new PhaseConfig(AgentRunnerRegistry.OPENCODE, null, null, "openrouter"), null, null);
+        PhaseConfigResolver r = PhaseConfigResolver.resolve(job, PhaseConfigBundle.EMPTY, workspace);
+        assertNull(r.error());
+
+        PhaseConfigResolver.PhaseResolution review = r.resolutionOf(Phase.REVIEW);
+        assertEquals("openrouter", review.provider().value());
+        assertEquals(r.forPhase(Phase.REVIEW).provider(), review.provider().value());
+        assertEquals(PhaseConfigResolver.SOURCE_WORKSPACE_DEFAULT, review.provider().source());
+        assertEquals(AgentRunnerRegistry.OPENCODE, review.runner().value());
+        assertEquals(PhaseConfigResolver.SOURCE_JOB_PHASE, review.runner().source());
+    }
+
+    /**
      * The {@code phaseConfigResolution} JSON reports every phase with each
      * field's value and source.
      */

@@ -35,7 +35,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.function.Function;
 import io.flowtree.workstream.Workstream;
 import io.flowtree.workstream.WorkspaceEntry;
 import io.flowtree.workstream.WorkstreamConfig;
@@ -319,8 +318,70 @@ public final class PhaseConfigResolver {
                                   FieldResolution effort, FieldResolution provider) {
     }
 
-    /** One labelled precedence level contributing to a phase's resolution. */
-    private record SourceLayer(String label, PhaseConfig config) {
+    /**
+     * A single resolved field value together with the {@code SOURCE_*} label of
+     * the level that supplied it. {@link #NONE} represents a field no level set
+     * (value {@code null}, source {@link #SOURCE_NONE}).
+     */
+    private record Attributed(String value, String source) {
+        /** A field no level set: {@code null} value attributed to {@link #SOURCE_NONE}. */
+        private static final Attributed NONE = new Attributed(null, SOURCE_NONE);
+
+        /** Wraps {@code value} with {@code source}, or returns {@link #NONE} when {@code value} is {@code null}. */
+        private static Attributed of(String value, String source) {
+            return value == null ? NONE : new Attributed(value, source);
+        }
+    }
+
+    /**
+     * A {@link PhaseConfig} whose four fields each carry the source level that
+     * supplied them. Its overlay operations mirror {@link PhaseConfig#overlayOn}
+     * and {@link PhaseConfig#overlayOnClearingInheritedProvider} exactly, but
+     * propagate the {@link Attributed#source} of each surviving value — so a
+     * provider cleared by a runner mismatch loses its source rather than keeping
+     * a stale attribution, and a value re-supplied by a lower level is credited
+     * to that level. Replaying the resolution through these is what lets
+     * {@link #resolutionOf(Phase)} attribute each field to the level that truly
+     * decided it, instead of value-matching a flattened layer list after the
+     * merge (which cannot see a cleared field).
+     */
+    private record LabeledConfig(Attributed runner, Attributed model,
+                                 Attributed effort, Attributed provider) {
+
+        /** Attributes every non-null field of {@code config} to {@code source}. */
+        private static LabeledConfig of(PhaseConfig config, String source) {
+            return new LabeledConfig(
+                    Attributed.of(config.runner(), source),
+                    Attributed.of(config.model(), source),
+                    Attributed.of(config.effort(), source),
+                    Attributed.of(config.provider(), source));
+        }
+
+        /** Mirror of {@link PhaseConfig#overlayOn(PhaseConfig)} with source propagation. */
+        private LabeledConfig overlayOn(LabeledConfig other) {
+            return new LabeledConfig(
+                    runner.value() != null ? runner : other.runner,
+                    model.value() != null ? model : other.model,
+                    effort.value() != null ? effort : other.effort,
+                    provider.value() != null ? provider : other.provider);
+        }
+
+        /** Mirror of {@link PhaseConfig#overlayOnClearingInheritedProvider(PhaseConfig)} with source propagation. */
+        private LabeledConfig overlayOnClearingInheritedProvider(LabeledConfig other) {
+            Attributed resolvedProvider;
+            if (provider.value() != null) {
+                resolvedProvider = provider;
+            } else if (runner.value() != null && !runner.value().equals(other.runner.value())) {
+                resolvedProvider = Attributed.NONE;
+            } else {
+                resolvedProvider = other.provider;
+            }
+            return new LabeledConfig(
+                    runner.value() != null ? runner : other.runner,
+                    model.value() != null ? model : other.model,
+                    effort.value() != null ? effort : other.effort,
+                    resolvedProvider);
+        }
     }
 
     /**
@@ -333,78 +394,75 @@ public final class PhaseConfigResolver {
      * {@code fallback default}, {@code workspace per-phase},
      * {@code workspace default}, {@code controller default}, or {@code none}).
      *
-     * <p>A field is attributed to the highest-precedence layer whose value for
-     * that field equals the resolved value. Because the non-provider fields
-     * resolve by "highest non-null wins", that layer is the one that set the
-     * value; the provider field accounts for the runner-aware provider clearing
-     * of {@link PhaseConfig#overlayOnClearingInheritedProvider(PhaseConfig)} by
-     * matching against the surviving (post-clearing) resolved provider, so a
-     * provider suppressed by a runner mismatch is reported as {@code none}
-     * rather than attributed to the level that was cleared.</p>
+     * <p>Each field's source is determined by replaying the exact overlay chain
+     * of {@link #forPhase(Phase)} on source-carrying layers, so the reported
+     * source is the level whose value actually survived the merge. This accounts
+     * for the runner-aware provider clearing of
+     * {@link PhaseConfig#overlayOnClearingInheritedProvider(PhaseConfig)}: a
+     * provider suppressed by a runner mismatch is reported as {@code none} (or
+     * credited to the lower level that re-supplied it), never attributed to the
+     * higher level whose provider was cleared.</p>
      *
      * @param phase the phase to resolve; {@code null} resolves the default
      * @return the per-field resolution with sources, never {@code null}
      */
     public PhaseResolution resolutionOf(Phase phase) {
         PhaseConfig resolved = forPhase(phase);
-        List<SourceLayer> layers = sourceLayers(phase);
+        LabeledConfig attributed = attributedResolution(phase);
         return new PhaseResolution(
-                new FieldResolution(resolved.runner(),
-                        sourceForField(layers, resolved.runner(), PhaseConfig::runner)),
-                new FieldResolution(resolved.model(),
-                        sourceForField(layers, resolved.model(), PhaseConfig::model)),
-                new FieldResolution(resolved.effort(),
-                        sourceForField(layers, resolved.effort(), PhaseConfig::effort)),
-                new FieldResolution(resolved.provider(),
-                        sourceForField(layers, resolved.provider(), PhaseConfig::provider)));
+                fieldResolution(resolved.runner(), attributed.runner()),
+                fieldResolution(resolved.model(), attributed.model()),
+                fieldResolution(resolved.effort(), attributed.effort()),
+                fieldResolution(resolved.provider(), attributed.provider()));
     }
 
     /**
-     * Builds the ordered (highest precedence first) list of labelled single-config
-     * layers that resolve {@code phase}, mirroring the overlay chain of
-     * {@link #forPhase(Phase)}: the per-job per-phase entry and default, then the
-     * workstream per-phase entry and default when the workstream sets the phase
-     * (else the fallback per-phase entry and default), then the workspace
-     * per-phase entry and default, and finally the controller default.
+     * Replays the exact overlay chain of {@link #forPhase(Phase)} on
+     * {@link LabeledConfig}s so that every surviving field carries the source
+     * level that supplied it. The structure mirrors {@link #forPhase(Phase)}
+     * precisely — each bundle's per-phase entry overlaid on its default (the
+     * runner-aware {@link PhaseConfigBundle#forPhase(Phase)} merge), the request
+     * on the workstream-or-fallback middle on the workspace, then the controller
+     * default — so a provider cleared mid-chain by a runner mismatch is
+     * attributed to {@link #SOURCE_NONE} or to the lower level that re-supplied
+     * it, never to a higher level whose value was discarded.
      */
-    private List<SourceLayer> sourceLayers(Phase phase) {
-        List<SourceLayer> layers = new ArrayList<>();
-        layers.add(new SourceLayer(SOURCE_JOB_PHASE, entryOrEmpty(requestBundle, phase)));
-        layers.add(new SourceLayer(SOURCE_JOB_DEFAULT, requestBundle.defaultPhaseConfig()));
-        if (workstreamBundle.setsPhase(phase)) {
-            layers.add(new SourceLayer(SOURCE_WORKSTREAM_PHASE, entryOrEmpty(workstreamBundle, phase)));
-            layers.add(new SourceLayer(SOURCE_WORKSTREAM_DEFAULT, workstreamBundle.defaultPhaseConfig()));
-        } else {
-            layers.add(new SourceLayer(SOURCE_FALLBACK_PHASE, entryOrEmpty(fallbackBundle, phase)));
-            layers.add(new SourceLayer(SOURCE_FALLBACK_DEFAULT, fallbackBundle.defaultPhaseConfig()));
-        }
-        layers.add(new SourceLayer(SOURCE_WORKSPACE_PHASE, entryOrEmpty(workspaceBundle, phase)));
-        layers.add(new SourceLayer(SOURCE_WORKSPACE_DEFAULT, workspaceBundle.defaultPhaseConfig()));
-        layers.add(new SourceLayer(SOURCE_CONTROLLER_DEFAULT, CONTROLLER_DEFAULT));
-        return layers;
-    }
-
-    /** Returns {@code bundle}'s per-phase entry for {@code phase}, or {@link PhaseConfig#EMPTY}. */
-    private static PhaseConfig entryOrEmpty(PhaseConfigBundle bundle, Phase phase) {
-        if (phase == null) return PhaseConfig.EMPTY;
-        PhaseConfig entry = bundle.phaseConfigs().get(phase);
-        return entry == null ? PhaseConfig.EMPTY : entry;
+    private LabeledConfig attributedResolution(Phase phase) {
+        LabeledConfig middle = workstreamBundle.setsPhase(phase)
+                ? labeledForPhase(workstreamBundle, phase,
+                        SOURCE_WORKSTREAM_PHASE, SOURCE_WORKSTREAM_DEFAULT)
+                : labeledForPhase(fallbackBundle, phase,
+                        SOURCE_FALLBACK_PHASE, SOURCE_FALLBACK_DEFAULT);
+        return labeledForPhase(requestBundle, phase, SOURCE_JOB_PHASE, SOURCE_JOB_DEFAULT)
+                .overlayOnClearingInheritedProvider(middle)
+                .overlayOnClearingInheritedProvider(labeledForPhase(workspaceBundle, phase,
+                        SOURCE_WORKSPACE_PHASE, SOURCE_WORKSPACE_DEFAULT))
+                .overlayOn(LabeledConfig.of(CONTROLLER_DEFAULT, SOURCE_CONTROLLER_DEFAULT));
     }
 
     /**
-     * Returns the {@code SOURCE_*} label of the highest-precedence layer whose
-     * {@code field} value equals {@code resolvedValue}, or {@link #SOURCE_NONE}
-     * when {@code resolvedValue} is {@code null}.
+     * Attributes {@code bundle}'s resolution of {@code phase} to its per-phase
+     * ({@code phaseLabel}) and default ({@code defaultLabel}) levels, mirroring
+     * {@link PhaseConfigBundle#forPhase(Phase)}: the per-phase entry, when
+     * present, is overlaid on the default with runner-aware provider clearing;
+     * otherwise the default stands alone.
      */
-    private static String sourceForField(List<SourceLayer> layers, String resolvedValue,
-                                         Function<PhaseConfig, String> field) {
-        if (resolvedValue == null) return SOURCE_NONE;
-        for (SourceLayer layer : layers) {
-            if (resolvedValue.equals(field.apply(layer.config()))) {
-                return layer.label();
-            }
-        }
-        return SOURCE_NONE;
+    private static LabeledConfig labeledForPhase(PhaseConfigBundle bundle, Phase phase,
+                                                 String phaseLabel, String defaultLabel) {
+        LabeledConfig def = LabeledConfig.of(bundle.defaultPhaseConfig(), defaultLabel);
+        PhaseConfig override = phase == null ? null : bundle.phaseConfigs().get(phase);
+        if (override == null) return def;
+        return LabeledConfig.of(override, phaseLabel).overlayOnClearingInheritedProvider(def);
+    }
+
+    /**
+     * Pairs the authoritative resolved value from {@link #forPhase(Phase)} with
+     * the source the attributed replay credited it to; a {@code null} value is
+     * always {@link #SOURCE_NONE}.
+     */
+    private static FieldResolution fieldResolution(String resolvedValue, Attributed attributed) {
+        if (resolvedValue == null) return new FieldResolution(null, SOURCE_NONE);
+        return new FieldResolution(resolvedValue, attributed.source());
     }
 
     /**
