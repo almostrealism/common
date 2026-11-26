@@ -240,9 +240,12 @@ The optional `default_phase_config` / `phase_configs` / `fallback_*`
 arguments preview a *hypothetical* submission: they are resolved exactly as
 `workstream_submit_task` would resolve them, on top of the workstream and
 workspace configuration, without submitting a job. Resolution runs the same
-validation the submit path does, so an unsupported model-for-runner or an
-incompatible provider is returned as an `error` here — the tool doubles as a
-dry-run validator. When a resolved phase sets an `effort` for a runner that
+validation the submit path does, so an unsupported model-for-runner or a
+provider outside the runner's advertised `supportedProviders` is returned as an
+`error` here — the tool doubles as a dry-run validator. The controller also
+checks the request shape strictly (malformed JSON, an unknown phase or key, a
+non-string value), and answers `404` for an unknown workstream and `400` for
+an invalid configuration, with the `ok:false` body either way. When a resolved phase sets an `effort` for a runner that
 cannot honour it, the response also carries a `warnings` entry (the job still
 runs; the effort is ignored).
 

@@ -45,7 +45,11 @@ import java.util.function.Function;
  * submit path uses, so this endpoint doubles as a dry-run validator: a
  * configuration that would be rejected at submission (an unsupported
  * model-for-runner, an incompatible provider) is reported here as an
- * {@code error} instead of a resolution map, before a job is ever created.</p>
+ * {@code error} instead of a resolution map, before a job is ever created.
+ * Unlike the submit path, the body is also checked strictly: a malformed body,
+ * an unknown phase or key, or a non-string value is reported rather than
+ * silently ignored, since a dry run that ignored them would describe a
+ * configuration the caller did not ask for.</p>
  *
  * @author Michael Murray
  * @see FlowTreeApiEndpoint
@@ -81,15 +85,25 @@ class PhaseConfigQueryHandler {
      *                     per-job {@code defaultPhaseConfig} / {@code phaseConfigs}
      *                     / {@code fallback*} overrides; {@code null} or empty
      *                     explains the workstream as configured today
-     * @return an HTTP response with {@code ok=true} plus the resolved bundle,
-     *         the per-phase {@code phaseConfigResolution} map and any
-     *         {@code warnings}; or {@code ok=false} with an {@code error} when
-     *         the workstream is unknown or the configuration is invalid
+     * @return a {@code 200} response with {@code ok=true} plus the resolved
+     *         bundle, the per-phase {@code phaseConfigResolution} map and any
+     *         {@code warnings}; a {@code 404} with {@code ok=false} and an
+     *         {@code error} when the workstream is unknown; or a {@code 400}
+     *         with {@code ok=false} and an {@code error} when the body is
+     *         malformed (see {@link PhaseConfigResolver#requestShapeError(String)}),
+     *         carries a removed legacy field, or resolves to a configuration
+     *         the submit path would reject
      */
     Response handle(String workstreamId, String body) {
         Workstream workstream = workstreamLookup.apply(workstreamId);
         if (workstream == null) {
-            return error(workstreamId, "Unknown workstream: " + workstreamId);
+            return error(Response.Status.NOT_FOUND, workstreamId,
+                    "Unknown workstream: " + workstreamId);
+        }
+        String requestErr = PhaseConfigResolver.rejectLegacyRequestFields(body);
+        if (requestErr == null) requestErr = PhaseConfigResolver.requestShapeError(body);
+        if (requestErr != null) {
+            return error(Response.Status.BAD_REQUEST, workstreamId, requestErr);
         }
         String wsId = workstream.getWorkspaceId();
         WorkspaceEntry wsEntry = (wsId != null && !wsId.isEmpty())
@@ -100,7 +114,7 @@ class PhaseConfigQueryHandler {
         SubmissionConfigResolver resolver = SubmissionConfigResolver.resolve(
                 requestBundle, fallbackBundle, workstream, wsEntry);
         if (resolver.error() != null) {
-            return error(workstreamId, resolver.error());
+            return error(Response.Status.BAD_REQUEST, workstreamId, resolver.error());
         }
 
         PhaseConfigResolver phaseConfig = resolver.phaseConfigResolver();
@@ -129,11 +143,11 @@ class PhaseConfigQueryHandler {
         json.append("]");
     }
 
-    /** Builds an {@code {"ok":false,"workstreamId":...,"error":...}} response. */
-    private static Response error(String workstreamId, String message) {
+    /** Builds an {@code {"ok":false,"workstreamId":...,"error":...}} response with {@code status}. */
+    private static Response error(Response.Status status, String workstreamId, String message) {
         String json = "{\"ok\":false,\"workstreamId\":"
                 + FlowTreeApiEndpoint.escapeJsonValue(workstreamId)
                 + ",\"error\":" + FlowTreeApiEndpoint.escapeJsonValue(message) + "}";
-        return NanoHTTPD.newFixedLengthResponse(Response.Status.OK, "application/json", json);
+        return NanoHTTPD.newFixedLengthResponse(status, "application/json", json);
     }
 }

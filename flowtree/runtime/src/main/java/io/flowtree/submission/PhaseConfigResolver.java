@@ -485,14 +485,8 @@ public final class PhaseConfigResolver {
                                                 PhaseConfig config) {
         String effort = config.effort();
         String runner = config.runner();
-        if (effort == null || effort.isEmpty() || runner == null || runner.isEmpty()) return;
-        if (!AgentRunnerRegistry.available().contains(runner)) return;
-        AgentRunner instance;
-        try {
-            instance = AgentRunnerRegistry.get(runner);
-        } catch (Exception e) {
-            return;
-        }
+        if (effort == null || effort.isEmpty()) return;
+        AgentRunner instance = AgentRunnerRegistry.find(runner);
         if (instance == null) return;
         if (!instance.capabilities().supportsEffortLevel()) {
             warnings.add("phase " + phaseLabel + ": runner '" + runner
@@ -754,6 +748,93 @@ public final class PhaseConfigResolver {
         return result;
     }
 
+    /** The request fields carrying a single {@link PhaseConfig} object. */
+    private static final String[] PHASE_CONFIG_REQUEST_FIELDS =
+            {"defaultPhaseConfig", "fallbackPhaseConfig"};
+
+    /** The request fields carrying a per-phase map of {@link PhaseConfig} objects. */
+    private static final String[] PHASE_CONFIGS_REQUEST_FIELDS =
+            {"phaseConfigs", "fallbackPhaseConfigs"};
+
+    /** The keys a {@link PhaseConfig} JSON object may carry. */
+    private static final Set<String> PHASE_CONFIG_KEYS =
+            Set.of("runner", "model", "effort", "provider");
+
+    /**
+     * Returns an error message when {@code body} does not have the shape
+     * {@link #bundleFromRequest(String)} and {@link #fallbackBundleFromRequest(String)}
+     * read, or {@code null} when it does. Those parsers are lenient — they skip
+     * a malformed body, a non-object field, an unknown phase name, an unknown
+     * key and a non-text value — so a caller that must report every ignored
+     * input (a dry-run validator) checks the body here first.
+     *
+     * <p>A {@code null} or blank body is valid (it carries no configuration).
+     * Otherwise the body must be a JSON object; each of {@code defaultPhaseConfig}
+     * and {@code fallbackPhaseConfig}, when present and not {@code null}, must be
+     * an object whose keys are among {@code runner}, {@code model},
+     * {@code effort} and {@code provider}, each a string or {@code null}; and
+     * each of {@code phaseConfigs} and {@code fallbackPhaseConfigs} must be an
+     * object mapping {@link Phase} wire names to such objects.</p>
+     *
+     * @param body the raw request body; may be {@code null}
+     * @return an error naming the first malformed field, or {@code null}
+     */
+    public static String requestShapeError(String body) {
+        if (body == null || body.isBlank()) return null;
+        JsonNode root;
+        try {
+            root = MAPPER.readTree(body);
+        } catch (Exception ex) {
+            return "Request body is not valid JSON: " + ex.getMessage();
+        }
+        if (root == null || !root.isObject()) return "Request body must be a JSON object";
+        for (String field : PHASE_CONFIG_REQUEST_FIELDS) {
+            String err = phaseConfigShapeError(field, root.get(field));
+            if (err != null) return err;
+        }
+        for (String field : PHASE_CONFIGS_REQUEST_FIELDS) {
+            JsonNode map = root.get(field);
+            if (map == null || map.isNull()) continue;
+            if (!map.isObject()) return "'" + field + "' must be a JSON object keyed by phase";
+            Iterator<Map.Entry<String, JsonNode>> it = map.fields();
+            while (it.hasNext()) {
+                Map.Entry<String, JsonNode> entry = it.next();
+                try {
+                    Phase.fromWireName(entry.getKey());
+                } catch (IllegalArgumentException ex) {
+                    return "'" + field + "' has unknown phase '" + entry.getKey() + "'";
+                }
+                String err = phaseConfigShapeError(field + "." + entry.getKey(), entry.getValue());
+                if (err != null) return err;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Returns an error when {@code node} (named {@code label} in the message) is
+     * present but is not a {@link PhaseConfig} object of string-or-null
+     * {@link #PHASE_CONFIG_KEYS}; {@code null} when absent, JSON {@code null}
+     * or well formed.
+     */
+    private static String phaseConfigShapeError(String label, JsonNode node) {
+        if (node == null || node.isNull()) return null;
+        if (!node.isObject()) return "'" + label + "' must be a JSON object";
+        Iterator<Map.Entry<String, JsonNode>> it = node.fields();
+        while (it.hasNext()) {
+            Map.Entry<String, JsonNode> entry = it.next();
+            if (!PHASE_CONFIG_KEYS.contains(entry.getKey())) {
+                return "'" + label + "' has unknown key '" + entry.getKey()
+                        + "'; expected one of " + PHASE_CONFIG_KEYS;
+            }
+            JsonNode value = entry.getValue();
+            if (!value.isNull() && !value.isTextual()) {
+                return "'" + label + "." + entry.getKey() + "' must be a string";
+            }
+        }
+        return null;
+    }
+
     /** Parses a {@link PhaseConfig} from a JSON object node; ignores unknown fields. */
     private static PhaseConfig phaseConfigFromNode(JsonNode node) {
         String runner = textOrNull(node.get("runner"));
@@ -844,22 +925,7 @@ public final class PhaseConfigResolver {
         String model = config.model();
         if (model == null || model.isEmpty()) return null;
         String runner = config.runner();
-        if (runner == null || runner.isEmpty()) return null;
-        if (!AgentRunnerRegistry.available().contains(runner)) {
-            // Already caught by validateRunners; defensive guard.
-            return null;
-        }
-        AgentRunner instance;
-        try {
-            instance = AgentRunnerRegistry.get(runner);
-        } catch (Exception e) {
-            // Runners that fail to instantiate (e.g. opencode without a
-            // configured binary) should not block validation; treat as
-            // unconstrained.
-            return null;
-        }
-        // A registered supplier may also yield null rather than throw; that
-        // is the same "cannot ask this runner" case.
+        AgentRunner instance = AgentRunnerRegistry.find(runner);
         if (instance == null) return null;
         if (instance.isModelSupported(model)) return null;
         Set<String> advertised = instance.capabilities().supportedModels();
@@ -869,27 +935,29 @@ public final class PhaseConfigResolver {
     }
 
     /**
-     * Validates provider compatibility with the resolved runner for {@code config}.
-     * Currently only the {@code "claude"} runner enforces provider restrictions:
-     * claude only supports the {@code "anthropic"} provider; using any other
-     * provider with claude is not supported and fails with a clear error.
+     * Validates the resolved provider for {@code config} against the resolved
+     * runner's advertised {@link AgentCapabilities#supportedProviders()}. Every
+     * runner is checked the same way: {@code claude} advertises only
+     * {@code anthropic}, and {@code opencode} advertises exactly the providers
+     * its run step accepts, so a provider either runner would refuse at run
+     * time is rejected at submission instead.
      *
-     * <p>The {@code "opencode"} runner is not validated here. Provider validation
-     * for opencode happens at run time inside the runner itself, where it checks the
-     * provider against its known set and fails with an explicit error if unrecognised.</p>
+     * <p>An empty advertised set means the runner is unconstrained, and a
+     * runner that cannot be instantiated (or whose supplier yields
+     * {@code null}) is treated as unconstrained, matching
+     * {@link #validateModelForRunner(PhaseConfig, String)}.</p>
      */
     private static String validateProviderForRunner(PhaseConfig config, String phaseLabel) {
         String provider = config.provider();
         if (provider == null || provider.isEmpty()) return null;
-        String runner = config.runner();
-        if (runner == null || runner.isEmpty()) return null;
-        if (AgentRunnerRegistry.CLAUDE.equals(runner)
-                && !"anthropic".equals(provider)) {
-            return "runner='claude' only supports provider='anthropic'"
-                    + " (phase " + phaseLabel + "); got provider='" + provider + "'."
-                    + " Use runner='opencode' for other providers.";
-        }
-        return null;
+        AgentRunner instance = AgentRunnerRegistry.find(config.runner());
+        if (instance == null) return null;
+        Set<String> supported = instance.capabilities().supportedProviders();
+        if (supported.isEmpty() || supported.contains(provider)) return null;
+        String hint = AgentRunnerRegistry.CLAUDE.equals(config.runner())
+                ? " Use runner='opencode' for other providers." : "";
+        return "runner='" + config.runner() + "' only supports provider in " + supported
+                + " (phase " + phaseLabel + "); got provider='" + provider + "'." + hint;
     }
 
     /** Shared Jackson mapper for request body parsing; thread-safe after construction. */
