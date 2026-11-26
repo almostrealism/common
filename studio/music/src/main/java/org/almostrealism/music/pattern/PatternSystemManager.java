@@ -26,6 +26,7 @@ import org.almostrealism.audio.data.FileWaveDataProviderTree;
 import org.almostrealism.music.data.ParameterFunction;
 import org.almostrealism.audio.filter.AudioProcessingUtils;
 import org.almostrealism.music.midi.MidiNoteEvent;
+import org.almostrealism.audio.notes.NoteAudio;
 import org.almostrealism.music.notes.NoteAudioChoice;
 import org.almostrealism.music.notes.NoteAudioSource;
 import org.almostrealism.music.notes.NoteSourceProvider;
@@ -39,10 +40,12 @@ import org.almostrealism.heredity.ProjectedChromosome;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.function.DoubleConsumer;
 import java.util.function.Function;
 import java.util.function.IntSupplier;
@@ -230,6 +233,25 @@ public class PatternSystemManager implements NoteSourceProvider, CodeFeatures, D
 		return getChoices()
 				.stream()
 				.flatMap(c -> c.getSources().stream()).toList();
+	}
+
+	/**
+	 * Returns the distinct notes holding cached audio for what the sources of every
+	 * choice have already materialized, compared by identity, without loading any (see
+	 * {@link NoteAudioChoice#getLoadedNotes()} and {@link NoteAudio#getCachedAudioOwners()}).
+	 * A composite note is represented by its members, so a note reached both directly
+	 * and through a composite appears once. These are the notes whose cached audio this
+	 * manager's owner may release when it is torn down.
+	 *
+	 * @return a new identity-based set of the loaded cache-holding notes
+	 */
+	public Set<NoteAudio> getLoadedNotes() {
+		Set<NoteAudio> notes = Collections.newSetFromMap(new IdentityHashMap<>());
+		getChoices().stream()
+				.flatMap(c -> c.getLoadedNotes().stream())
+				.map(NoteAudio::getCachedAudioOwners)
+				.forEach(notes::addAll);
+		return notes;
 	}
 
 	/**

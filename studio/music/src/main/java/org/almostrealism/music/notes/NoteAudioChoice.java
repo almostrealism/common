@@ -348,6 +348,20 @@ public class NoteAudioChoice implements ConsoleFeatures {
 	}
 
 	/**
+	 * Returns the notes every source in this choice has already materialized, without
+	 * loading any (see {@link NoteAudioSource#getLoadedNotes()}).
+	 *
+	 * @return a flat list of the loaded notes
+	 */
+	@JsonIgnore
+	public List<NoteAudio> getLoadedNotes() {
+		return getSources().stream()
+				.map(NoteAudioSource::getLoadedNotes)
+				.flatMap(List::stream)
+				.collect(Collectors.toList());
+	}
+
+	/**
 	 * Returns all valid notes from all sources, sorted by natural ordering.
 	 *
 	 * @return a sorted list of valid notes

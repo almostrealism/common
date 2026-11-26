@@ -79,6 +79,24 @@ public interface NoteAudioSource extends KeyboardTuned, Named {
 	List<NoteAudio> getNotes();
 
 	/**
+	 * Returns the notes this source has already materialized, including any that are
+	 * currently inactive, without loading or recomputing anything. This is the set
+	 * whose cached audio must be released when the source's owner is torn down
+	 * (see {@link NoteAudio#releaseCachedAudio()}). A teardown path must not trigger
+	 * lazy loading, which would build fresh notes only to release them.
+	 *
+	 * <p>The default returns {@link #getNotes()}, which is correct for sources whose
+	 * notes are fixed at construction. Sources that load lazily or filter their notes
+	 * override it.</p>
+	 *
+	 * @return a new list of the materialized notes
+	 */
+	@JsonIgnore
+	default List<NoteAudio> getLoadedNotes() {
+		return getNotes();
+	}
+
+	/**
 	 * Returns whether this source belongs in a {@link NoteAudioChoice}'s saved
 	 * configuration.
 	 *

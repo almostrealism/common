@@ -241,6 +241,20 @@ public class MultiChannelAudioOutput {
 	 * @return the push operations, empty when master output is disabled
 	 */
 	public Supplier<Runnable> pushMaster(Producer<PackedCollection> frame) {
+		return pushToStereo("Master Push", stereo -> frame, this::getMaster);
+	}
+
+	/**
+	 * Builds operations pushing a per-side frame to the master-mix stereo receptors — the
+	 * LEFT frame to the LEFT receptor and the RIGHT frame to the RIGHT receptor. True
+	 * stereo uses this to stream each side's independently rendered master; a stereo
+	 * channel whose receptor is absent (a mono or disabled master) is skipped.
+	 *
+	 * @param frame supplies the frame to push for a given stereo channel
+	 * @return the push operations, empty when master output is disabled
+	 */
+	public Supplier<Runnable> pushMaster(
+			Function<ChannelInfo.StereoChannel, Producer<PackedCollection>> frame) {
 		return pushToStereo("Master Push", frame, this::getMaster);
 	}
 
@@ -255,6 +269,21 @@ public class MultiChannelAudioOutput {
 	 */
 	public Supplier<Runnable> pushMeasures(ChannelInfo.Voicing voicing,
 										   Producer<PackedCollection> frame) {
+		return pushToStereo("Measure Push", stereo -> frame,
+				stereo -> getMeasure(voicing, stereo));
+	}
+
+	/**
+	 * Builds operations pushing a per-side frame to the measure receptors of the given
+	 * voicing — the LEFT frame to the LEFT receptor and the RIGHT frame to the RIGHT one.
+	 * A stereo channel the output does not monitor is skipped.
+	 *
+	 * @param voicing the signal path voicing the frame belongs to
+	 * @param frame   supplies the frame to push for a given stereo channel
+	 * @return the push operations, empty when measure monitoring is disabled
+	 */
+	public Supplier<Runnable> pushMeasures(ChannelInfo.Voicing voicing,
+			Function<ChannelInfo.StereoChannel, Producer<PackedCollection>> frame) {
 		return pushToStereo("Measure Push", frame,
 				stereo -> getMeasure(voicing, stereo));
 	}
@@ -270,27 +299,45 @@ public class MultiChannelAudioOutput {
 	 */
 	public Supplier<Runnable> pushStem(int audioChannel,
 									   Producer<PackedCollection> frames) {
+		return pushToStereo("Stem Push", stereo -> frames,
+				stereo -> getStem(audioChannel, stereo));
+	}
+
+	/**
+	 * Builds operations pushing a per-side frame to the stem receptors of the given audio
+	 * channel — the LEFT frame to the LEFT receptor and the RIGHT frame to the RIGHT one.
+	 * A stereo channel the output does not capture is skipped.
+	 *
+	 * @param audioChannel the audio channel whose stem receives the frames
+	 * @param frames       supplies the frames to push for a given stereo channel
+	 * @return the push operations, empty when stem output is disabled
+	 */
+	public Supplier<Runnable> pushStem(int audioChannel,
+			Function<ChannelInfo.StereoChannel, Producer<PackedCollection>> frames) {
 		return pushToStereo("Stem Push", frames,
 				stereo -> getStem(audioChannel, stereo));
 	}
 
 	/**
-	 * Builds operations pushing the given frame to the receptor each stereo channel
+	 * Builds operations pushing a per-side frame to the receptor each stereo channel
 	 * resolves to, skipping a stereo channel with no receptor. Shared by
 	 * {@link #pushMaster}, {@link #pushMeasures}, and {@link #pushStem}, which differ
-	 * only in which receptor family the lookup draws from.
+	 * only in which receptor family the lookup draws from. The frame function lets true
+	 * stereo push a distinct per-side signal; a dual-mono caller supplies a function that
+	 * returns the same frame for both sides.
 	 *
 	 * @param name   the operation list name
-	 * @param frame  producer of the frame to push
+	 * @param frame  supplies the frame to push for a given stereo channel
 	 * @param lookup the per-stereo-channel receptor lookup
 	 * @return the push operations, empty when none of the receptors are present
 	 */
-	private Supplier<Runnable> pushToStereo(String name, Producer<PackedCollection> frame,
+	private Supplier<Runnable> pushToStereo(String name,
+			Function<ChannelInfo.StereoChannel, Producer<PackedCollection>> frame,
 			Function<ChannelInfo.StereoChannel, Receptor<PackedCollection>> lookup) {
 		OperationList ops = new OperationList(name);
 		for (ChannelInfo.StereoChannel stereo : ChannelInfo.StereoChannel.values()) {
 			Receptor<PackedCollection> receptor = lookup.apply(stereo);
-			if (receptor != null) ops.add(receptor.push(frame));
+			if (receptor != null) ops.add(receptor.push(frame.apply(stereo)));
 		}
 		return ops;
 	}

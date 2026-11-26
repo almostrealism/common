@@ -1131,6 +1131,41 @@ public interface TemporalFeatures extends SpectralFeatures {
 	}
 
 	/**
+	 * Pads a signal on both sides by reflection, as {@link #reflectPad(Producer, int)} does, but
+	 * treats only its first {@code validLength} samples as the signal: the samples after them are
+	 * replaced by the reflection about the last valid sample, exactly as if the signal had been
+	 * {@code validLength} samples long. The valid length is read at run time, so one compiled
+	 * kernel pads clips of every length up to the buffer's.
+	 *
+	 * <p>Output element {@code j} is gathered from index {@code (L - 1) - |(L - 1) - |j - padding||}
+	 * for a valid length {@code L}, clamped to the buffer. For the first {@code L + padding} outputs
+	 * past the left padding this is the reflect padding of the {@code L}-sample signal, which is
+	 * exact while the padding is shorter than {@code L}. Positions further along read clamped,
+	 * meaningless samples, which a caller that only uses the frames of the valid samples never reads;
+	 * the samples of the buffer after the first {@code L} are never read at all.</p>
+	 *
+	 * @param signal      the buffer, of any shape (read as its flat sequence of samples)
+	 * @param padding     the number of samples added on each side
+	 * @param validLength the number of valid samples at the start of the buffer, shape {@code [1]}
+	 * @return the padded signal, shape {@code [n + 2 * padding]} for a buffer of {@code n} samples
+	 * @throws IllegalArgumentException if the padding is negative
+	 */
+	default CollectionProducer reflectPad(Producer<PackedCollection> signal, int padding,
+										  Producer<PackedCollection> validLength) {
+		if (padding < 0) {
+			throw new IllegalArgumentException("Reflect padding must not be negative, got " + padding);
+		}
+
+		int length = shape(signal).getTotalSize();
+		int total = length + 2 * padding;
+		CollectionProducer last = c(validLength).reshape(shape(1)).repeat(total).reshape(shape(total))
+				.subtract(c(1.0));
+		CollectionProducer offset = abs(integers(0, total).subtract(c((double) padding)));
+		CollectionProducer index = max(last.subtract(abs(last.subtract(offset))), c(0.0));
+		return c(shape(total), signal, min(index, c((double) (length - 1))));
+	}
+
+	/**
 	 * Creates a triangular mel filterbank on the HTK mel scale, as the continuous (unquantized)
 	 * filterbank of {@code torchaudio.functional.melscale_fbanks} with {@code norm=None} and
 	 * {@code mel_scale="htk"} defines it. Unlike {@link #createMelFilterbankMatrix}, whose filter
@@ -1206,11 +1241,35 @@ public interface TemporalFeatures extends SpectralFeatures {
 	default CollectionProducer logMelSpectrogram(int fftSize, int hopSize, int sampleRate, int numMelBands,
 												 double fMin, double fMax, Producer<PackedCollection> signal) {
 		int length = shape(signal).getTotalSize();
-		int frames = 1 + length / hopSize;
+		return logMelFrames(fftSize, hopSize, sampleRate, numMelBands, fMin, fMax,
+				reflectPad(signal, fftSize / 2), 1 + length / hopSize);
+	}
+
+	/**
+	 * Computes the first frames of the log-mel spectrogram of a signal that has already been padded
+	 * by {@code fftSize / 2} on both sides, as {@link #logMelSpectrogram(int, int, int, int, double,
+	 * double, Producer)} pads it: frame {@code t} is the window starting at sample
+	 * {@code t * hopSize} of the padded signal, that is centered on sample {@code t * hopSize} of
+	 * the signal. A caller that pads the signal itself (to a valid length known only at run time,
+	 * with {@link #reflectPad(Producer, int, Producer)}) uses this to compute the frames.
+	 *
+	 * @param fftSize     the FFT and window size (a power of 2)
+	 * @param hopSize     the number of samples between frame centers
+	 * @param sampleRate  the sample rate in Hz
+	 * @param numMelBands the number of mel bands
+	 * @param fMin        the lowest mel point in Hz
+	 * @param fMax        the highest mel point in Hz
+	 * @param padded      the padded mono signal
+	 * @param frames      the number of frames
+	 * @return the log-mel spectrogram, shape {@code [frames, numMelBands]}, time-major
+	 */
+	default CollectionProducer logMelFrames(int fftSize, int hopSize, int sampleRate, int numMelBands,
+											double fMin, double fMax, Producer<PackedCollection> padded,
+											int frames) {
 		int numFreqBins = fftSize / 2 + 1;
 
 		CollectionProducer spectrum = stft(fftSize, hopSize, WindowComputation.Type.HANN_PERIODIC,
-				reflectPad(signal, fftSize / 2), frames);
+				padded, frames);
 		CollectionProducer power = powerSpectrum(
 				spectrum.subset(shape(frames, numFreqBins, 2), 0, 0, 0));
 		CollectionProducer mel = matmul(power,
