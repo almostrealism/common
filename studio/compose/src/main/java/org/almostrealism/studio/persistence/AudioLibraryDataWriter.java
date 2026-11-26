@@ -16,6 +16,7 @@
 
 package org.almostrealism.studio.persistence;
 
+import io.almostrealism.lifecycle.Destroyable;
 import org.almostrealism.audio.api.Audio;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.util.KeyUtils;
@@ -27,6 +28,7 @@ import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
@@ -36,7 +38,7 @@ import java.util.function.Supplier;
  * Audio is gathered into samples (sequences of non-silent batches) and into
  * groups (collections of samples) keyed by a group key.
  */
-public class AudioLibraryDataWriter implements ConsoleFeatures {
+public class AudioLibraryDataWriter implements ConsoleFeatures, Destroyable {
 	/**
 	 * Number of {@link Audio.WaveDetailData}s to be buffered before
 	 * being grouped together as a {@link Audio.WaveRecording} and
@@ -384,5 +386,27 @@ public class AudioLibraryDataWriter implements ConsoleFeatures {
 				warn(e.getMessage(), e);
 			}
 		});
+	}
+
+	/**
+	 * Shuts down the write executor, blocking until any already-submitted write
+	 * tasks finish so that every flushed recording has reached the destination.
+	 *
+	 * <p>The executor's worker thread is non-daemon, so a writer that is never
+	 * destroyed keeps its owning process alive. This method is idempotent: once
+	 * the executor is terminated, subsequent calls return immediately.</p>
+	 */
+	@Override
+	public void destroy() {
+		executor.shutdown();
+
+		try {
+			if (!executor.awaitTermination(60, TimeUnit.SECONDS)) {
+				executor.shutdownNow();
+			}
+		} catch (InterruptedException e) {
+			executor.shutdownNow();
+			Thread.currentThread().interrupt();
+		}
 	}
 }

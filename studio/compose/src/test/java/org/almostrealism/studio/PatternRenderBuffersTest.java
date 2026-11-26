@@ -17,6 +17,7 @@
 package org.almostrealism.studio;
 
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.music.pattern.PatternRenderCancellation;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
@@ -224,8 +225,8 @@ public class PatternRenderBuffersTest extends TestSuiteBase {
 	 * the consolidated buffer, and asserts that the render never observed the buffer
 	 * released and that the buffer was released by the time {@code release} returned.
 	 *
-	 * <p>The render spins, reading the buffer, until the producer is interrupted (which only
-	 * {@link PatternRenderStream#stop()} does), and keeps reading it for a further interval
+	 * <p>The render spins, reading the buffer, until cooperative cancellation is signalled (which
+	 * only {@link PatternRenderStream#stop()} does), and keeps reading it for a further interval
 	 * afterwards, as a render that is mid-flight when stopped would. A release that does not
 	 * stop the producer first frees the buffer while the render is spinning, which the render
 	 * observes; a release that stops it first cannot.</p>
@@ -244,7 +245,7 @@ public class PatternRenderBuffersTest extends TestSuiteBase {
 		Runnable render = () -> {
 			rendering.set(true);
 			long deadline = System.nanoTime() + 10_000_000_000L;
-			while (!Thread.currentThread().isInterrupted() && System.nanoTime() < deadline) {
+			while (!PatternRenderCancellation.currentlyCancelled() && System.nanoTime() < deadline) {
 				if (target.getMem() == null) releasedUnderRender.set(true);
 				Thread.onSpinWait();
 			}

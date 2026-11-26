@@ -712,9 +712,24 @@ public class InstructionPromptBuilder {
         sb.append("Enforcement configuration (checkstyle rules and suppressions, policy ");
         sb.append("validators, test integrity checks) must NEVER be weakened, exempted, or ");
         sb.append("disabled to make a task succeed. If you conclude a task cannot be completed ");
-        sb.append("without modifying enforcement config, ABANDON the task and report it as ");
-        sb.append("impossible — declaring failure is always preferable to tampering with ");
-        sb.append("enforcement.\n\n");
+        sb.append("without modifying enforcement config, stop and call ");
+        sb.append("`mcp__ar-manager__job_report_blocked` with `category=\"guardrail\"` and a ");
+        sb.append("`detail` naming the rule and what it blocked — declaring a structured block ");
+        sb.append("is always preferable to tampering with enforcement.\n\n");
+
+        sb.append("## When You Cannot Proceed\n");
+        sb.append("If something genuinely prevents you from completing the task — a guardrail or ");
+        sb.append("hook blocks a change you need, a required resource is missing, the task is ");
+        sb.append("ambiguous or out of scope, or the work already exists on the base branch — do ");
+        sb.append("NOT exit silently or write a free-text abandonment note. Call ");
+        sb.append("`mcp__ar-manager__job_report_blocked(category, detail)` so the job ends with a ");
+        sb.append("structured BLOCKED status that enforcement does not retry. Pick the one ");
+        sb.append("`category` that fits: `guardrail` (a guardrail or hook denied you), ");
+        sb.append("`missing_resource` (a library, model, credential, or file is absent), ");
+        sb.append("`ambiguous_task` (the request needs a clarifying decision), `out_of_scope` ");
+        sb.append("(the change does not belong on this branch), or `already_done` (the work is ");
+        sb.append("already present). Put the specifics in `detail`. Report a block only when it ");
+        sb.append("is real; it is not an escape hatch from difficult but doable work.\n\n");
 
         // Messaging instructions - only when a workstream URL is configured
         if (workstreamUrl != null && !workstreamUrl.isEmpty()) {

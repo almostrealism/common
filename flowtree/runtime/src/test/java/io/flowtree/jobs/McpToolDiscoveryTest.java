@@ -332,6 +332,7 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 			"workstream_context",
 			"memory_store",
 			"send_message",
+			"job_report_blocked",
 			"github_pr_find",
 			"github_pr_review_comments",
 			"github_pr_reviews",

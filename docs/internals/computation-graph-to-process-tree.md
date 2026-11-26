@@ -237,6 +237,11 @@ The `isolate()` method on `Process` wraps the process via `Process.of(this)`, cr
 an isolation boundary. Isolation decisions are made during the optimization phase — see
 [process-optimization-pipeline.md](process-optimization-pipeline.md).
 
+Because `Process.of` always creates a new wrapper, a parent does not use it to present its
+inputs as children. `ComputationBase` and `OperationList` present each input with
+`Process.asProcess`, which returns an input that is already a process unchanged and wraps
+only a supplier that is not one.
+
 **CRITICAL INSIGHT:** Never return `null` from `getValueAt()` in a process implementation.
 This breaks expression embedding and causes silent failures downstream.
 
