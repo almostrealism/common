@@ -210,9 +210,17 @@ public class AudioSceneOptimizer extends AudioPopulationOptimizer<TemporalCellul
 	 * Each gene value is perturbed by a random scale factor derived from {@code magnitude}.
 	 *
 	 * <p>Every parameter of the first genome moves toward the corresponding parameter of
-	 * the second, by the scale factor or by the whole distance between them if that is
-	 * shorter — bounding the move by the distance is what keeps the offspring between its
-	 * parents, and leaves a parameter untouched when both parents agree on it.</p>
+	 * the second, by the scale factor or by half the distance between them if that is
+	 * shorter. Bounding the move by the distance keeps the offspring between its parents,
+	 * and leaves a parameter untouched when both parents agree on it.</p>
+	 *
+	 * <p>The bound is half the distance, not the whole of it, so the offspring never lands
+	 * on the second parent. With the whole distance as the bound, parents closer together
+	 * than the scale bred an exact copy of the second parent. That is common once a
+	 * population converges, because a child stays within the scale of the parent it was
+	 * bred from. With elitism the copy then took the only child slot. A population of one
+	 * elite and one child kept breeding the same non-elite genome again, under the same
+	 * signature and with the same score, so no cycle produced a new arrangement.</p>
 	 *
 	 * @param magnitude the base perturbation magnitude applied during breeding
 	 * @return a {@link GenomeBreeder} that produces perturbed offspring genomes
@@ -233,8 +241,10 @@ public class AudioSceneOptimizer extends AudioPopulationOptimizer<TemporalCellul
 
 			// The bounds are expanded to the parameter shape because min/max collapse to a
 			// scalar when their operands differ in size, which would clamp by one parameter.
+			// Half the distance is the most a parameter can move, so the offspring is never
+			// a copy of the second parent (see the javadoc above).
 			CollectionProducer step = o.min(
-					o.max(toward.subtract(from), o.constant(shape, -scale)),
+					o.max(toward.subtract(from).multiply(0.5), o.constant(shape, -scale)),
 					o.constant(shape, scale));
 
 			o.a(o.cp(combined), from.add(step)).get().run();
