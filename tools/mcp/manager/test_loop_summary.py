@@ -105,6 +105,39 @@ class MemoryLoopTests(unittest.TestCase):
         self.assertEqual(len(collapsed), 3)
         self.assertEqual(loops, [])
 
+    def test_no_jobs_does_not_collapse_across_unknown_boundaries(self):
+        # With no jobs timeline every memory's owning job is unknown (None).
+        # Unknown ownership is an unsafe boundary, so even verbatim-identical
+        # memories must NOT be collapsed — they may belong to different jobs.
+        memories = [
+            _mem("m3", "2026-04-20T10:30:00+00:00", "rule X failed again"),
+            _mem("m2", "2026-04-20T10:20:00+00:00", "rule X failed again"),
+            _mem("m1", "2026-04-20T10:10:00+00:00", "rule X failed again"),
+        ]
+        collapsed, loops = loop_summary.summarize_memory_loops(memories, [])
+        self.assertEqual(len(collapsed), 3)
+        self.assertEqual(loops, [])
+
+    def test_memories_predating_the_job_window_are_not_collapsed(self):
+        # The jobs timeline is limited and begins at 10:00; memories written
+        # before it have unknown ownership (None) and must not collapse, even
+        # though they are identical, while memories inside the window do.
+        jobs = [_job("job-2", "2026-04-20T10:00:00Z", "RUNNING", "primary")]
+        memories = [
+            _mem("m5", "2026-04-20T10:40:00+00:00", "OOP review done: CLEAN"),
+            _mem("m4", "2026-04-20T10:30:00+00:00", "OOP review done: CLEAN"),
+            _mem("m3", "2026-04-20T10:20:00+00:00", "OOP review done: CLEAN"),
+            _mem("m2", "2026-04-20T09:50:00+00:00", "OOP review done: CLEAN"),
+            _mem("m1", "2026-04-20T09:40:00+00:00", "OOP review done: CLEAN"),
+        ]
+        collapsed, loops = loop_summary.summarize_memory_loops(memories, jobs)
+        # m5+m4+m3 are in job-2 and collapse to one; m2+m1 predate the window
+        # (None bucket) and stay expanded. 1 + 2 = 3 entries.
+        self.assertEqual(len(collapsed), 3)
+        self.assertEqual(len(loops), 1)
+        self.assertEqual(loops[0]["count"], 3)
+        self.assertEqual(loops[0]["job_id"], "job-2")
+
     def test_run_does_not_cross_a_job_boundary(self):
         # Three identical notes, but the middle one was written under a second
         # job — so there is no run of three within any single job.

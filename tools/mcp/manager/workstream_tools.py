@@ -981,9 +981,11 @@ def workstream_context(
 
     # Collapse enforcement loops so a long run of repeated jobs or near-
     # identical memories reads as one summarized "loop" entry instead of
-    # drowning the substantive notes. The jobs timeline is passed in even when
-    # it was not surfaced to the caller (job_limit=0) so memory runs can still
-    # be bounded to a single job; it is only exposed below when jobs_included.
+    # drowning the substantive notes. Memory runs are bounded to a single job
+    # using this timeline; when it is empty (job_limit=0, or no round resolved)
+    # memory ownership is unknown, so memory-loop collapsing is skipped rather
+    # than collapsing across unknown job boundaries. Job-loop collapsing is
+    # unaffected. The timeline is only exposed below when jobs_included.
     loop_result = loop_summary.summarize_loops(
         memories, jobs_timeline, collapse=collapse_loops)
     memories = loop_result["memories"]

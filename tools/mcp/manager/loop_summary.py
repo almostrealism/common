@@ -193,8 +193,12 @@ def _assign_job_buckets(memories: list, jobs: list) -> list[Optional[str]]:
     A memory belongs to the job that was running when it was written: the most
     recent job whose timestamp is at or before the memory's ``created_at``.
     This keeps the within-one-job rule honest — a near-identical run that
-    straddles two jobs is two loops, not one. When no jobs are available every
-    memory gets ``None`` and the boundary constraint simply does not apply.
+    straddles two jobs is two loops, not one. A memory whose owning job cannot
+    be determined — no jobs were supplied, or the memory predates the oldest
+    job in the (often limited) timeline — gets ``None``, which
+    :func:`summarize_memory_loops` treats as an unsafe boundary that never
+    collapses, rather than as one shared bucket that would collapse memories
+    across unknown job boundaries.
     """
     job_times = []
     for job in jobs or []:
@@ -245,7 +249,14 @@ def summarize_memory_loops(
     index_of = {id(mem): pos for pos, mem in enumerate(memories)}
 
     def equivalent(a: dict, b: dict) -> bool:
-        if buckets[index_of[id(a)]] != buckets[index_of[id(b)]]:
+        bucket_a = buckets[index_of[id(a)]]
+        bucket_b = buckets[index_of[id(b)]]
+        # A memory with no determinable owning job (None) is an unsafe
+        # boundary, not a bucket: collapsing across it would merge memories
+        # from different (or unknown) jobs, violating the within-one-job rule.
+        if bucket_a is None or bucket_b is None:
+            return False
+        if bucket_a != bucket_b:
             return False
         ratio = SequenceMatcher(
             None, _normalize_text(a.get("content")), _normalize_text(b.get("content"))
