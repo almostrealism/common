@@ -53,6 +53,8 @@ def workstream_submit_task(
     delay_seconds: int = 0,
     default_phase_config: str = "",
     phase_configs: str = "",
+    fallback_default_phase_config: str = "",
+    fallback_phase_configs: str = "",
     allow_commit_language: bool = False,
     collaborative: bool = False,
     self_notify: bool = False,
@@ -387,6 +389,30 @@ def workstream_submit_task(
 
             Empty (default) inherits the workstream-level configuration.
             Unknown phase names are rejected client-side with a clear error.
+        fallback_default_phase_config: A fallback default ``PhaseConfig`` as a
+            JSON object string with optional ``runner`` / ``model`` /
+            ``effort`` / ``provider`` keys. Unlike ``default_phase_config``
+            (which wins over the workstream), the fallback applies ONLY to
+            phases the target workstream leaves unset — a phase whose
+            workstream-level config is set, or any phase when the workstream
+            has its own default, keeps the workstream's choice and ignores the
+            fallback. Use it to run CI-submitted jobs on a cheaper setup
+            without overriding a workstream an owner configured on purpose.
+            A fallback naming ``provider=openrouter`` needs the workspace's
+            ``openrouter-api-key`` secret; the opencode runner resolves the key
+            when the job starts, so a missing secret surfaces as a runtime job
+            failure rather than a submission rejection (submission validates
+            only the runner/model/provider combination). Empty (default) sends
+            no fallback and resolution is unchanged. Example::
+
+                '{"runner": "opencode", "model": "z-ai/glm-4.6",
+                  "provider": "openrouter"}'
+
+        fallback_phase_configs: Per-phase fallback overrides as a JSON object
+            mapping phase wire names to ``{runner, model, effort, provider}``
+            objects, mirroring ``phase_configs`` but at the fallback level. A
+            fallback entry applies as a whole only to a phase the workstream
+            leaves unset. Empty (default) sends no per-phase fallback.
         model: REMOVED. The legacy ``model`` parameter is no longer accepted;
             passing it fails with a 400-style error. Use
             ``default_phase_config`` or ``phase_configs`` to set models.
@@ -613,6 +639,14 @@ def workstream_submit_task(
     parsed_phase_configs, phase_configs_err = server._parse_phase_configs_json(phase_configs)
     if phase_configs_err:
         return phase_configs_err
+    parsed_fallback_default, fallback_default_err = server._parse_default_phase_config_json(
+        fallback_default_phase_config, "fallback_default_phase_config")
+    if fallback_default_err:
+        return fallback_default_err
+    parsed_fallback_phase_configs, fallback_phase_configs_err = server._parse_phase_configs_json(
+        fallback_phase_configs, "fallback_phase_configs")
+    if fallback_phase_configs_err:
+        return fallback_phase_configs_err
     # Commit-language linter -- rejects prompts that imply the agent controls
     # git commits (e.g. "Commit 1: do X, Commit 2: do Y").  Bypassed when the
     # caller explicitly opts out via allow_commit_language=True.
@@ -844,6 +878,11 @@ def workstream_submit_task(
         payload["defaultPhaseConfig"] = parsed_default_phase_config
     if parsed_phase_configs:
         payload["phaseConfigs"] = parsed_phase_configs
+    # Fallback configuration, applied only to phases the workstream leaves unset.
+    if parsed_fallback_default:
+        payload["fallbackPhaseConfig"] = parsed_fallback_default
+    if parsed_fallback_phase_configs:
+        payload["fallbackPhaseConfigs"] = parsed_fallback_phase_configs
 
     result = server._controller_post("/api/submit", payload)
 

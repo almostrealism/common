@@ -16,6 +16,7 @@
 
 package io.almostrealism.scope;
 
+import java.util.Collection;
 import java.util.Set;
 
 /**
@@ -80,6 +81,27 @@ public interface VariableReferenceSupport {
 	 */
 	default boolean containsRead(ArrayVariable<?> array, long start, long end) {
 		return getReadPositions(array).contains(start, end);
+	}
+
+	/**
+	 * Returns whether this code may read any element of any of {@code arrays}, on the terms of
+	 * {@link #containsRead(ArrayVariable, long, long)}: the question a loop-variance analysis asks
+	 * of an expression, given the arrays a loop may write, to decide whether the value of the
+	 * expression can change from one iteration to the next. Because the answer uses the same read
+	 * accounting as {@link #containsRead(ArrayVariable, long, long)}, a read the code cannot bound
+	 * (such as a {@link io.almostrealism.expression.StaticReference} whose referent or verbatim code
+	 * refers to the array) is counted.
+	 *
+	 * @param arrays the arrays in question
+	 * @return false only when nothing this code generates can read an element of any of
+	 *         {@code arrays}
+	 */
+	default boolean containsReadOfAny(Collection<? extends ArrayVariable<?>> arrays) {
+		for (ArrayVariable<?> array : arrays) {
+			if (containsRead(array, Long.MIN_VALUE, Long.MAX_VALUE)) return true;
+		}
+
+		return false;
 	}
 
 	/**

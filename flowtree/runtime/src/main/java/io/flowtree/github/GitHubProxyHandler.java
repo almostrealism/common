@@ -264,9 +264,9 @@ public class GitHubProxyHandler implements ConsoleFeatures {
             String contentType = conn.getContentType();
 
             InputStream is = status >= 400 ? conn.getErrorStream() : conn.getInputStream();
-            String responseBody = "";
+            byte[] responseBody = new byte[0];
             if (is != null) {
-                responseBody = new String(is.readAllBytes(), StandardCharsets.UTF_8);
+                responseBody = is.readAllBytes();
                 is.close();
             }
 
@@ -315,7 +315,7 @@ public class GitHubProxyHandler implements ConsoleFeatures {
             HttpResponse<String> response = sendPatch(fullUrl, payload == null ? "" : payload, token);
             return wrapResponse(response.statusCode(),
                     response.headers().firstValue("Link").orElse(null),
-                    response.body() == null ? "" : response.body(),
+                    response.body() == null ? new byte[0] : response.body().getBytes(StandardCharsets.UTF_8),
                     response.headers().firstValue("Content-Type").orElse(null));
         } catch (IOException e) {
             log("GitHub proxy error: " + e.getMessage());
@@ -330,8 +330,7 @@ public class GitHubProxyHandler implements ConsoleFeatures {
     }
 
     /**
-     * Wraps a GitHub response in the proxy envelope
-     * {@code {"status":N,"link":"...","body":<github-json-or-string>}}.
+     * Wraps a GitHub response in the proxy envelope (see {@link GitHubProxyEnvelope}).
      *
      * @param status       the HTTP status GitHub returned
      * @param linkHeader   the pagination {@code Link} header, or {@code null}
@@ -340,17 +339,9 @@ public class GitHubProxyHandler implements ConsoleFeatures {
      * @return a 200 response carrying the envelope
      */
     private Response wrapResponse(int status, String linkHeader,
-                                  String responseBody, String contentType) {
-        StringBuilder json = new StringBuilder();
-        json.append("{\"status\":").append(status);
-        json.append(",\"link\":\"")
-            .append(JsonFieldExtractor.escapeJson(linkHeader != null ? linkHeader : ""))
-            .append("\"");
-        json.append(",\"body\":").append(encodeBody(responseBody, contentType));
-        json.append("}");
-
-        return NanoHTTPD.newFixedLengthResponse(Response.Status.OK,
-                "application/json", json.toString());
+                                  byte[] responseBody, String contentType) {
+        return NanoHTTPD.newFixedLengthResponse(Response.Status.OK, "application/json",
+                new GitHubProxyEnvelope(status, linkHeader, responseBody, contentType).toJson());
     }
 
     /**
@@ -409,25 +400,6 @@ public class GitHubProxyHandler implements ConsoleFeatures {
         conn.setInstanceFollowRedirects(false);
 
         return conn;
-    }
-
-    /**
-     * Renders a GitHub response body as the {@code body} member of the proxy envelope.
-     *
-     * <p>A JSON body is spliced in as it stands, so callers receive the structure GitHub
-     * sent. Anything else is a document rather than a structure — job logs and raw file
-     * contents are the cases that occur — and becomes a JSON string, since splicing text
-     * in unquoted would produce an envelope that does not parse.</p>
-     *
-     * @param body        the response body, possibly empty
-     * @param contentType the response {@code Content-Type}, or null if absent
-     * @return the body encoded as a JSON value
-     */
-    private static String encodeBody(String body, String contentType) {
-        if (body.isEmpty()) return "null";
-        if (contentType != null && contentType.contains("json")) return body;
-
-        return "\"" + JsonFieldExtractor.escapeJson(body) + "\"";
     }
 
     /**

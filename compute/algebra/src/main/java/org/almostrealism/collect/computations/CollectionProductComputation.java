@@ -161,12 +161,8 @@ public class CollectionProductComputation extends TraversableExpressionComputati
 	 */
 	@Override
 	public CollectionProducerParallelProcess generate(List<Process<?, ?>> children) {
-		return new CollectionProductComputation(getName(), getShape(),
-				children.stream().skip(1).toArray(Producer[]::new))
-				.setPostprocessor(getPostprocessor())
-				.setDescription(getDescription())
-				.setShortCircuit(getShortCircuit())
-				.addAllDependentLifecycles(getDependentLifecycles());
+		return copyConfigurationTo(new CollectionProductComputation(getName(), getShape(),
+				children.stream().skip(1).toArray(Producer[]::new)));
 	}
 
 	/**

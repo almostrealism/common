@@ -21,8 +21,10 @@ import io.almostrealism.compute.Process;
 import io.almostrealism.profile.OperationProfileNode;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
+import org.almostrealism.calculus.ReduceAxis;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.computations.IndexOfExtremumComputation;
 import org.almostrealism.graph.Cell;
 import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.OperationList;
@@ -570,6 +572,41 @@ public class SoftmaxTests extends TestSuiteBase implements LayerFeatures, Distri
 		assertGradientMatchesFiniteDifferences(softmax(true),
 				pack(0.3, -1.2, 2.0, 0.7, 1.1, -0.4).reshape(shape(2, 3)),
 				pack(0.5, -1.0, 0.25, 2.0, 0.0, -0.75).reshape(shape(2, 3)));
+	}
+
+	/**
+	 * The output-reduced delta of {@link ActivationFeatures#logSoftmax(Producer)} is not taken
+	 * through the row maximum that it subtracts, which its result is invariant to: the backward
+	 * graph contains no selection of the largest element, and the gradient of each row is still
+	 * {@code g - softmax(x) * sum(g)}.
+	 */
+	@Test(timeout = 60000)
+	public void logSoftmaxDeltaDoesNotSelectMaximum() {
+		int rows = 2;
+		int size = 3;
+		PackedCollection input = pack(0.3, -1.2, 2.0, 0.7, 1.1, -0.4).reshape(shape(rows, size));
+		PackedCollection gradient = pack(0.5, -1.0, 0.25, 2.0, 0.0, -0.75).reshape(shape(rows, size));
+		CollectionProducer in = cp(input);
+
+		CollectionProducer delta = logSoftmax(in).delta(in, ReduceAxis.OUT, cp(gradient));
+		Assert.assertFalse("the backward pass of logSoftmax selects the maximum",
+				((Process<?, ?>) delta).all().anyMatch(IndexOfExtremumComputation.class::isInstance));
+
+		double[] probabilities = input.toArray();
+		double[] g = gradient.toArray();
+		double[] actual = delta.evaluate().toArray();
+
+		for (int r = 0; r < rows; r++) {
+			softmax(probabilities, r * size, size);
+
+			double total = 0.0;
+			for (int j = 0; j < size; j++) total += g[r * size + j];
+
+			for (int j = 0; j < size; j++) {
+				int i = r * size + j;
+				Assert.assertEquals("gradient " + i, g[i] - probabilities[i] * total, actual[i], 1e-5);
+			}
+		}
 	}
 
 	/**

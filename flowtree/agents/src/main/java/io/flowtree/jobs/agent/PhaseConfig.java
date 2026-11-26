@@ -129,6 +129,25 @@ public record PhaseConfig(String runner, String model, String effort, String pro
     }
 
     /**
+     * Returns {@code true} when {@code this} supplies a non-null value for
+     * every field {@code other} sets non-null — equivalently, when layering
+     * {@code this} on top of {@code other} via {@link #overlayOn(PhaseConfig)}
+     * leaves none of {@code other}'s fields visible. A {@code null} {@code other}
+     * is treated as {@link #EMPTY} and is trivially covered.
+     *
+     * @param other the configuration whose set fields must all be covered;
+     *              {@code null} treated as {@link #EMPTY}
+     * @return whether {@code this} covers every field {@code other} sets
+     */
+    public boolean covers(PhaseConfig other) {
+        if (other == null) return true;
+        if (other.runner != null && runner == null) return false;
+        if (other.model != null && model == null) return false;
+        if (other.effort != null && effort == null) return false;
+        return other.provider == null || provider != null;
+    }
+
+    /**
      * Returns a configuration where each {@code null} field of {@code this}
      * is filled in from {@code other}; non-null fields of {@code this} win.
      * Used by the resolver to layer one precedence level on top of another.

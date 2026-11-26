@@ -203,11 +203,10 @@ public class DynamicIndexProjectionProducerComputation
 
 	@Override
 	public DynamicIndexProjectionProducerComputation generate(List<Process<?, ?>> children) {
-		return (DynamicIndexProjectionProducerComputation)
+		return copyConfigurationTo(
 				new DynamicIndexProjectionProducerComputation(getName(), getShape(), indexExpression, relative,
 							(Producer<?>) children.get(1),
-							children.stream().skip(2).toArray(Producer[]::new))
-						.addAllDependentLifecycles(getDependentLifecycles());
+							children.stream().skip(2).toArray(Producer[]::new)));
 	}
 
 	@Override
@@ -219,7 +218,7 @@ public class DynamicIndexProjectionProducerComputation
 					TraversableDeltaComputation.create("delta", getShape(), shape(target),
 								args -> CollectionExpression.create(getShape(),
 										(idx) -> args[1].getValueAt(projectIndex(args, idx))),
-							target, getInputs().stream().skip(1).toArray(Producer[]::new));
+							signature(), target, getInputs().stream().skip(1).toArray(Producer[]::new));
 			return delta;
 		} else {
 			TraversalPolicy outShape = getShape();

@@ -112,6 +112,24 @@ public record PhaseConfigBundle(PhaseConfig defaultPhaseConfig,
     }
 
     /**
+     * Returns {@code true} when this bundle contributes a configuration for
+     * {@code phase}: either a non-empty {@linkplain #defaultPhaseConfig()
+     * default} (which covers every phase) or a non-empty per-phase entry for
+     * {@code phase}. Used by the resolver's fallback gate to decide whether a
+     * container has said anything about a phase at all.
+     *
+     * @param phase the phase to test; {@code null} tests only the default slot
+     * @return {@code true} when this bundle sets the phase, {@code false} when
+     *         it leaves the phase entirely to lower precedence levels
+     */
+    public boolean setsPhase(Phase phase) {
+        if (!defaultPhaseConfig.isEmpty()) return true;
+        if (phase == null) return false;
+        PhaseConfig entry = phaseConfigs.get(phase);
+        return entry != null && !entry.isEmpty();
+    }
+
+    /**
      * Returns a copy of this bundle with {@code defaultPhaseConfig}
      * replaced; preserves the per-phase override map.
      *

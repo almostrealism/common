@@ -277,7 +277,7 @@ public class ArgumentLimitFoldTest extends TestSuiteBase implements ExpressionFe
 		TraversableDeltaComputation delta = TraversableDeltaComputation.create("argumentLimitDelta",
 				shape(SIZE), shape(SIZE),
 				args -> DefaultCollectionExpression.create(shape(SIZE), idx -> args[1].getValueAt(idx)),
-				cp(target), cp(source));
+				null, cp(target), cp(source));
 		Assert.assertEquals(1, delta.getScopeArgumentCount(Integer.MAX_VALUE));
 
 		MaskedSumProbe probe = new MaskedSumProbe(new LimitedComputeContext(OptionalInt.empty()), delta);

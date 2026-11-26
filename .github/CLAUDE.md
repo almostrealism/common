@@ -272,6 +272,7 @@ The `changes` job detects which top-level directories changed and sets flags:
 | `python_changed`   | any `*.py` + `tools/mcp/requirements.txt` | `python-tests`    |
 | `evals_changed`    | any file under the ar-manager Dockerfile's docs-stage COPY roots (`docs/`, `CLAUDE.md`, `base/`, `compute/`, `domain/`, `engine/`, `extern/`, `studio/`, `flowtree/`, `tools/`, `.github/`, `.claude/`, `scripts/`) | `python-evals` |
 | `agent_protection_changed` | `tools/ci/agent-protection/` | `python-tests` (the branch-check shell suites) |
+| `infra_classifier_changed` | `tools/ci/infra-failure.sh`, `tools/ci/rerun-flaky-tests.sh`, `tools/tests/test-infra-classification.sh`, `.github/workflows/analysis.yaml` (its auto-review wiring is the classifier's other half) | `python-tests` (the classifier shell suite and the `test_remediation_job_exclusivity.py` wiring tests) |
 | `agent_isolation_changed` | agent compose/entrypoint + isolation validator (+ `analysis.yaml`) | `agent-volume-isolation` |
 | `images_changed`   | Dockerfiles, `.dockerignore`, compose, `tools/mcp/`, `tools/tracker/`, `docs/`, `CLAUDE.md` | `docker-build` |
 
@@ -381,12 +382,29 @@ A failed job outside the long-running lanes is deterministic unless its log
 shows an infrastructure failure: a dependency or plugin that could not be
 downloaded, a dropped or timed-out connection, a 5xx from a package host, a
 runner that shut down or lost contact, or a full disk (`INFRA_SIGNATURES` in
-`rerun-flaky-tests.sh`). The retry gate retries such a run up to the same
+`tools/ci/infra-failure.sh`). The retry gate retries such a run up to the same
 attempt limit. It never reaches an agent, because `auto-resolve` stages nothing
 when no test job failed, so a test run still failing on infrastructure at its
 last attempt is left for a person. One failed download in
 `test-timeout-check` would otherwise skip every test lane and leave the run
-with neither a retry nor a remediation.
+with neither a retry nor a remediation. A log that cannot be read is neither
+infrastructure nor deterministic but unknown: the fetch retries before giving
+up and reports a persistent failure as a `::warning::`, and an unreadable log
+on a `*-check` validator or the `build` job is retried while attempts remain
+rather than silently called deterministic (bounded by `MAX_ATTEMPTS`; the final
+attempt proceeds exactly as a deterministic failure would, so nothing is
+masked).
+
+The same classification is what keeps a validate run's infrastructure failure
+away from an agent. `auto-review` runs on attempt 1, before the retry gate sees
+the run, so a `test-timeout-check` that failed on a plugin download once routed
+there as a quality-gate finding and dispatched an agent with nothing to fix.
+`auto-review` now classifies its failing gates with the same
+`tools/ci/infra-failure.sh` (so the two paths cannot drift) and, when **every**
+gate it would report failed on infrastructure, suppresses the submission and
+lets the retry gate re-run the pipeline. It is conservative: a readable gate
+failure that is not infrastructure, an unreadable log, or an unreachable jobs
+API all leave the dispatch in place, so a genuine finding is never suppressed.
 
 Exclusivity is structural, not a handoff between jobs:
 
@@ -409,9 +427,9 @@ Exclusivity is structural, not a handoff between jobs:
   submission.
 - Retries happen when a long-running test job (`test`, `test (N)`,
   `test-*`) failed, i.e. the pipeline got past the gates to the slow stage, or
-  when any other failed job's log matches `INFRA_SIGNATURES` (an infrastructure
-  failure, not a defect in the commit). A gate that fails on the code itself is
-  never retried.
+  when any other failed job's log matches `INFRA_SIGNATURES` in
+  `tools/ci/infra-failure.sh` (an infrastructure failure, not a defect in the
+  commit). A gate that fails on the code itself is never retried.
 
 `tools/tests/test_remediation_job_exclusivity.py` pins all of this.
 
@@ -2105,7 +2123,7 @@ gives every open pull request from this repository one label for its stage:
 | `ci: auto-fix` | The test run failed and an agent was sent: `auto-resolve` staged a request in the latest attempt, or `auto-resolve-python-submit` succeeded |
 | `ci: ready for review` | The head commit's newest test run succeeded, the newest `Test Checks` and `All Checks` check runs (by id, so a queued one counts) both passed, and the pull request has no merge conflict |
 | `ci: needs attention` | CI stopped with no agent working on it: a run failed or was cancelled without a submission, a test run passed while `All Checks` did not, or a merge conflict |
-| `ci: review limit` | Shown in place of `ci: auto-review` or `ci: auto-fix` when the controller refused the pass because the pull request reached the per-PR remediation cap (`RemediationBudgetGuard`, 8 passes by default). Auto-dispatch is paused until a commit no pass produced lands; a person needs to look. Never stalls |
+| `ci: review limit` | Shown in place of `ci: auto-review` or `ci: auto-fix` when the controller refused the pass because the pull request reached the per-PR remediation cap (`RemediationBudgetGuard`, 10 passes by default). Auto-dispatch is paused until a commit no pass produced lands; a person needs to look. Never stalls |
 | `ci: stalled` | Added beside the stage label when the stage has lasted longer than `LABELS` in the script allows (1 h validating, 4 h auto-review or auto-fix, 10 h full tests) |
 
 `tools/ci/pr-status-labels.py` derives the stage from the API on every run:

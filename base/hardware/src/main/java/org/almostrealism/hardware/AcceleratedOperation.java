@@ -43,6 +43,7 @@ import org.almostrealism.io.TimingMetric;
 
 import java.util.List;
 import java.util.OptionalInt;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Abstract base class for all hardware-accelerated operations, managing compilation, argument processing, and execution.
@@ -816,6 +817,21 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	 * that owns its argument memory, and that memory could be freed and reused while the
 	 * kernel is still running.</p>
 	 *
+	 * <p><strong>Eviction safety.</strong> The instruction cache can evict (and destroy) the manager
+	 * whose compiled instructions this dispatch binds to, on another thread, at any time &mdash;
+	 * including after this method returns, while the kernel is still running. This method retains
+	 * that manager ({@link InstructionSetManager#retainForDispatch()}) before reading any binding and
+	 * releases it only when the dispatch's completion settles, so the destroy is deferred until the
+	 * dispatch finishes rather than clearing the bindings or freeing the instruction set out from
+	 * under it. The retain is matched to the manager the bindings actually come from: if an eviction
+	 * clears the bindings in the narrow window before the retain, they are rebuilt and the retain is
+	 * retried.</p>
+	 *
+	 * <p>The retain is released on every terminal path so the manager is never pinned: the dispatch's
+	 * completion settling on success, the dispatch listener failing, a synchronous failure before the
+	 * dispatch is registered, and &mdash; via {@link AcceleratedProcessDetails#whenReadyFailed} &mdash;
+	 * the case where argument processing fails and the dispatch listener is discarded without running.</p>
+	 *
 	 * @param output    The destination memory bank for operation results, or null
 	 * @param args      The input arguments for the operation
 	 * @param dependsOn The prior operation's completion {@link Semaphore} to chain on, or null
@@ -825,17 +841,29 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	protected synchronized AcceleratedProcessDetails apply(MemoryBank output, Object[] args, Semaphore dependsOn) {
 		requireLiveContext();
 
-		if (getArguments() == null) {
-			if (getInstructionSetManager() == null) {
-				throw new UnsupportedOperationException("Operation was not compiled");
+		// Retain the manager this dispatch binds to so an eviction firing mid-dispatch defers
+		// destroying it until completion; if a reset clears the bindings before the retain,
+		// rebind and retry so the retained manager is the one the bindings come from.
+		InstructionSetManager<?> manager;
+		while (true) {
+			if (getArguments() == null) {
+				if (getInstructionSetManager() == null) {
+					throw new UnsupportedOperationException("Operation was not compiled");
+				}
+
+				load();
 			}
 
-			// Bindings are established by load() and discarded when the compiled
-			// instructions they were derived from are destroyed; re-establish them
-			// before anything downstream consumes argument metadata
-			load();
+			manager = getInstructionSetManager();
+			manager.retainForDispatch();
+			if (getArguments() != null) break;
+			manager.releaseAfterDispatch();
 		}
 
+		AtomicBoolean dispatchReleased = new AtomicBoolean();
+		boolean registered = false;
+
+		try {
 		// Load the inputs, ordering argument evaluation after the prior completion
 		AcceleratedProcessDetails process = getProcessDetails(output, args, dependsOn);
 		process.setReadyLatch(new DefaultLatchSemaphore(getMetadata(), 1));
@@ -844,6 +872,8 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 		List<ComputeRequirement> activeRequirements =
 				Hardware.getLocalHardware().getComputer().getActiveRequirements();
 		Heap.HeapStage activeHeapStage = Heap.getDefault() == null ? null : Heap.getDefault().getStage();
+
+		InstructionSetManager<?> retained = manager;
 
 		process.whenReady(() -> {
 			if (!activeRequirements.isEmpty()) {
@@ -926,9 +956,24 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 						completion.whenSettled(process::releaseResources);
 					}
 				}
+
+				// Release the manager retention once the dispatch's work has completed, so the
+				// compiled instructions survive an eviction that fires mid-dispatch.
+				if (completion == null) {
+					if (dispatchReleased.compareAndSet(false, true)) retained.releaseAfterDispatch();
+				} else {
+					completion.whenSettled(() -> {
+						if (dispatchReleased.compareAndSet(false, true)) retained.releaseAfterDispatch();
+					});
+				}
 			} catch (RuntimeException | Error e) {
 				// A synchronous failure never installs the completion-driven release above
 				process.releaseResourcesAfterFailure(e, inflight);
+
+				// A failure here precedes the completion-driven manager release and leaves no kernel
+				// in flight, so release the retain now (whether this listener ran on the calling
+				// thread or an executor thread, where the throw never reaches apply).
+				if (dispatchReleased.compareAndSet(false, true)) retained.releaseAfterDispatch();
 
 				throw e;
 			} finally {
@@ -938,7 +983,18 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 			}
 		});
 
-		return process;
+			// Discarded (never-run) listeners release the retain here; see whenReadyFailed.
+			process.whenReadyFailed(t -> {
+				if (dispatchReleased.compareAndSet(false, true)) retained.releaseAfterDispatch();
+			});
+
+			registered = true;
+			return process;
+		} finally {
+			// A synchronous failure before the dispatch was registered never reaches the
+			// completion-driven release above, so balance the retain here.
+			if (!registered && dispatchReleased.compareAndSet(false, true)) manager.releaseAfterDispatch();
+		}
 	}
 
 	/**
