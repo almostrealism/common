@@ -10,6 +10,7 @@ import math
 import os
 import re
 import sqlite3
+import sys
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -19,6 +20,15 @@ import faiss
 import numpy as np
 
 from embedder import Embedder
+
+# The dual-text wrapper format is owned by tools/mcp/common/memory_text.py;
+# near-duplicate merging reads it to tell a reformulated entry (whose indexed
+# ``content`` is a rewrite, not the author's words) from a verbatim one.
+_COMMON_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "common")
+if _COMMON_DIR not in sys.path:
+    sys.path.insert(0, _COMMON_DIR)
+
+from memory_text import decode_dual_source
 
 log = logging.getLogger(__name__)
 
@@ -407,11 +417,19 @@ class MemoryStore:
             if merge_near_duplicates is None
             else merge_near_duplicates
         )
+        # A dual-text entry indexes the Consultant's reformulated rewrite, not
+        # the author's words, and preserves the original only in the ``source``
+        # wrapper. Merging it on the reformulation embedding would let two
+        # distinct notes with similar rewrites delete each other's original, so
+        # an incoming reformulated entry is never auto-merged; verbatim
+        # candidates that are themselves reformulated are skipped inside
+        # :meth:`_find_near_duplicates` for the same reason.
+        incoming_reformulated = decode_dual_source(source) is not None
         duplicates = []
         vector = None
         if semantic:
             vector = self._embedder.embed(content)
-            if merge_enabled and repo_url and branch:
+            if merge_enabled and repo_url and branch and not incoming_reformulated:
                 duplicates = self._find_near_duplicates(
                     namespace, vector, repo_url, branch)
 
@@ -485,6 +503,9 @@ class MemoryStore:
         cosine similarity meets :data:`NEAR_DUPLICATE_SIMILARITY_THRESHOLD`.
         The similarity is computed from the reconstructed index vectors, so it
         is independent of whether the embedder normalizes its output.
+        Reformulated (dual-text) candidates are excluded: their indexed vector
+        is a rewrite, so a near match does not establish that the preserved
+        original texts agree.
 
         Args:
             namespace: Namespace to search within.
@@ -513,7 +534,7 @@ class MemoryStore:
                 continue
             rowid = id_map[pos]
             row = self._conn.execute(
-                "SELECT id, repo_url, branch, merged_count "
+                "SELECT id, repo_url, branch, merged_count, source "
                 "FROM entries WHERE rowid = ?",
                 (rowid,),
             ).fetchone()
@@ -522,6 +543,11 @@ class MemoryStore:
             if _normalize_repo_url(row["repo_url"]) != target_repo:
                 continue
             if row["branch"] != branch:
+                continue
+            # Never merge away a reformulated entry: its indexed vector is the
+            # rewrite, so a match here says nothing about whether the authors'
+            # original texts agree, and deleting it would lose that original.
+            if decode_dual_source(row["source"]) is not None:
                 continue
             candidate = index.reconstruct(int(pos))
             similarity = _cosine_similarity(vector, candidate)

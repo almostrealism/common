@@ -156,6 +156,52 @@ class MemoryLoopTests(unittest.TestCase):
         self.assertEqual(len(collapsed), 3)
         self.assertEqual(loops, [])
 
+    def test_chained_similarity_does_not_collapse_dissimilar_endpoints(self):
+        # Three notes whose consecutive pairs are near-identical but whose
+        # endpoints are not: the normalized similarities are A~B 0.902,
+        # B~C 0.902, A~C 0.794 (threshold 0.9). Collapsing on adjacency alone
+        # would merge all three and drop the two outer records; the run must be
+        # judged against the representative, so A and C are never collapsed
+        # together.
+        body = "oop review done on the collection encoder class within one job result "
+        a = body + "AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA"
+        b = body + "BBBBBBBBBB AAAAAAAAAA AAAAAAAAAA"
+        c = body + "BBBBBBBBBB CCCCCCCCCC AAAAAAAAAA"
+        jobs = self._one_job()
+        memories = [
+            _mem("m3", "2026-04-20T10:30:00+00:00", a),
+            _mem("m2", "2026-04-20T10:20:00+00:00", b),
+            _mem("m1", "2026-04-20T10:10:00+00:00", c),
+        ]
+        collapsed, loops = loop_summary.summarize_memory_loops(memories, jobs)
+        self.assertEqual(len(collapsed), 3)
+        self.assertEqual(loops, [])
+
+    def test_loop_detection_compares_original_not_reformulated_text(self):
+        # When reformulated text is presented, every entry's content is the
+        # Consultant rewrite and the author's text is preserved under
+        # "original". Three distinct originals that share a generic rewrite must
+        # not be collapsed into one loop — the comparison uses the original.
+        jobs = self._one_job()
+        rewrite = "the agent reviewed the module and recorded the outcome"
+        memories = [
+            {"id": "m3", "created_at": "2026-04-20T10:30:00+00:00",
+             "namespace": "progress", "content": rewrite,
+             "original": "fixed the FFT twiddle-factor sign regression",
+             "text_source": "reformulated"},
+            {"id": "m2", "created_at": "2026-04-20T10:20:00+00:00",
+             "namespace": "progress", "content": rewrite,
+             "original": "added a memory-copy overlap guard to the encoder",
+             "text_source": "reformulated"},
+            {"id": "m1", "created_at": "2026-04-20T10:10:00+00:00",
+             "namespace": "progress", "content": rewrite,
+             "original": "documented the kernel-boundary isolation contract",
+             "text_source": "reformulated"},
+        ]
+        collapsed, loops = loop_summary.summarize_memory_loops(memories, jobs)
+        self.assertEqual(len(collapsed), 3)
+        self.assertEqual(loops, [])
+
     def test_run_does_not_cross_a_job_boundary(self):
         # Three identical notes, but the middle one was written under a second
         # job — so there is no run of three within any single job.

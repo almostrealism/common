@@ -13,11 +13,14 @@ import unittest
 from tempfile import TemporaryDirectory
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(
+    0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "common"))
 
 try:
     import numpy as np
     import store as store_mod
     from store import MemoryStore, NEAR_DUPLICATE_SIMILARITY_THRESHOLD
+    from memory_text import encode_dual_source
     _IMPORT_ERROR = None
 except Exception as exc:  # numpy/faiss not installed in this environment
     _IMPORT_ERROR = exc
@@ -226,6 +229,43 @@ class NearDuplicateMergeTests(unittest.TestCase):
                     repo_url=_REPO, branch=_BRANCH, namespace="bugs")), 1)
         finally:
             store_mod.MERGE_NEAR_DUPLICATES = original
+
+
+    def test_incoming_reformulated_entry_is_not_merged(self):
+        # A dual-text entry indexes its reformulated rewrite, so two distinct
+        # originals whose rewrites embed alike must not merge and delete an
+        # original. The incoming reformulated arrival is never auto-merged.
+        first = self.store.store(
+            content="alpha beta review CLEAN", namespace="bugs",
+            repo_url=_REPO, branch=_BRANCH,
+            source=encode_dual_source("the first author's distinct note"))
+        second = self.store.store(
+            content="alpha beta review CLEAN", namespace="bugs",
+            repo_url=_REPO, branch=_BRANCH,
+            source=encode_dual_source("an entirely different author's note"))
+        self.assertEqual(first["merged_count"], 1)
+        self.assertEqual(second["merged_count"], 1)
+        self.assertEqual(second["merged_ids"], [])
+        remaining = self.store.search_by_branch(
+            repo_url=_REPO, branch=_BRANCH, namespace="bugs")
+        self.assertEqual(len(remaining), 2)
+
+    def test_reformulated_candidate_is_not_merged_away(self):
+        # A verbatim arrival must not delete an existing reformulated entry
+        # whose preserved original it cannot be shown to duplicate.
+        dual = self.store.store(
+            content="alpha beta review CLEAN", namespace="bugs",
+            repo_url=_REPO, branch=_BRANCH,
+            source=encode_dual_source("a reformulated note's original text"))
+        verbatim = self._store("alpha beta review CLEAN")
+        self.assertEqual(verbatim["merged_count"], 1)
+        self.assertEqual(verbatim["merged_ids"], [])
+        remaining = self.store.search_by_branch(
+            repo_url=_REPO, branch=_BRANCH, namespace="bugs")
+        ids = {m["id"] for m in remaining}
+        self.assertIn(dual["id"], ids)
+        self.assertIn(verbatim["id"], ids)
+        self.assertEqual(len(remaining), 2)
 
 
 if __name__ == "__main__":

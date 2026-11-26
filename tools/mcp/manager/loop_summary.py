@@ -68,6 +68,25 @@ def _normalize_text(text: Optional[str]) -> str:
     return " ".join((text or "").split()).lower()
 
 
+def _loop_comparison_text(entry: dict) -> str:
+    """The author's own text an entry is compared on when detecting a loop.
+
+    ``workstream_context`` presents its memories before loop detection, which
+    can replace ``content`` with the Consultant's reformulated rewrite while
+    preserving the author's text under ``original``. A rewrite is less
+    distinctive than what the author wrote, so comparing rewrites would let
+    distinct notes that happen to share a generic reformulation collapse into
+    one loop. The comparison therefore always uses the original text: the
+    preserved ``original`` when the presented entry carries one, and otherwise
+    ``content`` — which is the original for a verbatim entry and for an entry
+    presented in its default (non-reformulated) form.
+    """
+    original = entry.get("original")
+    if original:
+        return original
+    return entry.get("content") or ""
+
+
 def _group_runs(
     items: list,
     equivalent: Callable[[dict, dict], bool],
@@ -75,9 +94,14 @@ def _group_runs(
 ) -> list[tuple[int, int]]:
     """Return ``[start, end)`` index ranges of consecutive equivalent runs.
 
-    A run is extended while each item is ``equivalent`` to the one before it,
-    and reported only when it reaches ``min_run`` entries. Adjacency is judged
-    in the order given; the caller's streams are newest-first, which is still
+    A run is extended while each item is ``equivalent`` to the run's first
+    member — its representative — and reported only when it reaches ``min_run``
+    entries. Comparing every member against the representative rather than
+    merely its predecessor keeps a non-transitive ``equivalent`` (e.g. a text
+    similarity ratio) from chaining across a run: three texts scoring 0.90,
+    0.90, 0.80 against the endpoints would otherwise all collapse even though
+    the first and last are not near-identical. Adjacency is judged in the order
+    given; the caller's streams are newest-first, which is still
     consecutive-in-time, so the ranges are correct regardless of direction.
     """
     runs: list[tuple[int, int]] = []
@@ -85,7 +109,7 @@ def _group_runs(
     n = len(items)
     while i < n:
         j = i + 1
-        while j < n and equivalent(items[j - 1], items[j]):
+        while j < n and equivalent(items[i], items[j]):
             j += 1
         if j - i >= min_run:
             runs.append((i, j))
@@ -265,7 +289,9 @@ def summarize_memory_loops(
         if a.get("namespace") != b.get("namespace"):
             return False
         ratio = SequenceMatcher(
-            None, _normalize_text(a.get("content")), _normalize_text(b.get("content"))
+            None,
+            _normalize_text(_loop_comparison_text(a)),
+            _normalize_text(_loop_comparison_text(b)),
         ).ratio()
         return ratio >= MEMORY_NEAR_IDENTICAL_RATIO
 
