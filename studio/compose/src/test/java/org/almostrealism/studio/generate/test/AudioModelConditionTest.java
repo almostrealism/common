@@ -22,6 +22,7 @@ import org.junit.Assert;
 import org.junit.Test;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 /**
@@ -54,5 +55,18 @@ public class AudioModelConditionTest extends TestSuiteBase {
 
 		model.removeAudioCondition("sample");
 		Assert.assertFalse(model.hasAnyCondition());
+	}
+
+	/** A null or blank audio path cannot identify a file, so it is not a condition. */
+	@Test(timeout = 10000)
+	public void blankAudioIsNotACondition() {
+		AudioModel model = new AudioModel("blankAudio");
+		model.setAudioConditions(new ArrayList<>(Arrays.asList(null, "", "  ")));
+		Assert.assertFalse(model.hasAudioCondition());
+		Assert.assertFalse(model.hasAnyCondition());
+
+		model.addAudioCondition("sample");
+		Assert.assertTrue(model.hasAudioCondition());
+		Assert.assertTrue(model.hasAnyCondition());
 	}
 }
