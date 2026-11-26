@@ -293,6 +293,25 @@ public class ParallelismStrategyQueryTests extends TestSuiteBase {
 	}
 
 	/**
+	 * A child whose score is not a number (a negative output size makes its memory cost
+	 * {@code NaN}) makes the best child score {@code NaN} even when it is not the first child,
+	 * as the maximum of a {@code DoubleStream} does, and a {@code NaN} best score leaves no
+	 * comparison able to keep the children inline. Without the {@code NaN} the parent scores
+	 * better and the children stay inline, so the result depends on the {@code NaN} being kept.
+	 */
+	@Test(timeout = 10000)
+	public void targetPropagatesNaNChildScoreAfterTheFirst() {
+		Stage inline = Stage.of("inline", 10, 10, Stage.of("a", 1000, 10_000_000), Stage.of("b", 5, 5));
+		Assert.assertEquals(List.of(false, false),
+				((Stage) inline.apply(new ParallelismTargetOptimization())).childIsolation());
+
+		Stage parent = Stage.of("parent", 10, 10, Stage.of("a", 1000, 10_000_000), Stage.of("b", 5, -1));
+		Stage result = (Stage) parent.apply(new ParallelismTargetOptimization());
+
+		Assert.assertEquals(List.of(true, true), result.childIsolation());
+	}
+
+	/**
 	 * When the decision reaches the scores, the target strategy still processes the children
 	 * for analysis exactly once, and reads the parallelism and output size of each child
 	 * exactly once, reusing the parallelism it read for the count tests in the scores.

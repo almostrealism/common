@@ -207,8 +207,7 @@ public class ParallelismTargetOptimization implements ProcessOptimizationStrateg
 		double altScore = Integer.MIN_VALUE;
 		for (int i = 0; i < counts.length; i++) {
 			double score = ParallelismSettings.score(counts[i], Process.outputSize(children.get(i)));
-			// TODO(review): a NaN score after the first is skipped here, where DoubleStream.max() propagated it.
-			if (i == 0 || score > altScore) altScore = score;
+			altScore = i == 0 ? score : Math.max(altScore, score);
 		}
 
 		double min = Math.min(currentScore, altScore);
