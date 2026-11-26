@@ -8,7 +8,8 @@ tracker: [1cd4083d-8c9f-468f-b378-536474ca865e]
 # Throughput benchmark of the neuron-level connectome simulation on every backend
 
 **Tracker task:** `1cd4083d-8c9f-468f-b378-536474ca865e` — *Throughput benchmark of the
-neuron-level connectome simulation on every backend and machine*.
+neuron-level connectome simulation on every backend* (its description widens this to every
+backend and machine).
 **Release:** Common 0.78 (the release under development, whose name matches the version in the
 root `pom.xml`).
 
@@ -197,11 +198,11 @@ A reviewer confirms the task is done when:
    native bridge, code generation and asynchronous runner, but that "breadth, performance and CI are
    still open". It is not established that the CUDA backend can yet compile and run this exact step
    (the segmented-reduction sparse product, `CounterRandom`, the `cache_read`/`cache_write` ring).
-   If it cannot, the CUDA row is "pending CUDA breadth" and a dependency, not a result. The task
-   cites `docs/plans/CUDA_BACKEND.md` for the CUDA state, **but that file does not exist** in the
-   tree (no `docs/plans/*CUDA*`); the durable reference is
-   `docs/internals/backend-compilation-and-dispatch.md`. The task description should be corrected to
-   point there (or the CUDA plan restored). Flagged in the task record.
+   If it cannot, the CUDA row is "pending CUDA breadth" and a dependency, not a result. The durable
+   reference for the CUDA state is `docs/internals/backend-compilation-and-dispatch.md`; there is no
+   `docs/plans/*CUDA*` file. (The task originally cited a non-existent `docs/plans/CUDA_BACKEND.md`;
+   its description has since been corrected to point at the durable reference, so no task-record fix
+   remains.)
 3. **Benchmarked stimulus and step count.** Proposal: one replica, sugar-GRN Poisson drive at the
    gate's 150 Hz, a 100–500-step warm-up and ~1,000–5,000 timed steps (short enough to stay under
    the FP32 `2^24` step-counter bound, long enough to average out dispatch jitter). Confirm the rate
