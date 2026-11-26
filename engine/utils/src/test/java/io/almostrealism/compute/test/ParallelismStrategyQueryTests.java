@@ -29,6 +29,8 @@ import org.junit.Test;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.function.Function;
+import java.util.stream.Stream;
 
 /**
  * Pins what the parallelism strategies of the default optimization cascade decide, and how
@@ -208,6 +210,39 @@ public class ParallelismStrategyQueryTests extends TestSuiteBase {
 		List<Boolean> isolation = ((Stage) result).childIsolation();
 		Assert.assertEquals(9, isolation.size());
 		assertTrue(isolation.stream().allMatch(Boolean::booleanValue));
+	}
+
+	/**
+	 * The diversity strategy processes the children for analysis exactly once, whether it stops
+	 * at the threshold or goes on to read their parallelism, and reads each child's parallelism
+	 * exactly once when it does.
+	 */
+	@Test(timeout = 10000)
+	public void diversityProcessesChildrenOnce() {
+		Stage[] children = new Stage[9];
+		for (int i = 0; i < children.length; i++) {
+			children[i] = Stage.of("child" + i, 1000L * (i + 1), 1);
+		}
+
+		Stage wide = Stage.of("wide", 1, 1, children);
+		Stage narrow = Stage.of("narrow", 1, 1, Stage.of("a", 10, 1), Stage.of("b", 20, 1));
+
+		int[] applications = new int[1];
+		Function<Collection<Process<?, ?>>, Stream<Process<?, ?>>> processor = c -> {
+			applications[0]++;
+			return c.stream();
+		};
+
+		ParallelismDiversityOptimization strategy = new ParallelismDiversityOptimization();
+		Assert.assertNotNull(strategy.optimize(ProcessContext.base(), wide, wide.getChildren(), processor));
+		Assert.assertEquals(1, applications[0]);
+		for (Stage child : children) {
+			Assert.assertEquals(1, child.parallelismQueries);
+		}
+
+		applications[0] = 0;
+		Assert.assertNull(strategy.optimize(ProcessContext.base(), narrow, narrow.getChildren(), processor));
+		Assert.assertEquals(1, applications[0]);
 	}
 
 	/**

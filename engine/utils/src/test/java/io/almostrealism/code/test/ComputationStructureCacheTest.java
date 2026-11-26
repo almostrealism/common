@@ -193,6 +193,34 @@ public class ComputationStructureCacheTest extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * The inputs are a snapshot that cannot be changed in place, either through
+	 * {@link ComputationBase#getInputs()} or through the list they were given in, so the
+	 * answers determined from them cannot go stale without the inputs being set again.
+	 */
+	@Test(timeout = 10000)
+	public void inputsCannotBeReplacedInPlace() {
+		ProcessInput original = new ProcessInput();
+		List<Producer<PackedCollection>> given = new ArrayList<>(List.of(original));
+		Node node = new Node(given);
+		assertTrue(node.isFixedCount());
+		Collection<Process<?, ?>> children = node.getChildren();
+
+		given.set(0, new CountingInput(false));
+		Assert.assertSame(original, node.getInputs().get(0));
+
+		try {
+			node.getInputs().set(0, new CountingInput(false));
+			Assert.fail("The inputs of a computation should not be replaceable in place");
+		} catch (UnsupportedOperationException expected) {
+			Assert.assertSame(original, node.getInputs().get(0));
+		}
+
+		assertTrue(node.isFixedCount());
+		Assert.assertSame(children, node.getChildren());
+		Assert.assertSame(original, node.getChildren().iterator().next());
+	}
+
 	/** Replacing the inputs replaces the children. */
 	@Test(timeout = 10000)
 	public void replacingInputsRebuildsChildren() {

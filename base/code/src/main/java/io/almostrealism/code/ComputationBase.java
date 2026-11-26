@@ -32,6 +32,7 @@ import io.almostrealism.scope.Variable;
 import io.almostrealism.uml.Signature;
 
 import java.lang.ref.WeakReference;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
@@ -212,12 +213,14 @@ public abstract class ComputationBase<I, O, T>
 	/**
 	 * {@inheritDoc}
 	 *
-	 * <p>Forgets whether the previous inputs all had a fixed count, and the child
-	 * processes built from them.</p>
+	 * <p>The inputs are stored as an unmodifiable snapshot of the given list, so that
+	 * {@link #getInputs()} cannot be used to replace an input in place: replacing the
+	 * inputs always goes through this method, which forgets whether the previous inputs
+	 * all had a fixed count, and the child processes built from them.</p>
 	 */
 	@Override
 	protected void setInputs(List<Producer<I>> inputs) {
-		super.setInputs(inputs);
+		super.setInputs(inputs == null ? null : Collections.unmodifiableList(new ArrayList<>(inputs)));
 		fixedCountInputs = null;
 		children = null;
 	}
