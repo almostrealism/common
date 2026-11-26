@@ -18,7 +18,6 @@ package io.almostrealism.compute;
 
 import java.util.Collection;
 import java.util.function.Function;
-import java.util.stream.LongStream;
 import java.util.stream.Stream;
 
 /**
@@ -154,15 +153,51 @@ public class ParallelismTargetOptimization implements ProcessOptimizationStrateg
 		long counts[] = childProcessor.apply(children).mapToLong(ParallelProcess::parallelism).toArray();
 		long cn = ParallelProcess.parallelism(parent); // Countable.countLong(parent);
 		long p = counts.length;
-		long tot = LongStream.of(counts).filter(c -> c > 0).sum();
-		long max = LongStream.of(counts).filter(c -> c > 0).max().orElse(0);
 
-		long mem = Process.outputSize(parent);
+		long tot = 0;
+		long max = 0;
+		for (long c : counts) {
+			if (c > 0) {
+				tot += c;
+				max = Math.max(max, c);
+			}
+		}
 
-		double currentScore = ParallelismSettings.score(cn, mem);
-		double altScore = ParallelismSettings
-				.scores(childProcessor.apply(children))
-				.max().orElse(Integer.MIN_VALUE);
+		boolean isolate;
+
+		if ((p <= 1 && tot == cn) || cn >= max) {
+			isolate = false;
+		} else if (enableContextualCount && max <= context.getCountLong()) {
+			isolate = false;
+		} else if (max > maxCount) {
+			isolate = false;
+		} else if (enableNarrowMax && max > targetCount && context.getCountLong() >= minCount) {
+			isolate = false;
+		} else {
+			isolate = isIsolationScoreFavored(parent, cn, childProcessor.apply(children));
+		}
+
+		// TODO  It is preferable to return null if no isolation,
+		// TODO  so that this strategy can cascade to another if
+		// TODO  it is not the last one in the chain
+		return generate(parent, children, isolate);
+	}
+
+	/**
+	 * Compares the {@link ParallelismSettings#score(long, long) score} of keeping the
+	 * children inline with the parent against the best score among the children, the
+	 * last test {@link #optimize} applies. The scores are only computed when every
+	 * cheaper test has left isolation open, since each one reads the parallelism and
+	 * output size of a process.
+	 *
+	 * @param parent      the parent process being optimized
+	 * @param parallelism the parallelism of the parent
+	 * @param children    the children, as presented for analysis
+	 * @return {@code true} if isolating the children scores better
+	 */
+	protected boolean isIsolationScoreFavored(Process<?, ?> parent, long parallelism, Stream<?> children) {
+		double currentScore = ParallelismSettings.score(parallelism, Process.outputSize(parent));
+		double altScore = ParallelismSettings.scores(children).max().orElse(Integer.MIN_VALUE);
 
 		double min = Math.min(currentScore, altScore);
 		if (min < 0) {
@@ -173,29 +208,7 @@ public class ParallelismTargetOptimization implements ProcessOptimizationStrateg
 			altScore++;
 		}
 
-		boolean isolate = true;
-
-		if ((p <= 1 && tot == cn) || cn >= max) {
-			isolate = false;
-		} else if (enableContextualCount && max <= context.getCountLong()) {
-			isolate = false;
-		} else if (max > maxCount) {
-			isolate = false;
-		} else if (enableNarrowMax && max > targetCount && context.getCountLong() >= minCount) {
-			isolate = false;
-		} else if (altScore < currentScore) {
-//			System.out.println("Skipping isolation to avoid score " +
-//					altScore + " (" + currentScore + " current)");
-			isolate = false;
-		}
-
-		if (isolate && currentScore / altScore > 4 && ParallelProcess.explicitIsolationTargets.isEmpty()) {
-			isolate = false;
-		}
-
-		// TODO  It is preferable to return null if no isolation,
-		// TODO  so that this strategy can cascade to another if
-		// TODO  it is not the last one in the chain
-		return generate(parent, children, isolate);
+		if (altScore < currentScore) return false;
+		return !(currentScore / altScore > 4 && ParallelProcess.explicitIsolationTargets.isEmpty());
 	}
 }

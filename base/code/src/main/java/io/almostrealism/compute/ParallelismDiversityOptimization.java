@@ -57,12 +57,21 @@ public class ParallelismDiversityOptimization implements ProcessOptimizationStra
 		this.factor = parallelismRatio;
 	}
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Isolation requires more distinct child parallelisms than the diversity threshold,
+	 * which a process with no more children than the threshold cannot have, so for such a
+	 * process (nearly every one) this returns without asking any child for its parallelism.</p>
+	 */
 	@Override
 	public <P extends Process<?, ?>, T> Process<P, T> optimize(ProcessContext ctx,
 															   Process<P, T> parent,
 															   Collection<P> children,
 															   Function<Collection<P>, Stream<P>> childProcessor) {
 		listeners.forEach(l -> l.accept(parent));
+
+		if (childProcessor.apply(children).count() <= threshold) return null;
 
 		long counts[] = childProcessor.apply(children).mapToLong(ParallelProcess::parallelism).toArray();
 		long distinct = LongStream.of(counts).distinct().count();
