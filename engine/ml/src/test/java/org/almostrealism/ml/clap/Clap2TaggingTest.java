@@ -533,6 +533,93 @@ public class Clap2TaggingTest extends TestSuiteBase {
 	}
 
 	/**
+	 * The tag embeddings of at most {@link Clap2#TAG_EMBEDDING_CACHE_SIZE} vocabularies are kept:
+	 * embedding one more releases the vocabulary used least recently, a vocabulary used again is
+	 * kept in preference to older ones, and a released vocabulary embeds anew to the same values.
+	 *
+	 * @throws IOException if a resource cannot be read
+	 */
+	@Test(timeout = 900000)
+	public void tagEmbeddingCacheReleasesLeastRecentlyUsed() throws IOException {
+		JsonArray captions = referenceCaptions();
+		int size = Clap2.TAG_EMBEDDING_CACHE_SIZE;
+		List<TagVocabulary> vocabularies = new ArrayList<>();
+		for (int v = 0; v <= size; v++) {
+			vocabularies.add(TagVocabulary.of(List.of(
+					captions.get(v).getAsJsonObject().get("text").getAsString())));
+		}
+
+		StateDictionary weights = new Clap2WeightFixture().weights(41);
+		Clap2 model = new Clap2(weights, probeTokenizer(), TEXT_LENGTH, WINDOW);
+		try {
+			List<PackedCollection> embedded = new ArrayList<>();
+			for (int v = 0; v < size; v++) {
+				embedded.add(model.embed(vocabularies.get(v)));
+			}
+			double[] second = unit(embedded.get(1));
+
+			assertTrue("a cached vocabulary is reused", embedded.get(0) == model.embed(vocabularies.get(0)));
+			PackedCollection newest = model.embed(vocabularies.get(size));
+
+			assertTrue("the vocabulary used again must be kept",
+					embedded.get(0) == model.embed(vocabularies.get(0)));
+			assertTrue("the newest vocabulary must be kept", newest == model.embed(vocabularies.get(size)));
+			PackedCollection reembedded = model.embed(vocabularies.get(1));
+			assertTrue("the least recently used vocabulary must be released", reembedded != embedded.get(1));
+			assertVector("re-embedded", second, reembedded, 0);
+		} finally {
+			model.destroy();
+			weights.destroy();
+		}
+	}
+
+	/**
+	 * A model loaded from files reads its tokenizer before its weights, so a missing rank file
+	 * fails with an error naming it before any weight is loaded, even from a directory that does
+	 * not exist.
+	 *
+	 * @throws IOException if a temporary directory cannot be created
+	 */
+	@Test(timeout = 60000)
+	public void missingRankFileFailsBeforeWeightsLoad() throws IOException {
+		Path directory = Files.createTempDirectory("clap2");
+		String weightsDirectory = directory.resolve("no-weights").toString();
+		String rankFile = directory.resolve("missing.tiktoken").toString();
+		try {
+			new Clap2(weightsDirectory, rankFile, TEXT_LENGTH).destroy();
+			Assert.fail("A missing rank file must be rejected");
+		} catch (IOException e) {
+			assertTrue(String.valueOf(e.getMessage()), String.valueOf(e.getMessage()).contains("missing.tiktoken"));
+		} finally {
+			Files.delete(directory);
+		}
+	}
+
+	/**
+	 * A model that cannot be built over a caller's weights rejects its configuration and leaves
+	 * the weights to the caller, still usable.
+	 */
+	@Test(timeout = 60000)
+	public void failedConstructionLeavesCallerWeights() {
+		StateDictionary weights = new Clap2WeightFixture().weights(43);
+		try {
+			new Clap2(weights, null, TEXT_LENGTH, Clap2Config.MIN_CLIP_SAMPLES - 1).destroy();
+			Assert.fail("A window shorter than the minimum clip must be rejected");
+		} catch (IllegalArgumentException e) {
+			assertTrue(e.getMessage(), e.getMessage().contains("windowSamples"));
+		}
+
+		Clap2 model = new Clap2(weights, null, TEXT_LENGTH, WINDOW);
+		try {
+			assertEquals(Clap2WeightFixture.EMBED, model.getConfig().getEmbedDim());
+			assertTrue(Double.isFinite(weights.require(Clap2.LOGIT_SCALE_KEY).toDouble(0)));
+		} finally {
+			model.destroy();
+			weights.destroy();
+		}
+	}
+
+	/**
 	 * A vocabulary rejects an empty tag list, a repeated label and a tag without captions, and
 	 * equal vocabularies are equal.
 	 */

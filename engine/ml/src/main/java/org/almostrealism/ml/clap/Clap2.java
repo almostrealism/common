@@ -28,7 +28,7 @@ import org.almostrealism.ml.StateDictionary;
 
 import java.io.IOException;
 import java.nio.file.Path;
-import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -52,6 +52,12 @@ public class Clap2 implements MatrixFeatures, VectorFeatures, Destroyable {
 	/** The key of the learned temperature, stored as its natural logarithm. */
 	public static final String LOGIT_SCALE_KEY = "logit_scale";
 
+	/**
+	 * The number of vocabularies whose tag embeddings are kept: embedding one more releases the
+	 * embeddings of the vocabulary used least recently.
+	 */
+	public static final int TAG_EMBEDDING_CACHE_SIZE = 8;
+
 	/** The architecture. */
 	private final Clap2Config config;
 
@@ -67,8 +73,10 @@ public class Clap2 implements MatrixFeatures, VectorFeatures, Destroyable {
 	/** The caption tokenizer, or null for a model that only compares embeddings. */
 	private final Clap2Tokenizer tokenizer;
 
-	/** The tag embeddings of each vocabulary {@link #embed(TagVocabulary)} has embedded. */
-	// TODO(review): unbounded; every distinct vocabulary (e.g. each score(waveform, List) tag list) stays resident until destroy().
+	/**
+	 * The tag embeddings of the {@link #TAG_EMBEDDING_CACHE_SIZE} vocabularies
+	 * {@link #embed(TagVocabulary)} has used most recently, least recently used first.
+	 */
 	private final Map<TagVocabulary, PackedCollection> tagEmbeddings;
 
 	/**
@@ -80,12 +88,13 @@ public class Clap2 implements MatrixFeatures, VectorFeatures, Destroyable {
 	 * @throws IOException if the weights cannot be read
 	 */
 	public Clap2(String weightsDirectory, int maxTextLength) throws IOException {
-		this(new StateDictionary(weightsDirectory), maxTextLength);
+		this((Clap2Tokenizer) null, weightsDirectory, maxTextLength);
 	}
 
 	/**
 	 * Loads a model and its tokenizer: the weights from the directory the extraction script writes,
-	 * the tokenizer from the rank file the tokenizer export script writes.
+	 * the tokenizer from the rank file the tokenizer export script writes. The tokenizer is read
+	 * first, so a missing or malformed rank file fails before any weight is loaded.
 	 *
 	 * @param weightsDirectory the extracted weights
 	 * @param rankFile         the exported {@code r50k_base} rank file
@@ -93,9 +102,21 @@ public class Clap2 implements MatrixFeatures, VectorFeatures, Destroyable {
 	 * @throws IOException if the weights or the rank file cannot be read
 	 */
 	public Clap2(String weightsDirectory, String rankFile, int maxTextLength) throws IOException {
-		// TODO(review): the StateDictionary leaks if the Clap2Tokenizer constructor throws (bad rank file).
-		this(new StateDictionary(weightsDirectory), new Clap2Tokenizer(Path.of(rankFile)), maxTextLength,
-				Clap2Config.DEFAULT_WINDOW_SECONDS * Clap2Config.SAMPLE_RATE);
+		this(new Clap2Tokenizer(Path.of(rankFile)), weightsDirectory, maxTextLength);
+	}
+
+	/**
+	 * Loads the weights of a model whose tokenizer is already read; the loaded weights are
+	 * released if the model cannot be built over them.
+	 *
+	 * @param tokenizer        the caption tokenizer, or null
+	 * @param weightsDirectory the extracted weights
+	 * @param maxTextLength    the number of token positions to compile the text tower for
+	 * @throws IOException if the weights cannot be read
+	 */
+	private Clap2(Clap2Tokenizer tokenizer, String weightsDirectory, int maxTextLength) throws IOException {
+		this(new StateDictionary(weightsDirectory), tokenizer, maxTextLength,
+				Clap2Config.DEFAULT_WINDOW_SECONDS * Clap2Config.SAMPLE_RATE, true);
 	}
 
 	/**
@@ -109,20 +130,46 @@ public class Clap2 implements MatrixFeatures, VectorFeatures, Destroyable {
 	}
 
 	/**
-	 * Creates a model over the given weights and tokenizer.
+	 * Creates a model over the given weights and tokenizer. If the model cannot be built, whatever
+	 * it had built is released and the weights are left to the caller.
 	 *
 	 * @param weights       the weights of both towers
 	 * @param tokenizer     the caption tokenizer, or null for a model that only compares embeddings
 	 * @param maxTextLength the number of token positions to compile the text tower for
 	 * @param windowSamples the number of samples of the fixed window the audio tower is compiled for
+	 * @throws IllegalArgumentException if the weights or the sizes do not describe a valid model
 	 */
 	public Clap2(StateDictionary weights, Clap2Tokenizer tokenizer, int maxTextLength, int windowSamples) {
+		this(weights, tokenizer, maxTextLength, windowSamples, false);
+	}
+
+	/**
+	 * Creates a model over the given weights and tokenizer, releasing the towers already built,
+	 * and the weights if this model loaded them, when the model cannot be built.
+	 *
+	 * @param weights                 the weights of both towers
+	 * @param tokenizer               the caption tokenizer, or null
+	 * @param maxTextLength           the number of token positions to compile the text tower for
+	 * @param windowSamples           the number of samples of the audio tower's fixed window
+	 * @param releaseWeightsOnFailure whether the weights are released if construction fails
+	 */
+	private Clap2(StateDictionary weights, Clap2Tokenizer tokenizer, int maxTextLength,
+				  int windowSamples, boolean releaseWeightsOnFailure) {
+		Clap2AudioEncoder audioTower = null;
+		try {
+			this.config = Clap2Config.of(weights, maxTextLength, windowSamples);
+			audioTower = new Clap2AudioEncoder(config, weights);
+			this.text = new Clap2TextEncoder(config, weights);
+		} catch (RuntimeException e) {
+			if (audioTower != null) audioTower.destroy();
+			if (releaseWeightsOnFailure) weights.destroy();
+			throw e;
+		}
+
 		this.weights = weights;
-		this.config = Clap2Config.of(weights, maxTextLength, windowSamples);
-		this.audio = new Clap2AudioEncoder(config, weights);
-		this.text = new Clap2TextEncoder(config, weights);
+		this.audio = audioTower;
 		this.tokenizer = tokenizer;
-		this.tagEmbeddings = new HashMap<>();
+		this.tagEmbeddings = new LinkedHashMap<>(16, 0.75f, true);
 	}
 
 	/** The architecture. */
@@ -176,17 +223,20 @@ public class Clap2 implements MatrixFeatures, VectorFeatures, Destroyable {
 	}
 
 	/**
-	 * The text embeddings of the tags of a vocabulary, computed on first use and kept until
-	 * {@link #destroy()}: the embedding of a tag is the normalized mean of the normalized
-	 * embeddings of its captions, each tokenized by this model's tokenizer as {@code [BOS, ..., EOS]}.
+	 * The text embeddings of the tags of a vocabulary, computed on first use and kept while the
+	 * vocabulary is among the {@link #TAG_EMBEDDING_CACHE_SIZE} this model has embedded most
+	 * recently: the embedding of a tag is the normalized mean of the normalized embeddings of its
+	 * captions, each tokenized by this model's tokenizer as {@code [BOS, ..., EOS]}.
 	 *
 	 * <p>The text tower's output buffer is overwritten by every caption, so each caption is added
 	 * to its tag's {@link MeanDirection} on the device before the next caption is encoded, and the
-	 * tag's direction is copied into its row; no embedding is read back to the host.</p>
+	 * tag's direction is copied into its row; no embedding is read back to the host. Every caption
+	 * is tokenized, and so validated, before any device memory is allocated.</p>
 	 *
 	 * @param vocabulary the vocabulary
 	 * @return the unit-length tag embeddings, shape {@code [tags, embedDim]}, in vocabulary order;
-	 *         owned by this model
+	 *         owned by this model, and released when {@link #TAG_EMBEDDING_CACHE_SIZE} other
+	 *         vocabularies have been embedded since it was last used, or by {@link #destroy()}
 	 * @throws IllegalStateException    if this model has no tokenizer
 	 * @throws IllegalArgumentException if a caption is longer than the compiled text length
 	 */
@@ -200,20 +250,48 @@ public class Clap2 implements MatrixFeatures, VectorFeatures, Destroyable {
 		}
 
 		int tags = vocabulary.size();
+		int[][][] captionIds = new int[tags][][];
+		for (int t = 0; t < tags; t++) {
+			List<String> captions = vocabulary.getTags().get(t).getCaptions();
+			captionIds[t] = new int[captions.size()][];
+			for (int c = 0; c < captions.size(); c++) {
+				captionIds[t][c] = tokenize(captions.get(c));
+			}
+		}
+
 		int width = config.getEmbedDim();
 		embeddings = new PackedCollection(shape(tags, width));
 		try (MeanDirection mean = new MeanDirection(width)) {
 			for (int t = 0; t < tags; t++) {
 				mean.clear();
-				for (String caption : vocabulary.getTags().get(t).getCaptions()) {
-					mean.add(text.encode(tokenize(caption)));
+				for (int[] ids : captionIds[t]) {
+					mean.add(text.encode(ids));
 				}
 				embeddings.setFrom(t * width, mean.direction(), 0, width);
 			}
+		} catch (RuntimeException e) {
+			embeddings.destroy();
+			throw e;
 		}
 
-		tagEmbeddings.put(vocabulary, embeddings);
+		cacheTagEmbeddings(vocabulary, embeddings);
 		return embeddings;
+	}
+
+	/**
+	 * Keeps the tag embeddings of a vocabulary, releasing those of the vocabulary used least
+	 * recently when more than {@link #TAG_EMBEDDING_CACHE_SIZE} would otherwise be kept.
+	 *
+	 * @param vocabulary the vocabulary
+	 * @param embeddings its tag embeddings
+	 */
+	private void cacheTagEmbeddings(TagVocabulary vocabulary, PackedCollection embeddings) {
+		tagEmbeddings.put(vocabulary, embeddings);
+		if (tagEmbeddings.size() > TAG_EMBEDDING_CACHE_SIZE) {
+			Map.Entry<TagVocabulary, PackedCollection> eldest = tagEmbeddings.entrySet().iterator().next();
+			tagEmbeddings.remove(eldest.getKey());
+			eldest.getValue().destroy();
+		}
 	}
 
 	/**
@@ -237,7 +315,8 @@ public class Clap2 implements MatrixFeatures, VectorFeatures, Destroyable {
 	 * Scores a clip against every tag of a vocabulary: the cosine similarity of the clip's
 	 * {@link Clap2AudioEncoder#encodeClip fixed-window embedding} with each tag's
 	 * {@link #embed(TagVocabulary) embedding}. The clip may be of any length of at least
-	 * {@link Clap2Config#MIN_CLIP_SAMPLES}; the tag embeddings are computed once per vocabulary.
+	 * {@link Clap2Config#MIN_CLIP_SAMPLES}; the tag embeddings are computed once per vocabulary
+	 * and kept as {@link #embed(TagVocabulary)} describes.
 	 *
 	 * <p>The scores are raw cosines. The model's distribution over the tags is the softmax of
 	 * {@link #logits} over the same two embeddings, and a consumer that owns a library usually
