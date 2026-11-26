@@ -17,6 +17,7 @@
 package org.almostrealism.studio.pattern.test;
 
 import org.almostrealism.audio.WaveOutput;
+import org.almostrealism.hardware.jni.NativeCompiler;
 import org.almostrealism.hardware.metal.MetalProgram;
 import org.almostrealism.heredity.TemporalCellular;
 import org.almostrealism.music.pattern.BatchedPatternLayerRenderer;
@@ -46,8 +47,10 @@ import java.io.IOException;
  * later scenes render dramatically faster, which the per-scene render wall times reveal.</p>
  *
  * <p>The runner build is measured for each scene as well ({@link #buildAttributedRunner}): its
- * wall time per construction step and the number of Metal kernels it compiled. A second scene
- * whose build compiles as many kernels as the first is recompiling rather than reusing them.</p>
+ * wall time per construction step and the number of Metal and native C (JNI) kernels it
+ * compiled, and the render logs both counts too. Small operations run on the CPU backend, so the
+ * native C compiles are the expensive ones. A second scene that compiles as many kernels as the
+ * first is recompiling rather than reusing them.</p>
  */
 public class KernelCacheReuseAcrossScenesTest extends AudioSceneTestBase {
 
@@ -76,7 +79,7 @@ public class KernelCacheReuseAcrossScenesTest extends AudioSceneTestBase {
 	/**
 	 * Builds and renders {@link #SCENES} identically-configured scenes in one JVM, logging the
 	 * per-scene runner build attribution, the setup, first-tick, and render-loop wall times, and
-	 * the Metal kernel compile counts of the build and of the render, so the second scene's
+	 * the Metal and native C kernel compile counts of the build and of the render, so the second scene's
 	 * figures reveal how much the first scene's compiled kernels are reused.
 	 *
 	 * @throws IOException if the curated scene cannot be loaded
@@ -115,8 +118,8 @@ public class KernelCacheReuseAcrossScenesTest extends AudioSceneTestBase {
 			Runnable tick = runner.tick().get();
 
 			try {
-				// TODO(review): also count NativeCompiler.compileTime here; JNI compiles, not Metal, dominate per the plan.
 				long compilesBefore = MetalProgram.compileTime.getCount();
+				long jniCompilesBefore = NativeCompiler.compileTime.getCount();
 				long t0 = System.nanoTime();
 				setup.run();
 				long t1 = System.nanoTime();
@@ -133,7 +136,8 @@ public class KernelCacheReuseAcrossScenesTest extends AudioSceneTestBase {
 						+ " renderLoopMs=" + ms(t3 - t2)
 						+ " renderTotalMs=" + ms(t3 - t1)
 						+ " ticks=" + RENDER_TICKS
-						+ " renderMtlCompiles=" + (MetalProgram.compileTime.getCount() - compilesBefore));
+						+ " renderMtlCompiles=" + (MetalProgram.compileTime.getCount() - compilesBefore)
+						+ " renderJniCompiles=" + (NativeCompiler.compileTime.getCount() - jniCompilesBefore));
 			} finally {
 				out.reset();
 				runner.reset();

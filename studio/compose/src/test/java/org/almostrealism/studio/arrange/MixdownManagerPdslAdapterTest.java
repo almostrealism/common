@@ -28,7 +28,9 @@ import org.almostrealism.heredity.ProjectedGenome;
 import org.almostrealism.studio.optimize.FixedFilterChromosome;
 import org.almostrealism.time.Frequency;
 import org.almostrealism.util.TestSuiteBase;
+import org.junit.After;
 import org.junit.Assert;
+import org.junit.Before;
 import org.junit.Test;
 
 import java.util.Map;
@@ -75,6 +77,35 @@ public class MixdownManagerPdslAdapterTest extends TestSuiteBase implements Cell
 
 	/** The argument map the fixture's adapter built. */
 	private Map<String, Object> args;
+
+	/** Restores the process-wide {@link MixdownManager} flags {@link #buildFixture(int)} sets. */
+	private Runnable restoreFlags;
+
+	/**
+	 * Captures the {@link MixdownManager} flags the fixture changes, so {@link #restoreFlags()}
+	 * leaves them as this class found them and later tests in the same JVM see no difference.
+	 */
+	@Before
+	public void captureFlags() {
+		boolean enableMainFilterUp = MixdownManager.enableMainFilterUp;
+		boolean enableEfx = MixdownManager.enableEfx;
+		boolean enableEfxFilters = MixdownManager.enableEfxFilters;
+		boolean enableReverb = MixdownManager.enableReverb;
+		boolean enableAutomationManager = MixdownManager.enableAutomationManager;
+		restoreFlags = () -> {
+			MixdownManager.enableMainFilterUp = enableMainFilterUp;
+			MixdownManager.enableEfx = enableEfx;
+			MixdownManager.enableEfxFilters = enableEfxFilters;
+			MixdownManager.enableReverb = enableReverb;
+			MixdownManager.enableAutomationManager = enableAutomationManager;
+		};
+	}
+
+	/** Restores the {@link MixdownManager} flags captured by {@link #captureFlags()}. */
+	@After
+	public void restoreFlags() {
+		restoreFlags.run();
+	}
 
 	/**
 	 * Each row of {@code efx_filter_coeffs} is the high-pass or low-pass windowed-sinc bank

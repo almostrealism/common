@@ -9,7 +9,6 @@ tracker: [60b1a161-80d3-4450-b7fd-492f547de3c2]
 
 **Tracker task:** `60b1a161-80d3-4450-b7fd-492f547de3c2` — *Profile the one-time
 PDSL mixdown model build (runnerBuildMs)*
-**Release:** Common 0.78
 
 ## Motivation
 
