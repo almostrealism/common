@@ -18,6 +18,7 @@ from typing import Optional
 from urllib.parse import quote, urlencode
 
 import github_api
+import loop_summary
 import repo_config
 import server
 from memory_text import prefers_reformulated, present
@@ -586,6 +587,7 @@ def workstream_context(
     include_activities: "list[str] | str" = "primary",
     include_memories: bool = True,
     reformulated: bool = False,
+    collapse_loops: bool = True,
     max_memories: Optional[int] = None,
     max_activities: Optional[str] = None,
 ) -> dict:
@@ -609,6 +611,15 @@ def workstream_context(
         resolves to a workstream — by ``workstream_id``, or by
         ``repo_url`` + ``branch`` (archived rounds included) — and
         ``job_limit > 0``; omitted otherwise.
+      - **loops**: enforcement loops detected on the branch — a run of
+        consecutive jobs where the same enforcement phase produced the same
+        verdict, or a run of near-identical memories written within one job.
+        Each loop carries a ``count`` and a time ``span`` so the reader does
+        not have to reconstruct it from the raw streams. Present (possibly
+        empty) whenever memories or jobs are returned. By default the runs are
+        also collapsed in the ``memories`` and ``jobs`` streams to one
+        representative entry each (annotated with a ``loop`` field); pass
+        ``collapse_loops=False`` to keep every individual entry listed.
       - **metadata**: resolved repo_url, branch, namespace. Always present.
       - **pull_request**: metadata about the most recent pull request
         associated with the branch (across all states: open, closed,
@@ -666,6 +677,13 @@ def workstream_context(
             memory instead of the text its author wrote. Beta — off by
             default, because a narrative reconstructed from rewrites loses
             the specifics it depends on.
+        collapse_loops: When true (default), collapse each detected
+            enforcement loop — a run of consecutive same-phase/same-verdict
+            jobs, or near-identical memories within one job — into a single
+            representative entry in the ``memories`` and ``jobs`` streams, so
+            the loop does not crowd out the substantive notes. Pass false to
+            keep every individual entry; the ``loops`` summary is computed
+            either way.
 
     Returns:
         Dictionary with branch memories, optionally commits, and optionally
@@ -961,6 +979,17 @@ def workstream_context(
         except Exception:
             pass  # Non-critical: proceed without job history
 
+    # Collapse enforcement loops so a long run of repeated jobs or near-
+    # identical memories reads as one summarized "loop" entry instead of
+    # drowning the substantive notes. The jobs timeline is passed in even when
+    # it was not surfaced to the caller (job_limit=0) so memory runs can still
+    # be bounded to a single job; it is only exposed below when jobs_included.
+    loop_result = loop_summary.summarize_loops(
+        memories, jobs_timeline, collapse=collapse_loops)
+    memories = loop_result["memories"]
+    jobs_timeline = loop_result["jobs"]
+    detected_loops = loop_result["loops"]
+
     result = {
         "ok": True,
         "repo_url": effective_repo,
@@ -976,6 +1005,10 @@ def workstream_context(
     }
     if notice:
         result["notice"] = notice
+    # Expose detected loops whenever any content was returned. An empty list is
+    # a meaningful "no loops on this branch" signal, distinct from the loop
+    # summaries that collapse a repeated run.
+    result["loops"] = detected_loops
     # Expose the jobs key unconditionally when the caller requested it —
     # an empty list is a meaningful signal (no jobs on this branch yet),
     # distinct from "the caller opted out with job_limit=0 or passed no

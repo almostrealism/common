@@ -69,6 +69,60 @@ def _parse_non_semantic_namespaces() -> frozenset:
 NON_SEMANTIC_NAMESPACES = _parse_non_semantic_namespaces()
 
 
+# Cosine-similarity floor above which two memories on the same repo+branch are
+# treated as near-identical and merged at store time (keeping the newest). A
+# loop that logs "rule X failed again…" or "OOP review done … CLEAN" over and
+# over produces notes whose embeddings sit at ~0.97+; genuinely distinct notes
+# on a branch embed well below this. The floor is deliberately high so that
+# distinct memories are never merged — the cost of a missed merge (a little
+# recall clutter) is far cheaper than collapsing two notes that differ.
+# Overridable via ``AR_MEMORY_NEAR_DUPLICATE_THRESHOLD`` for tuning without a
+# code change.
+def _parse_near_duplicate_threshold() -> float:
+    raw = os.environ.get("AR_MEMORY_NEAR_DUPLICATE_THRESHOLD", "")
+    if raw.strip():
+        try:
+            return float(raw)
+        except ValueError:
+            log.warning("ignoring invalid AR_MEMORY_NEAR_DUPLICATE_THRESHOLD=%r", raw)
+    return 0.97
+
+
+NEAR_DUPLICATE_SIMILARITY_THRESHOLD = _parse_near_duplicate_threshold()
+
+# How many nearest neighbours to inspect when looking for a near-duplicate.
+# The run that matters (the previous loop iteration on this branch) is the
+# closest neighbour, but the index is shared across every branch and repo, so a
+# few unrelated notes can sit nearer; examine a small window and post-filter to
+# the same repo+branch rather than trusting the single nearest hit.
+_NEAR_DUPLICATE_SEARCH_K = 25
+
+
+def _parse_merge_near_duplicates() -> bool:
+    """Whether store-time near-duplicate merging is enabled (default on)."""
+    raw = os.environ.get("AR_MEMORY_MERGE_NEAR_DUPLICATES", "1").strip().lower()
+    return raw not in ("0", "false", "no", "off")
+
+
+MERGE_NEAR_DUPLICATES = _parse_merge_near_duplicates()
+
+
+def _cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
+    """Cosine similarity between two vectors, robust to non-unit norms.
+
+    The FAISS index stores whatever the embedder produced; computing the
+    similarity directly from the reconstructed vectors keeps near-duplicate
+    detection correct whether or not the embeddings happen to be normalized.
+    """
+    av = np.asarray(a, dtype=np.float32).ravel()
+    bv = np.asarray(b, dtype=np.float32).ravel()
+    na = float(np.linalg.norm(av))
+    nb = float(np.linalg.norm(bv))
+    if na == 0.0 or nb == 0.0:
+        return 0.0
+    return float(np.dot(av, bv) / (na * nb))
+
+
 def _validate_namespace(namespace: str) -> str:
     if not isinstance(namespace, str) or not _NAMESPACE_RE.match(namespace):
         raise ValueError(
@@ -183,6 +237,13 @@ class MemoryStore:
             self._conn.execute("ALTER TABLE entries ADD COLUMN repo_url TEXT")
         if "branch" not in columns:
             self._conn.execute("ALTER TABLE entries ADD COLUMN branch TEXT")
+        # merged_count records how many near-identical source memories an entry
+        # now stands for; a fresh, unmerged entry counts as 1. Existing rows
+        # predate the column, so default them to 1.
+        if "merged_count" not in columns:
+            self._conn.execute(
+                "ALTER TABLE entries ADD COLUMN merged_count INTEGER NOT NULL DEFAULT 1"
+            )
         self._conn.commit()
         self._migrate_normalize_repo_urls()
 
@@ -312,32 +373,63 @@ class MemoryStore:
         tags_json = json.dumps(tags) if tags else None
         repo_url = _normalize_repo_url(repo_url)
 
+        # Non-semantic namespaces (e.g. messages) are stored for branch /
+        # recency retrieval only; they are neither embedded nor merged.
+        semantic = self._is_semantic(namespace)
+
+        # Detect near-duplicates among the entries already on this repo+branch
+        # BEFORE the new entry is indexed, so the new (newest) note is never
+        # compared against itself. Scoped to repo+branch so a loop on one branch
+        # never collapses a note from another.
+        duplicates = []
+        vector = None
+        if semantic:
+            vector = self._embedder.embed(content)
+            if MERGE_NEAR_DUPLICATES and repo_url and branch:
+                duplicates = self._find_near_duplicates(
+                    namespace, vector, repo_url, branch)
+
+        merged_count = 1 + sum(d["merged_count"] for d in duplicates)
+        merged_ids = [d["id"] for d in duplicates]
+
         self._conn.execute(
-            "INSERT INTO entries (id, namespace, content, tags, source, created_at, repo_url, branch) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            (entry_id, namespace, content, tags_json, source, created_at, repo_url, branch),
+            "INSERT INTO entries "
+            "(id, namespace, content, tags, source, created_at, repo_url, branch, merged_count) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (entry_id, namespace, content, tags_json, source, created_at,
+             repo_url, branch, merged_count),
         )
         self._conn.commit()
 
-        # Non-semantic namespaces (e.g. messages) are stored for branch /
-        # recency retrieval only; skip embedding and FAISS indexing entirely.
-        if self._is_semantic(namespace):
-            # Get the rowid of the just-inserted row
-            row = self._conn.execute(
+        if semantic:
+            new_rowid = self._conn.execute(
                 "SELECT rowid FROM entries WHERE id = ?", (entry_id,)
-            ).fetchone()
-            rowid = row["rowid"]
-
-            # Embed and add to FAISS index
-            vector = self._embedder.embed(content)
-            if namespace not in self._indices:
-                dim = self._embedder.dimension
-                self._indices[namespace] = (faiss.IndexFlatL2(dim), [])
-
-            index, id_map = self._indices[namespace]
-            index.add(vector.reshape(1, -1))
-            id_map.append(rowid)
-            self._save_index(namespace)
+            ).fetchone()["rowid"]
+            if merged_ids:
+                # Keep the newest (just-inserted) note and drop the older
+                # near-duplicates. Reindex by reconstructing the surviving
+                # vectors from the existing index rather than re-embedding the
+                # whole namespace — a loop merges on every store, and
+                # re-embedding thousands of notes each time would blow the
+                # store request timeout.
+                removed_rowids = {d["rowid"] for d in duplicates}
+                placeholders = ",".join("?" for _ in merged_ids)
+                self._conn.execute(
+                    f"DELETE FROM entries WHERE id IN ({placeholders})",
+                    merged_ids,
+                )
+                self._conn.commit()
+                self._reindex_after_merge(
+                    namespace, removed_rowids, new_rowid, vector)
+            else:
+                # No merge — add the new vector incrementally.
+                if namespace not in self._indices:
+                    dim = self._embedder.dimension
+                    self._indices[namespace] = (faiss.IndexFlatL2(dim), [])
+                index, id_map = self._indices[namespace]
+                index.add(vector.reshape(1, -1))
+                id_map.append(new_rowid)
+                self._save_index(namespace)
 
         return {
             "id": entry_id,
@@ -348,7 +440,108 @@ class MemoryStore:
             "repo_url": repo_url,
             "branch": branch,
             "created_at": created_at,
+            "merged_count": merged_count,
+            "merged_ids": merged_ids,
         }
+
+    def _find_near_duplicates(
+        self,
+        namespace: str,
+        vector: np.ndarray,
+        repo_url: str,
+        branch: str,
+    ) -> list[dict]:
+        """Find already-stored entries on the same repo+branch that are
+        near-identical to ``vector``.
+
+        Searches the namespace's FAISS index for the closest neighbours,
+        post-filters to the same repository and branch, and keeps those whose
+        cosine similarity meets :data:`NEAR_DUPLICATE_SIMILARITY_THRESHOLD`.
+        The similarity is computed from the reconstructed index vectors, so it
+        is independent of whether the embedder normalizes its output.
+
+        Args:
+            namespace: Namespace to search within.
+            vector: The embedding of the incoming content.
+            repo_url: Normalized repository URL of the incoming content.
+            branch: Branch of the incoming content.
+
+        Returns:
+            A list of ``{"id", "rowid", "merged_count", "similarity"}`` dicts,
+            one per near-duplicate, empty when there is none.
+        """
+        if namespace not in self._indices:
+            return []
+        index, id_map = self._indices[namespace]
+        if index.ntotal == 0:
+            return []
+
+        target_repo = _normalize_repo_url(repo_url)
+        query_vec = np.asarray(vector, dtype=np.float32).reshape(1, -1)
+        search_k = min(_NEAR_DUPLICATE_SEARCH_K, index.ntotal)
+        _, positions = index.search(query_vec, search_k)
+
+        duplicates = []
+        for pos in positions[0]:
+            if pos < 0:
+                continue
+            rowid = id_map[pos]
+            row = self._conn.execute(
+                "SELECT id, repo_url, branch, merged_count "
+                "FROM entries WHERE rowid = ?",
+                (rowid,),
+            ).fetchone()
+            if row is None:
+                continue
+            if _normalize_repo_url(row["repo_url"]) != target_repo:
+                continue
+            if row["branch"] != branch:
+                continue
+            candidate = index.reconstruct(int(pos))
+            similarity = _cosine_similarity(vector, candidate)
+            if similarity >= NEAR_DUPLICATE_SIMILARITY_THRESHOLD:
+                duplicates.append({
+                    "id": row["id"],
+                    "rowid": rowid,
+                    "merged_count": row["merged_count"] or 1,
+                    "similarity": similarity,
+                })
+        return duplicates
+
+    def _reindex_after_merge(
+        self,
+        namespace: str,
+        removed_rowids: set,
+        new_rowid: int,
+        new_vector: np.ndarray,
+    ) -> None:
+        """Rebuild a namespace index dropping merged-away rows, adding the new.
+
+        Reconstructs the surviving vectors from the existing in-memory index
+        (so no content is re-embedded), drops the positions whose rowid was
+        merged away, then appends the newest note's vector. This keeps the cost
+        of a merge proportional to the namespace size in vector copies, not in
+        model calls — important because a looping branch merges on every store.
+        """
+        dim = self._embedder.dimension
+        new_index = faiss.IndexFlatL2(dim)
+        new_id_map: list[int] = []
+        kept_vectors: list[np.ndarray] = []
+
+        if namespace in self._indices:
+            index, id_map = self._indices[namespace]
+            for pos, rowid in enumerate(id_map):
+                if rowid in removed_rowids:
+                    continue
+                kept_vectors.append(index.reconstruct(pos))
+                new_id_map.append(rowid)
+
+        kept_vectors.append(np.asarray(new_vector, dtype=np.float32).ravel())
+        new_id_map.append(new_rowid)
+        new_index.add(np.stack(kept_vectors).astype(np.float32))
+
+        self._indices[namespace] = (new_index, new_id_map)
+        self._save_index(namespace)
 
     def search(
         self,
@@ -398,7 +591,7 @@ class MemoryStore:
                 continue
             rowid = id_map[idx]
             row = self._conn.execute(
-                "SELECT id, namespace, content, tags, source, created_at, repo_url, branch "
+                "SELECT id, namespace, content, tags, source, created_at, repo_url, branch, merged_count "
                 "FROM entries WHERE rowid = ?",
                 (rowid,),
             ).fetchone()
@@ -459,14 +652,14 @@ class MemoryStore:
         repo_url = _normalize_repo_url(repo_url)
         if namespace:
             rows = self._conn.execute(
-                "SELECT id, namespace, content, tags, source, created_at, repo_url, branch "
+                "SELECT id, namespace, content, tags, source, created_at, repo_url, branch, merged_count "
                 "FROM entries WHERE namespace = ? AND repo_url = ? AND branch = ? "
                 "ORDER BY created_at DESC LIMIT ?",
                 (namespace, repo_url, branch, limit),
             ).fetchall()
         else:
             rows = self._conn.execute(
-                "SELECT id, namespace, content, tags, source, created_at, repo_url, branch "
+                "SELECT id, namespace, content, tags, source, created_at, repo_url, branch, merged_count "
                 "FROM entries WHERE repo_url = ? AND branch = ? "
                 "ORDER BY created_at DESC LIMIT ?",
                 (repo_url, branch, limit),
@@ -528,7 +721,7 @@ class MemoryStore:
         """
         _validate_namespace(namespace)
         rows = self._conn.execute(
-            "SELECT id, namespace, content, tags, source, created_at, repo_url, branch "
+            "SELECT id, namespace, content, tags, source, created_at, repo_url, branch, merged_count "
             "FROM entries WHERE namespace = ? "
             "ORDER BY created_at DESC LIMIT ? OFFSET ?",
             (namespace, limit, offset),

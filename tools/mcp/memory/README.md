@@ -67,6 +67,10 @@ Store a new memory entry with semantic embedding.
 | `tags` | string[] | No | Tags for categorical filtering |
 | `source` | string | No | Origin identifier |
 
+The response is the created entry, including `merged_count` (how many
+near-identical source notes it stands for) and `merged_ids` (older
+near-duplicates collapsed into it). See [Near-Duplicate Merging](#near-duplicate-merging).
+
 ### POST /api/memory/search
 
 Semantic search by natural language query.
@@ -131,8 +135,29 @@ SQLite table `entries`:
 | `created_at` | TEXT NOT NULL | ISO-8601 timestamp |
 | `repo_url` | TEXT | Repository URL (SSH form) |
 | `branch` | TEXT | Branch name |
+| `merged_count` | INTEGER NOT NULL | How many near-identical source notes this entry stands for (1 when unmerged) |
 
 FAISS: One flat L2 index per namespace. Dimension is 384 for both default backends.
+
+## Near-Duplicate Merging
+
+A looping branch writes the same note over and over ("rule X failed again…",
+"OOP review done … CLEAN"), which crowds out useful recall. `POST
+/api/memory/store` merges these **at store time**: before indexing a new entry
+it searches the namespace index for the nearest existing notes, post-filters to
+the **same repository and branch**, and if one has a cosine similarity at or
+above `NEAR_DUPLICATE_SIMILARITY_THRESHOLD` (default `0.97`) it keeps the new
+(newest) entry and drops the older near-duplicate. The survivor's `merged_count`
+records how many source notes it now represents, and the store response returns
+`merged_count` plus the `merged_ids` that were collapsed.
+
+Store-time merging (rather than a periodic compaction job) keeps the index free
+of duplicates with bounded per-store work — the embedding is already computed
+for indexing, so merging adds one nearest-neighbour search — and leaves no
+window during which duplicates pollute recall. Distinct notes, and identical
+text on a different branch or repository, are never merged. Similarity is
+computed from the reconstructed index vectors, so it is correct whether or not
+the embedder normalizes its output.
 
 The `source` column carries a second meaning for entries written by the
 Consultant's `remember` tool: instead of a plain origin label it holds
@@ -169,6 +194,8 @@ tools/mcp/memory/
 | `AR_MEMORY_AUTH_TOKEN` | (none) | Optional bearer token for authentication |
 | `AR_MEMORY_BACKEND` | `fastembed` | Embedding backend: `fastembed` or `sentence-transformers` |
 | `AR_MEMORY_MODEL` | *(backend default)* | Override model name |
+| `AR_MEMORY_MERGE_NEAR_DUPLICATES` | `1` | Merge near-identical memories on the same repo+branch at store time (`0`/`false`/`off` to disable) |
+| `AR_MEMORY_NEAR_DUPLICATE_THRESHOLD` | `0.97` | Cosine-similarity floor above which two notes are merged |
 
 ## Embedding Backends
 
