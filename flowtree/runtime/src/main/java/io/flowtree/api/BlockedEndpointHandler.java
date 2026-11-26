@@ -39,7 +39,7 @@ import java.util.function.Function;
  *
  * <p>The worker that ran the job reads the claim back with a GET before it
  * decides whether to run enforcement (see {@link BlockReport#fetch(String,
- * boolean)}). The GET answers {@code {"blocked":true,"category":...,
+ * String, boolean)}). The GET answers {@code {"blocked":true,"category":...,
  * "detail":...}} when a report exists and {@code {"blocked":false}} otherwise.
  * Verification is the worker's concern; the controller only stores and returns
  * the agent's claim.</p>
@@ -107,14 +107,15 @@ public final class BlockedEndpointHandler {
 
     /**
      * Returns the block reported for a job, for the worker to read before it
-     * runs enforcement.
+     * runs enforcement. The report is consumed as it is read; a job's block is
+     * delivered once, to the one worker that acts on it.
      *
      * @param jobId the job identifier from the URL path, or {@code null}
      * @return {@code {"blocked":true,"category":...,"detail":...}} when a report
      *         exists, {@code {"blocked":false}} otherwise
      */
     public Response handleGet(String jobId) {
-        BlockReport report = jobId == null ? null : registry.lookup(jobId).orElse(null);
+        BlockReport report = jobId == null ? null : registry.consume(jobId).orElse(null);
         if (report == null) {
             return NanoHTTPD.newFixedLengthResponse(Response.Status.OK, "application/json",
                     "{\"blocked\":false}");

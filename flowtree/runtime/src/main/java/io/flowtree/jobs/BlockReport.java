@@ -34,7 +34,7 @@ import java.util.Set;
  * <p>A report is the agent's claim. The harness re-verifies a claim where it can:
  * a {@link #GUARDRAIL} block asserts that a guardrail or hook denied the agent,
  * which the worker confirms against the denials actually recorded in the session
- * (see {@link #fetch(String, boolean)}). A claim the harness cannot corroborate
+ * (see {@link #fetch(String, String, boolean)}). A claim the harness cannot corroborate
  * is kept but marked {@linkplain #isVerified() unverified} so a reader can tell a
  * confirmed block from an asserted one. Claims in the other categories carry no
  * such invariant and are always considered verified.</p>
@@ -140,29 +140,40 @@ public final class BlockReport {
      * Fetches the block report the agent recorded for a job, computing its
      * verification state from the session's recorded denials.
      *
-     * <p>Reads {@code GET <jobBaseUrl>/blocked} on the controller, where the
-     * {@code job_report_blocked} tool posted the claim. A {@link #GUARDRAIL}
-     * claim is marked verified only when {@code denialRecorded} is {@code true}
-     * — i.e. the session actually recorded a tool or permission denial; a
-     * guardrail claim with no such denial is kept but marked unverified. Claims
-     * in the other categories are always verified.</p>
+     * <p>Reads {@code GET .../api/workstreams/{id}/jobs/{jobId}/blocked} on the
+     * controller, where the {@code job_report_blocked} tool posted the claim.
+     * The read URL is derived from the job's {@code jobId} and the controller
+     * base of {@code workstreamUrl} rather than by appending to
+     * {@code workstreamUrl} directly: a job's workstream URL is not always a job
+     * URL (completion-listener jobs carry the workstream-level
+     * {@code .../api/workstreams/{id}}), and appending {@code /blocked} to that
+     * would query a path with no job id and never see the report.</p>
+     *
+     * <p>A {@link #GUARDRAIL} claim is marked verified only when
+     * {@code denialRecorded} is {@code true} — i.e. the session actually
+     * recorded a tool or permission denial; a guardrail claim with no such
+     * denial is kept but marked unverified. Claims in the other categories are
+     * always verified.</p>
      *
      * <p>Fire-and-forget: any transport error, a missing record, or a malformed
      * response yields {@code null} (the job was not reported blocked), so a
      * controller hiccup never turns a normal job into a blocked one.</p>
      *
-     * @param jobBaseUrl     the job's controller URL
-     *                       ({@code .../api/workstreams/{id}/jobs/{jobId}}), or
-     *                       {@code null}/empty when no controller is configured
+     * @param workstreamUrl  the job's workstream (or workstream-job) URL, from
+     *                       which the controller base and workstream id are
+     *                       taken; {@code null}/empty when no controller is
+     *                       configured
+     * @param jobId          the job to read the block for; {@code null}/empty
+     *                       when unknown
      * @param denialRecorded whether the session recorded a tool or permission denial
      * @return the fetched report, or {@code null} when the job was not reported blocked
      */
-    public static BlockReport fetch(String jobBaseUrl, boolean denialRecorded) {
-        if (jobBaseUrl == null || jobBaseUrl.isEmpty()) {
+    public static BlockReport fetch(String workstreamUrl, String jobId, boolean denialRecorded) {
+        String url = blockedUrl(workstreamUrl, jobId);
+        if (url == null) {
             return null;
         }
-        String body = get(jobBaseUrl.endsWith("/")
-                ? jobBaseUrl + "blocked" : jobBaseUrl + "/blocked");
+        String body = get(url);
         if (body == null || !JsonFieldExtractor.extractBoolean(body, "blocked")) {
             return null;
         }
@@ -173,6 +184,35 @@ public final class BlockReport {
         String detail = JsonFieldExtractor.extractString(body, "detail");
         boolean verified = !GUARDRAIL.equals(category) || denialRecorded;
         return new BlockReport(category, detail, verified);
+    }
+
+    /**
+     * Builds the controller URL that serves a job's block report, rebuilding it
+     * around the job id so it is correct whether or not {@code workstreamUrl}
+     * already names a job.
+     *
+     * <p>The controller base and workstream id are taken from
+     * {@code workstreamUrl} and recombined with {@code jobId} as
+     * {@code <base>/api/workstreams/<wsId>/jobs/<jobId>/blocked}, mirroring
+     * {@link ConversationCatchUp#mailboxUrlFor(String)}.</p>
+     *
+     * @param workstreamUrl the job's workstream (or workstream-job) URL, or
+     *                      {@code null}/empty
+     * @param jobId         the job to read the block for, or {@code null}/empty
+     * @return the blocked-report URL, or {@code null} when either input is
+     *         missing or {@code workstreamUrl} is not a workstream URL
+     */
+    static String blockedUrl(String workstreamUrl, String jobId) {
+        if (workstreamUrl == null || workstreamUrl.isEmpty()
+                || jobId == null || jobId.isEmpty()) {
+            return null;
+        }
+        String base = WorkspaceResolver.extractControllerBaseUrl(workstreamUrl);
+        String workstreamId = WorkspaceResolver.extractWorkstreamId(workstreamUrl);
+        if (base == null || workstreamId == null || workstreamId.isEmpty()) {
+            return null;
+        }
+        return base + "/api/workstreams/" + workstreamId + "/jobs/" + jobId + "/blocked";
     }
 
     /**

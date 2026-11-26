@@ -23,8 +23,11 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
+import java.util.Optional;
+
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 /**
@@ -134,5 +137,57 @@ public class CodingAgentJobBlockedExitTest extends TestSuiteBase {
         assertFalse(BlockReport.isValidCategory("something_else"));
         assertFalse(BlockReport.isValidCategory(null));
         assertEquals(5, BlockReport.CATEGORIES.size());
+    }
+
+    /**
+     * The blocked-report URL is rebuilt around the job id, so it names the job
+     * even when the job's workstream URL is the workstream-level URL a
+     * completion-listener job carries (no {@code /jobs/{jobId}} segment).
+     */
+    @Test(timeout = 30000)
+    public void blockedUrlIsBuiltFromJobIdForWorkstreamLevelUrl() {
+        assertEquals("http://host:7780/api/workstreams/ws-1/jobs/job-9/blocked",
+                BlockReport.blockedUrl("http://host:7780/api/workstreams/ws-1", "job-9"));
+    }
+
+    /**
+     * A workstream URL that already names a different job is still rebuilt
+     * around the supplied job id, not appended to.
+     */
+    @Test(timeout = 30000)
+    public void blockedUrlRebuildsAroundSuppliedJobId() {
+        assertEquals("http://host:7780/api/workstreams/ws-1/jobs/job-9/blocked",
+                BlockReport.blockedUrl("http://host:7780/api/workstreams/ws-1/jobs/other", "job-9"));
+    }
+
+    /** A missing workstream URL, job id, or non-workstream URL yields no URL. */
+    @Test(timeout = 30000)
+    public void blockedUrlRequiresBothInputs() {
+        assertNull(BlockReport.blockedUrl(null, "job-9"));
+        assertNull(BlockReport.blockedUrl("http://host:7780/api/workstreams/ws-1", null));
+        assertNull(BlockReport.blockedUrl("http://host:7780/api/workstreams/ws-1", ""));
+        assertNull(BlockReport.blockedUrl("http://host:7780/health", "job-9"));
+    }
+
+    /** The registry delivers a reported block once, removing it as it is read. */
+    @Test(timeout = 30000)
+    public void registryConsumesReportOnRead() {
+        BlockReportRegistry registry = new BlockReportRegistry();
+        registry.record("job-7", new BlockReport(BlockReport.ALREADY_DONE, "on master", true));
+
+        Optional<BlockReport> first = registry.consume("job-7");
+        assertTrue("the first read finds the report", first.isPresent());
+        assertEquals("already_done", first.get().getCategory());
+
+        assertTrue("a second read finds nothing — the report was consumed",
+                registry.consume("job-7").isEmpty());
+    }
+
+    /** A null id or an unknown job consumes nothing rather than failing. */
+    @Test(timeout = 30000)
+    public void registryConsumeToleratesMissing() {
+        BlockReportRegistry registry = new BlockReportRegistry();
+        assertTrue(registry.consume(null).isEmpty());
+        assertTrue(registry.consume("no-such-job").isEmpty());
     }
 }

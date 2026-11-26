@@ -89,7 +89,7 @@ class JobSessionAccumulator {
     /**
      * The block the agent reported for this job, or {@code null} when it did not
      * report one. Set by the worker after it reads the controller's record (see
-     * {@link BlockReport#fetch(String, boolean)}); read by {@link EnforcementRunner}
+     * {@link BlockReport#fetch(String, String, boolean)}); read by {@link EnforcementRunner}
      * to skip retries and by {@link CodingAgentJobEvent} to report the terminal
      * {@link JobCompletionEvent.Status#BLOCKED} status.
      */

@@ -1023,7 +1023,7 @@ public class CodingAgentJob extends GitManagedJob {
 
         // Learn whether the agent reported itself blocked (job_report_blocked);
         // a reported block skips enforcement and ends the job BLOCKED.
-        accumulator.setBlockReport(BlockReport.fetch(resolveWorkstreamUrl(),
+        accumulator.setBlockReport(BlockReport.fetch(resolveWorkstreamUrl(), getTaskId(),
                 accumulator.getPermissionDenials() > 0
                         || (accumulator.getDeniedToolNames() != null
                                 && !accumulator.getDeniedToolNames().isEmpty())));

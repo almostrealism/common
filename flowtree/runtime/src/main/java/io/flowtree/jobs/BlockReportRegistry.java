@@ -26,12 +26,17 @@ import java.util.concurrent.ConcurrentHashMap;
  *
  * <p>An agent runs on a worker but reaches the controller over HTTP; a block it
  * declares lands here. The same worker reads it back (via
- * {@link BlockReport#fetch(String, boolean)}) before it decides whether to run
- * enforcement, which is why the claim is held centrally rather than on the live
- * job object. A stored report carries the agent's category and detail only; its
- * {@linkplain BlockReport#isVerified() verified} flag is meaningless here
- * (the controller cannot inspect the session) and the worker recomputes it when
- * it fetches the report.</p>
+ * {@link BlockReport#fetch(String, String, boolean)}) before it decides whether
+ * to run enforcement, which is why the claim is held centrally rather than on
+ * the live job object. A stored report carries the agent's category and detail
+ * only; its {@linkplain BlockReport#isVerified() verified} flag is meaningless
+ * here (the controller cannot inspect the session) and the worker recomputes it
+ * when it fetches the report.</p>
+ *
+ * <p>A report is read exactly once, by the worker that will act on it, so
+ * {@link #consume(String)} removes it as it returns it. The controller is a
+ * long-lived service; holding every report for its lifetime would leak one
+ * entry per blocked job, and nothing reads a report a second time.</p>
  *
  * @author Michael Murray
  */
@@ -55,15 +60,17 @@ public final class BlockReportRegistry {
     }
 
     /**
-     * Returns the block reported for a job, if any.
+     * Returns the block reported for a job, if any, removing it as it does so:
+     * a report is delivered once, to the worker that reads it back before
+     * deciding whether to run enforcement.
      *
      * @param jobId the job to look up
      * @return the reported block, or empty when the job was not reported blocked
      */
-    public Optional<BlockReport> lookup(String jobId) {
+    public Optional<BlockReport> consume(String jobId) {
         if (jobId == null) {
             return Optional.empty();
         }
-        return Optional.ofNullable(byJob.get(jobId));
+        return Optional.ofNullable(byJob.remove(jobId));
     }
 }
