@@ -138,6 +138,24 @@ public class FileWaveDataProvider extends WaveDataProviderAdapter implements Pat
 		});
 	}
 
+	/**
+	 * Returns whether this file can be read, honoring the
+	 * {@link WaveDataProvider#isReadable()} contract that a readable provider
+	 * reports a positive sample rate. A file already recorded as corrupt after a
+	 * prior failed read is answered from the corrupt-file record alone, so a file
+	 * that has failed once in this JVM is reported unreadable without being
+	 * reopened. For a file not yet marked corrupt the sample rate is read from the
+	 * header (lazily, and cached), so a header reporting a non-positive rate is
+	 * reported unreadable rather than entering analysis with a zero rate.
+	 *
+	 * @return true if the file is not marked corrupt and its header reports a
+	 *         positive sample rate
+	 */
+	@Override
+	public boolean isReadable() {
+		return !corruptFiles.contains(getResourcePath()) && getSampleRate() > 0;
+	}
+
 	@Override
 	public int getSampleRate() {
 		if (corruptFiles.contains(getResourcePath())) return 0;
