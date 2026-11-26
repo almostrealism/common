@@ -62,10 +62,15 @@ import java.util.stream.IntStream;
  *       {@link #MULTI_CHANNELS_PROPERTY}; default is all channels.</li>
  *   <li><b>single</b> — single-channel render via the
  *       {@link AudioScenePopulation#generate(int, int, java.util.function.Supplier,
- *       java.util.function.Consumer)} path used by ringsdesktop pattern preview generation.</li>
+ *       java.util.function.Consumer)} path used by client pattern preview generation.</li>
  * </ul>
  *
  * <h2>Configuration</h2>
+ * <p>Every switch is read through {@link SystemUtils#getProperty(String)}, so it may be given
+ * either as a JVM system property ({@code -DAR_BENCHMARK_REPEATS=4}) or as an environment
+ * variable of the same name. The scene itself comes from {@link AudioSceneOptimizer#createScene()},
+ * so the sample library ({@code AR_RINGS_LIBRARY}) and {@code pattern-factory.json} in the local
+ * destination must be present; without them the scene renders no note audio.</p>
  * <ul>
  *   <li>{@code AR_BENCHMARK_DURATIONS} — comma-separated list of total-measure values to sweep
  *       (default {@code "8,16,32,64"}).</li>
@@ -84,7 +89,58 @@ import java.util.stream.IntStream;
  *       {@code results/audio-scene-benchmark.csv}).</li>
  *   <li>{@code AR_BENCHMARK_PROFILE_DIR} — directory for {@link OperationProfileNode} XML files
  *       (default {@code results/profiles}).</li>
+ *   <li>{@code AR_BENCHMARK_DISABLE_PROFILE} — set to {@code true} to skip
+ *       {@link OperationProfileNode} capture (default {@code false}). A profile tree is itself a
+ *       large heap object, so disable it for heap measurements.</li>
+ *   <li>{@code AR_BENCHMARK_TIMELINE_DIR} — directory for per-tick timeline CSV files
+ *       (default {@code results/timelines}).</li>
+ *   <li>{@code AR_BENCHMARK_BUFFER_SIZES} — comma-separated list of buffer sizes (frames per
+ *       tick) to sweep (default {@link AudioScene#DEFAULT_REALTIME_BUFFER_SIZE}).</li>
+ *   <li>{@code AR_BENCHMARK_REUSE_SCENE} — set to {@code true} to build one scene and population
+ *       per duration and evaluate every repetition's genome against it, as the optimizer does
+ *       (default {@code false}: a fresh scene is built and destroyed per repetition).</li>
+ *   <li>{@code AR_BENCHMARK_INTER_REPEAT_PAUSE_MS} — when positive, run {@code System.gc()} and
+ *       pause this many milliseconds after each repetition, with a marker file present for the
+ *       duration of the pause (default {@code 0}, no pause).</li>
+ *   <li>{@code AR_BENCHMARK_CLEAR_AUDIO_CACHE} — set to {@code true} to call
+ *       {@link NoteAudioProvider#clearCache()} after each repetition (default {@code false}).
+ *       This is a control for the heap-diff procedure, not a fix: it drops every note's cache
+ *       tracking, including notes a live scene still uses.</li>
+ *   <li>{@code AR_BENCHMARK_GC_BEFORE_GENOME} — set to {@code false} to disable
+ *       {@link AudioScenePopulation#gcBeforeGenome} (default {@code true}), so that per-genome
+ *       heap growth is not masked by a forced collection.</li>
  * </ul>
+ *
+ * <h2>Heap-diff procedure</h2>
+ * <p>This procedure shows whether heap is retained from one genome evaluation to the next,
+ * and what carries it.</p>
+ * <ol>
+ *   <li>Run the multi-channel sweep only, for one duration and buffer size and several
+ *       repetitions, pausing between repetitions: {@code AR_BENCHMARK_RUN_SINGLE=false},
+ *       {@code AR_BENCHMARK_DURATIONS=8}, {@code AR_BENCHMARK_REPEATS=5},
+ *       {@code AR_BENCHMARK_DISABLE_PROFILE=true},
+ *       {@code AR_BENCHMARK_INTER_REPEAT_PAUSE_MS=30000}. Set {@code AR_BENCHMARK_REUSE_SCENE=true}
+ *       to measure growth per genome on one scene, and {@code false} to measure growth per
+ *       scene built and destroyed.</li>
+ *   <li>The JVM logs {@code AudioSceneBenchmark JVM PID=<pid>}. Attach to that process with the
+ *       {@code ar-jmx} tools ({@code attach_to_pid}).</li>
+ *   <li>During each pause a file {@code rep-<mode>-<measures>m-<repeat>-paused.marker} exists
+ *       next to the CSV report. The pause starts with {@code System.gc()}, so the heap is
+ *       settled. Take a class histogram ({@code get_class_histogram}) and a heap summary in
+ *       every pause.</li>
+ *   <li>Diff consecutive histograms ({@code diff_class_histogram}). Retention shows up as
+ *       instance counts that grow by a fixed amount with every repetition. Growth in
+ *       {@code CachedValue}, {@code NoteAudioProvider}, and the {@code PackedCollection}s and
+ *       closures they capture points at the note-audio cache.</li>
+ *   <li>Repeat the run with {@code AR_BENCHMARK_CLEAR_AUDIO_CACHE=true} as a control. If the
+ *       growth disappears there, the note-audio cache is what carries it. Repetition 0 is the
+ *       warm-up (kernel compilation, first-use caches) and is excluded from the comparison.</li>
+ * </ol>
+ * <p>An {@link AudioScene} releases its note-audio cache entries when it is destroyed (see
+ * {@link AudioScene#destroy()}). With {@code AR_BENCHMARK_REUSE_SCENE=false} the release
+ * happens between repetitions. With {@code true} the scene's notes stay in use across genomes,
+ * so their entries remain cached, bounded by the cache's entry limit, until the scene is
+ * destroyed at the end of the duration.</p>
  */
 public class AudioSceneBenchmark {
 
@@ -789,7 +845,7 @@ public class AudioSceneBenchmark {
 	/**
 	 * Runs the single-channel render path for one duration. Mirrors the
 	 * {@link AudioScenePopulation#generate(int, int, java.util.function.Supplier,
-	 * java.util.function.Consumer)} code path used by ringsdesktop pattern preview generation, but
+	 * java.util.function.Consumer)} code path used by client pattern preview generation, but
 	 * inlines the rendering loop so per-tick timings can be captured.
 	 *
 	 * @param totalMeasures   number of measures to render

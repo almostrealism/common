@@ -19,6 +19,7 @@ package io.almostrealism.code;
 import io.almostrealism.relation.Evaluable;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.function.Consumer;
@@ -47,7 +48,7 @@ import java.util.stream.Collectors;
  * CacheManager<ComputedData> cache = new CacheManager<>();
  *
  * // Configure maximum entries with automatic eviction
- * cache.setAccessListener(CacheManager.maxCachedEntries(cache, 100));
+ * cache.setMaxEntries(100);
  *
  * // Create a managed cached value
  * CachedValue<ComputedData> cached = cache.get(args -> expensiveComputation(args));
@@ -57,9 +58,8 @@ import java.util.stream.Collectors;
  * }</pre>
  *
  * <h2>Eviction Strategy</h2>
- * <p>The static method {@link #maxCachedEntries(CacheManager, int)} provides an eviction
- * strategy that automatically clears the oldest cached entries when the cache size
- * exceeds the specified maximum. This is typically set as the access listener.</p>
+ * <p>{@link #setMaxEntries(int)} bounds the cache: after every access the manager clears
+ * and stops tracking its least recently used entries until the bound holds again.</p>
  *
  * @param <T> the type of values stored in the cache
  * @see CachedValue
@@ -68,7 +68,9 @@ import java.util.stream.Collectors;
 public class CacheManager<T> {
 	/**
 	 * Map of cached values to their last access timestamp (milliseconds since epoch).
-	 * Used for LRU ordering and eviction decisions.
+	 * Used for LRU ordering and eviction decisions. Every access synchronizes on this
+	 * manager: one owner may release its entries while others are computing theirs on
+	 * render threads.
 	 */
 	private HashMap<CachedValue<T>, Long> values;
 
@@ -91,6 +93,12 @@ public class CacheManager<T> {
 	private Predicate<T> valid;
 
 	/**
+	 * Maximum number of available entries retained after each access, or
+	 * {@code 0} for an unbounded cache. See {@link #setMaxEntries(int)}.
+	 */
+	private int maxEntries;
+
+	/**
 	 * Creates a new cache manager with an empty cache.
 	 */
 	public CacheManager() {
@@ -100,8 +108,8 @@ public class CacheManager<T> {
 	/**
 	 * Sets a listener that will be invoked on each cache access.
 	 *
-	 * <p>This is commonly used with {@link #maxCachedEntries(CacheManager, int)}
-	 * to implement automatic eviction when the cache grows too large.</p>
+	 * <p>The listener runs after this manager has applied its own
+	 * {@link #setMaxEntries(int) entry bound}.</p>
 	 *
 	 * @param listener the access listener, or {@code null} to disable
 	 */
@@ -135,6 +143,27 @@ public class CacheManager<T> {
 	}
 
 	/**
+	 * Bounds this cache to the given number of available entries. After every access
+	 * the least recently used entries beyond the bound are cleared, invoking the
+	 * {@link #setClear(Consumer) clear consumer}, and dropped from the access-time map.
+	 *
+	 * <p>Dropping matters as much as clearing: otherwise the map would keep every entry
+	 * ever evicted, and with it the source {@link Evaluable} and everything its closure
+	 * captured, growing without bound for as long as new entries keep arriving. It is
+	 * also safe: an evicted entry that is evaluated again recomputes its value and
+	 * re-registers itself.</p>
+	 *
+	 * @param maxEntries the maximum number of entries to retain, or {@code 0} for no bound
+	 */
+	public void setMaxEntries(int maxEntries) {
+		if (maxEntries < 0) {
+			throw new IllegalArgumentException("maxEntries must not be negative: " + maxEntries);
+		}
+
+		this.maxEntries = maxEntries;
+	}
+
+	/**
 	 * Returns all available cached values, ordered by last access time (oldest first).
 	 *
 	 * <p>Only cached values that are currently available (have been populated and
@@ -143,10 +172,10 @@ public class CacheManager<T> {
 	 *
 	 * @return a list of cached values sorted by access time, oldest first
 	 */
-	public List<CachedValue<T>> getCachedOrdered() {
+	public synchronized List<CachedValue<T>> getCachedOrdered() {
 		List<CachedValue<T>> values = new ArrayList<>(this.values.keySet().stream()
 				.filter(CachedValue::isAvailable).collect(Collectors.toList()));
-		values.sort((a, b) -> (int) (this.values.get(a) - this.values.get(b)));
+		values.sort(Comparator.comparingLong(this.values::get));
 		return values;
 	}
 
@@ -157,12 +186,10 @@ public class CacheManager<T> {
 	 * and validation predicate. When evaluated, the cached value will:</p>
 	 * <ol>
 	 *   <li>Record its access timestamp in this manager</li>
+	 *   <li>Evict the least recently used entries beyond the {@link #setMaxEntries(int) bound}</li>
 	 *   <li>Invoke the access listener (if configured)</li>
 	 *   <li>Delegate to the source evaluable</li>
 	 * </ol>
-	 *
-	 * <p>The access listener invocation enables automatic eviction when used with
-	 * {@link #maxCachedEntries(CacheManager, int)}.</p>
 	 *
 	 * @param source the evaluable that produces the cached value
 	 * @return a new managed cached value
@@ -171,7 +198,11 @@ public class CacheManager<T> {
 		CachedValue<T> v = new CachedValue<>(null, clear);
 		v.setValid(valid);
 		v.setEvaluable(args -> {
-			values.put(v, System.currentTimeMillis());
+			synchronized (this) {
+				values.put(v, System.currentTimeMillis());
+			}
+
+			evictBeyondMaxEntries();
 			if (access != null) access.run();
 			return source.evaluate(args);
 		});
@@ -179,44 +210,30 @@ public class CacheManager<T> {
 	}
 
 	/**
-	 * Creates an eviction strategy that limits the cache to a maximum number of entries.
-	 *
-	 * <p>Returns a {@link Runnable} that, when invoked, checks if the cache exceeds
-	 * the maximum size and clears the oldest entries (by access time) until the
-	 * cache is within bounds.</p>
-	 *
-	 * <h2>Usage</h2>
-	 * <pre>{@code
-	 * CacheManager<Data> cache = new CacheManager<>();
-	 * cache.setAccessListener(CacheManager.maxCachedEntries(cache, 100));
-	 * }</pre>
-	 *
-	 * @param <T> the type of values in the cache
-	 * @param mgr the cache manager to apply eviction to
-	 * @param max the maximum number of entries to retain
-	 * @return a runnable that enforces the maximum entry limit
+	 * Clears and drops the least recently used available entries until no more than
+	 * {@link #setMaxEntries(int) maxEntries} remain. Does nothing for an unbounded cache.
 	 */
-	public static <T> Runnable maxCachedEntries(CacheManager<T> mgr, int max) {
-		return () -> {
-			List<CachedValue<T>> ordered = mgr.getCachedOrdered();
+	private void evictBeyondMaxEntries() {
+		if (maxEntries <= 0) return;
 
-			int count = ordered.size() - max;
-			if (count <= 0) return;
+		List<CachedValue<T>> ordered = getCachedOrdered();
+		int count = ordered.size() - maxEntries;
 
-			for (int i = 0; i < count; i++) ordered.get(i).clear();
-			// System.out.println("CacheManager: Cleared " + count + " cached values");
-		};
+		for (int i = 0; i < count; i++) {
+			CachedValue<T> evicted = ordered.get(i);
+			evicted.clear();
+			drop(evicted);
+		}
 	}
 
 	/**
 	 * Drops all entries from the internal access-time map without invoking any
 	 * entry's clear consumer.
 	 *
-	 * <p>{@link #maxCachedEntries(CacheManager, int)} only marks evicted entries
-	 * unavailable; the internal {@code HashMap} keys remain, holding strong
-	 * references to the source {@link Evaluable} instances and through them to
-	 * any objects captured in their closures. This method drops those references
-	 * so the captured graph becomes eligible for garbage collection.</p>
+	 * <p>Every tracked entry holds a strong reference to its source
+	 * {@link Evaluable} and, through it, to any objects captured in its closure.
+	 * This method drops those references for every entry at once, so the captured
+	 * graph becomes eligible for garbage collection.</p>
 	 *
 	 * <p>The clear consumer (configured via {@link #setClear(Consumer)}) is
 	 * intentionally <em>not</em> invoked here. The clear consumer is designed
@@ -227,7 +244,34 @@ public class CacheManager<T> {
 	 * still-live state. Native memory referenced by the dropped values is
 	 * released by ordinary GC + finalizer paths.</p>
 	 */
-	public void dropAll() {
+	public synchronized void dropAll() {
 		values.clear();
+	}
+
+	/**
+	 * Drops a single entry from the internal access-time map without invoking its
+	 * clear consumer. This is the per-entry form of {@link #dropAll()}, for an owner
+	 * that knows exactly which entries it created and is releasing them while other
+	 * owners' entries in the same cache must remain tracked for eviction.
+	 *
+	 * <p>As with {@link #dropAll()}, the value itself is not destroyed. If the dropped
+	 * value is evaluated again it re-registers itself on its next computation.</p>
+	 *
+	 * @param value the cached value to stop tracking
+	 * @return {@code true} if the value was tracked by this manager
+	 */
+	public synchronized boolean drop(CachedValue<T> value) {
+		return values.remove(value) != null;
+	}
+
+	/**
+	 * Returns whether the given value is currently tracked by this manager, that is,
+	 * whether it has been computed through this manager and not since dropped.
+	 *
+	 * @param value the cached value to look up
+	 * @return {@code true} if the value is held in the internal access-time map
+	 */
+	public synchronized boolean contains(CachedValue<T> value) {
+		return values.containsKey(value);
 	}
 }
