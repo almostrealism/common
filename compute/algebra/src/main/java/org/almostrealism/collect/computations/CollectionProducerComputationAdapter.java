@@ -774,7 +774,7 @@ public abstract class CollectionProducerComputationAdapter
 	@Override
 	protected CollectionProducer deltaMatrix(Producer<?> target) {
 		return TraversableDeltaComputation.create("delta", getShape(), shape(target),
-				args -> CollectionExpression.create(getShape(), idx -> args[1].getValueAt(idx)), target,
+				args -> CollectionExpression.create(getShape(), idx -> args[1].getValueAt(idx)), signature(), target,
 				this)
 				.setDescription(args -> "delta(" + description(args) + ")");
 	}

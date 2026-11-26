@@ -108,4 +108,24 @@ public interface InstructionSetManager<K extends ExecutionKey> extends Destroyab
 	 * @throws org.almostrealism.hardware.HardwareException if compilation fails
 	 */
 	Execution getOperator(K key);
+
+	/**
+	 * Marks that a dispatch has begun using this manager's compiled instructions, so that a
+	 * concurrent {@link Destroyable#destroy()} defers releasing them (and notifying its destroy
+	 * listeners) until every such dispatch has completed. Balanced by {@link #releaseAfterDispatch()}.
+	 *
+	 * <p>An operation's {@code apply} holds a retain across the whole dispatch, including the kernel
+	 * that runs asynchronously after {@code apply} returns, because the kernel reads memory owned by
+	 * these instructions and executing through a destroyed instruction set reads freed memory. The
+	 * default does nothing: a manager whose instructions cannot be destroyed out from under a live
+	 * dispatch (one that is not shared through the eviction cache) needs no coordination.</p>
+	 */
+	default void retainForDispatch() { }
+
+	/**
+	 * Marks that a dispatch has finished using this manager's compiled instructions. When the last
+	 * retained dispatch completes, a {@link Destroyable#destroy()} that was deferred while dispatches
+	 * were in flight is performed now. Balances a prior {@link #retainForDispatch()}.
+	 */
+	default void releaseAfterDispatch() { }
 }

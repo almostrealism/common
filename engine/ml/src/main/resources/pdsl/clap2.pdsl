@@ -1,0 +1,193 @@
+/**
+ * CLAP2: the two towers of LAION's CLAP2 contrastive audio-text models, which map an audio clip and
+ * an English caption into one embedding space so that their cosine similarity scores how well the
+ * caption describes the clip (zero-shot audio tagging and retrieval).
+ *
+ *   audio tower   a NaFlex vision transformer over log-mel patches: a linear patch embedding with
+ *                 one learned register token, pre-norm transformer blocks with axial (frequency x
+ *                 time) rotary position embedding, SwiGLU feed-forward and LayerScale, a final
+ *                 RMS norm, attention pooling and a two-layer GELU projection head
+ *   text tower    a bidirectional transformer over byte-level BPE tokens: token embedding, pre-norm
+ *                 blocks with rotary position embedding, query/key RMS norm and SwiGLU, a final RMS
+ *                 norm, attention pooling with query/key RMS norm and a linear projection
+ *
+ * Clap2AudioEncoder and Clap2TextEncoder bind the checkpoint and build clap2_audio_tower and
+ * clap2_text_tower. The weights are named as the CLAP2 extraction script writes them (under audio.
+ * and text.); that script also rearranges three things so the towers can use the shared layers
+ * unchanged:
+ *
+ *   rotary pairing   CLAP2 rotates interleaved feature pairs (2i, 2i + 1); sequence_rope rotates the
+ *                    split-half pairs (i, i + head_dim / 2). The query and key rows of every qkv
+ *                    projection (and the query/key norm scales) are permuted so that old feature 2i
+ *                    becomes feature i and 2i + 1 becomes i + head_dim / 2; attention scores are
+ *                    invariant under applying one permutation to both queries and keys.
+ *   gate halves      the audio feed-forward gates its FIRST half (silu(x1) * x2); glu_feed_forward
+ *                    gates its second. The two halves of each audio fc1 are swapped.
+ *   register token   the patch embedding has no bias, so the register token is appended to it as one
+ *                    more input column, [patch_dim + 1] wide: the encoder feeds a first row that is
+ *                    zero except for a one in that column, and every patch row carries a zero there,
+ *                    so the first output row is exactly the register token.
+ *
+ * Positions of the audio tower are axial: the encoder computes the [seq_len, head_dim / 2] angle
+ * table (zero for the register token, which is not rotated) and binds it as angles. The audio pool
+ * reads only the patches: pool_mask is zero at the register token and one at every patch.
+ */
+
+import "/pdsl/sequence_attention.pdsl"
+import "/pdsl/feed_forward.pdsl"
+import "/pdsl/attention_pool.pdsl"
+
+/**
+ * One audio transformer block (timm's EvaBlock with LayerScale): [batch, seq_len, dim] -> same.
+ *
+ *   accum   x = x + gamma_1 ⊙ attention(rmsnorm(x))
+ *             sequence_attention with biased qkv and output projections, the axial angle table and
+ *             all-ones masks (one clip, no padding)
+ *             scale(gamma_1, 2)   each channel times its LayerScale factor
+ *   accum   x = x + gamma_2 ⊙ swiglu(rmsnorm(x))
+ *             glu_feed_forward with biased projections and a SiLU gate
+ *             scale(gamma_2, 2)
+ *
+ * gamma_1 and gamma_2 are [batch, dim] (the extraction stores each LayerScale vector as one row).
+ */
+layer clap2_audio_block(batch: int, seq_len: int, heads: int, head_dim: int, inner_dim: int,
+                        norm1: weight, qkv_weight: weight, qkv_bias: weight,
+                        proj_weight: weight, proj_bias: weight, gamma_1: weight,
+                        norm2: weight, fc1_weight: weight, fc1_bias: weight,
+                        fc2_weight: weight, fc2_bias: weight, gamma_2: weight,
+                        angles: weight, padding_mask: weight, key_mask: weight, epsilon: float) {
+    // Residual self-attention, scaled per channel.
+    accum {
+        rmsnorm(norm1, epsilon)
+        sequence_attention(batch, seq_len, heads, head_dim,
+                           dense(qkv_weight, qkv_bias), dense(proj_weight, proj_bias),
+                           angles, padding_mask, key_mask)
+        scale(gamma_1, 2)
+    }
+
+    // Residual SwiGLU feed-forward, scaled per channel.
+    accum {
+        rmsnorm(norm2, epsilon)
+        glu_feed_forward(dense(fc1_weight, fc1_bias), dense(fc2_weight, fc2_bias), silu(),
+                         batch, seq_len, inner_dim)
+        scale(gamma_2, 2)
+    }
+}
+
+/**
+ * The whole audio tower: [batch, seq_len, patch_dim + 1] patch rows -> [batch, embed_dim].
+ *
+ *   dense(patch_embed)          patches (and the register row) to the trunk width  [batch, seq_len, dim]
+ *   rmsnorm(norm_pre)           the embedding normalized before the blocks
+ *   stack audio.blocks          one clap2_audio_block per layer
+ *   rmsnorm(norm)               the final norm
+ *   attention_pool              the latent query over the patches (pool_mask)      [batch, 1, dim]
+ *   dense(pool.proj)            the pool's output projection
+ *   accum                       x = x + mlp(rmsnorm(x)): the pool's GELU feed-forward
+ *   dense, gelu, dense          the projection head into the shared space          [batch, 1, embed_dim]
+ *   reshape                                                                         [batch, embed_dim]
+ */
+layer clap2_audio_tower(batch: int, seq_len: int, heads: int, head_dim: int, inner_dim: int,
+                        embed_dim: int, weights: checkpoint, angles: weight, padding_mask: weight,
+                        key_mask: weight, pool_mask: weight, epsilon: float) {
+    dense(weights.audio.patch_embed.weight)
+    rmsnorm(weights.audio.norm_pre.weight, epsilon)
+    stack weights.audio.blocks as block {
+        clap2_audio_block(batch, seq_len, heads, head_dim, inner_dim,
+                          block.norm1.weight, block.attn.qkv.weight, block.attn.qkv.bias,
+                          block.attn.proj.weight, block.attn.proj.bias, block.gamma_1,
+                          block.norm2.weight, block.mlp.fc1.weight, block.mlp.fc1.bias,
+                          block.mlp.fc2.weight, block.mlp.fc2.bias, block.gamma_2,
+                          angles, padding_mask, key_mask, epsilon)
+    }
+    rmsnorm(weights.audio.norm.weight, epsilon)
+
+    attention_pool(batch, seq_len, heads, head_dim, weights.audio.pool.latent,
+                   dense(weights.audio.pool.q.weight, weights.audio.pool.q.bias),
+                   dense(weights.audio.pool.kv.weight, weights.audio.pool.kv.bias), pool_mask)
+    dense(weights.audio.pool.proj.weight, weights.audio.pool.proj.bias)
+    accum {
+        rmsnorm(weights.audio.pool.norm.weight, epsilon)
+        dense(weights.audio.pool.mlp.fc1.weight, weights.audio.pool.mlp.fc1.bias)
+        gelu()
+        dense(weights.audio.pool.mlp.fc2.weight, weights.audio.pool.mlp.fc2.bias)
+    }
+
+    dense(weights.audio.head.hidden.weight, weights.audio.head.hidden.bias)
+    gelu()
+    dense(weights.audio.head.output.weight, weights.audio.head.output.bias)
+    reshape([batch, embed_dim])
+}
+
+/**
+ * One text transformer block: [batch, seq_len, dim] -> same.
+ *
+ *   accum   x = x + attention(rmsnorm(x))
+ *             sequence_attention_qk_rmsnorm: unbiased qkv and output projections, every query and
+ *             key row RMS-normalized before the rotation, the prompt mask on the keys
+ *   accum   x = x + swiglu(rmsnorm(x))
+ *             glu_feed_forward with unbiased projections and a SiLU gate
+ */
+layer clap2_text_block(batch: int, seq_len: int, heads: int, head_dim: int, inner_dim: int,
+                       norm1: weight, qkv_weight: weight, q_norm: weight, k_norm: weight,
+                       proj_weight: weight, norm2: weight, w12: weight, w3: weight,
+                       inv_freq: weight, padding_mask: weight, key_mask: weight, epsilon: float) {
+    // Residual self-attention over the prompt.
+    accum {
+        rmsnorm(norm1, epsilon)
+        sequence_attention_qk_rmsnorm(batch, seq_len, heads, head_dim,
+                                      dense(qkv_weight), dense(proj_weight),
+                                      q_norm, null, k_norm, null,
+                                      inv_freq, padding_mask, key_mask)
+    }
+
+    // Residual SwiGLU feed-forward.
+    accum {
+        rmsnorm(norm2, epsilon)
+        glu_feed_forward(dense(w12), dense(w3), silu(), batch, seq_len, inner_dim)
+    }
+}
+
+/**
+ * The whole text tower: [batch, seq_len] token ids -> [batch, embed_dim].
+ *
+ *   embedding(token_embedding)    each id replaced by its row               [batch, seq_len, dim]
+ *   stack text.blocks             one clap2_text_block per layer
+ *   rmsnorm(ln_final)             the final norm
+ *   attention_pool_qk_rmsnorm     the learned query over the prompt tokens  [batch, 1, dim]
+ *   dense(projection)             the projection into the shared space      [batch, 1, embed_dim]
+ *   reshape                                                                  [batch, embed_dim]
+ *
+ * key_mask is the prompt mask, one at a token and zero at padding; it masks the keys of every
+ * block and of the pool. padding_mask is the all-ones value mask.
+ */
+layer clap2_text_tower(batch: int, seq_len: int, heads: int, head_dim: int, inner_dim: int,
+                       embed_dim: int, weights: checkpoint, inv_freq: weight, padding_mask: weight,
+                       key_mask: weight, epsilon: float) {
+    embedding(weights.text.token_embedding.weight)
+    stack weights.text.blocks as block {
+        clap2_text_block(batch, seq_len, heads, head_dim, inner_dim,
+                         block.norm1.weight, block.attn.qkv.weight,
+                         block.attn.q_norm.weight, block.attn.k_norm.weight,
+                         block.attn.proj.weight, block.norm2.weight,
+                         block.mlp.w12.weight, block.mlp.w3.weight,
+                         inv_freq, padding_mask, key_mask, epsilon)
+    }
+    rmsnorm(weights.text.ln_final.weight, epsilon)
+    clap2_text_pool(batch, seq_len, heads, head_dim, weights, key_mask)
+    dense(weights.text.projection.weight)
+    reshape([batch, embed_dim])
+}
+
+/**
+ * The text tower's pool: [batch, seq_len, dim] -> [batch, 1, dim]. The learned latent query
+ * attends over the prompt tokens (key_mask), its rows and the key rows RMS-normalized per head;
+ * unlike the audio pool there is no output projection or feed-forward after it.
+ */
+layer clap2_text_pool(batch: int, seq_len: int, heads: int, head_dim: int,
+                      weights: checkpoint, key_mask: weight) {
+    attention_pool_qk_rmsnorm(batch, seq_len, heads, head_dim, weights.text.pool.latent,
+                              dense(weights.text.pool.q.weight), dense(weights.text.pool.kv.weight),
+                              weights.text.pool.q_norm.weight, weights.text.pool.k_norm.weight,
+                              key_mask)
+}

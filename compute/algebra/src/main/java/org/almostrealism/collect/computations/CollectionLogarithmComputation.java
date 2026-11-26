@@ -157,12 +157,8 @@ public class CollectionLogarithmComputation extends TraversableExpressionComputa
 	 */
 	@Override
 	public CollectionProducerParallelProcess generate(List<Process<?, ?>> children) {
-		return new CollectionLogarithmComputation(getName(), getShape(),
-				(Producer<PackedCollection>) children.get(1))
-				.setPostprocessor(getPostprocessor())
-				.setDescription(getDescription())
-				.setShortCircuit(getShortCircuit())
-				.addAllDependentLifecycles(getDependentLifecycles());
+		return copyConfigurationTo(new CollectionLogarithmComputation(getName(), getShape(),
+				(Producer<PackedCollection>) children.get(1)));
 	}
 
 	/**

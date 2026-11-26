@@ -13,6 +13,8 @@ Anything in the repository is in scope, including code that has not been
 touched in a year. Old code that everyone has stopped looking at is
 usually where this kind of thing survives.
 
+@include earlier-attempts.txt
+
 ## How to go about it
 
 **1. Choose somewhere to look, on purpose.**

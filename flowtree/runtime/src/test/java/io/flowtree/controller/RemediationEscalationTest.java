@@ -42,7 +42,7 @@ public class RemediationEscalationTest extends TestSuiteBase {
                         "https://github.com/o/r/blob/abc/src/Bar.java#L7", null)));
         RemediationEscalation escalation = new RemediationEscalation((repoUrl, branch) -> facts);
 
-        String message = escalation.compose("git@github.com:o/r.git", "feature", 8);
+        String message = escalation.compose("git@github.com:o/r.git", "feature", 10);
 
         assertTrue("states the cap", message.contains("cap"));
         assertTrue("links the PR", message.contains("https://github.com/o/r/pull/42"));
@@ -60,7 +60,7 @@ public class RemediationEscalationTest extends TestSuiteBase {
         RemediationEscalation escalation =
                 new RemediationEscalation((repoUrl, branch) -> PullRequestEscalation.NONE);
 
-        String message = escalation.compose("git@github.com:o/r.git", "feature", 8);
+        String message = escalation.compose("git@github.com:o/r.git", "feature", 10);
 
         assertTrue("states the cap", message.contains("cap"));
         assertTrue("names the review-thread section", message.contains("Unresolved review threads"));
@@ -73,8 +73,8 @@ public class RemediationEscalationTest extends TestSuiteBase {
     public void degradesToThePlainMessageWhenLookupReturnsNull() {
         RemediationEscalation escalation = new RemediationEscalation((repoUrl, branch) -> null);
 
-        String message = escalation.compose(null, null, 8);
+        String message = escalation.compose(null, null, 10);
 
-        assertTrue(message.contains(RemediationBudgetGuard.capReachedMessage(8)));
+        assertTrue(message.contains(RemediationBudgetGuard.capReachedMessage(10)));
     }
 }

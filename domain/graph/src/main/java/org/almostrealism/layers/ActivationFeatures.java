@@ -229,7 +229,11 @@ public interface ActivationFeatures extends GeometryFeatures {
 	 * <p>Subtracting the row maximum keeps every exponent at or below zero, so a single
 	 * large logit cannot overflow {@code exp} and a row of large negative logits cannot
 	 * underflow it to a zero sum. The subtracted maximum does not change the result, or its
-	 * gradient. The softmax is the {@code exp()} of this producer.</p>
+	 * gradient: the derivative through it is exactly zero, because the result is invariant
+	 * to any shift of a row. It is therefore held constant for differentiation
+	 * ({@link #stopGradient(Producer)}), so a backward pass neither selects the maximum nor
+	 * builds the terms through it that would cancel. The softmax is the {@code exp()} of this
+	 * producer.</p>
 	 *
 	 * @param input the logits; must have at least 2 dimensions
 	 * @return the log-softmax of each row of {@code input}, with the shape of {@code input}
@@ -244,7 +248,7 @@ public interface ActivationFeatures extends GeometryFeatures {
 		int axis = shape.getDimensions() - 1;
 		int size = shape.length(axis);
 
-		CollectionProducer max = traverse(axis, input).max();
+		CollectionProducer max = stopGradient(traverse(axis, input).max());
 		CollectionProducer stable = traverse(axis + 1, input).subtract(max.expand(size));
 		CollectionProducer logSum = stable.exp().traverse(axis).sum().log().expand(size);
 		return stable.subtract(logSum);

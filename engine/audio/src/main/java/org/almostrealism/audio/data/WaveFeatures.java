@@ -178,29 +178,36 @@ public class WaveFeatures implements Destroyable {
 	 * Computes a mean-pooled embedding vector from this feature set by averaging
 	 * its {@code [frames, bins]} feature data across frames.
 	 *
-	 * @return the {@code [bins]} mean, or {@code null} when there is no feature
-	 *         data to pool
+	 * <p>The frames are summed by a single reduction over the frame axis of the
+	 * {@code [frames, bins]} data, so the size of the computation does not grow
+	 * with the clip length. Only the whole frames the feature memory holds are
+	 * summed; the sum is divided by the declared frame count.</p>
+	 *
+	 * <p>Data laid out as {@code [frames, bins, 1, ...]}, with every dimension
+	 * after the bins of size one, holds the same values as {@code [frames, bins]}
+	 * and is pooled the same way. Data whose later dimensions hold more than one
+	 * value per bin is not {@code [frames, bins]} data and is not pooled.</p>
+	 *
+	 * @return the {@code [bins]} mean, or {@code null} when there is no
+	 *         {@code [frames, bins]} feature data to pool
 	 */
 	public PackedCollection meanPooledEmbedding() {
-		if (featureData == null) return null;
+		if (featureData == null || featureData.getShape().getDimensions() < 2) return null;
 
 		int frames = featureData.getShape().length(0);
 		int bins = featureData.getShape().length(1);
 		if (frames == 0 || bins == 0) return null;
+		if (featureData.getShape().getTotalSizeLong() != (long) frames * bins) return null;
 
-		CollectionProducer sum = null;
+		int available = Math.min(frames, featureData.getMemLength() / bins);
+		if (available == 0) return null;
 
-		for (int f = 0; f < frames; f++) {
-			if ((f + 1) * bins > featureData.getMemLength()) break;
-
-			CollectionProducer row = Ops.o().cp(
-					featureData.range(Ops.o().shape(bins), f * bins));
-			sum = sum == null ? row : sum.add(row);
-		}
-
-		if (sum == null) return null;
-
-		return sum.multiply(1.0 / frames).evaluate();
+		CollectionProducer rows = Ops.o().cp(
+				featureData.range(Ops.o().shape(available, bins)));
+		return rows.transpose().sum(1)
+				.multiply(1.0 / frames)
+				.reshape(Ops.o().shape(bins))
+				.evaluate();
 	}
 
 	/**

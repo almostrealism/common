@@ -14,11 +14,12 @@ This document describes how Flowtree integrates with CI/CD pipelines to automati
 6. [Prompt Generation](#prompt-generation)
 7. [Job Submission API](#job-submission-api)
 8. [Workstream Registration API](#workstream-registration-api)
-9. [Quality Gate Evaluation](#quality-gate-evaluation)
-10. [Concurrency Model](#concurrency-model)
-11. [Test File Protection](#test-file-protection)
-12. [Surefire Report Parsing](#surefire-report-parsing)
-13. [End-to-End Flow Diagram](#end-to-end-flow-diagram)
+9. [Completion Listeners](#completion-listeners)
+10. [Quality Gate Evaluation](#quality-gate-evaluation)
+11. [Concurrency Model](#concurrency-model)
+12. [Test File Protection](#test-file-protection)
+13. [Surefire Report Parsing](#surefire-report-parsing)
+14. [End-to-End Flow Diagram](#end-to-end-flow-diagram)
 
 ---
 
@@ -547,6 +548,7 @@ Creates a new workstream. When a `channelName` is provided and Slack is configur
 | `repoUrl` | `string` | No | Repository clone URL |
 | `planningDocument` | `string` | No | Path to the plan document relative to repo root |
 | `channelName` | `string` | No | Slack channel name (private channel auto-created) |
+| `completionListeners` | `string[]` | No | Workstream IDs woken when a job on this workstream finishes; see [Completion Listeners](#completion-listeners) |
 
 **Response (200):**
 
@@ -568,7 +570,7 @@ POST /api/workstreams/{id}/update
 Content-Type: application/json
 ```
 
-Updates fields on an existing workstream. All fields are optional; only provided non-empty fields are applied. Supports updating: `channelId`, `channelName`, `defaultBranch`, `baseBranch`, `repoUrl`, `planningDocument`.
+Updates fields on an existing workstream. All fields are optional; only provided non-empty fields are applied. Supports updating: `channelId`, `channelName`, `defaultBranch`, `baseBranch`, `repoUrl`, `planningDocument`. `completionListeners` and `dormantForCompletionListeners` are also accepted; unlike the string fields they are applied whenever the field is present, so an empty `completionListeners` array clears the list (see [Completion Listeners](#completion-listeners)).
 
 ### Health Check Endpoint
 
@@ -615,6 +617,168 @@ Returns agent wall-clock time per calendar day across every workstream, for `fro
 - Bad dates, an unknown zone, or a reversed or oversized range return HTTP 400. A controller without a stats store answers `{"error":"Stats not configured"}`.
 
 See `DailyAgentTime` for the arithmetic.
+
+---
+
+## Completion Listeners
+
+A completion listener is a workstream that is woken automatically when a job on another workstream finishes. The usual shape is an orchestrator that delegates work to several worker workstreams: each worker lists the orchestrator as a listener, and every time a worker job reaches a terminal status the controller submits a short "wake-up" job to the orchestrator, so it can read the results and decide what to do next.
+
+The feature does nothing until you set it up. A workstream with no listeners configured never causes a wake-up.
+
+### Configuring the `completionListeners` field
+
+`completionListeners` is a list of **workstream IDs** (not branch names or repository URLs) on the *source* workstream: the one whose completions should wake somebody. It is stored on `Workstream` (`getCompletionListeners()` / `setCompletionListeners(List)`) and persisted in `workstreams.yaml` by `WorkstreamConfig.WorkstreamEntry`. Blank and `null` entries are dropped by the setter, and the list defaults to empty.
+
+To make worker `ws-worker` wake orchestrator `ws-orch`, configure the **worker**:
+
+**REST (register):**
+
+```
+POST /api/workstreams
+Content-Type: application/json
+
+{"defaultBranch": "feature/foo", "completionListeners": ["ws-orch"]}
+```
+
+**REST (update):**
+
+```
+POST /api/workstreams/ws-worker/update
+Content-Type: application/json
+
+{"completionListeners": ["ws-orch"]}
+```
+
+On update the field is applied whenever it is present (`WorkstreamRegistrationHandler` checks `JsonFieldExtractor.hasField`). Leaving it out keeps the current list. Sending `"completionListeners": []` clears it. The controller reads the field only as a JSON array of strings.
+
+**MCP (`ar-manager`):** `workstream_register` and `workstream_update_config` both take a `completion_listeners` string. `_parse_completion_listeners` in `tools/mcp/manager/server.py` accepts either a comma-separated list (`"ws-orch,ws-audit"`) or a JSON array string (`'["ws-orch"]'`), trims every entry and drops empty ones.
+
+- `workstream_register` sends `completionListeners` only when the parsed list is non-empty.
+- `workstream_update_config`: an empty string (the default) means "no change". Any non-empty value is sent, even one that parses to an empty list such as `","`, which clears the listeners.
+- Both tools call `_require_dispatch_capable` (`tools/mcp/manager/workspace_map.py`). An agent can configure listeners only from a workstream with `dispatchCapable: true`. Operator tokens that aren't bound to a workstream are always allowed.
+
+**YAML:** see [Configuration: Completion listeners in YAML](configuration.md#completion-listeners-in-yaml).
+
+The listener-side opt-out `dormantForCompletionListeners` (described below) can be set through REST and YAML only. The MCP tools have no parameter for it.
+
+Wake-up jobs run *as the listener*. `CompletionListenerFanout.buildWakeUpFactory` takes the allowed tools, max turns, budget, branches, repository, planning document, required labels, phase configuration and agent environment from the **listener's** configuration, not the source's. The job description is `wake-up: <listener channel name> <- <source workstream ID>`. The prompt names the finished job (ID, status, description, commit, PR URL), the chain ID and the chain depth. The prompt names only the single completion that fired the wake-up — never the completions coalesced behind it within the window (`buildWakeUpPrompt` reads only the firing event). It also tells the listener to reconcile *every* workstream it has delegated to instead of acting on that single job. That rule is what makes it safe to drop or coalesce wake-ups: the next wake-up that does fire catches up on whatever the dropped ones would have reported.
+
+### Cycle rejection
+
+Before a `completionListeners` value is saved, the controller checks it with `ListenerCycleChecker.check` (`io.flowtree.workstream`). It runs a depth-first search over the whole listener graph as it would look after the change, and the request is refused if that graph has a cycle:
+
+| Configuration | Result | Error text (from `WorkstreamRegistrationHandler.checkListenerCycle`) |
+|---|---|---|
+| `A` lists `A` | rejected | `self-listing: workstream A cannot list itself as a completion listener` |
+| `A -> B`, then `B` lists `A` | rejected | `cycle: B -> A -> B` (the path is closed back to its first node) |
+| `A -> B`, `A -> C`, `B -> D`, `C -> D` (diamond) | allowed | — |
+
+A rejected register or update returns the error response, and nothing is written to the YAML config. That does not mean the request has no effect:
+
+- **Update.** `handleUpdate` applies the other fields in the body (channel, branches, repository, planning document, plan instructions, phase configuration, required labels, dependent repos) to the live in-memory workstream *before* it runs the cycle check. When the check fails, those changes are not rolled back. They take effect at once, and the next successful persist writes them to disk. The `completionListeners` value is left unchanged, and so is every field the handler applies *after* the check (for example `dispatchCapable`, `trackerCapabilities`, `dormantForCompletionListeners` and `kind`), so a rejected update can apply only part of its body. To be safe, send a listener change in its own update request, or fix the cycle and resend the whole body.
+- **Register.** The workstream is never registered. But if the body named a `channelName`, the Slack channel was already created before the check ran, so it is left behind.
+
+Listener IDs that don't belong to any registered workstream are **not** rejected when the config is saved. They are skipped at wake-up time with a `wakeup_listener_missing` warning.
+
+To have a job wake its *own* workstream once, use a shell job submitted with `selfNotify` instead of a standing self-listing ([Job Completion Events: Self-Notify Field](events.md)). That path goes through `CompletionListenerFanout.fanoutSelf` and has the same limits as an ordinary listener.
+
+### Fan-out limits
+
+`FlowTreeApiEndpoint.completeJob` calls `CompletionListenerFanout.fanout` for every terminal event. `STARTED` events never cause a fan-out. `dispatchToListener` then runs the gates below, in order, for each listener. The first gate that fails drops that wake-up (it is not queued or retried) and logs the reason shown:
+
+| # | Gate | Limit | Constant in `CompletionListenerFanout` | Log line |
+|---|------|-------|-----------------------------------------|----------|
+| 1 | Kill switch | `acceptAutomatedJobs == false` | — (see below) | `wakeup_kill_switch_active` |
+| 2 | Listener exists | listener ID must be a registered workstream | — | `wakeup_listener_missing` |
+| 3 | Listener dormancy | listener has `dormantForCompletionListeners: true` | — | `wakeup_listener_dormant` |
+| 4 | Coalesce window | at most 1 wake-up per (source, listener) pair per **30 s**; the first completion fires the wake-up and later completions in the window are dropped | `DEFAULT_COALESCE_WINDOW_SECONDS = 30` | none (the later job ID is appended to an in-memory bookkeeping list — see below) |
+| 5 | Chain depth | depth must be below **8** | `DEFAULT_MAX_CHAIN_DEPTH = 8` | `ceiling_hit ... reason=maxChainDepth(8)` |
+| 6 | Per-source-chain breadth | at most **25** wake-ups from one source completion | `DEFAULT_MAX_WAKE_UPS_PER_SOURCE_CHAIN = 25` | `ceiling_hit ... reason=maxWakeUpsPerSourceChain(25)` |
+| 7 | Per-listener flood window | at most **6** wake-ups per listener in a sliding **600 s** (10 min) window | `DEFAULT_MAX_WAKE_UPS_PER_WINDOW = 6`, `DEFAULT_MAX_WAKE_UP_WINDOW_SECONDS = 600` | `ceiling_hit ... reason=maxWakeUpsPerWindow(6/600s)` |
+| 8 | Per-listener debounce | after a wake-up is submitted to a listener, no new wake-up for **300 s** (5 min) | `DEFAULT_DEBOUNCE_SECONDS = 300` | `wakeup_listener_recently_woken ... sinceMs=<n>` |
+
+Things to know when reading these limits:
+
+- **None of the limits can be configured.** All of them are `public static final` constants. The debounce has a setter (`setDebounceSeconds`), but only tests call it; `CompletionListenerFanout.bind`, which the controller uses through `CompletionListenerFanoutWiring.wire`, keeps the 300 s default.
+- **The debounce ends early when the wake-up finishes.** When the wake-up job reaches a terminal status, `notifyListenerWakeUpCompleted` clears that listener's debounce, so the next completion can wake it right away. It recognises wake-up jobs by the `wake-up:` description prefix (`WAKE_UP_DESCRIPTION_PREFIX`).
+- **A wake-up uses one slot of the flood window only once it actually fires.** A wake-up dropped by the debounce does not count toward the 6-per-600 s limit.
+- **Coalesced completions do not travel in the wake-up prompt.** When a later completion lands inside the 30 s window, its job ID is appended to the firing wake-up's in-memory `consolidatedJobIds` bookkeeping list, but `buildWakeUpPrompt` reads only the firing event, so the submitted wake-up names only the first completion. The coalesced IDs are visible to tests (`coalesceStateView`) but are not sent to the listener. This loses no work because of the reconciliation invariant: the listener re-reads every workstream it delegated to on every wake, so the one wake-up that does fire covers the completions coalesced behind it.
+- **The chain-depth limit cannot trip yet.** `computeChainDepth` returns only `0` (an ordinary job) or `1` (a job whose description starts with `wake-up:`), because `JobCompletionEvent` has no depth field. In practice the flood window and the debounce are what limit recurrence.
+- **Every listener woken by one completion shares a chain ID.** The ID (`ch-<uuid>`) is created once per source completion, so the 25 limit caps how many listeners a single completion can wake. It does not limit repeated wake-ups across completions.
+- **All of this state is in memory.** Coalesce, window, debounce and chain counters reset when the controller restarts.
+- **The limits are not atomic under concurrent completions.** `dispatchToListener` holds no lock across the gates: each one checks its state at one point (the coalesce map, the window deque's size, `wakeUpDispatchedAt`) and records the dispatch later, in step 9. Completions that arrive on different threads at the same moment can therefore all pass gates 4, 6, 7 and 8 before any of them records its wake-up. In that case a listener can get more than one wake-up inside the coalesce or debounce window, or more than 6 in 600 s. Read the numbers in the table as the limits for completions that arrive one after another, not as hard ceilings.
+- **The fan-out never throws.** Any error is logged under a `wakeup_*` WARN line, and the source job's completion is still recorded. The names are:
+  - submission and dispatch failures: `wakeup_dispatch_failed`, `wakeup_fanout_failed`, `wakeup_self_notify_failed`, `wakeup_submit_failed`
+  - a source workstream that is not registered: `wakeup_source_missing`
+  - a fan-out that has no server to submit to: `wakeup_no_server`
+  - Slack thread-root failures: `wakeup_listener_notifier_lookup_failed`, `wakeup_listener_notifier_missing`, `wakeup_submit_notify_failed`
+  - failure to mint the wake-up's ar-manager token: `wakeup_ar_token_failed`
+
+  A thread-root failure or a token failure does not block the wake-up. The job is still submitted. A thread-root failure only skips the job's Slack thread root, and a token failure only leaves the job without ar-manager credentials.
+
+A successful wake-up logs `Submitted wake-up chain=<id> source=<ws> listener=<ws> triggerJob=<job> wakeJob=<job>`. Grep the controller log for `wakeup_`, `ceiling_hit` and `Submitted wake-up` to follow a chain.
+
+### Stopping wake-ups
+
+**Globally: `acceptAutomatedJobs`.** `FlowTreeApiEndpoint.acceptAutomatedJobs` is the kill switch. It defaults to `true`. When it is `false`, gate 1 drops every wake-up, and the submit endpoint also rejects every submission that carries `"automated": true` (for example CI auto-resolve jobs). Manual submissions keep working.
+
+```
+GET  /api/config/accept-automated-jobs              -> {"acceptAutomatedJobs": true}
+POST /api/config/accept-automated-jobs {"accept": false}
+                                                    -> {"ok": true, "acceptAutomatedJobs": false}
+```
+
+The MCP equivalent is `controller_update_config accept_automated_jobs:"false"`; call it without arguments to read the current value. It needs an unscoped (superadmin) token, because the switch affects every workspace. The value is held only in memory: a controller restart sets it back to `true`. A POST body without an `accept` field leaves the value unchanged.
+
+**One listener: `dormantForCompletionListeners`.** Set this to `true` on the *listener* (`POST /api/workstreams/{id}/update` with `{"dormantForCompletionListeners": true}`, or in YAML) to drop only the wake-ups aimed at it. Manual submissions to that workstream are not affected. Setting it back to `false` does not replay the wake-ups that were dropped, and it does not reset the coalesce or debounce state: the dormancy gate (gate 3) sits ahead of those gates, so if the listener was woken shortly before it went dormant, a completion arriving soon after you resume it can still be dropped by the per-listener debounce (gate 8) or the coalesce window (gate 4). Once those windows have elapsed, the next completion wakes it. The field defaults to `false` (`Workstream.isDormantForCompletionListeners`).
+
+To stop a single source from waking anyone, clear its list instead: `{"completionListeners": []}`.
+
+### Reading `trigger_reason`
+
+The `job_timing` table in `JobStatsStore` has a `trigger_reason VARCHAR(64)` column with default `'manual'`. Existing databases get it through a schema migration. The values that are actually written today are:
+
+| Value | Written by |
+|-------|-----------|
+| `manual` | the default, for every job that nothing marked otherwise (including CI and other automated submissions) |
+| `completion_listener` | `CompletionListenerFanout`, through `JobStatsStore.setTriggerReason(jobId, "completion_listener")`, right before the wake-up is submitted |
+
+The `setTriggerReason` javadoc also mentions `auto_resolve`, but nothing in the code writes that value yet. Because the fan-out calls `setTriggerReason` before it submits the wake-up, the `job_timing` row normally does not exist yet. The reason is therefore staged in memory (`pendingTriggerReasons`) and applied when `recordJobStarted` inserts the row. `setTriggerReason` also updates the row in place if one already exists. That covers the usual orderings, but not every one:
+
+- When no row exists by the time the job completes (the controller restarted while the wake-up was running, or its `STARTED` event never reached the controller), `recordJobCompleted` inserts the row itself, and that insert does not set `trigger_reason`. The row gets the default `'manual'` even though it was a wake-up.
+- The pending reasons are held only in memory, so a controller restart between `setTriggerReason` and the job's first row loses them as well.
+
+So `trigger_reason = 'completion_listener'` reliably finds wake-ups, but `trigger_reason <> 'completion_listener'` can still include a few of them. Where that matters, also exclude descriptions that start with `wake-up:` (see below).
+
+No REST endpoint or MCP tool returns this column. Query the HSQLDB file database directly. It is named `stats` and lives in the controller's data directory: the directory holding `workstreams.yaml`, or `~/.flowtree` when the controller runs without a config file (`FlowTreeController.dataDirectory`). The connection URL is `jdbc:hsqldb:file:<dataDir>/stats` with user `SA` and an empty password. A running controller holds the database lock, so query a copy of the `stats.*` files or stop the controller first.
+
+```sql
+-- Wake-up jobs per listener workstream over the last day
+SELECT workstream_id, COUNT(*) AS wakeups, SUM(cost_usd) AS cost
+FROM job_timing
+WHERE trigger_reason = 'completion_listener'
+  AND started_at > CURRENT_TIMESTAMP - 1 DAY
+GROUP BY workstream_id;
+
+-- Manual job history with wake-ups filtered out
+SELECT job_id, workstream_id, status, description
+FROM job_timing
+WHERE trigger_reason <> 'completion_listener'
+  AND (description IS NULL OR description NOT LIKE 'wake-up:%')
+ORDER BY started_at DESC;
+```
+
+When you can't query the database, the job description works as a stand-in: every wake-up job's description starts with `wake-up:`, and that prefix shows up in `GET /api/workstreams/{id}/jobs` listings and in Slack.
+
+### Future work
+
+Ideas for later versions, none of them implemented:
+
+- Richer listener filters, such as waking only on `FAILED`, or only for jobs that opened a PR.
+- Listeners that span workspaces.
+- A real depth field on `JobCompletionEvent`, so that the chain-depth limit can take effect.
+- Returning `completionListeners` and `trigger_reason` from the read APIs. Today `GET /api/workstreams` does not include the listener list; the YAML file is where to check it.
 
 ---
 

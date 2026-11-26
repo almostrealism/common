@@ -225,11 +225,7 @@ public class SubsetProjectionComputation extends TraversableExpressionComputatio
 	 */
 	@Override
 	public CollectionProducerParallelProcess generate(List<Process<?, ?>> children) {
-		return new SubsetProjectionComputation(getShape(), outputShape, inputShape, positionOffsets)
-				.setPostprocessor(getPostprocessor())
-				.setDescription(getDescription())
-				.setShortCircuit(getShortCircuit())
-				.addAllDependentLifecycles(getDependentLifecycles());
+		return copyConfigurationTo(new SubsetProjectionComputation(getShape(), outputShape, inputShape, positionOffsets));
 	}
 
 	@Override

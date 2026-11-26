@@ -35,15 +35,20 @@
 #
 # Optional environment (from the caller, never overridden by the request):
 #   PROTECT_TEST_FILES, ENFORCE_CHANGES, STARTED_AFTER, REQUIRED_LABELS,
-#   OBJECT_ORIENTED_REVIEW_ENABLED, REMEDIATION_PASS
-#   (REQUIRED_LABELS, OBJECT_ORIENTED_REVIEW_ENABLED and REMEDIATION_PASS pass
-#   straight through to submit-agent-job.sh; a request that names any of them is
-#   ignored like any other unexpected key. The remediation submitters set
+#   OBJECT_ORIENTED_REVIEW_ENABLED, REMEDIATION_PASS, FALLBACK_PHASE_CONFIG,
+#   FALLBACK_PHASE_CONFIGS
+#   (REQUIRED_LABELS, OBJECT_ORIENTED_REVIEW_ENABLED, REMEDIATION_PASS and the
+#   FALLBACK_PHASE_CONFIG/FALLBACK_PHASE_CONFIGS pair pass straight through to
+#   submit-agent-job.sh; a request that names any of them is ignored like any
+#   other unexpected key. The remediation submitters set
 #   OBJECT_ORIENTED_REVIEW_ENABLED=false so the object-oriented design review
 #   does not ride along on the follow-up jobs CI runs in a loop, and
 #   REMEDIATION_PASS=true so the controller counts the pass against the per-PR
 #   cap and records its commit as the loop's own, so the cap resets on a commit
-#   no pass produced.)
+#   no pass produced. FALLBACK_PHASE_CONFIG comes from the
+#   AR_CI_FALLBACK_PHASE_CONFIG repository variable so the remediation loop can
+#   run on a cheaper runner/model for workstreams nobody configured, without
+#   overriding one somebody did; unset means nothing is sent.)
 #
 # Environment:
 #   Everything submit-agent-job.sh reads for reaching the controller

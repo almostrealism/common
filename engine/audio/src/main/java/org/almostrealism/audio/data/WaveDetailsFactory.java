@@ -174,23 +174,35 @@ public class WaveDetailsFactory implements CodeFeatures {
 	/**
 	 * Creates or updates a WaveDetails using the audio supplied by the given provider.
 	 *
+	 * <p>An unreadable provider (null, or one that reports itself not
+	 * {@link WaveDataProvider#isReadable() readable}, such as a file already
+	 * marked corrupt) is never asked for audio: when no existing details are
+	 * supplied the method returns null, and when existing details are supplied
+	 * they are completed from what they already hold rather than dividing by the
+	 * provider's zero sample rate or dereferencing its absent audio.</p>
+	 *
 	 * @param provider the audio data provider
 	 * @param existing an existing WaveDetails to update, or null to create a new one
-	 * @return the populated WaveDetails
+	 * @return the populated WaveDetails, or null if the provider is unreadable and
+	 *         no existing details were supplied
 	 */
 	public WaveDetails forProvider(WaveDataProvider provider, WaveDetails existing) {
+		boolean readable = provider != null && provider.isReadable();
+
 		if (existing == null) {
-			if (provider == null) return null;
+			if (!readable) return null;
 
 			existing = new WaveDetails(provider.getIdentifier(), provider.getSampleRate());
 		}
 
-		WaveData data = provider.get(getSampleRate());
-		if (data != null) {
-			existing.setSampleRate(data.getSampleRate());
-			existing.setChannelCount(data.getChannelCount());
-			existing.setFrameCount(data.getFrameCount());
-			existing.setData(data.getData());
+		if (readable) {
+			WaveData data = provider.get(getSampleRate());
+			if (data != null) {
+				existing.setSampleRate(data.getSampleRate());
+				existing.setChannelCount(data.getChannelCount());
+				existing.setFrameCount(data.getFrameCount());
+				existing.setData(data.getData());
+			}
 		}
 
 		return forExisting(existing);

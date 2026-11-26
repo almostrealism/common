@@ -64,7 +64,7 @@ public final class RemediationBudgetGuard implements ConsoleFeatures {
      * auto-dispatch stops and a person is pinged. Override with
      * {@link #BUDGET_ENV}.
      */
-    public static final int DEFAULT_BUDGET = 8;
+    public static final int DEFAULT_BUDGET = 10;
 
     /** The per-PR remediation record store, or {@code null} to disable the gate. */
     private final RemediationStateStore store;
