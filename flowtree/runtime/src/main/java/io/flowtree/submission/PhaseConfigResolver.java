@@ -16,6 +16,7 @@
 
 package io.flowtree.submission;
 
+import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.flowtree.JsonFieldExtractor;
@@ -840,8 +841,11 @@ public final class PhaseConfigResolver {
     public static String requestShapeError(String body) {
         if (body == null || body.isBlank()) return null;
         JsonNode root;
-        try {
-            root = MAPPER.readTree(body);
+        try (JsonParser parser = MAPPER.createParser(body)) {
+            root = MAPPER.readTree(parser);
+            if (parser.nextToken() != null) {
+                return "Request body is not valid JSON: unexpected trailing content";
+            }
         } catch (Exception ex) {
             return "Request body is not valid JSON: " + ex.getMessage();
         }

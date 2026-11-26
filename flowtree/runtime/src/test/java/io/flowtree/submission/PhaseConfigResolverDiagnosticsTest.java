@@ -335,6 +335,21 @@ public class PhaseConfigResolverDiagnosticsTest extends TestSuiteBase {
         assertEquals("Request body must be a JSON object", array);
     }
 
+    /**
+     * A body with extra tokens after a complete JSON value is rejected rather
+     * than silently truncated to the first value, so {@code {} garbage} does
+     * not masquerade as a valid empty diagnostic.
+     */
+    @Test(timeout = 5000)
+    public void trailingContentAfterJsonValueIsRejected() {
+        String trailingGarbage = PhaseConfigResolver.requestShapeError("{} garbage");
+        assertNotNull(trailingGarbage);
+        assertTrue(trailingGarbage, trailingGarbage.contains("not valid JSON"));
+        String secondObject = PhaseConfigResolver.requestShapeError("{}{}");
+        assertNotNull(secondObject);
+        assertTrue(secondObject, secondObject.contains("not valid JSON"));
+    }
+
     /** A non-string field value — the case the lenient parser silently drops — is rejected. */
     @Test(timeout = 5000)
     public void nonStringFieldValueIsRejected() {
