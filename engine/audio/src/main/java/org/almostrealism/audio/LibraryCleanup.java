@@ -60,7 +60,14 @@ public interface LibraryCleanup {
 	/**
 	 * Deletes the data this cleanup covers.
 	 *
-	 * @return the number of items removed
+	 * <p>The returned count confirms how much was removed in units specific to
+	 * this cleanup (for example, affected library items for feature data, or
+	 * deleted files for leftover batch files). It is not a common unit shared
+	 * across cleanups, so callers must not sum or compare counts from different
+	 * {@link LibraryCleanup} implementations.</p>
+	 *
+	 * @return the number of discrete units of data removed, in units specific
+	 *         to this cleanup
 	 */
 	int remove();
 }

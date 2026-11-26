@@ -279,5 +279,18 @@ public class LegacyLibraryMigrator implements ConsoleFeatures {
 			}
 			return deleted;
 		}
+
+		/**
+		 * Deletes all legacy batch files.
+		 *
+		 * @return the number of files successfully deleted
+		 * @deprecated renamed to {@link #remove()} when {@code Result} became a
+		 *             {@link LibraryCleanup}. Retained as a delegating alias so
+		 *             existing callers continue to compile; prefer {@link #remove()}.
+		 */
+		@Deprecated
+		public int deleteLegacyFiles() {
+			return remove();
+		}
 	}
 }
