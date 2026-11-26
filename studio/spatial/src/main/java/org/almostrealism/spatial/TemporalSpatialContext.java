@@ -77,7 +77,10 @@ public class TemporalSpatialContext implements ConsoleFeatures {
 	/** Whether zoom scaling is applied to the time axis. */
 	private boolean zoom;
 
-	/** The total duration of the content being visualized, in seconds. */
+	/**
+	 * The total duration of the content being visualized, in this context's time
+	 * units (seconds only when the temporal scale is {@code 1}).
+	 */
 	private double duration;
 
 	/** Supplier for the time scaling factor applied to the X-axis. */
@@ -105,6 +108,17 @@ public class TemporalSpatialContext implements ConsoleFeatures {
 	}
 
 	/**
+	 * Returns whether this context maps frequency to the Y-axis, rather than
+	 * channel. Only in this mode can {@link #inverse(Vector)} recover a
+	 * frequency from a position.
+	 *
+	 * @return {@code true} in spatial frequency mode
+	 */
+	public boolean isSpatialFrequency() {
+		return spatialFrequency;
+	}
+
+	/**
 	 * Returns whether zoom is enabled for time axis scaling.
 	 *
 	 * @return {@code true} if zoom is enabled
@@ -129,7 +143,8 @@ public class TemporalSpatialContext implements ConsoleFeatures {
 	/**
 	 * Returns the total duration of the content being visualized.
 	 *
-	 * @return the duration in seconds
+	 * @return the duration in this context's time units (seconds only when the
+	 *         temporal scale is {@code 1}; see {@link #getTimeToSeconds()})
 	 */
 	public double getDuration() {
 		return duration;
