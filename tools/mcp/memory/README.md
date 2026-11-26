@@ -195,7 +195,7 @@ tools/mcp/memory/
 | `AR_MEMORY_BACKEND` | `fastembed` | Embedding backend: `fastembed` or `sentence-transformers` |
 | `AR_MEMORY_MODEL` | *(backend default)* | Override model name |
 | `AR_MEMORY_MERGE_NEAR_DUPLICATES` | `1` | Merge near-identical memories on the same repo+branch at store time (`0`/`false`/`off` to disable) |
-| `AR_MEMORY_NEAR_DUPLICATE_THRESHOLD` | `0.97` | Cosine-similarity floor above which two notes are merged |
+| `AR_MEMORY_NEAR_DUPLICATE_THRESHOLD` | `0.97` | Cosine-similarity floor above which two notes are merged; must be in `(0, 1]`, otherwise the default is used |
 
 ## Embedding Backends
 

@@ -67,6 +67,33 @@ class NearDuplicateMergeTests(unittest.TestCase):
         self.assertGreater(NEAR_DUPLICATE_SIMILARITY_THRESHOLD, 0.5)
         self.assertLessEqual(NEAR_DUPLICATE_SIMILARITY_THRESHOLD, 1.0)
 
+    def _parse_threshold_with(self, raw):
+        original = os.environ.get("AR_MEMORY_NEAR_DUPLICATE_THRESHOLD")
+        if raw is None:
+            os.environ.pop("AR_MEMORY_NEAR_DUPLICATE_THRESHOLD", None)
+        else:
+            os.environ["AR_MEMORY_NEAR_DUPLICATE_THRESHOLD"] = raw
+        try:
+            return store_mod._parse_near_duplicate_threshold()
+        finally:
+            if original is None:
+                os.environ.pop("AR_MEMORY_NEAR_DUPLICATE_THRESHOLD", None)
+            else:
+                os.environ["AR_MEMORY_NEAR_DUPLICATE_THRESHOLD"] = original
+
+    def test_threshold_override_in_range_is_honoured(self):
+        self.assertAlmostEqual(self._parse_threshold_with("0.85"), 0.85)
+        self.assertAlmostEqual(self._parse_threshold_with("1.0"), 1.0)
+
+    def test_threshold_override_out_of_range_falls_back_to_default(self):
+        # A non-positive threshold would merge orthogonal (or anti-correlated)
+        # candidates, and a value above 1 can never match; both are rejected in
+        # favour of the safe default rather than silently defeating the merge
+        # contract.
+        for raw in ("0", "0.0", "-0.5", "1.5", "nan", "inf", "-inf", "banana"):
+            with self.subTest(raw=raw):
+                self.assertEqual(self._parse_threshold_with(raw), 0.97)
+
     def test_near_identical_consecutive_memories_are_merged(self):
         first = self._store("OOP review done on alpha beta: CLEAN")
         self.assertEqual(first["merged_count"], 1)

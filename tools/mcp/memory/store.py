@@ -6,6 +6,7 @@ Each namespace gets its own FAISS index file and ID mapping file.
 
 import json
 import logging
+import math
 import os
 import re
 import sqlite3
@@ -82,9 +83,21 @@ def _parse_near_duplicate_threshold() -> float:
     raw = os.environ.get("AR_MEMORY_NEAR_DUPLICATE_THRESHOLD", "")
     if raw.strip():
         try:
-            return float(raw)
+            value = float(raw)
         except ValueError:
             log.warning("ignoring invalid AR_MEMORY_NEAR_DUPLICATE_THRESHOLD=%r", raw)
+        else:
+            # A cosine threshold only has meaning in (0, 1]: at or below 0 an
+            # orthogonal (or anti-correlated) candidate would satisfy
+            # ``similarity >= threshold`` and merge, violating the guarantee
+            # that distinct memories are never merged; above 1 nothing can ever
+            # match. Reject anything outside that range (and non-finite values)
+            # rather than silently defeating the merge contract.
+            if math.isfinite(value) and 0.0 < value <= 1.0:
+                return value
+            log.warning(
+                "ignoring out-of-range AR_MEMORY_NEAR_DUPLICATE_THRESHOLD=%r "
+                "(must be in (0, 1])", raw)
     return 0.97
 
 
