@@ -200,9 +200,7 @@ A reviewer confirms the task is done when:
    (the segmented-reduction sparse product, `CounterRandom`, the `cache_read`/`cache_write` ring).
    If it cannot, the CUDA row is "pending CUDA breadth" and a dependency, not a result. The durable
    reference for the CUDA state is `docs/internals/backend-compilation-and-dispatch.md`; there is no
-   `docs/plans/*CUDA*` file. (The task originally cited a non-existent `docs/plans/CUDA_BACKEND.md`;
-   its description has since been corrected to point at the durable reference, so no task-record fix
-   remains.)
+   `docs/plans/*CUDA*` file.
 3. **Benchmarked stimulus and step count.** Proposal: one replica, sugar-GRN Poisson drive at the
    gate's 150 Hz, a 100–500-step warm-up and ~1,000–5,000 timed steps (short enough to stay under
    the FP32 `2^24` step-counter bound, long enough to average out dispatch jitter). Confirm the rate
