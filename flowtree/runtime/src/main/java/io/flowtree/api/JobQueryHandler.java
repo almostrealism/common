@@ -186,6 +186,14 @@ public final class JobQueryHandler {
         if (event.getErrorMessage() != null) {
             j.append(",\"errorMessage\":\"").append(JsonFieldExtractor.escapeJson(event.getErrorMessage())).append("\"");
         }
+        if (event.getBlockedCategory() != null) {
+            j.append(",\"blockedCategory\":\"")
+                    .append(JsonFieldExtractor.escapeJson(event.getBlockedCategory())).append("\"");
+            j.append(",\"blockedDetail\":\"")
+                    .append(JsonFieldExtractor.escapeJson(
+                            event.getBlockedDetail() == null ? "" : event.getBlockedDetail())).append("\"");
+            j.append(",\"blockedVerified\":").append(event.isBlockedVerified());
+        }
         double totalCost = event.getTotalCostUsd();
         boolean costIncomplete = event.isCostIncomplete();
         j.append(",\"costIncomplete\":").append(costIncomplete);

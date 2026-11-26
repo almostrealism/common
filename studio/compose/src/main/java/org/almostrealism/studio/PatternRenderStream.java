@@ -22,6 +22,7 @@ import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.HardwareException;
 import org.almostrealism.io.ConsoleFeatures;
+import org.almostrealism.music.pattern.PatternRenderCancellation;
 
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicLong;
@@ -112,6 +113,12 @@ public class PatternRenderStream implements Destroyable, CollectionFeatures, Con
 	private volatile Throwable producerError;
 	/** The producer thread, or {@code null} when stopped. */
 	private Thread producer;
+	/**
+	 * Cooperative cancellation signal for the current producer run; bound to the producer thread so
+	 * an in-flight render polls it and stops promptly, and cancelled by {@link #stop()}. A fresh
+	 * signal is created per {@link #start(int)} so a restart never sees an earlier run's request.
+	 */
+	private volatile PatternRenderCancellation cancellation;
 
 	/**
 	 * Creates a render-ahead stream over a freshly allocated ring.
@@ -157,6 +164,7 @@ public class PatternRenderStream implements Destroyable, CollectionFeatures, Con
 		int target = Math.min(prefill, slots);
 		running = true;
 		producerError = null;
+		cancellation = new PatternRenderCancellation();
 		// Clear any wake permit a previous stop() released so the first awaitSlot() blocks
 		// on a real rendered slot rather than consuming a stale shutdown signal.
 		filled.drainPermits();
@@ -177,9 +185,16 @@ public class PatternRenderStream implements Destroyable, CollectionFeatures, Con
 	/**
 	 * The producer loop: render the next buffer ahead into a free ring slot, blocking when the
 	 * ring is full. Terminates on {@link #stop()} or on the first render failure. A render that
-	 * {@link #stop()} interrupts ends by cancellation, and is not reported as a failure.
+	 * {@link #stop()} cancels (through the thread-bound {@link #cancellation} signal the render
+	 * polls) ends by cancellation, and is not reported as a failure.
+	 *
+	 * <p>The signal is bound to this thread for the loop's lifetime so the render can poll it
+	 * without the signal being threaded through the compiled render operation, and unbound when
+	 * the loop ends.</p>
 	 */
 	private void produceLoop() {
+		PatternRenderCancellation signal = cancellation;
+		signal.bind();
 		try {
 			while (running) {
 				empty.acquire();
@@ -198,13 +213,15 @@ public class PatternRenderStream implements Destroyable, CollectionFeatures, Con
 		} catch (InterruptedException e) {
 			Thread.currentThread().interrupt();
 		} catch (Throwable t) {
-			// stop() interrupts an in-flight render, which cancels it; that is not a failure
+			// stop() cancels an in-flight render, which is not a failure
 			if (!running) return;
 
 			producerError = t;
 			running = false;
 			// Wake any consumer waiting on a slot so it can observe the failure.
 			filled.release();
+		} finally {
+			signal.unbind();
 		}
 	}
 
@@ -340,11 +357,18 @@ public class PatternRenderStream implements Destroyable, CollectionFeatures, Con
 	 * Stops the producer thread and resets the ring to empty so the stream can be restarted via
 	 * {@link #start(int)}. The backing storage is retained.
 	 *
+	 * <p>The producer is stopped cooperatively: {@code running} is cleared, the thread-bound
+	 * {@link #cancellation} signal is cancelled so an in-flight render polls it and stops at its
+	 * next note, and an {@link #empty} permit is released to wake a producer idling on a full ring.
+	 * The producer thread is not interrupted, so a blocking wait the render is parked in (a native
+	 * dispatch completion wait) finishes normally rather than being aborted and logged as a fault.</p>
+	 *
 	 * <p>This does not return until the producer thread has terminated. A render in progress
 	 * when the stream is stopped still reads the render cells and writes {@link #ring}, so
 	 * returning while it runs would let a caller release those resources (as
 	 * {@link #destroy()} and the owning runner's teardown do immediately afterwards) underneath
-	 * it. A render that outlasts {@link #STOP_WARNING_MILLIS} is reported and then awaited.</p>
+	 * it. A render that polls the signal only between notes still runs its current note to
+	 * completion; one that outlasts {@link #STOP_WARNING_MILLIS} is reported and then awaited.</p>
 	 *
 	 * <p>Shutdown must be driven from a thread other than the producer. Calling this (or
 	 * {@link #destroy()}) from the producer thread itself — for instance from {@code renderOp}
@@ -368,7 +392,10 @@ public class PatternRenderStream implements Destroyable, CollectionFeatures, Con
 
 		running = false;
 		if (producer != null) {
-			producer.interrupt();
+			cancellation.cancel();
+			// Wake a producer idling on a full ring so it observes running == false and exits;
+			// this surplus permit is cleared by the empty reset below.
+			empty.release();
 			awaitTermination(producer);
 			producer = null;
 		}

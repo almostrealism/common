@@ -1089,7 +1089,8 @@ public interface LayerFeatures extends ConvolutionLayerFeatures, NormalizationLa
 					? matmul(reshape(shape(rows, 1), input), reshape(shape(1, nodes), p(weights)))
 					: matmul(p(weights), reshape(flat, input));
 			if (biases != null) {
-				result = result.add(repeat(rows, p(biases)).reshape(result.getShape()));
+				// The bias is viewed as one [nodes] item, so it repeats whole whatever traversal it carries.
+				result = result.add(repeat(rows, reshape(shape(nodes), p(biases))).reshape(result.getShape()));
 			}
 
 			return result.reshape(outputShape);

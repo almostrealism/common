@@ -102,6 +102,35 @@ public class RegexPreTokenizer implements PreTokenizer {
         return Pattern.compile(patternStr, Pattern.UNICODE_CHARACTER_CLASS);
     }
 
+    /**
+     * Creates a pre-tokenizer with the split pattern of the GPT-2 {@code r50k_base} encoding, as
+     * the tiktoken encoding definition states it:
+     * {@code '(?:[sdmt]|ll|ve|re)| ?\p{L}++| ?\p{N}++| ?[^\s\p{L}\p{N}]++|\s++$|\s+(?!\S)|\s}.
+     *
+     * <p>This differs from the {@link #RegexPreTokenizer() default pattern} in ways that change the
+     * token ids: contractions are case-sensitive, a letter or digit run takes at most one leading
+     * space (never another punctuation character), digits are grouped into runs rather than split
+     * one by one, and punctuation does not absorb the newlines after it. The pattern's {@code $}
+     * is written {@code \z} here, because the reference regex engine's {@code $} matches only at
+     * the end of the text, while Java's also matches before a final line terminator; the
+     * possessive whitespace run makes the two agree in any case. Like the default, the pattern is
+     * compiled with {@link Pattern#UNICODE_CHARACTER_CLASS} so that {@code \s} is Unicode
+     * whitespace, as it is in the reference engine.</p>
+     *
+     * @return the pre-tokenizer
+     */
+    public static RegexPreTokenizer r50k() {
+        String patternStr = "'(?:[sdmt]|ll|ve|re)" +  // Contractions (case-sensitive)
+                            "| ?\\p{L}++" +  // Letters with at most one leading space
+                            "| ?\\p{N}++" +  // Digit runs with at most one leading space
+                            "| ?[^\\s\\p{L}\\p{N}]++" +  // Punctuation runs
+                            "|\\s++\\z" +  // Whitespace ending the text
+                            "|\\s+(?!\\S)" +  // Whitespace not followed by a non-space
+                            "|\\s";  // A single whitespace character
+
+        return new RegexPreTokenizer(Pattern.compile(patternStr, Pattern.UNICODE_CHARACTER_CLASS));
+    }
+
     @Override
     public List<String> preTokenize(String text) {
         List<String> segments = new ArrayList<>();

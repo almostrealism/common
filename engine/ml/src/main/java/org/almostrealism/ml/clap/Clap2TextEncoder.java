@@ -77,6 +77,12 @@ public class Clap2TextEncoder implements AttentionFeatures, Destroyable {
 	/** Per caption length, the compiled assignment that pads a caption into {@link #tokenIds}. */
 	private final Map<Integer, Runnable> captionCopies;
 
+	/** The one token id {@link #loadToken} copies into {@link #tokenIds}. */
+	private final PackedCollection tokenValue;
+
+	/** The compiled assignment that fills {@link #tokenIds} with {@link Clap2Config#PAD_TOKEN}. */
+	private Runnable tokenReset;
+
 	/** The compiled tower, built on the first {@link #encode(PackedCollection)}. */
 	private CompiledModel compiled;
 
@@ -96,6 +102,7 @@ public class Clap2TextEncoder implements AttentionFeatures, Destroyable {
 		this.promptMask.clear();
 		this.captionInputs = new HashMap<>();
 		this.captionCopies = new HashMap<>();
+		this.tokenValue = new PackedCollection(shape(1));
 	}
 
 	/**
@@ -121,7 +128,70 @@ public class Clap2TextEncoder implements AttentionFeatures, Destroyable {
 	 * @throws IllegalArgumentException if the caption is longer than the compiled length
 	 */
 	public PackedCollection encode(PackedCollection tokens) {
-		PackedCollection ids = loadCaption(tokens);
+		return forward(loadCaption(tokens));
+	}
+
+	/**
+	 * Embeds a caption given as the token ids a {@link Clap2Tokenizer} produces. The input is reset
+	 * to {@link Clap2Config#PAD_TOKEN} and the ids are loaded into it one at a time, as an
+	 * autoregressive model loads its prompt, so no kernel depends on the caption's length. The
+	 * ids are checked against the vocabulary before any is loaded. The result is the compiled
+	 * encoder's output and is overwritten by the next caption, as for
+	 * {@link #encode(PackedCollection)}.
+	 *
+	 * @param tokens the caption's token ids, {@code [BOS, ..., EOS]}, at least one and at most
+	 *               {@link Clap2Config#getMaxTextLength()} of them
+	 * @return the embedding, shape {@code [1, embedDim]}
+	 * @throws IllegalArgumentException if the caption is empty, longer than the compiled length, or
+	 *                                  holds an id outside the vocabulary
+	 */
+	public PackedCollection encode(int[] tokens) {
+		int length = config.getMaxTextLength();
+		if (tokens.length == 0 || tokens.length > length) {
+			throw new IllegalArgumentException("Caption of " + tokens.length
+					+ " tokens must hold at least one and at most the compiled length " + length);
+		}
+
+		for (int i = 0; i < tokens.length; i++) {
+			if (tokens[i] < 0 || tokens[i] >= config.getVocabularySize()) {
+				throw new IllegalArgumentException("Token id " + tokens[i] + " at position " + i
+						+ " is outside the vocabulary [0, " + config.getVocabularySize() + ")");
+			}
+		}
+
+		if (tokenReset == null) {
+			tokenReset = a("clap2TokenReset", p(tokenIds), c((double) Clap2Config.PAD_TOKEN)
+					.repeat(BATCH * length).reshape(shape(BATCH, length))).get();
+		}
+
+		tokenReset.run();
+		for (int i = 0; i < tokens.length; i++) {
+			loadToken(i, tokens[i]);
+		}
+
+		updatePromptMask(tokens.length);
+		return forward(tokenIds);
+	}
+
+	/**
+	 * Places one token id at a position of the tower's input, as an autoregressive model loads the
+	 * token of each step: the id is written to a one-element collection and copied into place.
+	 *
+	 * @param position the position, below the compiled length
+	 * @param id       the token id
+	 */
+	private void loadToken(int position, int id) {
+		tokenValue.fill((double) id);
+		tokenIds.setFrom(position, tokenValue, 0, 1);
+	}
+
+	/**
+	 * Runs the tower, compiling it on first use.
+	 *
+	 * @param ids the token id input, shape {@code [batch, maxTextLength]}
+	 * @return the embedding, shape {@code [1, embedDim]}
+	 */
+	private PackedCollection forward(PackedCollection ids) {
 		if (compiled == null) {
 			Model model = new Model(shape(BATCH, config.getMaxTextLength()));
 			model.add(block());
@@ -149,7 +219,6 @@ public class Clap2TextEncoder implements AttentionFeatures, Destroyable {
 					+ " tokens exceeds the compiled length " + length);
 		}
 
-		promptLength.fill(count);
 		captionCopies.computeIfAbsent(count, n -> {
 			CollectionProducer position = integers(0, length);
 			CollectionProducer gathered = c(shape(length), p(captionInput(n)),
@@ -159,7 +228,19 @@ public class Clap2TextEncoder implements AttentionFeatures, Destroyable {
 		});
 		captionInput(count).setFrom(0, tokens);
 		captionCopies.get(count).run();
+		updatePromptMask(count);
+		return tokenIds;
+	}
 
+	/**
+	 * Writes the prompt mask every attention and the pool read: one for the first {@code count}
+	 * positions, zero beyond.
+	 *
+	 * @param count the number of caption tokens
+	 */
+	private void updatePromptMask(int count) {
+		int length = config.getMaxTextLength();
+		promptLength.fill(count);
 		if (promptMaskUpdate == null) {
 			TraversalPolicy maskShape = shape(BATCH, length);
 			CollectionProducer limit = cp(promptLength).repeat(BATCH * length).reshape(maskShape);
@@ -168,7 +249,6 @@ public class Clap2TextEncoder implements AttentionFeatures, Destroyable {
 		}
 
 		promptMaskUpdate.run();
-		return tokenIds;
 	}
 
 	/**
@@ -201,6 +281,7 @@ public class Clap2TextEncoder implements AttentionFeatures, Destroyable {
 		tokenIds.destroy();
 		promptMask.destroy();
 		promptLength.destroy();
+		tokenValue.destroy();
 		captionInputs.values().forEach(PackedCollection::destroy);
 		captionInputs.clear();
 		captionCopies.clear();
