@@ -258,6 +258,12 @@ def summarize_memory_loops(
             return False
         if bucket_a != bucket_b:
             return False
+        # A loop repeats within one namespace; near-identical notes in
+        # different namespaces (e.g. a messages post and its matching progress
+        # note) are distinct records, not a loop, and collapsing them would
+        # drop one from the default context response.
+        if a.get("namespace") != b.get("namespace"):
+            return False
         ratio = SequenceMatcher(
             None, _normalize_text(a.get("content")), _normalize_text(b.get("content"))
         ).ratio()

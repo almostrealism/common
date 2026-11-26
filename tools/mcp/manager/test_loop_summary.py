@@ -138,6 +138,24 @@ class MemoryLoopTests(unittest.TestCase):
         self.assertEqual(loops[0]["count"], 3)
         self.assertEqual(loops[0]["job_id"], "job-2")
 
+    def test_run_does_not_cross_a_namespace_boundary(self):
+        # Three near-identical notes in one job, but split across namespaces: a
+        # messages post flanked by two progress notes. A loop repeats within
+        # one namespace, so this is not a run of three in any namespace and
+        # every record must stay listed in the default context.
+        jobs = self._one_job()
+        memories = [
+            _mem("m3", "2026-04-20T10:30:00+00:00", "OOP review done: CLEAN",
+                 namespace="progress"),
+            _mem("m2", "2026-04-20T10:20:00+00:00", "OOP review done: CLEAN",
+                 namespace="messages"),
+            _mem("m1", "2026-04-20T10:10:00+00:00", "OOP review done: CLEAN",
+                 namespace="progress"),
+        ]
+        collapsed, loops = loop_summary.summarize_memory_loops(memories, jobs)
+        self.assertEqual(len(collapsed), 3)
+        self.assertEqual(loops, [])
+
     def test_run_does_not_cross_a_job_boundary(self):
         # Three identical notes, but the middle one was written under a second
         # job — so there is no run of three within any single job.
