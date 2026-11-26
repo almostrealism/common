@@ -34,6 +34,7 @@ import org.almostrealism.model.SequentialBlock;
 
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
@@ -456,6 +457,13 @@ public interface LayerRoutingFeatures extends LayerFeatures {
 	 * into the branch's backward cell. The record exists only while
 	 * {@link Layer#ioTracking IO tracking} is enabled; without it, an unreached branch is an error.</p>
 	 *
+	 * <p>When the layer's input tracking is off, as a compile without backpropagation leaves it, a
+	 * branch reached by the same pass is not copied into the record: the operator reads the branch's
+	 * output directly, and the record, which only the backward pass would read, is released when the
+	 * branch is pushed. A layer that has already been pushed reading the record, because its branch
+	 * was not reached, keeps it. This removes a copy and a buffer per composed layer, and leaves the branch's
+	 * output live until this layer reads it.</p>
+	 *
 	 * @param name         a human-readable label for the composed layer
 	 * @param inputShape   the main input shape
 	 * @param auxShape     the shape of data from the auxiliary branch
@@ -473,22 +481,8 @@ public interface LayerRoutingFeatures extends LayerFeatures {
 								  Composition<PackedCollection> operator,
 								  ComputeRequirement... requirements) {
 		PackedCollection auxInput = Layer.ioTracking ? new PackedCollection(auxShape) : null;
-
-		Cell<PackedCollection> auxExit = Cell.of((in, next) -> {
-			if (auxInput == null) {
-				return next.push(in);
-			} else {
-				OperationList op = new OperationList(name + " composed layer (Entry)");
-				op.add(into(name + " composed layer (Input Record)", in,
-						p(auxInput), DefaultCellularLayer.enableMemoryDataCopy));
-				op.add(next.push(p(auxInput)));
-				return op;
-			}
-		});
-		aux.getForward().setReceptor(auxExit);
-
 		Cell.CaptureReceptor<PackedCollection> auxReceptor = new Cell.CaptureReceptor<>();
-		auxExit.setReceptor(auxReceptor);
+		AtomicBoolean recordRead = new AtomicBoolean();
 
 		Supplier<Runnable> setup = new OperationList();
 		if (aux instanceof Setup) {
@@ -503,6 +497,7 @@ public interface LayerRoutingFeatures extends LayerFeatures {
 					// Branch not reached by this pass: read the record it fills when its model runs,
 					// which (per this method's javadoc) must be before this one.
 					if (auxOutput == null && auxInput != null) {
+						recordRead.set(true);
 						auxOutput = p(auxInput);
 					} else if (auxOutput == null) {
 						throw new IllegalStateException(name + " cannot read its auxiliary branch: the branch"
@@ -516,6 +511,26 @@ public interface LayerRoutingFeatures extends LayerFeatures {
 		if (requirements.length > 0) layer.setComputeRequirements(List.of(requirements));
 
 		layer.init(inputShape, Layer.ioTracking, true);
+
+		Cell<PackedCollection> auxExit = Cell.of((in, next) -> {
+			if (auxInput == null) {
+				return next.push(in);
+			// TODO(review): this bypass ignores CompiledModel.enableLayerBufferReuse, and a destroyed record breaks a later compile(true)
+			} else if (!layer.isInputTracking() && !recordRead.get()) {
+				// Compiled for inference with the branch reached first: only the backward pass would
+				// read the record, so the branch's output is read directly and the record released.
+				auxInput.destroy();
+				return next.push(in);
+			} else {
+				OperationList op = new OperationList(name + " composed layer (Entry)");
+				op.add(into(name + " composed layer (Input Record)", in,
+						p(auxInput), DefaultCellularLayer.enableMemoryDataCopy));
+				op.add(next.push(p(auxInput)));
+				return op;
+			}
+		});
+		aux.getForward().setReceptor(auxExit);
+		auxExit.setReceptor(auxReceptor);
 
 		String mainName = name + " main";
 		BackPropagationCell mainBackward = new BackPropagationCell(mainName,

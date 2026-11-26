@@ -131,6 +131,23 @@ public interface Process<P extends Process<?, ?>, T> extends Node, Supplier<T>, 
 	}
 
 	/**
+	 * Returns the processes, among or beneath this process's children, whose memory this
+	 * process writes when it runs: the destination of an assignment, the target of a copy,
+	 * or the destinations of the members of a list. A wrapper reports the destinations of
+	 * the process it wraps.
+	 *
+	 * <p>The default reports none, which is correct for a computation whose result is
+	 * memory it allocates itself. An analysis that must not miss a writer cannot rely on an
+	 * empty result alone: an operation that writes memory without declaring it here is
+	 * indistinguishable from one that writes nothing.</p>
+	 *
+	 * @return the processes whose memory this process writes, possibly empty
+	 */
+	default Collection<Process<?, ?>> getDestinations() {
+		return Collections.emptyList();
+	}
+
+	/**
 	 * Optimizes this process using the default base context.
 	 *
 	 * <p>This is a convenience method equivalent to calling
@@ -354,10 +371,52 @@ public interface Process<P extends Process<?, ?>, T> extends Node, Supplier<T>, 
 			}
 
 			@Override
+			public Collection<Process<?, ?>> getDestinations() {
+				return supplier instanceof Process ?
+						((Process<P, T>) supplier).getDestinations() : Collections.emptyList();
+			}
+
+			@Override
 			public long getOutputSize() {
 				return supplier instanceof Process ?
 						((Process<P, T>) supplier).getOutputSize() :
 						Process.super.getOutputSize();
+			}
+		};
+	}
+
+	/**
+	 * Creates a process around a supplier whose work reads only the given inputs, exposing
+	 * those inputs as its children. This is for work done on the host, such as a copy into a
+	 * caller's collection or a diagnostic that inspects a value: the work stays opaque, but an
+	 * analysis of the memory an operation touches can see what it reads, which it cannot
+	 * through {@link #of(Supplier)}.
+	 *
+	 * <p>The supplier's work must not touch memory other than that of the inputs. Inputs that
+	 * are not themselves processes are wrapped by {@link #of(Supplier)}.</p>
+	 *
+	 * @param <T>      the result type
+	 * @param supplier the supplier to wrap
+	 * @param inputs   every producer the supplier's work reads
+	 * @return a process that delegates to the supplier and has the inputs as its children
+	 */
+	static <T> Process<Process<?, ?>, T> of(Supplier<T> supplier, Supplier<?>... inputs) {
+		List<Process<?, ?>> children = new ArrayList<>();
+		for (Supplier<?> input : inputs) {
+			if (input != null) {
+				children.add(input instanceof Process ? (Process<?, ?>) input : Process.of(input));
+			}
+		}
+
+		return new Process<>() {
+			@Override
+			public Collection<Process<?, ?>> getChildren() {
+				return Collections.unmodifiableList(children);
+			}
+
+			@Override
+			public T get() {
+				return supplier.get();
 			}
 		};
 	}

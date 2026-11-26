@@ -51,6 +51,8 @@ import org.almostrealism.hardware.OperationComputationAdapter;
 import org.almostrealism.hardware.jvm.JVMMemory;
 import org.almostrealism.hardware.mem.MemoryDataArgumentMap;
 
+import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.OptionalDouble;
@@ -462,6 +464,18 @@ public class Assignment<T extends MemoryData> extends OperationComputationAdapte
 			return process;
 
 		return super.isolate(process);
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>An assignment writes its destination, its first child.</p>
+	 */
+	@Override
+	public Collection<Process<?, ?>> getDestinations() {
+		Collection<Process<?, ?>> children = getChildren();
+		if (children == null || children.isEmpty()) return Collections.emptyList();
+		return List.of(children.iterator().next());
 	}
 
 	/**

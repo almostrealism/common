@@ -80,6 +80,9 @@ public interface OperationComputation<T> extends Computation<T>, Operation {
 		public Runnable get() { return op.get(); }
 
 		@Override
+		public Collection<Process<?, ?>> getDestinations() { return op.getDestinations(); }
+
+		@Override
 		public OperationMetadata getMetadata() {
 			return op instanceof OperationInfo ? ((OperationInfo) op).getMetadata() : null;
 		}

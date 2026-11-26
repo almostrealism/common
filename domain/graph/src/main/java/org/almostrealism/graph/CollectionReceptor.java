@@ -16,6 +16,7 @@
 
 package org.almostrealism.graph;
 
+import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
 
@@ -88,12 +89,16 @@ public class CollectionReceptor implements Receptor<PackedCollection> {
 	 * position producer (or uses zero), copies the data into the destination,
 	 * and invokes the callback if configured.</p>
 	 *
+	 * <p>Without a callback, the returned operation exposes {@code protein} and the position
+	 * producer as its children, so that an analysis of the memory a pass touches sees what the
+	 * copy reads. A callback may touch any memory, so with one the operation exposes nothing.</p>
+	 *
 	 * @param protein the data producer to write
 	 * @return a supplier that performs the write when executed
 	 */
 	@Override
 	public Supplier<Runnable> push(Producer<PackedCollection> protein) {
-		return () -> () -> {
+		Supplier<Runnable> copy = () -> () -> {
 			PackedCollection in = protein.get().evaluate();
 			int p = pos == null ? 0 : (int) pos.get().evaluate().toDouble(0);
 
@@ -103,5 +108,9 @@ public class CollectionReceptor implements Receptor<PackedCollection> {
 			dest.setFrom(offset, in, 0, length);
 			if (r != null) r.run();
 		};
+
+		// A callback may touch any memory, so only a copy without one exposes what it reads
+		if (r != null) return copy;
+		return Process.of(copy, protein, pos);
 	}
 }

@@ -112,6 +112,9 @@ public class Model implements Setup, Destroyable, Tracking, CodeFeatures {
 	/** The compute requirements every pass of a compilation is compiled and run under; may be {@code null}. */
 	private List<ComputeRequirement> requirements;
 
+	/** Whether every layer of this model keeps an output buffer of its own when compiled for inference. */
+	private boolean layerOutputsRetained;
+
 	/**
 	 * Creates a new model with no initial shape.
 	 */
@@ -179,6 +182,28 @@ public class Model implements Setup, Destroyable, Tracking, CodeFeatures {
 		blocks.setInputTracking(inputTracking);
 		Tracking.propagate(inputs, inputTracking);
 	}
+
+	/**
+	 * Sets whether every layer of this model keeps an output buffer of its own when the model
+	 * is compiled for inference. By default an inference compile shares memory between layers
+	 * whose outputs are never live at the same time, and a shared output cannot be read after a
+	 * pass (see {@link org.almostrealism.layers.DefaultCellularLayer#getOutput()}); retaining the
+	 * outputs keeps every one of them readable, at the cost of that memory. To keep only some
+	 * outputs, call {@link org.almostrealism.layers.DefaultCellularLayer#retainOutput()} on
+	 * those layers instead. It must be set before the model is compiled.
+	 *
+	 * @param retained true to give every layer an output buffer of its own
+	 */
+	public void setLayerOutputsRetained(boolean retained) { this.layerOutputsRetained = retained; }
+
+	/**
+	 * Returns whether every layer of this model keeps an output buffer of its own when the model
+	 * is compiled for inference.
+	 *
+	 * @return true if layer outputs are retained
+	 * @see #setLayerOutputsRetained(boolean)
+	 */
+	public boolean isLayerOutputsRetained() { return layerOutputsRetained; }
 
 	/**
 	 * Sets the {@link ComputeRequirement}s that the setup, forward and backward passes of every

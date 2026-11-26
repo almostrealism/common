@@ -17,6 +17,7 @@
 package org.almostrealism.layers;
 
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.graph.Receptor;
@@ -117,44 +118,54 @@ public class MonitorReceptor implements Receptor<PackedCollection>, ConsoleFeatu
 	 * <p>Eagerly evaluates {@code in}, invokes the optional consumer, then scans the result
 	 * for NaN values, all-zero values, and (if {@link #enableLargeWarning} is set) excessively
 	 * large values. Any detected condition logs a warning and returns immediately.</p>
+	 *
+	 * <p>The returned operation is a {@link Process} whose child is {@code in} (see
+	 * {@link Process#of(java.util.function.Supplier, java.util.function.Supplier[])}), so that an
+	 * analysis of the memory a pass touches sees what the monitor reads.</p>
 	 */
 	@Override
 	public Supplier<Runnable> push(Producer<PackedCollection> in) {
-		return () -> () -> {
-			PackedCollection out = in.get().evaluate();
+		return Process.of(() -> () -> inspect(in.get().evaluate()), in);
+	}
 
-			if (op != null) {
-				op.accept(out);
-			}
+	/**
+	 * Invokes the optional consumer with the evaluated output and logs a warning for
+	 * NaN, all-zero, or (if enabled) excessively large values.
+	 *
+	 * @param out the evaluated output to inspect
+	 */
+	private void inspect(PackedCollection out) {
+		if (op != null) {
+			op.accept(out);
+		}
 
-			boolean isNaN = out.doubleStream().anyMatch(Double::isNaN);
-			boolean isZero = out.doubleStream().allMatch(d -> d == 0.0);
-			if (isNaN) {
-				warn("Identified NaN from " + name +
+		boolean isNaN = out.doubleStream().anyMatch(Double::isNaN);
+		boolean isZero = out.doubleStream().allMatch(d -> d == 0.0);
+		if (isNaN) {
+			warn("Identified NaN from " + name +
+					" layer (" + inputShape + " -> " + outputShape + ")");
+			return;
+		} else if (isZero) {
+			warn("Identified Zero from " + name +
+					" layer (" + inputShape + " -> " + outputShape + ")");
+			return;
+		}
+
+		if (enableLargeWarning) {
+			boolean isLarge = out.doubleStream().map(Math::abs).sum() > 1e6 ||
+					out.doubleStream().map(Math::abs).max().getAsDouble() > 1e9;
+			if (isLarge) {
+				warn("Identified large output from " + name +
 						" layer (" + inputShape + " -> " + outputShape + ")");
 				return;
-			} else if (isZero) {
-				warn("Identified Zero from " + name +
-						" layer (" + inputShape + " -> " + outputShape + ")");
-				return;
 			}
+		}
 
-			if (enableLargeWarning) {
-				boolean isLarge = out.doubleStream().map(Math::abs).sum() > 1e6 ||
-						out.doubleStream().map(Math::abs).max().getAsDouble() > 1e9;
-				if (isLarge) {
-					warn("Identified large output from " + name +
-							" layer (" + inputShape + " -> " + outputShape + ")");
-					return;
-				}
+		if (name != null && name.equals("softmax2d")) {
+			double total = out.doubleStream().sum();
+			if (total < 0.9) {
+				warn("Softmax layer (" + inputShape + " -> " + outputShape + ") sum is " + total);
 			}
-
-			if (name != null && name.equals("softmax2d")) {
-				double total = out.doubleStream().sum();
-				if (total < 0.9) {
-					warn("Softmax layer (" + inputShape + " -> " + outputShape + ") sum is " + total);
-				}
-			}
-		};
+		}
 	}
 }

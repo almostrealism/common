@@ -26,7 +26,10 @@ import org.almostrealism.hardware.computations.Assignment;
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
+import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.Set;
 import java.util.function.Supplier;
 
 /**
@@ -115,6 +118,15 @@ public class MemoryRegionList {
 	}
 
 	/**
+	 * Returns the regions of this list, in the order they were added.
+	 *
+	 * @return an unmodifiable view of the regions
+	 */
+	public List<MemoryData> getRegions() {
+		return Collections.unmodifiableList(regions);
+	}
+
+	/**
 	 * Returns the memory regions the given operation writes, for operations whose
 	 * destinations are statically resolvable ({@link Assignment}s with provider
 	 * destinations, recursively including members of nested lists).
@@ -124,8 +136,84 @@ public class MemoryRegionList {
 	 */
 	public static MemoryRegionList writes(Supplier<Runnable> op) {
 		MemoryRegionList result = new MemoryRegionList();
-		collectWrites(op, result);
+		appendWrites(op, result);
 		return result;
+	}
+
+	/**
+	 * Returns every provider region in the process tree of the given operation: the
+	 * memory it may read or write, whether inline or beneath an {@link Isolated} node.
+	 * A node whose value is a provider's {@link MemoryData} contributes that region and
+	 * is not descended into; a subtree shared by several paths is visited once.
+	 *
+	 * <p>Members of an {@link OperationList} that are not {@link Process}es have no
+	 * visible tree and contribute nothing, so a caller that needs every region an
+	 * operation touches must first establish that each member is visible (see
+	 * {@link ExecutionStep#isResolvable()}).</p>
+	 *
+	 * @param op the operation to inspect
+	 * @return the regions the operation touches, possibly empty
+	 */
+	public static MemoryRegionList touches(Supplier<Runnable> op) {
+		MemoryRegionList result = new MemoryRegionList();
+		Set<Object> visited = Collections.newSetFromMap(new IdentityHashMap<>());
+
+		if (op instanceof OperationList) {
+			for (Supplier<Runnable> member : (OperationList) op) {
+				result.include(touches(member));
+			}
+		} else if (op instanceof Process) {
+			appendTouches((Process<?, ?>) op, visited, result);
+		}
+
+		return result;
+	}
+
+	/**
+	 * Returns the regions the given operation writes, as it declares them through
+	 * {@link Process#getDestinations()}: every provider region beneath each destination, so
+	 * that a destination which is a traversal or reshape of a provider still counts. Unlike
+	 * {@link #writes(Supplier)}, which {@link OperationList#subdivide()} keeps using, this
+	 * covers every operation that declares its destinations, not only an {@link Assignment}
+	 * of a provider, including one wrapped by isolation or by a list.
+	 *
+	 * @param op the operation to inspect
+	 * @return the regions the operation declares it writes, possibly empty
+	 */
+	public static MemoryRegionList destinations(Supplier<Runnable> op) {
+		MemoryRegionList result = new MemoryRegionList();
+		if (!(op instanceof Process)) return result;
+
+		Set<Object> visited = Collections.newSetFromMap(new IdentityHashMap<>());
+		for (Process<?, ?> destination : ((Process<?, ?>) op).getDestinations()) {
+			appendTouches(destination, visited, result);
+		}
+
+		return result;
+	}
+
+	/**
+	 * Appends every provider region beneath the given process node to the provided list.
+	 *
+	 * @param node    the process node to inspect
+	 * @param visited the nodes already inspected, so that shared subtrees are visited once
+	 * @param result  receives the provider regions
+	 */
+	private static void appendTouches(Process<?, ?> node, Set<Object> visited, MemoryRegionList result) {
+		if (!visited.add(node)) return;
+
+		MemoryData value = Provider.valueOf(node, MemoryData.class);
+		if (value != null) {
+			result.regions.add(value);
+			return;
+		}
+
+		Collection<? extends Process<?, ?>> children = node.getChildren();
+		if (children == null) return;
+
+		for (Process<?, ?> child : children) {
+			appendTouches(child, visited, result);
+		}
 	}
 
 	/**
@@ -158,10 +246,10 @@ public class MemoryRegionList {
 	 * @param op     the operation to inspect
 	 * @param result receives the regions the operation writes
 	 */
-	private static void collectWrites(Supplier<Runnable> op, MemoryRegionList result) {
+	private static void appendWrites(Supplier<Runnable> op, MemoryRegionList result) {
 		if (op instanceof OperationList) {
 			for (Supplier<Runnable> member : (OperationList) op) {
-				collectWrites(member, result);
+				appendWrites(member, result);
 			}
 		} else if (op instanceof Assignment) {
 			MemoryData destination = Provider.valueOf(((Assignment<?>) op).getInputs().get(0), MemoryData.class);

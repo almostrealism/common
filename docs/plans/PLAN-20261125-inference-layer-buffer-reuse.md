@@ -1,7 +1,7 @@
 ---
-status: proposed
+status: completed
 created: 2026-11-25
-closed:
+closed: 2026-11-26
 tracker: [56266c47-e1ad-4b6e-a9f4-4d20e25874de]
 ---
 
@@ -9,8 +9,9 @@ tracker: [56266c47-e1ad-4b6e-a9f4-4d20e25874de]
 
 **Category:** Memory
 
-**Stage:** design and baseline only. Nothing described under "Design" is implemented on this
-branch. Marking the pull request ready for review is the approval to implement it.
+**Stage:** implemented (Stage 2). The design below is the approved one; "Implementation
+(Stage 2)" at the end records what was built, where it departs from the design and why, and the
+after-measurement.
 
 ## Motivation
 
@@ -643,3 +644,121 @@ Stage 2 is done when all of the following hold:
     aggregating (§4, "Block sizes"). Should small outputs be pooled only by exact length, or left
     out of the pool? Exact length keeps the most memory, and leaving them out is the simplest.
     Either keeps the kernel-sharing and aggregation behaviour of today.
+
+## Implementation (Stage 2)
+
+### What was built
+
+| Outline item | Where |
+|---|---|
+| 1. Lazy output allocation | `DefaultCellularLayer`: `init` keeps only the shape and an `outputTracking` flag; `getForward()` and `setInputTracking` test the flag, not the field; the push lambdas call `outputForPush()`, which creates the output on first need. |
+| 2. Read/write-set walk | `OperationList.getExecutionSteps()` and `ExecutionStep` (base/hardware). The kernel test is one method, `OperationList.isCompiledAsKernel()`, which `get()` now uses too. Touches are every provider leaf (`MemoryRegionList.touches`); writes come from the new `Process.getDestinations()` (`MemoryRegionList.destinations`). |
+| 3. Pool, kill switch, verify mode | `LayerOutputPool` (domain/graph, `org.almostrealism.layers`), owned and released by `CompiledModel`; `CompiledModel.enableLayerBufferReuse` (`AR_GRAPH_LAYER_BUFFER_REUSE`, on by default) and `enableLayerBufferReuseVerification` (`AR_GRAPH_LAYER_BUFFER_REUSE_VERIFY`). The compile logs `layerOutputBytes=` and `pooledBytes=`. |
+| 4. Compose `auxInput` pass-through | `LayerRoutingFeatures.compose`: with the layer's input tracking off and the branch reached before the layer reads the record, the branch's output is passed straight through and the record is released. |
+| 5. `getOutput()` contract | `getOutput()` throws `IllegalStateException` for a shared output; `DefaultCellularLayer.retainOutput()` and `Model.setLayerOutputsRetained(true)` keep standalone outputs. |
+| 6. Tests and measurement | See "Tests" below. |
+
+### Departures from the design, and why
+
+- **One pass, not two (§2 step 5, open questions 9, 11, 12).** Pass 1 gives each layer a view at
+  offset 0 of a block of its own (the "lazily created standalone buffers" option of question 9;
+  these replace the construction-time allocation, so the compile-time peak is no higher than
+  today's). After the analysis the pool re-points those same view objects (`setDelegate`) onto the
+  shared blocks, before `get()`. Nothing is pushed, flattened or optimized again, so the
+  `CaptureReceptor` receipt question (11), the `outputReceptor` chaining and the cost of a second
+  pass (12) do not arise. Soundness, which question 12 asked for: two outputs share a block only if
+  no step touches both; every hazard `subdivide()` cuts for lies between members of one list that
+  would run in one kernel, which is one step, so no hazard can appear after the move that was not
+  there, and cut, when the list was optimized. The refinement check of §2 step 6 is therefore
+  satisfied by construction (the grouping is the analysed one); the verify mode re-walks the steps
+  and asserts that no step touches two outputs on one block.
+- **Writers (§2 step 1, open question 13).** The optimizer wraps a layer's `into(...)` assignment
+  in `OperationComputation.IsolatedProcess`, so an `instanceof Assignment` test misses most
+  writers. Writers now declare their destinations through `Process.getDestinations()` (default
+  none; implemented by `Assignment`, `MemoryDataCopy`, `OperationList`, `IsolatedProcess`,
+  `OperationWithInfo` and the `Process.of` wrapper). `subdivide()` keeps using
+  `MemoryRegionList.writes`, unchanged. An output whose first touching step does not declare it
+  written is treated as crossing passes and left unpooled; a step that does not expose its tree
+  (a non-`Process` member, or a non-computation process with no children) disables pooling for
+  the compile (`LayerOutputPool.getFallbackReason()`). The SA3 graphs have no such step and no
+  cross-pass output.
+- **Host-side receptors.** `MonitorReceptor` and `CollectionReceptor` returned opaque lambdas,
+  which would have disabled pooling whenever output monitoring or an `andThen(PackedCollection)`
+  tap is present. They now return `Process.of(supplier, inputs...)`, a new overload exposing the
+  producers the host work reads. A `CollectionReceptor` with a callback stays opaque.
+- **Block sizes (open question 14).** Aggregation-eligible outputs (root at most
+  `maxAggregateLength`) share only blocks of exactly their own length; larger ones use best fit
+  and may grow the largest free block.
+- **Recompiling (open question 1).** A later push of a layer whose output is shared throws
+  (`DefaultCellularLayer.outputForPush`), so compiling a model again after a pooled inference
+  compile fails with an `IllegalStateException`.
+- **The deprecated `CaptureReceptor` accum** cannot be tested: `LayerFeatures.allowNonComposites`
+  is a constant `false`, so `accum(shape, Cell)` always throws. Output monitoring is likewise a
+  constant (`HardwareFeatures.outputMonitoring`); its test installs the same `MonitorReceptor`
+  through `setMonitor`.
+
+### Tests
+
+- `LayerBufferReuseTest` (engine/utils): exact off/on equivalence over two passes with different
+  inputs, with verification on, and `pooledBytes < layerOutputBytes`, for a dense chain (small,
+  aggregation-eligible outputs), a large dense chain, residual `accum`s, a three-child
+  `BranchBlock` with `andThen(PackedCollection)` taps, `accum(List)`/`concat(List)`, `product`,
+  compose layers fed from `Model.addInput` through a `split`, and per-layer monitors. Also:
+  `getOutput()` on a shared layer throws and a retained layer's output equals the unpooled one; a
+  retained model is not pooled; a `compile(true)` model has no pool and distinct standalone
+  outputs; recompiling a pooled model throws; an opaque operation makes the compile fall back; a
+  compose layer whose branch is in a model compiled later still reads the record (against a host
+  reference). Passes on Metal and on the native backend.
+- `ExecutionStepTest` (engine/utils): step grouping and touched/written sets.
+- `StableAudio3GenerationTest#generationIsIdenticalWithLayerBufferReuse` (engine/ml): a seeded
+  generation through T5Gemma, the DiT and the decoder is bitwise identical with reuse off and on.
+  `StableAudio3GenerationTest#encoderIsIdenticalWithLayerBufferReuse` does the same for the blend
+  encoder on a seeded clip. `generatesAudioFromATextPrompt` and `generatesAudioFromTheReleasedWeights`
+  pass with reuse on.
+- Training unchanged: `BackPropagationTests`, `TrainModelTest`, `SyntheticDenseTrainingTest`,
+  `ConvolutionModelTests`, `LayerTrackingTest`, `AuxiliaryInputParameterUpdateTest` and
+  `AssignmentRecordingDiagTest` pass unmodified.
+- The SAME-S, DiT and T5Gemma parity tests need reference activations that are not on the build
+  node; the end-to-end bitwise comparison above covers all three graphs instead.
+
+### After-measurement
+
+`StableAudio3MemoryMeasurementTest` (engine/ml) is the rebuilt harness, committed, skipped unless
+the weights are present, at `@TestDepth(10)` and behind `skipLongTests`. Same node and settings as
+the baseline (Metal, `AR_HARDWARE_MEMORY_SCALE=7`, `-Xmx2560m`), run on this branch with reuse on
+and with `-DAR_GRAPH_LAYER_BUFFER_REUSE=disabled`. MB, settled after GC.
+
+| Stage | Reuse on: tracked (peak) | Reuse on: physical (peak) | Reuse off: tracked (peak) | Reuse off: physical (peak) | Master baseline: tracked / physical |
+|---|---|---|---|---|---|
+| Generator built | 159 (377) | 790 (2,522) | 3,199 (3,199) | 778 (2,681) | 3,756 / 762 |
+| After text clip 1 | 3,438 (4,401) | 5,288 (6,809) | 8,050 (9,301) | 9,972 (10,990) | 8,822 / 10,758 |
+| After text clip 2 | 3,438 (6,388) | 5,352 (8,790) | 8,050 (10,976) | 9,988 (13,468) | 8,822 / 10,963 |
+| After text clip 3 | 3,438 (6,171) | 5,348 (8,626) | 8,050 (10,663) | 10,021 (12,772) | 8,822 / 10,917 |
+| Blend encoder compiled | 3,577 (5,020) | 5,349 (5,349) | 10,706 (10,706) | 10,020 (10,273) | 11,975 / 10,956 |
+| After blend 1 | 3,990 (7,249) | 5,889 (9,006) | 11,119 (14,462) | 13,149 (17,035) | 12,394 / 14,534 |
+| After blend 2 | 3,990 (6,779) | 5,928 (8,213) | 11,119 (13,936) | 13,134 (15,992) | 12,394 / 14,551 |
+
+Clip times, reuse on / off / master: text clip 1 (includes the lazy DiT and T5Gemma compiles)
+20.6 / 18.5 / 19.5 s; later text clips 9.7–9.8 / 9.7 / 10.3 s; blends 11.5 / 11.4–11.5 / 11.7 s.
+
+Against the success criteria:
+
+1. Met. The training tests pass unmodified and `backpropCompileHasNoPooledLayers` shows no pool.
+2. Met for the synthetic graphs, on Metal and native, compared exactly; the SA3 graphs compare
+   exactly on Metal (end to end, and the blend encoder on its own).
+3. Met. No SA3 graph fell back; at the 17 s compile length the pool logs show T5Gemma 548 MB →
+   14 MB, the decoder 2,800 MB → 146 MB, the blend encoder 2,785 MB → 146 MB and the DiT
+   1,729 MB → 80 MB of layer outputs.
+4. Met. Text plus blend at rest falls from 12,394 MB to 3,990 MB tracked (−8.4 GB) and from
+   14.5 GB to 5.9 GB physical (−8.6 GB); every peak is lower.
+5. Met. Clip times do not regress.
+6. Reported. The analysis adds about 2 s to the first clip against reuse off (20.6 s against
+   18.5 s), which is where the T5Gemma, DiT compiles happen; no bound was set.
+
+The reuse-off column is lower than master mainly because the compose pass-through (item 4) is
+active whenever input tracking is off, independently of the kill switch.
+
+Follow-ups filed: sharing one pool across a generator's compiled models (open question 3),
+allocating input records lazily (question 4), and per-pass temporaries (question 8). Exposing
+allocated bytes on `MemoryProvider`, which the harness would use instead of provider casts, was
+already filed.
