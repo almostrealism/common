@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: in-progress
 created: 2026-11-26
 closed:
 tracker: [c2e54a19-0204-46b6-9500-dd8fdf8826bd]
@@ -50,12 +50,27 @@ container Node therefore needs no second description of the work: it encodes the
 The container runs a **new thin main — `io.flowtree.jobs.CodingAgentJobWorker`**,
 NOT a `Server`. It has no `NodeGroup`, no peer connections, no relay. It reads one
 encoded job (from a file or stdin), decodes it via `Server.instantiateJobClass`,
-wires it to an `OutputServer`/output consumer exactly as `Node.prepareJob`
-(`Node.java`) does, calls `job.run()`, streams events to stdout, and exits
-with a status that encodes success/failure. This reuses the **entire** existing
-execution path — `GitManagedJob.run()` (`GitManagedJob.java`), the
-`AgentRunner` (`ClaudeCodeRunner`), `RestartGovernor`, the inactivity watchdog —
-unchanged, inside the container.
+calls `job.run()`, and exits with a status that encodes success/failure. This
+reuses the **entire** existing execution path — `GitManagedJob.run()`
+(`GitManagedJob.java`), the `AgentRunner` (`ClaudeCodeRunner`), `RestartGovernor`,
+the inactivity watchdog — unchanged, inside the container.
+
+Two contracts the worker must supply explicitly, because the in-process assumptions
+do not hold without a `Server` in the container (both are Stage 2 deliverables, each
+with a dedicated tracker task):
+
+- **Output transport.** A native Node's `prepareJob` assigns
+  `OutputServer.getCurrentServer()`, but the worker is not a `Server`, so that
+  singleton is `null` and would silently drop the job's output. The worker installs
+  its *own* output consumer that writes the job's output to its stdout; the Docker
+  Node reads that stdout and forwards it to the job's real output consumer on the
+  host. The worker does not reuse `OutputServer`.
+- **Success/failure signal.** `GitManagedJob.run()` is `final`, catches execution
+  exceptions, and returns normally after recording the error, so the worker cannot
+  infer the outcome from `run()` returning. It must read the outcome from the job's
+  own completion signal (its `CompletableFuture` / recorded error) and encode that
+  into its process exit status, which the Docker Node maps back onto the job's
+  completion (`addFailedJob` on failure).
 
 Option (b) (a command line built by the Node, results read from files/exit status)
 is rejected: it re-describes the job in a second form, cannot run an arbitrary job
@@ -93,7 +108,14 @@ today, by construction, with no reset logic to get wrong.
 **How per-job state is provided** (this is what Decision 2 settles):
 
 - **Workspace checkout** — the container clones into its container-private overlay
-  FS at `/workspace/project`, exactly as today. Never a shared writable mount.
+  FS at `/workspace/project`, exactly as today. Never a shared writable mount. A
+  serialized `GitManagedJob` can carry an explicit absolute `workingDirectory`, and
+  when `repoUrl` is absent `run()` uses that path directly; in the current container
+  deployment it is `FLOWTREE_WORKING_DIR` in the Server process that forces the path
+  to `/workspace/project`. A worker with no Server must therefore resolve every
+  checkout under a container-local root and reject or remap a host-absolute
+  `workingDirectory`, so it never receives a host path that does not exist in the
+  container. This remapping rule is part of the Stage 2 worker contract.
 - **Maven install space** — the per-job split local repository
   (`MavenInstallSpace`) is created inside the container, as today.
 - **Transcript volume** — the single sanctioned writable mount at
@@ -215,11 +237,17 @@ Docker Desktop.
 **Recommendation:** the boundary carries the same NDJSON event stream, and
 cancellation becomes a container kill.
 
-- **Progress / activity stream:** the container worker writes the same
-  `stream-json` event stream to its stdout that `ClaudeCodeRunner` produces today
-  (`flowtree/CLAUDE.md` §"silence budget"). The Docker Node reads the container
-  process's stdout and forwards it to the job's output consumer, so the activity
-  stream and transcript capture are unchanged from a consumer's point of view.
+- **Progress / activity stream:** `ClaudeCodeRunner` captures the agent's NDJSON
+  internally, and `prepareJob`'s output consumer is invoked only once, after the
+  runner finishes — so a worker that merely calls `job.run()` emits *no* per-event
+  stdout, and the coarse outer guard below would then be able to kill a healthy job
+  during a long tool call. Stage 2 must therefore give the worker an explicit
+  streaming hook: either the `AgentRunner` exposes a per-event callback the worker
+  forwards to its stdout (preferred), or the outer guard keys off the liveness the
+  inner `AgentInactivityMonitor` already tracks rather than off raw container stdout.
+  With such a hook the Docker Node reads the container process's stdout and forwards
+  it to the job's output consumer, so the activity stream and transcript capture are
+  unchanged from a consumer's point of view.
 - **Inactivity:** the existing `AgentInactivityMonitor` /
   `AgentRunner.DEFAULT_INACTIVITY_TIMEOUT_MILLIS` (35 min stdout silence,
   `AgentRunner.java`) runs **inside** the container (it is part of the job's own
@@ -257,6 +285,17 @@ job, so a job in one container cannot read another's: distinct env, distinct
 `/agent-transcripts` subdir, no shared writable volume (the `entrypoint.sh` guard
 and `validate_agent_volume_isolation.py` continue to hold for the launched
 containers).
+
+**Already-serialized credentials.** This per-Node injection bounds *cross-container*
+exposure (one container cannot read another's env or transcript), but it does not by
+itself make the job wire payload secret-free: `CodingAgentJobCodec` already serializes
+`arManagerToken` and `agentEnv`, and `Node.toWire()` forwards that payload through
+peers, so a relaying Node and the worker that decodes the job already receive those
+secrets before any launch-time `-e`/`:ro` injection. Decide in Stage 2/3 whether that
+in-transit exposure is intentionally retained (the wire is already trusted today) or
+whether a credential-reference / redaction design replaces the inlined secrets with a
+handle the worker resolves locally; the per-Node injection boundary is necessary but
+not, on its own, sufficient.
 
 **Open questions:** where the Server reads the credential superset from (an
 operator env file like `macos/agent.env`, or the `ar-secrets` path); whether
@@ -301,9 +340,9 @@ All paths verified against current `master`.
 |---|---|---|---|
 | In-process execution | `flowtree/runtime/.../node/Node.java` (worker thread, `j.run()`) | Worker dequeues, checks `satisfies`, runs `j.run()` in-process | Replace `j.run()` with `launch(j)` seam; native body unchanged |
 | Node construction | `Node.java` (`Node(NodeGroup,int,int,int)`) | Single concrete class | Add `DockerNode`/`ColimaNode extends Node` overriding `launch` |
-| Homogeneous build | `NodeGroup.java` (`nodes.initial`, `new Node(...)` loop, relay Node) | Builds N identical Nodes from a count | Build from typed `nodes.<i>.*` entries via a kind→Node factory; keep count path for back-compat |
+| Homogeneous build | `NodeGroup.java` (`nodes.initial`, `new Node(...)` loop, relay Node) | Builds N identical Nodes from a count | Build from typed `nodes.<i>.*` entries via the `NodeKind` kind→Node factory (landed Stage 1); keep count path for back-compat |
 | Label broadcast | `NodeGroup.java` (`setLabel` → all children) | One label set applied to every child | Per-Node labels from typed config; broadcast only on the legacy path |
-| Config dispatch | `NodeGroupNodeConfig.java` (`setParam`, `applyNodeLabels`) | `nodes.*` keys and `nodes.labels.*` | Parse `nodes.<i>.kind/image/cpus/memory/labels.*` |
+| Config dispatch | `NodeGroupNodeConfig.java` (`setParam`, `applyNodeLabels`) | `nodes.*` keys and `nodes.labels.*` | Typed `nodes.<i>.kind/labels.*` parsing landed in the new `NodeConfig` (Stage 1); `nodes.<i>.image/cpus/memory` fields added there in Stage 2 |
 | Routing | `NodeGroupMetrics.java` (`findNodeForJob`), `NodeGroup.java` (`routeJob`) | Least-active child whose own labels `satisfy` the job | **No change** — already per-Node; benefits directly from per-Node labels |
 | Relay on mismatch | `Node.java` | Worker relays a mismatched job to parent for re-routing | **No change** — correctly refuses to run a wrong-kind job |
 | Label matching | `NodeLabelMatcher.java`, `Node.satisfies` (`Node.java`) | `role=relay` never runs; empty reqs match any non-relay | **No change** |
@@ -339,28 +378,44 @@ Key structural facts that make this safe:
 Each stage is independently useful and reviewable. The task's suggested shape maps
 one-to-one onto these five stages.
 
-### Stage 1 — Launch seam + typed Node config (native only) — *behaviour-identical*
+### Stage 1 — Launch seam + typed Node config (native only) — *behaviour-identical* — **IMPLEMENTED**
 
-**Changes**
-- Add the `launch(Job)` seam to `Node`; the native body is today's `j.run()`
-  (`Node.java`). The worker thread calls `launch(j)`.
-- Add typed-config parsing to `NodeGroupNodeConfig` (`nodes.<i>.kind=native`,
-  `nodes.<i>.labels.*`) and a kind→Node factory used by `NodeGroup` instead of the
-  bare `new Node(...)` loop. Only `kind=native` is implemented.
-- Move per-Node labels off the `setLabel` broadcast for the typed path; keep the
-  broadcast for the legacy `nodes.initial` path.
+**Changes (as landed)**
+- Added the protected `launch(Job)` seam to `Node`; the native body is today's
+  `j.run()` (`Node.java`). The worker thread calls `launch(j)` — the single override
+  point a container Node will use.
+- Added `NodeKind` (the kind→Node factory enum, `native` only, modelled on the
+  existing `AutomaticLabel` strategy-enum) and `NodeConfig` (parses the typed
+  `nodes.<i>.kind` / `nodes.<i>.labels.*` entries into an ordered list, validating
+  contiguous zero-based indices, unknown kinds, and malformed indices). `NodeGroup`'s
+  constructor builds from the typed list when present, falling back to the legacy
+  `nodes.initial` loop when `NodeConfig.parse` returns empty.
+- Per-Node labels for the typed path are applied directly to each Node by
+  `NodeConfig.applyLabels`, never broadcast; the legacy path keeps the `setLabel`
+  broadcast.
+- **Automatic labels target only host-resident Nodes.** `AutomaticLabel` detection
+  runs per Node and only when `NodeKind.describesHost()` is true, so the host's
+  `platform`/`hostname` are not copied onto a container Node — resolving the review
+  finding that the group-wide broadcast would otherwise mislabel Docker/Colima Nodes.
+  (The only kind so far, `native`, is host-resident; `describesHost()` returns
+  `false` for the container kinds Stage 2+ adds.)
 - No `agent.properties` change ships; the absence of `nodes.<i>.kind` selects the
   legacy path.
 
-**Tests that prove it**
-- `NodeTest`, `NodeGroupTest`, `NodeGroupInitTest` — unchanged behaviour for the
-  legacy count path.
-- `NodeLabelRoutingTest` — routing still selects by per-Node labels; add a case
-  with two typed native Nodes carrying *different* labels and assert each job lands
-  on the matching Node (this is the new capability the broadcast previously made
-  impossible).
-- A new unit test that a `native`-kind typed config produces a Node whose `launch`
-  runs the job in-process (observe the job ran on the same thread, no container).
+**Tests that prove it (landed)**
+- `NodeConfigTest` — the back-compat fallback (empty list without a typed entry),
+  index/kind/label extraction, ordering, and rejection of gaps, unknown kinds, and
+  malformed indices.
+- `NodeGroupTypedConfigTest` — two typed native Nodes carrying *different* `platform`
+  labels each satisfy only their matching job (the capability the broadcast made
+  impossible); per-node labels are not broadcast to siblings; a typed native Node
+  with no configured platform takes the host's detected one; the legacy path still
+  broadcasts.
+- `NodeLaunchTest` — the default seam runs the job in-process, an override replaces
+  that body, and the worker thread executes dequeued jobs *through* `launch` (so a
+  subtype's override is reached).
+- `OfflineNodeTestBase` — shared offline-mode guard the three group tests extend,
+  removing the duplicated setup `NodeGroupTest` previously carried inline.
 
 **Rollback / migration**
 - Pure addition behind config. Reverting the typed-config parse leaves the legacy
@@ -481,7 +536,7 @@ happens to own container Nodes.
 | **Wider blast radius** | One Server per machine means one failure stops every agent on it, where today a container fails alone. | A container Node's failures are contained in its container; the Node maps a container crash to a job failure (`addFailedJob`) and never propagates it into the Server process. A Node kind must not run host code that can wedge the shared JVM: the Docker Node only shells out (CLI) and reads a stream — it never runs the agent in-process. Stage 1 is behaviour-identical, so the shared-process risk is introduced only with Docker Nodes, incrementally. |
 | **Host access** | A Server that can start containers can do anything the runtime can; on shared machines that is real privilege and changes what the isolation/exfil controls protect. | Host install is the **default** (Decision 5), so the Server runs as an ordinary account (as `macos/install.sh` already does — never root, `install.sh`), not as a container with the host Docker socket. The exfil/mount guards (`entrypoint.sh`, `validate_agent_volume_isolation.py`) continue to apply to each launched container. |
 | **Isolation regressions** | Today isolation of filesystem, Maven repo, transcripts, credentials is by construction (separate containers); each becomes something the Docker Node must set up, and a mistake is silent. | One container per job (Decision 2) keeps the by-construction guarantees. The per-job launch reuses the existing in-container guard (`entrypoint.sh`) and the CI isolation validator, extended in Stage 5 to assert the per-job launch (distinct transcript subdir, no shared writable mount). No warm-pool reset logic is introduced in the isolation-critical stages. |
-| **Relay with mixed Node kinds** | Relay/peer selection treats Nodes in a group as interchangeable; mixed kinds make that false, and a job relayed to the wrong kind must be refused, not run in the wrong environment. | Already enforced: `findNodeForJob` only returns a Node whose own labels `satisfy` the job (`NodeGroupMetrics.java`), and a worker that still receives a mismatch relays it rather than running it (`Node.java`). Per-Node labels (Decision 4) make "wrong kind" visible to this existing machinery. Residual gap: a job with **no** required labels can run on any kind — mitigated by having `CodingAgentJobFactory` stamp a `platform` requirement (it already stamps required labels) so platform-specific work is always routed. |
+| **Relay with mixed Node kinds** | Relay/peer selection treats Nodes in a group as interchangeable; mixed kinds make that false, and a job relayed to the wrong kind must be refused, not run in the wrong environment. | Already enforced: `findNodeForJob` only returns a Node whose own labels `satisfy` the job (`NodeGroupMetrics.java`), and a worker that still receives a mismatch relays it rather than running it (`Node.java`). Per-Node labels (Decision 4) make "wrong kind" visible to this existing machinery. Residual gap: a job with **no** required labels can run on any kind, because empty requirements intentionally match every non-relay Node. `CodingAgentJobFactory.configure` copies only the labels already configured on the factory — it does **not** synthesize a `platform` requirement today — so closing this gap is itself a Stage 2 deliverable: either require a `platform` label at submission for platform-specific jobs, or add an explicit defaulting rule (e.g. the factory stamps the submitting controller's platform when none is given). Until one of those lands, mixed-kind routing is safe only for jobs that carry the right required labels. |
 | **Operational change** | Deploy/rebuild/drain/fleet scripts are written around "an agent is a container running a Server"; each needs an equivalent, and the controller's deployment must not be disturbed. | Stage 5 ports each script with the old layout still working until then; the host-install scripts are a port of the proven `macos/` scripts; the controller is untouched ([§4](#4-the-controllers-own-deployment-is-not-disturbed)). |
 
 ---

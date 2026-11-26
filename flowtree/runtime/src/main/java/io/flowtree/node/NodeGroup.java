@@ -233,27 +233,51 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 		
 		int serverCount = Integer.parseInt(p.getProperty("servers.total", "0"));
 		
+		List<NodeConfig> typedNodes = NodeConfig.parse(p);
+
 		this.tasks = new ArrayList();
-		this.nodes = new ArrayList(nodeCount);
+		this.nodes = new ArrayList(typedNodes.isEmpty() ? nodeCount : typedNodes.size());
 		this.cachedTasks = new ArrayList();
-		
-		if (nodeCount > 0) log("NodeGroup: Constructing child nodes...");
 
-		for (int i = 0; i < nodeCount; i++) {
-			Node n = new Node(this, i, nodeMaxJobs, nodeMaxPeers);
-			this.nodes.add(n);
+		if (typedNodes.isEmpty()) {
+			// Legacy homogeneous path: nodes.initial native Nodes, with configured
+			// and automatic labels broadcast to every child by setLabel.
+			if (nodeCount > 0) log("NodeGroup: Constructing child nodes...");
 
-			log("NodeGroup: Added node " + i + " (" + n + ")");
-		}
+			for (int i = 0; i < nodeCount; i++) {
+				Node n = new Node(this, i, nodeMaxJobs, nodeMaxPeers);
+				this.nodes.add(n);
 
-		this.relayNode = new Node(this, nodeCount, nodeMaxJobs, relayMaxPeers);
-		this.relayNode.setLabel("role", "relay");
-		log("NodeGroup: Added relay node (index " + nodeCount + ")");
+				log("NodeGroup: Added node " + i + " (" + n + ")");
+			}
 
-		NodeGroupNodeConfig.applyNodeLabels(this, p);
+			this.relayNode = new Node(this, nodeCount, nodeMaxJobs, relayMaxPeers);
+			this.relayNode.setLabel("role", "relay");
+			log("NodeGroup: Added relay node (index " + nodeCount + ")");
 
-		for (AutomaticLabel label : AutomaticLabel.values()) {
-			label.applyTo(this);
+			NodeGroupNodeConfig.applyNodeLabels(this, p);
+
+			for (AutomaticLabel label : AutomaticLabel.values()) {
+				label.applyTo(this);
+			}
+		} else {
+			// Typed path: each Node carries its own kind and labels. Nothing is
+			// broadcast, so a mixed-kind group can hold Nodes with distinct labels.
+			// TODO(review): typed path skips group-level nodes.labels.* and FLOWTREE_NODE_LABELS env labels.
+			log("NodeGroup: Constructing " + typedNodes.size() + " typed child nodes...");
+
+			for (NodeConfig cfg : typedNodes) {
+				Node n = cfg.createNode(this, nodeMaxJobs, nodeMaxPeers);
+				this.nodes.add(n);
+				cfg.applyLabels(n);
+
+				log("NodeGroup: Added " + cfg.kind().key() + " node " + cfg.index()
+						+ " (" + n + ")");
+			}
+
+			this.relayNode = new Node(this, typedNodes.size(), nodeMaxJobs, relayMaxPeers);
+			this.relayNode.setLabel("role", "relay");
+			log("NodeGroup: Added relay node (index " + typedNodes.size() + ")");
 		}
 
 		super.sleepGraph = new Chart(Integer.MAX_VALUE - 1);
