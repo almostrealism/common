@@ -17,6 +17,7 @@
 package org.almostrealism.studio.persistence.test;
 
 import org.almostrealism.audio.api.Audio;
+import org.almostrealism.audio.synth.AudioSynthesizer;
 import org.almostrealism.audio.synth.InterpolatedAudioSynthesisModel;
 import org.almostrealism.audio.sources.StatelessSource;
 import org.almostrealism.collect.PackedCollection;
@@ -110,13 +111,18 @@ public class GeneratedSourceLibraryTest extends TestSuiteBase {
 	public void getSourceReturnsASynthesizerForKnownAndUnknownKeys() {
 		GeneratedSourceLibrary library = new GeneratedSourceLibrary(
 				new LibraryDestination(tempDir.resolve("lib").toString(), true));
-		library.add("synth:A", sampleModel());
+		InterpolatedAudioSynthesisModel model = sampleModel();
+		library.add("synth:A", model);
 
 		StatelessSource configured = library.getSource("synth:A");
 		StatelessSource bare = library.getSource("synth:missing");
 
 		Assert.assertNotNull("A source must be returned for a known key", configured);
 		Assert.assertNotNull("A source must still be returned for an unknown key", bare);
+		Assert.assertSame("The known-key source must be backed by the registered model",
+				model, ((AudioSynthesizer) configured).getModel());
+		Assert.assertNull("The unknown-key source must carry no model",
+				((AudioSynthesizer) bare).getModel());
 	}
 
 	/**

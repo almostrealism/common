@@ -294,14 +294,31 @@ public class LibraryDestinationTest extends TestSuiteBase {
 	/**
 	 * {@link LibraryDestination#getDefaultLibraryRoot()} resolves a library root
 	 * beneath the user's home directory and ensures it exists.
+	 *
+	 * <p>{@code user.home} is redirected to this test's temporary directory for
+	 * the duration of the call and restored afterwards, so the library root is
+	 * created under the isolated temporary home rather than the real one.</p>
 	 */
 	@Test(timeout = 60000)
 	public void defaultLibraryRootResolvesUnderHome() {
-		Path root = LibraryDestination.getDefaultLibraryRoot();
-		Assert.assertNotNull("A default library root must always be returned", root);
-		Assert.assertTrue("The root must resolve beneath the user's home directory",
-				root.startsWith(Path.of(SystemUtils.getHome())));
-		Assert.assertTrue("The root directory must have been created", Files.isDirectory(root));
+		String originalHome = System.getProperty("user.home");
+		System.setProperty("user.home", tempDir.toString());
+
+		try {
+			Path root = LibraryDestination.getDefaultLibraryRoot();
+			Assert.assertNotNull("A default library root must always be returned", root);
+			Assert.assertTrue("The root must resolve beneath the user's home directory",
+					root.startsWith(Path.of(SystemUtils.getHome())));
+			Assert.assertTrue("The root must resolve beneath the isolated temporary home",
+					root.startsWith(tempDir));
+			Assert.assertTrue("The root directory must have been created", Files.isDirectory(root));
+		} finally {
+			if (originalHome == null) {
+				System.clearProperty("user.home");
+			} else {
+				System.setProperty("user.home", originalHome);
+			}
+		}
 	}
 
 	/**
