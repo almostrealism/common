@@ -87,6 +87,15 @@ class JobSessionAccumulator {
     private List<String> deniedToolNames;
 
     /**
+     * The block the agent reported for this job, or {@code null} when it did not
+     * report one. Set by the worker after it reads the controller's record (see
+     * {@link BlockReport#fetch(String, boolean)}); read by {@link EnforcementRunner}
+     * to skip retries and by {@link CodingAgentJobEvent} to report the terminal
+     * {@link JobCompletionEvent.Status#BLOCKED} status.
+     */
+    private BlockReport blockReport;
+
+    /**
      * Absorbs the result of one agent session run into the accumulated state.
      *
      * <p>Latest-value fields ({@link #exitCode}, {@link #sessionId}, {@link #subtype},
@@ -161,4 +170,15 @@ class JobSessionAccumulator {
 
     /** Returns the list of denied tool names, or {@code null} if no denials occurred. */
     List<String> getDeniedToolNames() { return deniedToolNames; }
+
+    /** Returns the block the agent reported, or {@code null} when none was reported. */
+    BlockReport blockReport() { return blockReport; }
+
+    /**
+     * Records the block the agent reported for this job, or clears it when
+     * {@code blockReport} is {@code null} (the job was not reported blocked).
+     *
+     * @param blockReport the reported block, or {@code null}
+     */
+    void setBlockReport(BlockReport blockReport) { this.blockReport = blockReport; }
 }

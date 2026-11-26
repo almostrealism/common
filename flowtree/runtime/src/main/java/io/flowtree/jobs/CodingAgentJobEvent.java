@@ -75,6 +75,13 @@ public class CodingAgentJobEvent extends JobCompletionEvent {
      */
     private String runnerName;
 
+    /** Block category for a {@link Status#BLOCKED} event, or {@code null}; see {@link BlockReport}. */
+    private String blockedCategory;
+    /** Agent's free-text block detail for a {@link Status#BLOCKED} event, or {@code null}. */
+    private String blockedDetail;
+    /** Whether a {@link Status#BLOCKED} claim was corroborated by the harness. */
+    private boolean blockedVerified;
+
     /**
      * {@code true} when the post-completion command exhausted its per-job pass
      * cap without ever exiting zero. Distinguishes "command succeeded after N
@@ -169,6 +176,28 @@ public class CodingAgentJobEvent extends JobCompletionEvent {
                                               String errorMessage) {
         CodingAgentJobEvent event = new CodingAgentJobEvent(jobId, Status.DEGRADED, description);
         event.setErrorMessage(errorMessage);
+        return event;
+    }
+
+    /**
+     * Creates a {@link Status#BLOCKED} event for a Claude Code job whose agent
+     * declared, through the {@code job_report_blocked} tool, that it could not
+     * proceed. The block's category, detail, and verification state are carried
+     * on the event and summarised into the error-message slot so a reader sees
+     * the reason without decoding fields.
+     *
+     * @param jobId       the job identifier
+     * @param description human-readable description of the job
+     * @param report      the block the agent reported
+     * @return a new event with {@link Status#BLOCKED} status and the block detail
+     */
+    public static CodingAgentJobEvent blocked(String jobId, String description,
+                                              BlockReport report) {
+        CodingAgentJobEvent event = new CodingAgentJobEvent(jobId, Status.BLOCKED, description);
+        event.blockedCategory = report.getCategory();
+        event.blockedDetail = report.getDetail();
+        event.blockedVerified = report.isVerified();
+        event.setErrorMessage(report.describe());
         return event;
     }
 
@@ -385,6 +414,21 @@ public class CodingAgentJobEvent extends JobCompletionEvent {
     @Override
     public String getRunnerName() {
         return runnerName;
+    }
+
+    @Override
+    public String getBlockedCategory() {
+        return blockedCategory;
+    }
+
+    @Override
+    public String getBlockedDetail() {
+        return blockedDetail;
+    }
+
+    @Override
+    public boolean isBlockedVerified() {
+        return blockedVerified;
     }
 
     /**
@@ -624,6 +668,9 @@ public class CodingAgentJobEvent extends JobCompletionEvent {
         withCostByRunner(JsonFieldExtractor.extractDoubleObject(body, "costByRunner"));
         withCostByModel(JsonFieldExtractor.extractDoubleObject(body, "costByModel"));
         withCostIncomplete(JsonFieldExtractor.extractBoolean(body, "costIncomplete"));
+        this.blockedCategory = JsonFieldExtractor.extractString(body, "blockedCategory");
+        this.blockedDetail = JsonFieldExtractor.extractString(body, "blockedDetail");
+        this.blockedVerified = JsonFieldExtractor.extractBoolean(body, "blockedVerified");
     }
 
     /**
@@ -699,6 +746,9 @@ public class CodingAgentJobEvent extends JobCompletionEvent {
         if (acc.getExitCode() != 0) {
             return failed(job.getTaskId(), job.getTaskString(),
                     "Claude Code exited with code " + acc.getExitCode(), null);
+        }
+        if (acc.blockReport() != null) {
+            return blocked(job.getTaskId(), job.getTaskString(), acc.blockReport());
         }
         if (job.isPostCompletionCapHit()) {
             return degraded(job.getTaskId(), job.getTaskString(),

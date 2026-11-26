@@ -19,6 +19,7 @@ package io.flowtree.api;
 import fi.iki.elonen.NanoHTTPD;
 import io.flowtree.JsonFieldExtractor;
 import io.flowtree.Server;
+import io.flowtree.jobs.BlockReportRegistry;
 import io.flowtree.jobs.CodingAgentJob;
 import io.flowtree.jobs.CodingAgentJobFactory;
 import io.flowtree.jobs.CompletionListenerFanout;
@@ -148,7 +149,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
      * {@code /update}, {@code /archive}, {@code /unarchive}, {@code /delete}).
      */
     private static final Pattern WORKSTREAM_PATTERN = Pattern.compile(
-        "/api/workstreams/([^/]+)(?:/jobs/([^/]+))?(/messages|/submit|/update|/archive|/unarchive|/delete)?"
+        "/api/workstreams/([^/]+)(?:/jobs/([^/]+))?(/messages|/submit|/update|/archive|/unarchive|/delete|/blocked)?"
     );
 
     /**
@@ -278,6 +279,8 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
      * directory.
      */
     private MailboxRegistry mailboxes = new MailboxRegistry();
+    /** The controller's record of the blocks agents reported, keyed by job id. */
+    private final BlockReportRegistry blockReports = new BlockReportRegistry();
     /** Base URL of the ar-memory HTTP server (e.g., "http://localhost:8020"). */
     private String memoryServerUrl;
     /** Base URL of the ar-manager HTTP server (e.g., "http://ar-manager:8010"). */
@@ -702,6 +705,14 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         }
 
         if (Method.GET.equals(method) && uri.startsWith("/api/workstreams/")
+                && uri.endsWith("/blocked")) {
+            int jobsIdx = uri.indexOf("/jobs/");
+            String jobId = jobsIdx < 0 ? null
+                    : uri.substring(jobsIdx + "/jobs/".length(), uri.length() - "/blocked".length());
+            return blockedEndpointHandler().handleGet(jobId);
+        }
+
+        if (Method.GET.equals(method) && uri.startsWith("/api/workstreams/")
                 && uri.endsWith("/mailbox")) {
             String workstreamId = uri.substring("/api/workstreams/".length(),
                     uri.length() - "/mailbox".length());
@@ -805,6 +816,8 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
 
                 if ("/messages".equals(suffix)) {
                     return messageEndpointHandler().handle(session, workstreamId, jobId);
+                } else if ("/blocked".equals(suffix)) {
+                    return blockedEndpointHandler().handlePost(session, jobId);
                 } else if ("/submit".equals(suffix)) {
                     return handleSubmit(session, workstreamId);
                 } else if ("/update".equals(suffix)) {
@@ -1493,6 +1506,17 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         return new MessageEndpointHandler(notifiers, mailboxes, memoryServerUrl,
                 this::readBody, this::errorResponse, this::log, this::warn,
                 statsQueryHandler::recordPhase);
+    }
+
+    /**
+     * Builds the job "blocked" endpoint handler over the shared block-report
+     * registry. See {@link BlockedEndpointHandler}.
+     *
+     * @return a fresh handler reading and recording through {@link #blockReports}
+     */
+    private BlockedEndpointHandler blockedEndpointHandler() {
+        return new BlockedEndpointHandler(blockReports, this::readBody,
+                this::errorResponse, this::log);
     }
 
     /**
