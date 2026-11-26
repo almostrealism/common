@@ -17,6 +17,7 @@
 package org.almostrealism.collect;
 
 import io.almostrealism.code.ArgumentProvider;
+import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.OrderingSegments;
 import io.almostrealism.collect.TraversalOrdering;
 import io.almostrealism.collect.TraversalPolicy;
@@ -24,7 +25,9 @@ import io.almostrealism.expression.Conditional;
 import io.almostrealism.expression.Conjunction;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
+import org.almostrealism.collect.computations.DefaultTraversableExpressionComputation;
 
+import java.util.Arrays;
 import java.util.Optional;
 import java.util.OptionalInt;
 import java.util.stream.IntStream;
@@ -75,6 +78,13 @@ import java.util.stream.IntStream;
  * {@link #length(Expression) length} of each row and the {@link #offset(Expression) column} of
  * each entry. This visits each stored entry once.</p>
  *
+ * <h2>The transpose over the same memory</h2>
+ * <p>{@link #transposed(int)} gives the ordering of the {@code (cols, rows)} transpose that reads
+ * the same entries without moving them: its rows are the columns of this matrix, and an index of
+ * {@link #position(Expression) positions} locates each of its entries in the memory of this one.
+ * {@link #memberSegments(int)} gives the row of the entry at each physical position. The
+ * gradients of a product with the matrix are computed through these two orderings.</p>
+ *
  * <h2>Scale</h2>
  * <p>A collection read through this ordering stores only its entries, so its logical shape may
  * exceed the range of an {@code int}: a computation that enumerates its rows never forms a
@@ -95,8 +105,21 @@ public class CompressedRowTraversalOrdering implements TraversalOrdering, Orderi
 	/** The {@code rows + 1} row boundaries, each the position of the first entry of a row. */
 	private final SplitIndexTraversalOrdering rowOffsets;
 
-	/** The column of each entry, by physical position. */
+	/** The column of each entry, by position in the enumeration of the rows. */
 	private final SplitIndexTraversalOrdering columns;
+
+	/**
+	 * The physical position of each entry, by position in the enumeration of the rows, or
+	 * {@code null} when the entries are stored in that order. It is present only for an ordering
+	 * that reads the memory of another matrix as its {@link #transposed(int) transpose}.
+	 */
+	private final SplitIndexTraversalOrdering positions;
+
+	/** The ordering of the transpose over the same memory, formed when first needed. */
+	private CompressedRowTraversalOrdering transposed;
+
+	/** The row of each entry, by physical position, formed when first needed. */
+	private SplitIndexTraversalOrdering entryRows;
 
 	/** The number of entries of the longest row, read from the row offsets when first needed. */
 	private Integer maxRowLength;
@@ -120,7 +143,7 @@ public class CompressedRowTraversalOrdering implements TraversalOrdering, Orderi
 	 */
 	public CompressedRowTraversalOrdering(int rows, int cols, PackedCollection rowOffsets,
 										  PackedCollection columns) {
-		this(cols, new SplitIndexTraversalOrdering(rowOffsets), new SplitIndexTraversalOrdering(columns), null);
+		this(cols, new SplitIndexTraversalOrdering(rowOffsets), new SplitIndexTraversalOrdering(columns), null, null);
 
 		if (rows <= 0 || cols <= 0) {
 			throw new IllegalArgumentException("Sparse matrix dimensions (" + rows + ", " + cols
@@ -142,18 +165,23 @@ public class CompressedRowTraversalOrdering implements TraversalOrdering, Orderi
 	}
 
 	/**
-	 * Creates an ordering from the orderings that read its row offsets and its columns.
+	 * Creates an ordering from the orderings that read its row offsets, its columns and, for an
+	 * ordering whose entries are stored in another order, their positions.
 	 *
 	 * @param cols         the number of columns
 	 * @param rowOffsets   the row boundaries
 	 * @param columns      the column of each entry
+	 * @param positions    the physical position of each entry, or {@code null} when the entries
+	 *                     are stored in the order of the rows
 	 * @param maxRowLength the length of the longest row, or {@code null} if not yet known
 	 */
 	private CompressedRowTraversalOrdering(int cols, SplitIndexTraversalOrdering rowOffsets,
-										   SplitIndexTraversalOrdering columns, Integer maxRowLength) {
+										   SplitIndexTraversalOrdering columns,
+										   SplitIndexTraversalOrdering positions, Integer maxRowLength) {
 		this.cols = cols;
 		this.rowOffsets = rowOffsets;
 		this.columns = columns;
+		this.positions = positions;
 		this.maxRowLength = maxRowLength;
 	}
 
@@ -224,7 +252,7 @@ public class CompressedRowTraversalOrdering implements TraversalOrdering, Orderi
 			Expression<Integer> entry = start.add(k).toInt();
 			Expression<Integer> entryColumn = offset(entry.imod(capacity));
 			Expression<Boolean> found = Conjunction.of(new IntegerConstant(k).lessThan(length), entryColumn.eq(column));
-			position = Conditional.of(found, entry, position);
+			position = Conditional.of(found, position(entry), position);
 		}
 
 		return position;
@@ -254,13 +282,15 @@ public class CompressedRowTraversalOrdering implements TraversalOrdering, Orderi
 	 */
 	@Override
 	public CompressedRowTraversalOrdering bind(ArgumentProvider provider) {
-		return new CompressedRowTraversalOrdering(cols, rowOffsets.bind(provider), columns.bind(provider), maxRowLength);
+		return new CompressedRowTraversalOrdering(cols, rowOffsets.bind(provider), columns.bind(provider),
+				positions == null ? null : positions.bind(provider), maxRowLength);
 	}
 
-	/** {@inheritDoc} Binding binds both the row offsets and the columns. */
+	/** {@inheritDoc} Binding binds the row offsets, the columns and any positions. */
 	@Override
 	public int getArgumentCount() {
-		return rowOffsets.getArgumentCount() + columns.getArgumentCount();
+		return rowOffsets.getArgumentCount() + columns.getArgumentCount()
+				+ (positions == null ? 0 : positions.getArgumentCount());
 	}
 
 	/**
@@ -298,14 +328,185 @@ public class CompressedRowTraversalOrdering implements TraversalOrdering, Orderi
 	}
 
 	/**
-	 * Returns the column of the entry at the given physical position.
+	 * Returns the column of the entry at the given position of the enumeration, which is its
+	 * physical position unless the entries are stored in another order.
 	 *
-	 * @param position the physical position of an entry
+	 * @param position the position of an entry in the enumeration of the rows
 	 * @return {@code columns[position]}
 	 */
 	@Override
 	public Expression<Integer> offset(Expression<?> position) {
 		return columns.indexOf(position.toInt());
+	}
+
+	/**
+	 * Returns the physical position of the entry at the given position of the enumeration: the
+	 * position itself, unless this ordering reads the memory of another matrix as its transpose.
+	 *
+	 * @param member the position of an entry in the enumeration of the rows
+	 * @return {@code positions[member]}, or {@code member} when the entries are stored in order
+	 */
+	@Override
+	public Expression<Integer> position(Expression<?> member) {
+		return positions == null ? member.toInt() : positions.indexOf(member.toInt());
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>The transpose of a compressed-sparse-row structure is the compressed-sparse-column
+	 * structure of the same matrix: a {@code (cols, rows)} ordering whose row {@code j} holds the
+	 * entries of column {@code j} in ascending order of their rows, together with the physical
+	 * position of each of those entries in the memory read through this ordering. It is derived
+	 * on the host by a counting sort of the row offsets and columns, the first time it is needed,
+	 * and every index collection is uploaded in the split layout, so that positions above
+	 * {@code 2^24} stay exact. It is available only for an ordering whose entries are stored in
+	 * the order of its rows.</p>
+	 */
+	@Override
+	public Optional<TraversalOrdering> transposed(int segmentLength) {
+		if (segmentLength != cols || positions != null) return Optional.empty();
+		return Optional.of(transposeStructure());
+	}
+
+	/**
+	 * Returns the ordering of the transpose over the same memory, as {@link #transposed(int)}
+	 * describes, deriving it the first time it is needed.
+	 *
+	 * @return the ordering of the transpose
+	 */
+	private CompressedRowTraversalOrdering transposeStructure() {
+		if (transposed == null) {
+			int rows = getRows();
+			int[] offsets = rowOffsets.getPositions();
+			int count = offsets[rows];
+			int[] entryColumns = columns.getPositions();
+			int[] columnOffsets = new int[cols + 1];
+			for (int k = 0; k < count; k++) columnOffsets[entryColumns[k] + 1]++;
+			for (int j = 0; j < cols; j++) columnOffsets[j + 1] += columnOffsets[j];
+
+			int[] next = Arrays.copyOf(columnOffsets, cols);
+			int[] transposedRows = new int[count];
+			int[] permutation = new int[count];
+			for (int i = 0; i < rows; i++) {
+				for (int k = offsets[i]; k < offsets[i + 1]; k++) {
+					int slot = next[entryColumns[k]]++;
+					transposedRows[slot] = i;
+					permutation[slot] = k;
+				}
+			}
+
+			transposed = of(rows, columnOffsets, transposedRows)
+					.withPositions(SplitIndexTraversalOrdering.of(count == 0 ? new int[1] : permutation));
+		}
+
+		return transposed;
+	}
+
+	/**
+	 * Returns an ordering with the same rows and columns as this one whose entries are stored at
+	 * the given physical positions.
+	 *
+	 * @param positions the physical position of each entry, by position in the enumeration of the
+	 *                  rows, or {@code null} for entries stored in that order
+	 * @return the ordering
+	 */
+	private CompressedRowTraversalOrdering withPositions(SplitIndexTraversalOrdering positions) {
+		return new CompressedRowTraversalOrdering(cols, rowOffsets, columns, positions, maxRowLength);
+	}
+
+	/**
+	 * Returns a copy of the values the given memory holds for the entries of this ordering, in the
+	 * order of its enumeration: entry {@code p} of the copy is the value stored at
+	 * {@link #position(Expression) position(p)}. The values are gathered by one kernel that reads
+	 * them through the {@link SplitIndexTraversalOrdering} of positions, so that positions above
+	 * {@code 2^24} stay exact.
+	 *
+	 * @param memory the memory holding the entries at their physical positions
+	 * @return the entries in the order of the enumeration, or a single unused element for an
+	 *         ordering with no entries, since a collection cannot be empty
+	 */
+	private PackedCollection entriesInOrder(PackedCollection memory) {
+		int count = getLength().orElseThrow();
+		PackedCollection ordered = new PackedCollection(Math.max(1, count));
+		if (count > 0) {
+			TraversalPolicy shape = new TraversalPolicy(count);
+			PackedCollection gathered = new PackedCollection(shape, 0, memory, 0, positions);
+			new DefaultTraversableExpressionComputation("sparseTransposeEntries", shape,
+					args -> CollectionExpression.create(shape, args[1]::getValueAt),
+					CollectionFeatures.getInstance().cp(gathered)).get().into(ordered).evaluate();
+		}
+
+		return ordered;
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>The segments are the rows, so the ordering gives the row of the entry at each physical
+	 * position: entries {@code rowOffsets[i] .. rowOffsets[i + 1] - 1} are assigned row {@code i}.
+	 * It is derived on the host from the row offsets the first time it is needed and uploaded in
+	 * the split layout, so that rows and positions above {@code 2^24} stay exact. It is available
+	 * only for an ordering whose entries are stored in the order of its rows.</p>
+	 */
+	@Override
+	public Optional<TraversalOrdering> memberSegments(int segmentLength) {
+		if (segmentLength != cols || positions != null) return Optional.empty();
+
+		if (entryRows == null) {
+			int[] offsets = rowOffsets.getPositions();
+			int[] rows = new int[Math.max(1, offsets[offsets.length - 1])];
+			for (int i = 0; i < offsets.length - 1; i++) Arrays.fill(rows, offsets[i], offsets[i + 1], i);
+			entryRows = SplitIndexTraversalOrdering.of(rows);
+		}
+
+		return Optional.of(entryRows);
+	}
+
+	/**
+	 * Returns the structural transpose of the sparse matrix whose entries, in the physical order
+	 * of this ordering, are held by the given collection: a {@code (cols, rows)} collection whose
+	 * shape carries a {@link CompressedRowTraversalOrdering} of the transpose and whose memory
+	 * holds only the entries, so that {@code matmul(cp(transpose(entries)), g)} computes
+	 * {@code Aᵀ · g} by enumerating each column of {@code A} rather than by densifying it.
+	 *
+	 * <p>The compressed-sparse-row structure of {@code Aᵀ} is the compressed-sparse-column
+	 * structure of {@code A}. It is derived on the host by a counting sort of the row offsets and
+	 * columns of this ordering, in the same way that {@link #of(int, int[], int[])} builds and
+	 * validates an index structure, and it yields the permutation that takes each column-major
+	 * slot to the physical position of its entry here. The entries are reordered into column-major
+	 * order by one gather kernel that reads them through a {@link SplitIndexTraversalOrdering} over
+	 * that permutation, so that positions above {@code 2^24} stay exact. The reorder is necessary
+	 * because a product enumerating the rows of a matrix reads each entry at its physical
+	 * position, and the entries of a column of {@code A} are not contiguous in this ordering.</p>
+	 *
+	 * <p>This is distinct from {@link PackedCollection#transpose()} and the transpose of a
+	 * producer, which read every logical element through this ordering and so give the dense
+	 * transpose.</p>
+	 *
+	 * @param entries the entries of the matrix in the physical order of this ordering: the
+	 *                collection of entry values the sparse matrix reads or, when its logical size
+	 *                is within the range of an {@code int}, the sparse matrix itself
+	 * @return the transposed sparse matrix
+	 * @throws IllegalArgumentException if the collection holds fewer elements than there are
+	 *         entries
+	 * @throws UnsupportedOperationException if this ordering is itself the
+	 *         {@link #transposed(int) transpose} of another, whose entries are not stored in order
+	 */
+	public PackedCollection transpose(PackedCollection entries) {
+		if (positions != null) {
+			throw new UnsupportedOperationException("The entries of a transposed ordering are stored out of order");
+		}
+
+		int count = getLength().orElseThrow();
+		if (entries.getDelegatedLength() < count) {
+			throw new IllegalArgumentException("Entries hold " + entries.getDelegatedLength()
+					+ " elements but the matrix stores " + count);
+		}
+
+		CompressedRowTraversalOrdering transpose = transposeStructure();
+		return new PackedCollection(new TraversalPolicy(cols, getRows()), 0,
+				transpose.entriesInOrder(entries), 0, transpose.withPositions(null));
 	}
 
 	/**

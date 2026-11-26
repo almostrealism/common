@@ -160,6 +160,44 @@ atomics. It never forms a logical index of the matrix, so the matrix's logical s
 the range of an `int` (only its memory, the entries, is bounded by `int`); because its iteration
 count is data-dependent, it is always compiled into a kernel of its own.
 
+The transposed product `Aᵀ · g` (the input gradient of `A · x`) uses the same kernel.
+`order.transpose(entries)` returns the `(cols, rows)` transpose as a sparse collection whose
+ordering is the compressed-sparse-row structure of `Aᵀ`, which is the compressed-sparse-column
+structure of `A`. The ordering is derived on the host by a counting sort of the index arrays, and
+the entries are reordered into column-major order by one gather kernel through a
+`SplitIndexTraversalOrdering`, so it is exact above `2^24`. `matmul(cp(transposed), g)` then
+enumerates each column of `A` without densifying it. This structural transpose is different from
+`CollectionProducer.transpose()`, which reads every logical element and gives the dense transpose
+(see `CompressedRowTransposeTests`).
+
+```java
+PackedCollection transposed = order.transpose(values);
+CollectionProducer gradient = matmul(cp(transposed), cp(g));
+```
+
+`order.transpose(entries)` copies the entries as they are when it is called. A gradient must
+instead read the entries as they are when it is evaluated (a trained sparse weight changes
+between steps), so the reduced deltas of the sparse product do not copy anything.
+`TraversalOrdering.transposed(segmentLength)` gives an ordering of `Aᵀ` over the *same* memory:
+its segments are the columns of `A`, and `OrderingSegments.position(member)` maps each member to
+the physical position where `A` stores it. `SegmentedWeightedSumComputation.deltaDependent` uses
+it so that `matmul(A, x).delta(x, ReduceAxis.OUT, g)` is itself a `SegmentedWeightedSumComputation`
+that reads the memory of `A` in place. The gradient with respect to the stored entries,
+`delta(A, ReduceAxis.OUT, g)`, is a `SegmentedOuterProductComputation`: one element per stored
+entry `k`, `Σ_w g[row(k), w] · x[column(k), w]`, where `row(k)` is read through
+`TraversalOrdering.memberSegments(segmentLength)` (a split-layout index of the row of each entry,
+built on the host). Neither delta forms a Jacobian, so both apply to matrices whose logical size
+exceeds `int` (see `CompressedRowDeltaTests`). The `ReduceAxis.IN` (forward-mode) deltas are the
+product of `A` with the input's tangent and the product with the input of a matrix whose entries
+are the tangent; the full Jacobian (`ReduceAxis.NONE`) is not formed for a sparse product.
+
+```java
+CollectionProducer input = cp(x);
+CollectionProducer weights = cp(sparseMatrix);
+CollectionProducer inputGradient = matmul(cp(sparseMatrix), input).delta(input, ReduceAxis.OUT, cp(g));
+CollectionProducer entryGradient = matmul(weights, cp(x)).delta(weights, ReduceAxis.OUT, cp(g));
+```
+
 ### Scatter (Writing with Dynamic Indices)
 
 Write to positions specified by an index array:

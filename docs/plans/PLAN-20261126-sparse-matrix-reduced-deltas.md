@@ -1,7 +1,7 @@
 ---
-status: proposed
+status: completed
 created: 2026-11-26
-closed:
+closed: 2026-11-26
 tracker: [cb9de664-d506-4005-af54-104bd85afd47]
 ---
 
@@ -9,7 +9,7 @@ tracker: [cb9de664-d506-4005-af54-104bd85afd47]
 
 **Tracker task:** `cb9de664-d506-4005-af54-104bd85afd47` —
 *Reduced deltas for the sparse matrix product (input and values)*
-**Release:** Common 0.78
+**Release:** the release under development (the version in the root `pom.xml`)
 
 ## Motivation
 
@@ -223,3 +223,25 @@ existing machinery (`matmul`, the segmented reduction, the split layout). The co
 cross-backend correctness tests (native + Metal, empty/long rows and columns, `width > 1`,
 `2^24` exactness) and in the ordering of work behind the `ce31398a` dependency for the input
 delta.
+
+## Implementation notes
+
+- The branch is based on `ce31398a` by merging its branch (PR #1103), as *Dependencies* allows.
+- **Open question 3 (how the input delta gets the transpose).** It does not call
+  `CompressedRowTraversalOrdering.transpose(entries)`. That method copies the entry values at the
+  moment it is called, so a gradient built on it would go stale once a trained sparse weight
+  changes. `TraversalOrdering.transposed(segmentLength)` is used instead. It returns the CSR
+  ordering of `Aᵀ` over the *same* memory, together with a split-layout index of entry positions
+  (`OrderingSegments.position`). The input delta is then a `SegmentedWeightedSumComputation` that
+  reads the matrix producer in place. `transpose(entries)` reuses the same counting sort.
+- **Open question 4 (per-entry row accessor).** `TraversalOrdering.memberSegments(segmentLength)`
+  gives a split-layout `SplitIndexTraversalOrdering` holding the row of each entry. The values
+  delta is a new `SegmentedOuterProductComputation` (a sampled dense–dense product). Its output
+  has one element per stored entry. Both accessors are default methods on `TraversalOrdering`,
+  so the delta never casts to the CSR implementation.
+- **Open question 2.** `ReduceAxis.IN` is implemented for both targets.
+- Tests are in `CompressedRowDeltaTests` (engine/utils). They compare against dense references
+  and central differences on JNI and Metal, and include a depth-2 case with more than `2^24`
+  rows. One gap remains: for a batch of row vectors, the dense transpose's own reduced delta
+  still contracts its Jacobian. That transpose sits on the input side, and its size is the input
+  size squared, not the matrix size. It is tracked as follow-up task 97721a1c.

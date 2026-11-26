@@ -159,6 +159,43 @@ public interface TraversalOrdering extends IndexSet, Signature {
 	}
 
 	/**
+	 * Returns an ordering through which the same memory reads as the transpose of the matrix
+	 * this ordering lays out, when its rows are the {@link #segments(int) segments} of the given
+	 * length. The memory is not reordered: the transposed ordering enumerates the members of each
+	 * column of this matrix as one of its own segments, and its
+	 * {@link OrderingSegments#position(Expression) positions} locate each member where this
+	 * ordering stores it. A product with the transpose, such as the gradient of a product with
+	 * this matrix, is then a reduction of each segment of the transposed ordering over the same
+	 * memory, and reflects any later change to the values stored there.
+	 *
+	 * <p>The default returns empty.</p>
+	 *
+	 * @param segmentLength the number of consecutive logical indices in each row
+	 * @return the ordering of the transpose, whose segments have the length of the number of
+	 *         rows, or empty if this ordering cannot form it
+	 */
+	default Optional<TraversalOrdering> transposed(int segmentLength) {
+		return Optional.empty();
+	}
+
+	/**
+	 * Returns an ordering that maps the physical position of each member of this ordering to the
+	 * {@link #segments(int) segment} it belongs to: its {@link #indexOf(Expression)} of a position
+	 * is the segment of the member stored there. A computation with one result per stored member,
+	 * such as the gradient of a product with respect to the stored entries of a sparse matrix,
+	 * reads the segment (the row) of each member through it. The ordering is bound to the
+	 * arguments of a kernel independently of this one.
+	 *
+	 * <p>The default returns empty.</p>
+	 *
+	 * @param segmentLength the number of consecutive logical indices in each segment
+	 * @return the ordering of the segment of each member, or empty if this ordering cannot form it
+	 */
+	default Optional<TraversalOrdering> memberSegments(int segmentLength) {
+		return Optional.empty();
+	}
+
+	/**
 	 * Returns a composed ordering that first applies this ordering, then the given ordering.
 	 *
 	 * <p>If {@code other} is {@code null}, returns {@code this} unchanged.</p>

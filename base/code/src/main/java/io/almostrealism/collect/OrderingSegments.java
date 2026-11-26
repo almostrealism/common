@@ -29,7 +29,8 @@ import io.almostrealism.expression.Expression;
  * logical index through {@link TraversalOrdering#indexOf(Expression)}. For segment {@code s} it
  * visits the positions {@code start(s) .. start(s) + length(s) - 1}; the member at position
  * {@code p} has logical index {@code s * segmentLength + offset(p)} and its value is element
- * {@code p} of the backing memory.</p>
+ * {@link #position(Expression) position(p)} of the backing memory, which is {@code p} itself
+ * unless the enumeration visits members stored in another order.</p>
  *
  * <p>The expressions are those of the ordering that produced the enumeration, so an enumeration
  * obtained from an ordering {@link TraversalOrdering#bind(io.almostrealism.code.ArgumentProvider)
@@ -62,4 +63,21 @@ public interface OrderingSegments {
 	 * @return the member's offset within its segment
 	 */
 	Expression<Integer> offset(Expression<?> position);
+
+	/**
+	 * Returns the physical position in the backing memory of the member enumerated at the given
+	 * position. The positions that {@link #start(Expression)} and {@link #length(Expression)}
+	 * describe, and that {@link #offset(Expression)} is given, are those of the enumeration; an
+	 * enumeration that visits members stored elsewhere (such as the transpose of a sparse matrix,
+	 * enumerated over the memory of the matrix itself) maps them to where each member is stored.
+	 *
+	 * <p>The default returns the position unchanged: the members are stored in the order they are
+	 * enumerated.</p>
+	 *
+	 * @param member the position of a member in the enumeration
+	 * @return the physical position of the member's value
+	 */
+	default Expression<Integer> position(Expression<?> member) {
+		return member.toInt();
+	}
 }
