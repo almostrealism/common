@@ -1,7 +1,7 @@
 ---
-status: proposed
+status: completed
 created: 2026-11-26
-closed:
+closed: 2026-11-26
 tracker: [1cd4083d-8c9f-468f-b378-536474ca865e]
 ---
 
@@ -134,22 +134,100 @@ no new production class is expected — the benchmark drives already-merged clas
   `docs/internals/neuron-level-connectome-simulation.md` §7 (which currently names "the performance
   benchmark" as open tracker work) rather than pointing a durable page at this plan.
 
-## Results (to be filled by the implementation run)
+## Results
 
-Settings common to all rows unless noted: commit `<sha>`, one replica, Shiu et al. constants,
-`DT = 0.1 ms`, sugar-GRN Poisson drive at `<rate>` Hz, `AR_HARDWARE_MEMORY_SCALE=6`,
-`<warmup>`-step warm-up, `<steps>` timed steps.
+Measured by `ConnectomeThroughputBenchmarkTest` (`studio/bioscience`, package
+`org.almostrealism.bioscience.connectome.test`): `maleCnsStepThroughput` times the profiled whole
+step, `maleCnsSparseProductTime` steps the `dense(weights)` sparse product alone through a
+`SimulationRunner`. Run with
+`-DAR_HARDWARE_DRIVER=<mtl|native|cl> -DAR_HARDWARE_MEMORY_SCALE=6 -DAR_LONG_TESTS=enabled`.
 
-| Backend | Machine | Precision | Sim s / wall s | perStepMicros | Sparse product | Neuron update | Ring r/w | Dispatch | Memory | Notes |
+Settings common to all rows: the working tree of this branch on top of commit `0a6f9f754`; the
+converted MaleCNS CSR connectome (164,506 neurons, 25,135,616 stored edges); one replica; Shiu et
+al. constants (`DT = 0.1 ms`, `SYNAPSE_WEIGHT = 0.275`); Poisson drive at 150 Hz to the 77 neurons
+of the MaleCNS sugar-GRN types `LB3a`–`LB3d`; `AR_HARDWARE_MEMORY_SCALE=6`; a 200-step warm-up and
+2,000 timed steps (200 ms simulated). About 91 neurons spiked per step (199,775–200,319 spikes over
+the 2,200 steps, depending on precision); the neuron state stayed finite on every backend.
+
+Machine: Mac Studio, Apple M1 Ultra, 128 GB, macOS, aarch64.
+
+| Backend | Machine | Precision | Sim s / wall s | perStepMicros | Sparse product | Neuron update | Ring r/w | Dispatch / outside kernels | Memory | Notes |
 |---|---|---|---|---|---|---|---|---|---|---|
-| Metal | M1 128 GB | FP32 | | | | | | | | |
-| Metal | M4 Max | FP32 | | | | | | | | |
-| Metal | Mac mini | FP32 | | | | | | | | |
-| CUDA | DGX Spark | | | | | | | | | see open question |
-| OpenCL | AMD Halo | | | | | | | | | |
-| native | (host) | FP64 | | | | | | | | |
+| Metal | M1 Ultra 128 GB (Mac Studio) | FP32 | 0.0121 | 8,244 | 7,812 µs (95%) | ← 432 µs for all of these together → | | | 321 MB | 22 dispatches, 0.087 commits per step |
+| native | M1 Ultra 128 GB (Mac Studio) | FP64 | 0.0049 | 20,373 | 11,684 µs (57%) | 3,412 µs (17%) | 4,251 µs (21%) | ~1,010 µs (5%) | 641 MB | 18 kernels per step |
+| OpenCL (Apple) | M1 Ultra 128 GB (Mac Studio) | FP32 | 0.0059 | 17,016 | 9,239 µs (54%) | ← 7,777 µs for all of these together → | | | 321 MB | not a task target; extra row |
+| Metal | M4 Max | FP32 | not run | | | | | | | follow-up `b419fa7a` |
+| Metal | Mac mini | FP32 | not run | | | | | | | follow-up `b419fa7a` |
+| CUDA | DGX Spark | | not run | | | | | | | follow-up `b419fa7a` |
+| OpenCL | AMD Halo | | not run | | | | | | | follow-up `b419fa7a` |
 
-Dominant cost per backend and the follow-up(s) it motivates: *to be filled.*
+**How the breakdown was read.** On native, kernels run synchronously, so the operation profile
+(`results/connectomeStep.xml`, with the profile assigned to the hardware) records each kernel's
+real run time, read with `ar-profile-analyzer` (`find_slowest_by_category run`, `get_source`):
+
+| Bucket | Kernels (per step, native FP64) | µs |
+|---|---|---|
+| Sparse product | `SegmentedWeightedSumComputation` (`matmul (164506, 1)`) 11,424; `scale layer` 260 | 11,684 |
+| Neuron update | `ExponentialSynapseNeurons`: membrane-integration, synapse-integration, threshold, membrane-reset, synapse-reset, refractory-countdown, refractory-reload, spike-count and their two isolated `multiply` inputs; the input sum `add` 335 | 3,123 |
+| Poisson input | the `CounterRandom` draw plus drive `add` | 289 |
+| Ring | `cacheWrite-19x164506` 3,950; `cache_read` `rowAtIndex` 301 | 4,251 |
+| Counter | `Advance Simulation Step` | 17 |
+| Outside kernels | per-step wall minus the 18 kernels' sum | ~1,010 |
+
+(The table above folds Poisson into "Neuron update": 3,123 + 289 = 3,412.) `maleCnsSparseProductTime`
+on native gives 11,739 µs for the product alone, agreeing with the in-step 11,424 µs.
+
+On Metal and OpenCL, submission is asynchronous: the profile records the 3–15 µs it takes to
+issue each kernel, not its device time (follow-up `90ee1ce4`), so the per-kernel split cannot be
+read off the profile there. Instead the sparse product was timed on its own through the same
+runner, and the remainder of the step (neuron update, Poisson, ring, and dispatch together) is the
+difference. On Metal the 22 kernels per step cost 432 µs in total beyond the product, which bounds
+dispatch overhead at under 5% of the step.
+
+**Memory footprint** (from the network's tensors, logged by the benchmark): the CSR connectome
+75,900,368 elements (row offsets, presynaptic columns, weights, signs); the delay-line ring
+`[19, 164506]` = 3,125,614; the neuron state (membrane, synapse, refractory, spikes, spike
+counts) 822,530; the Poisson targets and external drive 329,012 — 80,177,524 elements in all,
+320.7 MB in FP32 and 641.4 MB in FP64. The connectome is 95% of it. Device high-water was not
+recorded: the memory providers' allocated-bytes counters are not exposed through a
+backend-neutral interface, so reading them would mean branching on the Metal/OpenCL classes.
+
+**Dominant cost per backend and the follow-ups it motivates.**
+
+- **Metal: the sparse product, 95% of the step.** It streams all 25 M edges at about 39 GB/s
+  (~12 bytes per edge in 7.8 ms), far below the device's bandwidth — the same looped-reduction
+  shape `simulation-loop-examples.md` records for the dense cell-type product. Dispatch is not
+  the problem (< 5%), so **CUDA Graph capture / step fusion are not justified by these numbers**
+  for Metal; CUDA Graph capture stays where it is already tracked (`dabc96f9`) pending a CUDA
+  row. Follow-ups: **event-driven propagation** (`eccd1bc2`) — with ~91 spikes per step and a
+  mean out-degree of ~153, a scatter-add over the spiking neurons' edges touches ~14,000 edges
+  instead of 25 M — and a faster **segmented weighted-sum kernel** (`8d193a19`).
+- **native: the sparse product (57%), then the ring write (21%).** `cacheWrite` writes one row of
+  the delay line through a kernel that sweeps all 19 rows and copies 18 of them back onto
+  themselves, costing 13× the matching one-row `cache_read` (follow-up `9f205a80`).
+- **OpenCL (Apple): the sparse product (54%).** The 7.8 ms remainder is much larger than Metal's,
+  but Apple's OpenCL is not a target platform; the AMD Halo row (`b419fa7a`) is the one that
+  matters.
+
+**What this means for Phase 3.** At 0.0121 simulated s per wall s on Metal, one simulated second
+of one brain takes about 82 s; training that unrolls seconds of simulated time through 0.1 ms
+spiking steps is not affordable with the current step. Event-driven propagation would remove most
+of the 7.8 ms product, leaving the 0.43 ms remainder; that projects (it is not a measurement) to
+roughly 0.2 simulated s per wall s on Metal — still slow for training through the full spiking
+model, so the coarser rate model remains the realistic Phase 3 path unless the remainder also
+shrinks.
+
+Also found while writing the benchmark: `NeuronConnectome.mask(...)` over the 77 sugar neurons
+overflows a `long` in `ParallelProcessContext.of` when evaluated through `evaluate()` (follow-up
+`ee955a45`); the product-only benchmark uses an all-ones presynaptic vector instead, which costs
+the same because the CSR product visits every edge whatever the vector holds.
+
+Follow-up tasks filed: `eccd1bc2-0ee1-462b-bc14-c3ddf3cc1ba9` (event-driven propagation),
+`8d193a19-a26c-4d59-b407-8114f7f4cf06` (segmented weighted-sum bandwidth),
+`9f205a80-feba-4339-8431-d80ab8784810` (cacheWrite sweeps the whole cache),
+`90ee1ce4-c6c6-4fce-8816-2cfc1699c6e2` (profile records issue time on Metal/OpenCL),
+`ee955a45-fe97-4fc5-b24e-4a87a3d1da52` (mask overflow),
+`b419fa7a-36f5-4d03-b276-3dadfa01471f` (rows for CUDA, AMD Halo, M4 Max and the Mac minis).
 
 ## Success criteria
 
@@ -209,6 +287,20 @@ A reviewer confirms the task is done when:
    product, so simulated-sec/wall-sec for one brain and the per-brain cost at 30 replicas can differ.
    The task asks for the single-brain realizability number; should a replica-scaling row also be
    recorded (it bears directly on whether trials-at-once amortizes dispatch)?
+
+**How the implementation resolved them:**
+
+1. Staged collection. This branch carries the benchmark and the rows the macOS node could reach
+   (Metal, native and, additionally, Apple OpenCL on the Mac Studio). The other machines are
+   recorded as "not run" in the table and tracked by `b419fa7a`, which also carries the table to
+   `docs/internals/simulation-loop-examples.md` once this plan is swept.
+2. Not established here: no CUDA node was reachable. The CUDA row is part of `b419fa7a`.
+3. One replica, 150 Hz to the 77 `LB3a`–`LB3d` neurons, a 200-step warm-up and 2,000 timed steps
+   (`ConnectomeThroughputBenchmarkTest.WARMUP`/`STEPS`), the fixed protocol for every row.
+4. Not recorded. Metal's dispatch is under 5% of the step, so trials-at-once would amortize little
+   dispatch. The per-brain cost at many replicas is dominated by the same sparse product, whose
+   edge reads are shared across replicas only if the kernel reuses them. That is a question for
+   the kernel follow-up (`8d193a19`), not for this benchmark.
 
 ## Estimated complexity
 
