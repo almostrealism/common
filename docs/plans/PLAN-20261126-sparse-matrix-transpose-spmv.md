@@ -204,11 +204,14 @@ A reviewer confirms:
    The implementer should pick the form that keeps `shape(matrix).getOrder()` the CSR-of-`Aᵀ`
    ordering (not the gather ordering) so matmul routing still fires; this is the main
    implementation risk and should be settled first.
-3. **Task description correction.** The tracker task still names a non-existent `SparseMatrix`
-   and `A.transpose().multiply(g)`. This plan proposes updating the description to the
-   `PackedCollection` + `CompressedRowTraversalOrdering` model and the `matmul(transpose(A),
-   g)` framing, preserving the original "Done when" intent. (The autodiff follow-up already
-   exists as task `cb9de664` — see *Scope*.)
+3. **Task description correction (already applied).** The tracker task's description has
+   already been rewritten from the out-of-date `SparseMatrix` / `A.transpose().multiply(g)`
+   premise to the current `PackedCollection` + `CompressedRowTraversalOrdering` model and the
+   `matmul(transpose(A), g)` framing, preserving the original "Done when" intent, so a reviewer
+   reads the accurate version (see *Background*). The only residual mention of `SparseMatrix`
+   is in the task *title*, kept as the historical name of the follow-up; the description itself
+   references the type only to record that it was removed. No further description change is
+   proposed here. (The autodiff follow-up already exists as task `cb9de664` — see *Scope*.)
 
 ## Estimated complexity
 
