@@ -1227,7 +1227,7 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
                     }
                     sb.append("\n");
                 }
-                if (event.getBlockedDetail() != null) {
+                if (event.getBlockedDetail() != null && !event.getBlockedDetail().isEmpty()) {
                     sb.append("   Detail: ").append(truncate(event.getBlockedDetail(), 200)).append("\n");
                 }
                 sb.append("   Job ID: `").append(event.getJobId()).append("`\n");
