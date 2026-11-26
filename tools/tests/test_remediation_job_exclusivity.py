@@ -59,13 +59,6 @@ def _condition(job):
     return " ".join(str(job.get("if", "")).split())
 
 
-def _attempt_threshold(condition, operator):
-    match = re.search(r"fromJSON\(github\.run_attempt\) %s (\d+)" % re.escape(operator), condition)
-    if not match:
-        raise AssertionError("no `fromJSON(github.run_attempt) %s N` in %r" % (operator, condition))
-    return int(match.group(1))
-
-
 def _uploaded_artifacts(job):
     return [(step.get("with") or {}).get("name") for step in job.get("steps", [])
             if str(step.get("uses", "")).startswith("actions/upload-artifact")]
@@ -74,10 +67,43 @@ def _uploaded_artifacts(job):
 class RemediationJobConditionTests(unittest.TestCase):
     """The static wiring in analysis.yaml and auto-resolve-submit.yaml."""
 
-    def test_auto_review_runs_on_the_first_attempt_only(self):
-        """A retry re-runs auto-review whenever one of its inputs failed; its first
-        agent is likely still working by then, so it must not submit again."""
-        self.assertEqual(1, _attempt_threshold(_condition(_jobs()["auto-review"]), "=="))
+    def test_auto_review_is_not_pinned_to_the_first_attempt(self):
+        """A validate run reaches attempt 2+ only when the infra retry gate
+        re-ran a gate that failed on infrastructure. If auto-review were pinned
+        to attempt 1 it would skip that later attempt, so a validate run whose
+        attempt 1 suppressed its dispatch as infrastructure would be stranded
+        when a later attempt passes — no review agent, no test run. auto-review
+        must therefore run on any attempt (the single-handoff guard, below,
+        keeps it from starting a second review round)."""
+        self.assertNotIn("fromJSON(github.run_attempt) == 1",
+                         _condition(_jobs()["auto-review"]))
+
+    def test_auto_review_detects_an_earlier_attempts_handoff(self):
+        """Running on every attempt, auto-review must hand off at most once: a
+        retry re-runs it whenever one of its inputs failed, and the agent an
+        earlier attempt submitted is likely still working. The guard step runs
+        only past attempt 1 and reads the artifacts API for the earlier
+        attempt's auto-review-request — the same artifact the retry gate keys
+        its auto-resolve-request check on."""
+        step = next(s for s in _jobs()["auto-review"]["steps"]
+                    if s.get("id") == "earlier")
+        self.assertIn("fromJSON(github.run_attempt) != 1", _condition(step))
+        self.assertIn("read", _jobs()["auto-review"]["permissions"]["actions"])
+        run = step["run"]
+        self.assertIn("artifacts?name=auto-review-request", run)
+        self.assertIn("earlier=true", run)
+        self.assertIn("earlier=false", run)
+
+    def test_every_stage_step_is_guarded_against_an_earlier_handoff(self):
+        """No route stages a request once an earlier attempt of the run did, so
+        a retried validate run never starts a second review round."""
+        staged = [s for s in _jobs()["auto-review"]["steps"]
+                  if str(s.get("name", "")).startswith("Stage submit request")]
+        self.assertEqual(5, len(staged))
+        for step in staged:
+            with self.subTest(step=step["name"]):
+                self.assertIn("steps.earlier.outputs.earlier != 'true'",
+                              _condition(step))
 
     def test_auto_resolve_never_shares_an_attempt_with_auto_review(self):
         """They never share a run: auto-review is for a validate run (a

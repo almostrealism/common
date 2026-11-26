@@ -345,7 +345,7 @@ conflicting edits and at least one of them fails.
 | Job | When | Prompts | Submission |
 |-----|------|---------|------------|
 | `auto-resolve-python` | `python-tests` or `python-evals` failed | Python test failure | At once, from this run |
-| `auto-review` | validate runs (`pull_request`) only, attempt 1 only, `python-tests` and `python-evals` not failed | build failure → code policy → quality gates → docs-only review → general review (first match; always submits — a gate that failed without a recorded cause gets the general review with a note not to chase it) | As soon as the gates report, from this run |
+| `auto-review` | validate runs (`pull_request`) only, any attempt but at most one handoff across them, `python-tests` and `python-evals` not failed | build failure → code policy → quality gates → docs-only review → general review (first match; always submits — a gate that failed without a recorded cause gets the general review with a note not to chase it) | As soon as the gates report, from this run |
 | `auto-resolve` | test runs only (`run_tests`), any attempt with a failed job and the final attempt, `python-tests` and `python-evals` not failed | long-running test failures (a regression confirmed on two or more backends at once, anything else on the final attempt), test-job crash and incomplete execution (final attempt) | Staged; `auto-resolve-submit.yaml` submits it after the run instead of retrying |
 
 The docs-only review (`docs-review.txt`) reviews and improves documents and
@@ -396,15 +396,26 @@ attempt proceeds exactly as a deterministic failure would, so nothing is
 masked).
 
 The same classification is what keeps a validate run's infrastructure failure
-away from an agent. `auto-review` runs on attempt 1, before the retry gate sees
-the run, so a `test-timeout-check` that failed on a plugin download once routed
-there as a quality-gate finding and dispatched an agent with nothing to fix.
-`auto-review` now classifies its failing gates with the same
-`tools/ci/infra-failure.sh` (so the two paths cannot drift) and, when **every**
-gate it would report failed on infrastructure, suppresses the submission and
-lets the retry gate re-run the pipeline. It is conservative: a readable gate
-failure that is not infrastructure, an unreadable log, or an unreachable jobs
-API all leave the dispatch in place, so a genuine finding is never suppressed.
+away from an agent. `auto-review` runs before the retry gate sees the run, so a
+`test-timeout-check` that failed on a plugin download once routed there as a
+quality-gate finding and dispatched an agent with nothing to fix. `auto-review`
+now classifies its failing gates with the same `tools/ci/infra-failure.sh` (so
+the two paths cannot drift) and, when **every** gate it would report failed on
+infrastructure, suppresses the submission and lets the retry gate re-run the
+pipeline. It is conservative: a readable gate failure that is not
+infrastructure, an unreadable log, or an unreachable jobs API all leave the
+dispatch in place, so a genuine finding is never suppressed.
+
+Because the retry gate re-runs those gates on a later attempt, `auto-review`
+runs again there rather than only on attempt 1: a validate run whose attempt 1
+suppressed its dispatch as infrastructure would otherwise be stranded — no
+review agent sent and no test run started — when a later attempt passes. It
+stages at most once across the run's attempts: a "Detect an earlier attempt's
+review handoff" step checks the artifacts API for an earlier attempt's
+`auto-review-request` (the same artifact the retry gate's auto-resolve-request
+check keys on) and stages nothing when one exists, so a retry never starts a
+second review round. A failed query favours the handoff, since the controller's
+`STARTED_AFTER` guard still refuses a genuine duplicate.
 
 Exclusivity is structural, not a handoff between jobs:
 
@@ -415,11 +426,14 @@ Exclusivity is structural, not a handoff between jobs:
   and an attempt that staged is submitted, not retried. `MAX_ATTEMPTS` on the
   `auto-resolve` job and in `auto-resolve-submit.yaml` must be equal: the
   final attempt is the one whose unconfirmed failures reach an agent. Change
-  one number and you must change the other. `auto-review` runs on attempt 1
-  only, and is not allowed a second attempt because a
-  retry re-runs it whenever one of its inputs failed, and its first agent —
-  submitted minutes into attempt 1 — is very likely still working when a test
-  failure brings attempt 2 around.
+  one number and you must change the other. `auto-review` runs on every attempt
+  but hands off at most once: a retry re-runs it whenever one of its inputs
+  failed, and the agent it submitted on an earlier attempt — submitted minutes
+  into that attempt — is very likely still working when a later attempt comes
+  around, so it stages nothing once an earlier attempt of the run staged a
+  request. That single-handoff rule is also what lets a validate run re-run for
+  an infrastructure failure hand off from its passing attempt instead of
+  stranding the pull request.
 - A `python-tests` or `python-evals` failure skips both `auto-review` and
   `auto-resolve`, a `python-tests` failure also skips `test-flowtree` (which
   gates on python-tests success-or-skipped), and either is never

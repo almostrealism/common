@@ -80,6 +80,19 @@ class DeriveTest(unittest.TestCase):
                 validate_jobs=[job("auto-review-submit")])
             self.assertEqual(state[0], labels.AUTO_REVIEW, conclusion)
 
+    def test_a_validate_run_that_handed_off_on_a_retry_is_auto_review(self):
+        """When the infra retry gate re-runs a failed validate run and a later
+        attempt passes, auto-review now hands off on that attempt. The labeller
+        reads it with no change: ``submitted`` looks for an auto-review-submit
+        success in the run's jobs (``gather`` fetches them with ``filter=all``,
+        i.e. across every attempt), so a handoff on attempt 2 reads as
+        ``ci: auto-review`` just as one on attempt 1 does — not as the
+        ``ci: needs attention`` the stranded run used to show."""
+        state = self.derive(
+            validate_run=run("pull_request", conclusion="success", attempt=2),
+            validate_jobs=[job("auto-review-submit")])
+        self.assertEqual(state[0], labels.AUTO_REVIEW)
+
     def test_a_python_fix_from_a_validate_run_is_auto_review(self):
         state = self.derive(
             validate_run=run("pull_request", conclusion="failure"),
