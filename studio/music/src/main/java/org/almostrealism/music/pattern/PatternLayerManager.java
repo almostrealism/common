@@ -282,9 +282,8 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures, D
 	/**
 	 * When {@code true}, {@link #noteAudioCache} is never cleared or evicted in
 	 * {@link #sum}, so a continuously looped arrangement reuses the same rendered
-	 * note audio across passes with no re-evaluation and no per-loop deallocation
-	 * churn (the deallocation churn otherwise intermittently stalls the render
-	 * kernel). Memory is then bounded by the arrangement length rather than the
+	 * note audio across passes instead of re-evaluating it on every pass. Memory is
+	 * then bounded by the arrangement length rather than the
 	 * current playback window. An arrangement switch must still be announced with
 	 * {@link #invalidateCaches()}, which discards persisted audio on the next render.
 	 */
@@ -327,9 +326,9 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures, D
 	 * <p>When enabled, {@link #sum} neither clears the note-audio cache at frame 0 nor
 	 * evicts entries behind the playback position, and does not release it when a pass
 	 * reaches the arrangement end: a render that loops one arrangement evaluates each
-	 * note once and reuses the audio on every later pass. This is the right setting for
-	 * a sustained render of a fixed arrangement, where re-evaluating and re-freeing the
-	 * note audio on every pass churns native deallocations that stall the render kernel.
+	 * note once and reuses the audio on every later pass. This is an optional optimization
+	 * for a sustained render of a fixed arrangement; without it every pass re-evaluates
+	 * the note audio, which costs time but renders the same result.
 	 * A caller that changes the arrangement must call {@link #invalidateCaches()}; the
 	 * next render then discards the persisted audio regardless of this setting.</p>
 	 *

@@ -246,9 +246,14 @@ consequences of block-parallel evaluation.
   DSP loop and Metal for the parallel pattern kernels. Forcing `AR_HARDWARE_DRIVER=mtl` fails to
   compile the per-frame loop, which exceeds Metal's 31-buffer kernel argument limit. Forcing
   `native` is many times slower. Leave the driver unset.
-- **Sustained rendering needs a persistent note cache.** Without it, every looped pass
-  re-evaluates and re-frees the note audio, and that deallocation churn leaks native memory on
-  every buffer and stalls the render kernel. A renderer that loops a fixed arrangement enables
+- **A driver must run `setup()` after every `reset()`.** Resetting the real-time runner stops
+  its render-ahead producer and rewinds its cursors; only `setup()` restarts the producer.
+  A driver that loops an arrangement (resetting at each loop boundary) and keeps ticking
+  without setup fails on the first buffer of the next pass, because the stopped render-ahead
+  stream rejects the wait for its slot.
+- **Persistent note caching is an optional optimization for a fixed arrangement.** Without it,
+  every looped pass re-evaluates the note audio; sustained rendering works either way. A
+  renderer that loops a fixed arrangement can avoid that re-evaluation by enabling
   persistence on its own scene with `PatternSystemManager.setNoteCachePersistent(true)` (as
   `RealtimeContinuousRenderer` does); it applies to every pattern of that manager, including
   ones added later. `-DAR_PATTERN_CACHE_PERSIST=true` only sets the default for new

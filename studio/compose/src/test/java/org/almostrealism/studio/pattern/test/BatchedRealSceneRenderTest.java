@@ -408,8 +408,8 @@ public class BatchedRealSceneRenderTest extends AudioSceneTestBase {
 	 * loop) for manual listening verification. The final file holds the last completed
 	 * arrangement loop; non-silence is asserted. This is the suite's sustained-render
 	 * coverage: the arrangement is looped, so a regression that only appears after minutes
-	 * of looping (note-audio deallocation churn stalling the kernel, native-memory growth)
-	 * pushes the paced render past its timeout. Every pass after the first also depends on
+	 * of looping (a stalled render-ahead producer, native-memory growth) pushes the paced
+	 * render past its timeout or fails it. Every pass after the first also depends on
 	 * the renderer re-running setup after its loop-boundary reset, which restarts the
 	 * render-ahead producer.
 	 */
