@@ -636,6 +636,15 @@ public class Clap2TaggingTest extends TestSuiteBase {
 		assertEquals(1, a.indexOf("bass"));
 		assertEquals(-1, a.indexOf("organ"));
 		assertTrue(!a.equals(TagVocabulary.of(List.of("bass", "piano"))));
+
+		TagVocabulary v1 = new TagVocabulary("v1", a.getTags());
+		TagVocabulary v2 = new TagVocabulary("v2", a.getTags());
+		Assert.assertEquals("v1", v1.getVersion());
+		Assert.assertEquals("", a.getVersion());
+		assertTrue(!v1.equals(v2));
+		assertTrue(!v1.equals(a));
+		Assert.assertEquals(v1, new TagVocabulary("v1", a.getTags()));
+		Assert.assertEquals(v1.hashCode(), new TagVocabulary("v1", a.getTags()).hashCode());
 	}
 
 	/**
