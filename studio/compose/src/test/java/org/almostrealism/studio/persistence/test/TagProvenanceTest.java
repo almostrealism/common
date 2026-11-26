@@ -242,6 +242,13 @@ public class TagProvenanceTest extends TestSuiteBase {
 		WaveFeatureCleanup report = WaveFeatureCleanup.report(library, CURRENT);
 		Assert.assertEquals("only items with stale tags are counted", staleItems, report.itemCount());
 		Assert.assertEquals("two stale sets per item", 2 * staleItems, report.staleTagSetCount());
+		Assert.assertEquals("a tag report carries no bytes", 0L, report.totalBytes());
+		Assert.assertTrue("a tag report is present on its set count, not its bytes", report.isPresent());
+		Assert.assertEquals("tag report describes its stale tag sets",
+				staleItems + " items carry " + (2 * staleItems) + " sets of descriptive tags",
+				report.description().split(" from ")[0]);
+		Assert.assertFalse("description names no downstream application",
+				report.description().contains("Rings"));
 
 		WaveFeatureCleanup byModel = WaveFeatureCleanup.report(library, new TagModelVersion("tagger-b", VOCAB));
 		Assert.assertEquals("keeping another key makes the current one stale",
@@ -259,6 +266,7 @@ public class TagProvenanceTest extends TestSuiteBase {
 		WaveFeatureCleanup after = WaveFeatureCleanup.report(library, CURRENT);
 		Assert.assertEquals(0, after.itemCount());
 		Assert.assertEquals(0, after.staleTagSetCount());
+		Assert.assertFalse("an empty tag report is not present", after.isPresent());
 
 		library.stop();
 	}
