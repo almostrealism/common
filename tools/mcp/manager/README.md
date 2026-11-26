@@ -52,6 +52,33 @@ is a thin orchestration facade that:
 | `phase_config_explain` | read | Explain per-phase runner/model/effort/provider resolution and dry-run validate a submission |
 | `workspace_update_config` | write | Update workspace-level config (name, default channel, runner defaults) |
 | `send_message` | write | Send a Slack message |
+| `job_report_blocked` | write | Report that the current job cannot proceed; ends it `BLOCKED` |
+
+### Reporting a block
+
+When a coding agent genuinely cannot complete its task — a guardrail or hook
+denies a change it needs, a required resource is missing, the task is ambiguous
+or out of scope, or the work already exists — it calls
+`job_report_blocked(category, detail)` instead of exiting silently or writing a
+free-text abandonment note. The call records the block against the job bound to
+the token and ends the job with a terminal `BLOCKED` status that the
+enforcement rules do not retry; the `category` and `detail` are visible in
+`workstream_get_job` and the job's completion event.
+
+`category` is one of a fixed set:
+
+| Category | Meaning |
+|----------|---------|
+| `guardrail` | A guardrail or hook denied an action the agent needed to take |
+| `missing_resource` | A required library, model, credential, or file is absent |
+| `ambiguous_task` | The request needs a clarifying decision before it can be acted on |
+| `out_of_scope` | The change does not belong on this branch |
+| `already_done` | The work already exists, typically on the base branch |
+
+A `guardrail` claim is re-verified against the tool and permission denials the
+session actually recorded; a claim the harness cannot corroborate is kept but
+marked unverified (`blockedVerified: false`). A block is for a real
+impediment, not an escape hatch from difficult but doable work.
 
 ### Starting deliberate work
 

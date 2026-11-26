@@ -15,6 +15,8 @@
  */
 
 package org.almostrealism.music.notes;
+import org.almostrealism.audio.data.FileWaveDataProvider;
+import org.almostrealism.audio.data.FileWaveDataProviderTree;
 import org.almostrealism.audio.notes.NoteAudio;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
@@ -24,6 +26,7 @@ import org.almostrealism.audio.tone.KeyboardTuned;
 import org.almostrealism.audio.tone.KeyboardTuning;
 
 import java.util.List;
+import java.util.function.Supplier;
 
 /**
  * A source of {@link org.almostrealism.audio.notes.NoteAudio} instances used within
@@ -60,6 +63,20 @@ public interface NoteAudioSource extends KeyboardTuned, Named {
 	@JsonIgnore
 	@Override
 	void setTuning(KeyboardTuning tuning);
+
+	/**
+	 * Binds this source to the sample library its notes are selected from.
+	 *
+	 * <p>A source that selects its notes from a library tree (such as
+	 * {@link TreeNoteSource}) rebuilds its notes from the given tree. A source whose
+	 * notes come from a fixed origin of its own — a single file, a note group — does
+	 * not draw from the library, so the library it is offered does not change it;
+	 * that is the default.</p>
+	 *
+	 * @param tree the library tree notes are selected from, or {@code null} for none
+	 */
+	@JsonIgnore
+	default void setTree(FileWaveDataProviderTree<? extends Supplier<FileWaveDataProvider>> tree) { }
 
 	/**
 	 * Returns a list of {@link PatternNoteAudio} instances wrapping the raw notes.

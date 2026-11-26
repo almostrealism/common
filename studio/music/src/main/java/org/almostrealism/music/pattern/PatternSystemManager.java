@@ -22,6 +22,7 @@ import io.almostrealism.relation.Producer;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.music.arrange.AudioSceneContext;
 import org.almostrealism.music.data.ChannelInfo;
+import org.almostrealism.audio.data.FileWaveDataProvider;
 import org.almostrealism.audio.data.FileWaveDataProviderTree;
 import org.almostrealism.music.data.ParameterFunction;
 import org.almostrealism.audio.filter.AudioProcessingUtils;
@@ -30,7 +31,6 @@ import org.almostrealism.audio.notes.NoteAudio;
 import org.almostrealism.music.notes.NoteAudioChoice;
 import org.almostrealism.music.notes.NoteAudioSource;
 import org.almostrealism.music.notes.NoteSourceProvider;
-import org.almostrealism.music.notes.TreeNoteSource;
 import org.almostrealism.audio.tone.KeyboardTuning;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
@@ -171,6 +171,14 @@ public class PatternSystemManager implements NoteSourceProvider, CodeFeatures, D
 	 * have released their native memory (or no longer describe the pattern set).
 	 */
 	private volatile int patternGeneration;
+
+	/**
+	 * Whether this manager's patterns keep their rendered note audio across render passes,
+	 * or {@code null} when it has not been set and each pattern keeps the
+	 * {@link PatternLayerManager} default. Applied to every pattern added later, so it
+	 * survives {@link #setSettings(Settings)} rebuilding the pattern set.
+	 */
+	private Boolean noteCachePersistent;
 
 	/**
 	 * Creates a {@code PatternSystemManager} with no initial choices.
@@ -328,6 +336,23 @@ public class PatternSystemManager implements NoteSourceProvider, CodeFeatures, D
 	}
 
 	/**
+	 * Sets whether every pattern of this manager — those present now and those added
+	 * later — keeps its rendered note audio across render passes
+	 * (see {@link PatternLayerManager#setCachePersistent(boolean)}).
+	 *
+	 * <p>A render that loops one fixed arrangement for a sustained period enables this so
+	 * each note is evaluated once rather than re-evaluated and re-freed on every pass. A
+	 * caller that switches arrangements while persistence is on must call
+	 * {@link PatternLayerManager#invalidateCaches()} after the switch.</p>
+	 *
+	 * @param persistent {@code true} to keep note audio across render passes
+	 */
+	public void setNoteCachePersistent(boolean persistent) {
+		this.noteCachePersistent = persistent;
+		patterns.forEach(p -> p.setCachePersistent(persistent));
+	}
+
+	/**
 	 * Refreshes the parameters for all patterns, adjusting seed bias based on active layer count.
 	 */
 	public void refreshParameters() {
@@ -356,7 +381,7 @@ public class PatternSystemManager implements NoteSourceProvider, CodeFeatures, D
 	 *
 	 * @param root the file tree to set
 	 */
-	public void setTree(FileWaveDataProviderTree<?> root) {
+	public void setTree(FileWaveDataProviderTree<? extends Supplier<FileWaveDataProvider>> root) {
 		setTree(root, null);
 	}
 
@@ -366,17 +391,15 @@ public class PatternSystemManager implements NoteSourceProvider, CodeFeatures, D
 	 * @param root     the file tree to set
 	 * @param progress an optional consumer that receives progress values in {@code [0, 1]}
 	 */
-	public void setTree(FileWaveDataProviderTree<?> root, DoubleConsumer progress) {
+	public void setTree(FileWaveDataProviderTree<? extends Supplier<FileWaveDataProvider>> root,
+						DoubleConsumer progress) {
 		List<NoteAudioSource> sources = getAllSources();
 
 		if (progress != null && !sources.isEmpty())
 			progress.accept(0.0);
 
 		IntStream.range(0, sources.size()).forEach(i -> {
-			NoteAudioSource s = sources.get(i);
-
-			if (s instanceof TreeNoteSource)
-				((TreeNoteSource) s).setTree(root);
+			sources.get(i).setTree(root);
 
 			if (progress != null)
 				progress.accept((double) (i + 1) / sources.size());
@@ -401,6 +424,7 @@ public class PatternSystemManager implements NoteSourceProvider, CodeFeatures, D
 				new PatternLayerManager(choices,
 						chromosomes.get(patterns.size()),
 						channel, measures, melodic);
+		if (noteCachePersistent != null) pattern.setCachePersistent(noteCachePersistent);
 		patterns.add(pattern);
 		patternGeneration++;
 		return pattern;
