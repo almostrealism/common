@@ -67,8 +67,9 @@ What is **not** in scope:
 The test every candidate must pass: **name the other repository that would use this once it is
 freed (a private product that builds on the platform, or another registered repository), and
 the concrete thing it could not do before and could do after.** If you cannot name both, it is
-not a generalization —
-choose another candidate.
+not a generalization — choose another candidate. Naming the consumer is how you test the
+candidate in your own analysis; in any committed artifact — this prompt's deliverable included —
+a private consumer stays generic, described in platform terms, per the Constraints below.
 
 ## The hard constraint: this branch cannot change CI files
 
@@ -253,8 +254,9 @@ Either:
    smallest change to free it, with a tracker task filed against it.
 
 Plus a `commit.txt` whose body — which becomes the pull request description — contains the
-capability you chose, the consumer that would use it and what it could not do before, the
-coupling list (file and line), what you changed (or the plan you wrote and the task you filed),
-the tests and build you ran, and the candidates you rejected with the reason for each.
+capability you chose, the consumer that would use it (in platform terms — a private consumer
+stays generic, per the Constraints) and what it could not do before, the coupling list (file
+and line), what you changed (or the plan you wrote and the task you filed), the tests and build
+you ran, and the candidates you rejected with the reason for each.
 
 Your committed changes will be opened as a pull request automatically.
