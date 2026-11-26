@@ -35,6 +35,7 @@ import org.junit.Before;
 import org.junit.Test;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
@@ -65,6 +66,13 @@ public class MixdownManagerPdslAdapterTest extends TestSuiteBase implements Cell
 
 	/** Rows of the adapter's response tables. */
 	private static final int TABLE_BINS = 1024;
+
+	/**
+	 * Measure the fixture's clock is placed at before the argument map is built. The main
+	 * high-pass automation trend stays at zero until roughly measure 7.4, so at measure 0 every
+	 * channel's cutoff bounds to the same lowest bin and a misordered gather would go unnoticed.
+	 */
+	private static final int AUTOMATION_MEASURE = 8;
 
 	/** Tolerance for float32 kernel output compared with a separately compiled reference. */
 	private static final double EPS = 1e-5;
@@ -183,14 +191,19 @@ public class MixdownManagerPdslAdapterTest extends TestSuiteBase implements Cell
 			String key = high ? "wet_hp_coeffs" : "wet_filter_coeffs";
 			try (PackedCollection bank = evaluateArg(key);
 				 PackedCollection table = adapter.biquadResponseTable(high)) {
+				int[] bins = new int[CHANNELS];
 				for (int ch = 0; ch < CHANNELS; ch++) {
-					double cutoff;
 					try (PackedCollection bounded = bound(high ? wetFilter.highPassFrequency(ch)
 									: wetFilter.lowPassFrequency(ch),
 							AudioPassFilter.MIN_FREQUENCY, 20000).evaluate()) {
-						cutoff = bounded.toDouble(0);
+						bins[ch] = bin(bounded.toDouble(0));
 					}
-					assertRow(key, bank, ch, table, bin(cutoff) * TAPS);
+				}
+				log(key + " bins=" + Arrays.toString(bins));
+				assertDistinctBins(key, bins);
+
+				for (int ch = 0; ch < CHANNELS; ch++) {
+					assertRow(key, bank, ch, table, bins[ch] * TAPS);
 				}
 			}
 		}
@@ -206,9 +219,33 @@ public class MixdownManagerPdslAdapterTest extends TestSuiteBase implements Cell
 		buildFixture();
 		PackedCollection bank = (PackedCollection) args.get("hp_coeffs");
 		PackedCollection cutoffs = (PackedCollection) args.get("hp_cutoff");
+		int[] bins = new int[CHANNELS];
+		for (int ch = 0; ch < CHANNELS; ch++) {
+			bins[ch] = bin(cutoffs.toDouble(ch));
+		}
+		log("hp_cutoff bins=" + Arrays.toString(bins));
+		assertDistinctBins("hp_cutoff", bins);
+
 		try (PackedCollection table = adapter.biquadResponseTable(true)) {
 			for (int ch = 0; ch < CHANNELS; ch++) {
-				assertRow("hp_coeffs", bank, ch, table, bin(cutoffs.toDouble(ch)) * TAPS);
+				assertRow("hp_coeffs", bank, ch, table, bins[ch] * TAPS);
+			}
+		}
+	}
+
+	/**
+	 * Asserts that no two channels select the same response-table bin, so a row check over them
+	 * would detect a gather that misorders or repeats channels.
+	 *
+	 * @param label names the cutoffs in a failure message
+	 * @param bins  the bin each channel selects
+	 */
+	private static void assertDistinctBins(String label, int[] bins) {
+		for (int a = 0; a < bins.length; a++) {
+			for (int b = a + 1; b < bins.length; b++) {
+				Assert.assertNotEquals(label + ": channels " + a + " and " + b
+						+ " select the same bin, so the fixture cannot detect a misordered gather",
+						bins[a], bins[b]);
 			}
 		}
 	}
@@ -309,6 +346,7 @@ public class MixdownManagerPdslAdapterTest extends TestSuiteBase implements Cell
 		setup.add(mixdown.setup());
 		setup.add(time.setup());
 		setup.get().run();
+		time.getClock().setFrame(AUTOMATION_MEASURE * measure * SAMPLE_RATE);
 
 		adapter = new MixdownManagerPdslAdapter(mixdown, efx,
 				new MixdownManagerPdslAdapter.Config(channels, SAMPLE_RATE / 16, SAMPLE_RATE,
