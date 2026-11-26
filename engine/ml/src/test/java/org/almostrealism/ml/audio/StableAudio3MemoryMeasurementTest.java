@@ -101,6 +101,8 @@ public class StableAudio3MemoryMeasurementTest extends StableAudio3TestBase {
 			withModel(MAX_SECONDS, (model, autoencoderWeights) -> {
 				model.setTokenizer(tokenizer);
 				rows.add(sampler.settle("Generator built", 0));
+				assertTrue("tracked memory is only measurable on the Metal or OpenCL backend",
+						trackedBytes() > 0);
 
 				for (int i = 1; i <= 3; i++) {
 					sampler.resetPeaks();
@@ -139,7 +141,6 @@ public class StableAudio3MemoryMeasurementTest extends StableAudio3TestBase {
 		rows.forEach(this::log);
 
 		assertEquals("every stage must be recorded", 7, rows.size());
-		assertTrue("tracked memory is only measurable on the Metal or OpenCL backend", trackedBytes() > 0);
 	}
 
 	/**

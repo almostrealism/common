@@ -144,14 +144,15 @@ public class LayerOutputPool implements Destroyable, ConsoleFeatures {
 
 	/**
 	 * Creates the output of the given layer: a view at offset 0 of a block of memory of the
-	 * layer's output length, which this pool owns.
+	 * {@link PackedCollection#physicalLength(TraversalPolicy) physical length} of the layer's
+	 * output shape, which this pool owns.
 	 *
 	 * @param layer the layer whose output is needed
 	 * @return the output view
 	 */
 	PackedCollection allocate(DefaultCellularLayer layer) {
 		TraversalPolicy shape = layer.getOutputShape();
-		Bytes block = new Bytes(shape.getTotalSize());
+		Bytes block = new Bytes(Math.toIntExact(PackedCollection.physicalLength(shape)));
 		memory.add(block);
 
 		PackedCollection view = new PackedCollection(shape, shape.getTraversalAxis(), block, 0);
@@ -285,7 +286,7 @@ public class LayerOutputPool implements Destroyable, ConsoleFeatures {
 	 */
 	public long getLayerOutputBytes() {
 		long total = 0;
-		for (Tenant t : tenants) total += t.view.getMemLength();
+		for (Tenant t : tenants) total += t.view.getDelegatedLength();
 		return total * elementBytes();
 	}
 
@@ -331,7 +332,7 @@ public class LayerOutputPool implements Destroyable, ConsoleFeatures {
 	 * @param blocks the blocks placed so far, to which a new block is added
 	 */
 	private void place(Tenant t, List<Block> blocks) {
-		int length = t.view.getMemLength();
+		int length = t.view.getDelegatedLength();
 		boolean small = length <= MemoryDataArgumentMap.maxAggregateLength;
 
 		Block fit = null;

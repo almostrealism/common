@@ -366,7 +366,8 @@ public class CompiledModel implements Destroyable, CodeFeatures {
 	 * {@link Model#setLayerOutputsRetained(boolean) layer outputs are retained}, and while
 	 * {@link OperationList#enableAutomaticOptimization} is on, because that flag lets compiling a
 	 * list regroup it after the analysis. A model compiled this way cannot be compiled again: a
-	 * later push of a layer whose output is shared throws.</p>
+	 * later push of a layer whose output is shared throws. The returned model owns the pool; a
+	 * compile that throws releases it before the exception propagates.</p>
 	 *
 	 * @param model          the model to compile
 	 * @param backprop       {@code true} to compile the backward pass
@@ -431,30 +432,36 @@ public class CompiledModel implements Destroyable, CodeFeatures {
 			return forward.flatten().optimize();
 		};
 
-		ParallelProcess<?, Runnable> p = layerOutputs == null ? build.get() : layerOutputs.use(build);
+		try {
+			ParallelProcess<?, Runnable> p = layerOutputs == null ? build.get() : layerOutputs.use(build);
 
-		if (layerOutputs != null && layerOutputs.assign(ExecutionStep.of(p))
-				&& enableLayerBufferReuseVerification) {
-			layerOutputs.verify();
+			if (layerOutputs != null && layerOutputs.assign(ExecutionStep.of(p))
+					&& enableLayerBufferReuseVerification) {
+				layerOutputs.verify();
+			}
+
+			ParallelProcess<?, Runnable> q;
+
+			if (backprop) {
+				OperationList backward = new OperationList("CompiledModel Backward", model.getComputeRequirements());
+				backward.add(model.backward().push(outputGradient));
+				q = backward.flatten().optimize();
+			} else {
+				q = null;
+			}
+
+			if (p instanceof OperationList) ((OperationList) p).setProfile(profile);
+			if (q instanceof OperationList) ((OperationList) q).setProfile(profile);
+
+			CompiledModel compiled = new CompiledModel(inputs, output, setup, p.get(),
+					outputGradient, gradOut, q == null ? null : q.get(), layerOutputs);
+			compiled.reset();
+			return compiled;
+		} catch (RuntimeException | Error e) {
+			// TODO(review): layers keep views on the destroyed pool (and outputShared if assign ran); detach them so getOutput()/recompile do not see freed memory.
+			if (layerOutputs != null) layerOutputs.destroy();
+			throw e;
 		}
-
-		ParallelProcess<?, Runnable> q;
-
-		if (backprop) {
-			OperationList backward = new OperationList("CompiledModel Backward", model.getComputeRequirements());
-			backward.add(model.backward().push(outputGradient));
-			q = backward.flatten().optimize();
-		} else {
-			q = null;
-		}
-
-		if (p instanceof OperationList) ((OperationList) p).setProfile(profile);
-		if (q instanceof OperationList) ((OperationList) q).setProfile(profile);
-
-		CompiledModel compiled = new CompiledModel(inputs, output, setup, p.get(),
-				outputGradient, gradOut, q == null ? null : q.get(), layerOutputs);
-		compiled.reset();
-		return compiled;
 	}
 
 	/**

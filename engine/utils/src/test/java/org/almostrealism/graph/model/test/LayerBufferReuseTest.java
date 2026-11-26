@@ -404,6 +404,32 @@ public class LayerBufferReuseTest extends TestSuiteBase {
 	}
 
 	/**
+	 * A compile that throws after its pool has given layers their outputs releases the pool's
+	 * memory, since no compiled model is returned to own it.
+	 */
+	@Test(timeout = 5 * 60000)
+	public void failedCompileReleasesPool() {
+		List<DefaultCellularLayer> layers = new ArrayList<>();
+		Model model = chain(weights(new Random(38), 3, SIZE, SIZE), layers);
+		Receptor<PackedCollection> failing = in -> {
+			throw new IllegalStateException("push failed");
+		};
+		layers.get(1).andThen(failing);
+
+		try {
+			compile(model, true);
+			Assert.fail("a receptor that throws while the cells are pushed must fail the compile");
+		} catch (IllegalStateException e) {
+			Assert.assertEquals("push failed", e.getMessage());
+		}
+
+		LayerOutputPool pool = layers.get(1).getOutputPool();
+		Assert.assertNotNull("the layer output must have come from the compile's pool", pool);
+		Assert.assertTrue("the pool must have given layers outputs", pool.getLayerCount() >= 2);
+		Assert.assertEquals(0, pool.getPooledBytes());
+	}
+
+	/**
 	 * An operation that does not expose the memory it touches makes the compile keep one buffer
 	 * per layer, rather than guess that it touches nothing; the results are unchanged.
 	 */
