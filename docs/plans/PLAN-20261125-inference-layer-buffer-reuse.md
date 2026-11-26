@@ -246,7 +246,13 @@ numbers. Lifetimes are therefore taken from what the forward pass actually does:
    computation (`isComputation()`) **and** the list is uniform (`isUniform()`). The second condition
    applies because `OperationList.enableNonUniformCompilation` defaults to `false`. Any other list
    runs member by member through an `OperationListRunner`. The step walk must apply the same two
-   tests `OperationList.get` applies, read from the same methods; a copy of the rule would drift. In
+   tests `OperationList.get` applies, read from the same methods; a copy of the rule would drift.
+   Calling `isComputation()` itself is what keeps the walk in step: it also returns `false` for a
+   `sequential` list, when compilation is disabled, and for a list deeper than `maxDepth` (500).
+   `get()` checks one condition before both tests: with `enableAutomaticOptimization` on (default
+   `false`), a non-uniform list is optimized again inside `get()`, so its grouping is decided after
+   the analysis. The reuse compile should fall back to per-layer buffers while that flag is on. The
+   flags are described in [`operationlist-optimization-flags.md`](../internals/operationlist-optimization-flags.md). In
    a fused kernel, member *k*'s read of `X[j]` by one thread and
    member *k+1*'s write of `Y[t]` by another are not ordered. Within a fused list, writes are ordered
    before inline reads only for the same element in the same thread (the reason
@@ -334,6 +340,23 @@ That makes the per-layer allocation at construction go away, which is also what 
 holding the full per-layer set. Pass 1 still needs distinct objects to analyse, and they must not
 overlap in memory (§2, step 1). Open question 9 weighs the options; views over one small shared root
 do not meet that requirement. Pass-1 objects are never compiled or run.
+
+- **Review note: `output == null` already means "output tracking off".** `DefaultCellularLayer`
+  uses the field as its tracking flag. `init(..., outputTracking = false)` returns before creating
+  the entry and exit cells, and `getForward()` returns the raw `forward` cell, not the composite
+  `fw`, whenever `output` is `null`. `SequentialBlock.add` calls
+  `last.getForward().setReceptor(block.getForward())` while the graph is being built, long before
+  any compile. If `output` were simply left `null` until first need, every layer would hand out
+  its raw `forward` cell during construction. The next block's `setReceptor` would then replace
+  the `exit` receptor that `init` installed on `forward`, silently dropping the output record and
+  the monitor, for training as well as inference. Lazy allocation therefore needs a separate
+  record of whether output tracking is on (for example the output shape kept by `init`), and
+  `getForward()` must test that instead of the field. So must `setInputTracking`, which treats a
+  `null` output as "not initialized" and throws `IllegalStateException`; since `compile(false)`
+  calls `model.setInputTracking(false)`, an unchanged check would make every inference compile
+  fail. The `p(output)` lambdas in `fw` and `exit`
+  also dereference the field at push time, so every push must find it set: to the pooled view in
+  pass 2, to the pass-1 placeholder, or to a standalone buffer created on demand.
 
 ### 4. Pool representation, argument aggregation and kernel argument maps
 
@@ -514,7 +537,9 @@ Stage 2 is done when all of the following hold:
 ## Implementation outline (Stage 2, after approval)
 
 1. **Lazy output allocation in `DefaultCellularLayer`.** Keep the shape and create the standalone
-   buffer on first need. Training behaviour stays identical.
+   buffer on first need. Training behaviour stays identical. The two `output == null` tests, in
+   `getForward()` and `setInputTracking`, must be changed to read a separate output-tracking flag (§3, review
+   note), or the cells would be wired around the output record during construction.
 2. **Read/write-set walk over an optimized `OperationList`.** This generalises the
    `MemoryRegionList.writes` and `dependentReads` methods `subdivide()` already uses, as a method on
    `OperationList`, plus the kernel-step grouping.
