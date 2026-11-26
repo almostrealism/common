@@ -52,8 +52,8 @@ public class InstructionPromptBuilderEnforcementConfigTest extends TestSuiteBase
 		"Enforcement configuration",
 		"checkstyle rules and suppressions",
 		"NEVER be weakened, exempted, or disabled",
-		"ABANDON the task",
-		"declaring failure is always preferable",
+		"mcp__ar-manager__job_report_blocked",
+		"declaring a structured block is always preferable",
 	};
 
 	/** The bare prompt must contain the section header. */
@@ -180,7 +180,7 @@ public class InstructionPromptBuilderEnforcementConfigTest extends TestSuiteBase
 		// close phrase must appear.  This is a soft cap: the current
 		// rendering is well under 1000 chars, so 1500 gives room for
 		// natural wording tweaks without becoming an essay.
-		int close = result.indexOf("declaring failure is always preferable", start);
+		int close = result.indexOf("declaring a structured block is always preferable", start);
 		assertTrue("Principle close phrase must appear soon after the header",
 			close >= 0 && close - start < 1500);
 		// And it must not be the very last thing in the prompt.
