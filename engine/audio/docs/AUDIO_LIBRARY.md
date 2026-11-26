@@ -115,8 +115,10 @@ by the persistence layer and the cleanup accounting.
 `AudioLibrary.otherModelFeatures()` reports how much feature data belongs to
 models other than the current one (an item count and byte total, including the
 legacy slot) and offers a `WaveFeatureCleanup.remove()` that deletes exactly
-that data and re-persists the kept model — modelled on
-`LegacyLibraryMigrator.Result`. `WaveFeatures` is `Destroyable`, and the
+that data and re-persists the kept model. Both `WaveFeatureCleanup` and
+`LegacyLibraryMigrator.Result` implement `LibraryCleanup`, so each describes,
+sizes (`isPresent()`, `totalBytes()`) and deletes (`remove()`) its own data and
+an application can offer any mix of them through one prompt. `WaveFeatures` is `Destroyable`, and the
 per-item `WaveDetails.removeOtherModelFeatures` destroys each discarded feature
 set and the legacy slot's tensor, so the bytes the report counts are released
 from native (potentially GPU) memory immediately rather than merely

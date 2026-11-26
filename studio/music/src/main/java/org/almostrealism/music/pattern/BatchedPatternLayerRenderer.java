@@ -347,6 +347,10 @@ public final class BatchedPatternLayerRenderer implements PatternFeatures, Destr
 
 		int endFrame = startFrame + frameCount;
 
+		// Poll cooperative cancellation before the gather so a stopped render-ahead producer
+		// does not begin a fresh tick's work; the batched dispatch loop polls again per window.
+		PatternRenderCancellation.requireNotCancelled(startFrame);
+
 		long genStart = System.nanoTime();
 		// Percussion destinations are owned here; melodic ones by the gather cache.
 		boolean transientDestinations = !melodic;
@@ -434,6 +438,9 @@ public final class BatchedPatternLayerRenderer implements PatternFeatures, Destr
 			// split into chunks whose outputs accumulate into the same slice.
 			for (int from = 0; from < sub.size(); from += maxBucket()) {
 				int to = Math.min(sub.size(), from + maxBucket());
+				// Stop between dispatches when the render-ahead producer is stopped, so shutdown
+				// is bounded by one fused kernel rather than the whole tick's batched render.
+				PatternRenderCancellation.requireNotCancelled(subStart);
 				dispatchWindow(sub.subList(from, to), subStart, subWidth, destination, ws);
 			}
 		}

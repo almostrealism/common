@@ -22,6 +22,8 @@ import org.almostrealism.audio.tone.KeyPosition;
 import org.almostrealism.audio.tone.KeyboardTuned;
 import org.almostrealism.collect.PackedCollection;
 
+import java.util.List;
+
 /**
  * Interface for audio sources that can produce sound at different musical pitches.
  * Extends {@link KeyboardTuned} to provide keyboard-based pitch control, allowing
@@ -64,4 +66,30 @@ public interface NoteAudio extends KeyboardTuned {
 	 * @return sample rate in Hz
 	 */
 	int getSampleRate();
+
+	/**
+	 * Releases this note's entries in any shared resampled-audio cache it has populated,
+	 * so the cache stops holding references to this note once its owner is done with it.
+	 * The note stays usable: audio requested afterwards is computed and cached again.
+	 *
+	 * <p>The default does nothing, which is the complete behavior for a note that keeps
+	 * no cached audio of its own. {@link NoteAudioProvider} drops the entries it created;
+	 * {@link NoteAudioGroup} releases those of each member.</p>
+	 */
+	default void releaseCachedAudio() { }
+
+	/**
+	 * Returns the notes that hold cached audio on behalf of this note: those whose
+	 * {@link #releaseCachedAudio()} actually drops cache entries. An owner deciding
+	 * which notes it may release compares these, not the notes it holds directly,
+	 * because the same cache-holding note can be reached both on its own and as part
+	 * of a composite.
+	 *
+	 * <p>The default is this note alone. {@link NoteAudioGroup} returns its members.</p>
+	 *
+	 * @return a new list of the notes whose cached audio this note's release covers
+	 */
+	default List<NoteAudio> getCachedAudioOwners() {
+		return List.of(this);
+	}
 }

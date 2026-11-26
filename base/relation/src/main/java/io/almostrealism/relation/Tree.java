@@ -221,13 +221,25 @@ public interface Tree<T extends Tree> extends Graph<T>, NodeGroup<T>, Parent<T>,
 	 * <p>This method allows custom counting functions and filters for
 	 * flexible depth calculations.</p>
 	 *
+	 * <p>The depth is the count of this node plus the largest depth among the children
+	 * that pass the filter, or zero when none does. Optimization asks for the depth
+	 * below the children of every node it visits, so the children are walked directly
+	 * rather than through a stream pipeline built for each node of the walk.</p>
+	 *
 	 * @param count function to compute the count contribution of each node
 	 * @param filter predicate to determine which nodes to include
 	 * @return the computed depth metric
 	 */
 	default int countDepth(ToIntFunction<Parent<T>> count, Predicate<T> filter) {
-		return count.applyAsInt(this) + getChildren().stream().filter(filter)
-				.mapToInt(t -> t.countDepth(count, filter))
-				.max().orElse(0);
+		int depth = count.applyAsInt(this);
+
+		int deepest = 0;
+		for (T child : getChildren()) {
+			if (filter.test(child)) {
+				deepest = Math.max(deepest, child.countDepth(count, filter));
+			}
+		}
+
+		return depth + deepest;
 	}
 }

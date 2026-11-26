@@ -729,7 +729,8 @@ public abstract class AudioSceneTestBase extends TestSuiteBase implements CellFe
 	 * of the Metal ({@link MetalProgram#compileTime}) and native C ({@link NativeCompiler#compileTime})
 	 * kernel compilations that happened during the build. Small operations run on the CPU backend,
 	 * so their kernels are compiled by the native C compiler rather than by Metal. Asserts that
-	 * the build ran the PDSL path, recording exactly one entry per step, and that the steps
+	 * the build ran the PDSL path, recording exactly {@link AudioSceneRealtimeRunner#buildStepCount(String)} entries per
+	 * step (the per-side steps run once for each stereo side), and that the steps
 	 * account for no more than the measured total.
 	 *
 	 * @param label      identifies this build in the log ({@code scene=<label>})
@@ -758,8 +759,11 @@ public abstract class AudioSceneTestBase extends TestSuiteBase implements CellFe
 				AudioSceneRealtimeRunner.BUILD_RENDER_OPS, AudioSceneRealtimeRunner.BUILD_PARSE_PDSL,
 				AudioSceneRealtimeRunner.BUILD_ARGS, AudioSceneRealtimeRunner.BUILD_LAYER,
 				AudioSceneRealtimeRunner.BUILD_MODEL_COMPILE, AudioSceneRealtimeRunner.BUILD_FIRST_FORWARD)) {
-			Assert.assertEquals("Build step " + step + " should be recorded once per runner build",
-					countsBefore.getOrDefault(step, 0) + 1, (int) steps.getCounts().getOrDefault(step, 0));
+			int expected = AudioSceneRealtimeRunner.buildStepCount(step);
+			Assert.assertEquals("Build step " + step + " should be recorded " + expected
+							+ " time(s) per runner build",
+					countsBefore.getOrDefault(step, 0) + expected,
+					(int) steps.getCounts().getOrDefault(step, 0));
 			double stepMs = 1000 * (steps.getEntries().get(step) - stepsBefore.getOrDefault(step, 0.0));
 			stepSumMs += stepMs;
 			breakdown.append(' ').append(step).append("Ms=").append(String.format("%.2f", stepMs));

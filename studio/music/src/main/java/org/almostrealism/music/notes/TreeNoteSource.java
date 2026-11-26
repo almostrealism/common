@@ -36,11 +36,14 @@ import java.io.File;
 import java.util.ArrayList;
 import java.util.function.Function;
 import java.util.Collections;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
  * A {@link NoteAudioSource} backed by a {@link FileWaveDataProviderTree}.
@@ -175,7 +178,8 @@ public class TreeNoteSource extends NoteAudioSourceBase implements ConsoleFeatur
 
 	/** Sets the underlying tree and triggers provider recomputation. */
 	@JsonIgnore
-	public void setTree(FileWaveDataProviderTree tree) {
+	@Override
+	public void setTree(FileWaveDataProviderTree<? extends Supplier<FileWaveDataProvider>> tree) {
 		this.tree = tree;
 		if (!isUpdated()) computeProviders();
 	}
@@ -276,6 +280,24 @@ public class TreeNoteSource extends NoteAudioSourceBase implements ConsoleFeatur
 				.collect(Collectors.toList());
 	}
 
+	/**
+	 * Returns every provider this source has built, active or not and including the
+	 * unsplit providers that split notes were derived from, without recomputing them
+	 * when the tree has changed.
+	 *
+	 * @return a new list of the materialized providers
+	 */
+	@Override
+	@JsonIgnore
+	public List<NoteAudio> getLoadedNotes() {
+		return Stream.of(providers, notes)
+				.filter(Objects::nonNull)
+				.flatMap(List::stream)
+				.map(Provider::getProvider)
+				.distinct()
+				.collect(Collectors.toList());
+	}
+
 	@Override
 	public boolean isUseSynthesizer() { return useSynthesizer; }
 
@@ -309,8 +331,32 @@ public class TreeNoteSource extends NoteAudioSourceBase implements ConsoleFeatur
 		computeProviders();
 	}
 
-	/** Recomputes the provider list from the current tree using the active filters. */
+	/**
+	 * Recomputes the provider list from the current tree using the active filters, then
+	 * {@linkplain #releaseDiscarded(List) releases} the providers it replaced.
+	 */
 	private void computeProviders() {
+		List<NoteAudio> previous = getLoadedNotes();
+		buildProviders();
+		releaseDiscarded(previous);
+	}
+
+	/**
+	 * Releases the cached audio of every note in {@code previous} that this source no
+	 * longer holds. Providers are built anew each time the tree or the split changes, so
+	 * a discarded one is reachable through nothing this source's owner can tear down, and
+	 * would otherwise stay tracked by the shared cache.
+	 *
+	 * @param previous the notes this source held before recomputing
+	 */
+	private void releaseDiscarded(List<NoteAudio> previous) {
+		Set<NoteAudio> current = Collections.newSetFromMap(new IdentityHashMap<>());
+		current.addAll(getLoadedNotes());
+		previous.stream().filter(n -> !current.contains(n)).forEach(NoteAudio::releaseCachedAudio);
+	}
+
+	/** Builds the provider list from the current tree using the active filters. */
+	private void buildProviders() {
 		if (filters == null) {
 			providers = null;
 			return;
@@ -346,11 +392,21 @@ public class TreeNoteSource extends NoteAudioSourceBase implements ConsoleFeatur
 			latestSignature = tree.signature();
 		}
 
-		computeNotes();
+		buildNotes();
 	}
 
-	/** Recomputes the notes list from the current providers, applying split/tuning if configured. */
+	/**
+	 * Recomputes the notes list from the current providers, then
+	 * {@linkplain #releaseDiscarded(List) releases} the split notes it replaced.
+	 */
 	private void computeNotes() {
+		List<NoteAudio> previous = getLoadedNotes();
+		buildNotes();
+		releaseDiscarded(previous);
+	}
+
+	/** Builds the notes list from the current providers, applying split/tuning if configured. */
+	private void buildNotes() {
 		if (providers == null) {
 			notes = null;
 			return;

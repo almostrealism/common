@@ -34,6 +34,7 @@ import org.almostrealism.audio.tone.WesternChromatic;
 import org.almostrealism.music.notes.KeyPositionDeserializer;
 import org.almostrealism.music.pattern.ChordProgressionManager;
 import org.almostrealism.music.pattern.PatternSystemManager;
+import org.almostrealism.studio.arrange.MixdownManager;
 import org.almostrealism.studio.generative.GenerationManager;
 import org.almostrealism.space.Animation;
 
@@ -235,6 +236,13 @@ public class AudioSceneLoader {
 		/** Channel indices routed through the reverb bus. */
 		private List<Integer> reverbChannels;
 
+		/**
+		 * Per-channel stereo placement in {@code [-1, 1]} (0 = centre), one entry per
+		 * channel. {@code null} or a short list leaves the unlisted channels centred, so
+		 * a scene file saved before pan existed loads with every channel centred.
+		 */
+		private List<Double> pan;
+
 		/** Generation manager settings for ML-based audio generation. */
 		private GenerationManager.Settings generation;
 
@@ -276,6 +284,9 @@ public class AudioSceneLoader {
 
 		public List<Integer> getReverbChannels() { return reverbChannels; }
 		public void setReverbChannels(List<Integer> reverbChannels) { this.reverbChannels = reverbChannels; }
+
+		public List<Double> getPan() { return pan; }
+		public void setPan(List<Double> pan) { this.pan = pan; }
 
 		public GenerationManager.Settings getGeneration() { return generation; }
 		public void setGeneration(GenerationManager.Settings generation) { this.generation = generation; }
@@ -360,6 +371,14 @@ public class AudioSceneLoader {
 			settings.setChannelNames(scene.getChannelNames());
 			settings.setWetChannels(scene.getEfxManager().getWetChannels());
 			settings.setReverbChannels(scene.getMixdownManager().getReverbChannels());
+
+			MixdownManager mixdown = scene.getMixdownManager();
+			List<Double> pan = new ArrayList<>();
+			for (int ch = 0; ch < mixdown.getChannelCount(); ch++) {
+				pan.add(mixdown.getPan(ch));
+			}
+			settings.setPan(pan);
+
 			settings.setGeneration(scene.getGenerationManager().getSettings());
 
 			return settings;
@@ -402,6 +421,12 @@ public class AudioSceneLoader {
 			scene.getMixdownManager().getReverbChannels().clear();
 			if (getReverbChannels() != null) {
 				scene.getMixdownManager().getReverbChannels().addAll(getReverbChannels());
+			}
+
+			MixdownManager mixdown = scene.getMixdownManager();
+			for (int ch = 0; ch < mixdown.getChannelCount(); ch++) {
+				mixdown.setPan(ch, getPan() != null && ch < getPan().size()
+						? getPan().get(ch) : 0.0);
 			}
 
 			scene.getGenerationManager().setSettings(getGeneration());

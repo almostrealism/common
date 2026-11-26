@@ -115,7 +115,10 @@ public interface ComputerFeatures extends HardwareFeatures {
 	 * Compiles a {@link Computation} that returns void into a {@link Runnable}.
 	 *
 	 * <p>The compiled runnable executes the computation on the local hardware
-	 * (GPU/accelerator if available, CPU otherwise).</p>
+	 * (GPU/accelerator if available, CPU otherwise). It is the
+	 * {@link AcceleratedComputationOperation} that {@link DefaultComputer#compileRunnable(Computation)}
+	 * creates, which compiles its kernel the first time it runs, or earlier when
+	 * {@link AcceleratedComputationOperation#load() loaded}.</p>
 	 *
 	 * <p>Example:</p>
 	 * <pre>{@code
@@ -129,9 +132,9 @@ public interface ComputerFeatures extends HardwareFeatures {
 	 * }</pre>
 	 *
 	 * @param c The computation to compile
-	 * @return A runnable that executes the compiled computation
+	 * @return The operation that executes the compiled computation
 	 */
-	default Runnable compileRunnable(Computation<Void> c) {
+	default AcceleratedComputationOperation<Void> compileRunnable(Computation<Void> c) {
 		return Hardware.getLocalHardware().getComputer().compileRunnable(c);
 	}
 

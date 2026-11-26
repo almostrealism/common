@@ -50,8 +50,14 @@ import java.util.function.ToLongFunction;
  * {@link WaveDetails}; this type only aggregates it and drives the re-persist.</p>
  *
  * @see AudioLibrary#otherModelFeatures()
+ * @see LibraryCleanup
  */
-public final class WaveFeatureCleanup {
+public final class WaveFeatureCleanup implements LibraryCleanup {
+	/** The explanation shared by both kinds of stale analysis data. */
+	private static final String KEPT = " from an earlier version of the application that "
+			+ "this version no longer uses; they are kept only so you can switch back to "
+			+ "an older version of the app.";
+
 	/** The library the report was produced from. */
 	private final AudioLibrary library;
 
@@ -147,10 +153,33 @@ public final class WaveFeatureCleanup {
 	 * Returns the total size in bytes of the stale feature data, including each
 	 * item's legacy unkeyed slot. Zero for a tag report.
 	 */
+	@Override
 	public long totalBytes() { return totalBytes; }
 
 	/** Returns the total number of stale tag sets. Zero for a feature report. */
 	public int staleTagSetCount() { return staleTagSetCount; }
+
+	/**
+	 * Present when the report holds stale tag sets or stale feature bytes. A tag
+	 * report never carries bytes, so its byte total alone would hide a pending
+	 * tag cleanup.
+	 */
+	@Override
+	public boolean isPresent() {
+		return staleTagSetCount > 0 || totalBytes > 0;
+	}
+
+	/**
+	 * Describes the stale data as descriptive tags when the report carries stale
+	 * tag sets, and as sound analysis otherwise.
+	 */
+	@Override
+	public String description() {
+		String data = staleTagSetCount > 0
+				? staleTagSetCount + " sets of descriptive tags"
+				: "sound analysis";
+		return itemCount + " items carry " + data + KEPT;
+	}
 
 	/**
 	 * Deletes the stale data this report covers from every affected item, asking
@@ -160,6 +189,7 @@ public final class WaveFeatureCleanup {
 	 *
 	 * @return the number of items from which stale data was removed
 	 */
+	@Override
 	public int remove() {
 		int removed = 0;
 

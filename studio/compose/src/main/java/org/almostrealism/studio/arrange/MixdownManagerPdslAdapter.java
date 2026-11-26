@@ -29,6 +29,7 @@ import org.almostrealism.hardware.OperationList;
 import org.almostrealism.heredity.Chromosome;
 import org.almostrealism.heredity.Gene;
 import org.almostrealism.model.Block;
+import org.almostrealism.music.data.ChannelInfo;
 import org.almostrealism.studio.AudioScene;
 import org.almostrealism.studio.optimize.FixedFilterChromosome;
 import org.almostrealism.studio.optimize.OptimizeFactorFeatures;
@@ -163,6 +164,17 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 	private final Config config;
 
 	/**
+	 * The stereo side this adapter renders, or {@code null} for the mono/centre case.
+	 * When set, each per-channel balance-law gain ({@code gL(p) = min(1, 1 − p)} for the
+	 * LEFT side, {@code gR(p) = min(1, 1 + p)} for the RIGHT) is folded into that
+	 * channel's dry volume and its sends, so one forward over a side's voicing produces
+	 * that side's panned master. At centre ({@code pan = 0}) both gains are exactly 1, so
+	 * a centred side reproduces the mono layer bit-for-bit — the parity the mono unit
+	 * tests and the centre-parity test rely on.
+	 */
+	private final ChannelInfo.StereoChannel stereoSide;
+
+	/**
 	 * Creates a structural-only adapter. Only the methods deriving constants from the
 	 * configuration are usable ({@link #reverbTapDelays()}, {@link #reverbRingFrames()},
 	 * {@link #biquadResponseTable(boolean)}, {@link #householderMatrix(int, double)});
@@ -171,7 +183,7 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 	 * @param config structural configuration
 	 */
 	public MixdownManagerPdslAdapter(Config config) {
-		this(null, null, config);
+		this(null, null, config, null);
 	}
 
 	/**
@@ -182,7 +194,7 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 	 * @param config  structural configuration
 	 */
 	public MixdownManagerPdslAdapter(MixdownManager manager, Config config) {
-		this(manager, null, config);
+		this(manager, null, config, null);
 	}
 
 	/**
@@ -195,9 +207,27 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 	 * @param config  structural configuration
 	 */
 	public MixdownManagerPdslAdapter(MixdownManager manager, EfxManager efx, Config config) {
+		this(manager, efx, config, null);
+	}
+
+	/**
+	 * Creates an adapter that renders one stereo side, folding each channel's balance-law
+	 * pan gain into its volume and sends (see {@link #stereoSide}). The caller builds one
+	 * adapter per side (LEFT over the LEFT voicing rows, RIGHT over the RIGHT rows), each
+	 * with its own state, exactly as the legacy path builds a complete mixdown graph per
+	 * {@code StereoChannel}.
+	 *
+	 * @param manager constructed mixdown manager (chromosomes already populated)
+	 * @param efx     constructed effects manager, or {@code null} for the base layer
+	 * @param config  structural configuration
+	 * @param side    the stereo side to render, or {@code null} for mono/centre
+	 */
+	public MixdownManagerPdslAdapter(MixdownManager manager, EfxManager efx, Config config,
+									 ChannelInfo.StereoChannel side) {
 		this.manager = manager;
 		this.efx = efx;
 		this.config = config;
+		this.stereoSide = side;
 	}
 
 	/**
@@ -962,7 +992,8 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 		Producer<PackedCollection> value = manager.getAutomationManager().getAggregatedValue(
 				manager.getReverbAutomation().valueAt(channel),
 				p(manager.getReverbAdjustmentScale()), 0.0);
-		return multiply(value, c(MixdownManager.reverbLevel * reverbSend));
+		return applyPan(channel,
+				multiply(value, c(MixdownManager.reverbLevel * reverbSend)));
 	}
 
 	/**
@@ -1197,17 +1228,52 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 	}
 
 	/**
-	 * Produces a shape-{@code [1]} per-channel volume multiplier producer.
+	 * Produces a shape-{@code [1]} per-channel volume multiplier producer, with this
+	 * adapter's stereo balance-law gain folded in for the panned case.
 	 *
 	 * @param channel the source channel index
 	 * @return volume multiplier producer
 	 */
 	private Producer<PackedCollection> volumeProducer(int channel) {
-		return toAdjustmentGene(
+		return applyPan(channel, toAdjustmentGene(
 						manager.getClock(), manager.getSampleRate(),
 						p(manager.getVolumeAdjustmentScale()),
 						manager.getVolumeSimple(), channel)
-				.valueAt(0).getResultant(c(1.0));
+				.valueAt(0).getResultant(c(1.0)));
+	}
+
+	/**
+	 * Folds this adapter's stereo balance-law gain for {@code sceneChannel} into
+	 * {@code value}, leaving it untouched in the mono/centre case ({@link #stereoSide} is
+	 * {@code null}) so a non-stereo adapter builds exactly the arguments it always did.
+	 * The gain multiplies the dry volume and the sends that carry it, which is what makes
+	 * a channel's placement act on its dry signal and its (post-pan) sends alike.
+	 *
+	 * @param sceneChannel the scene channel whose pan drives the gain
+	 * @param value        the per-channel producer to scale
+	 * @return the scaled producer, or {@code value} unchanged when not panning
+	 */
+	private Producer<PackedCollection> applyPan(int sceneChannel, Producer<PackedCollection> value) {
+		if (stereoSide == null) return value;
+		return multiply(value, panGain(sceneChannel));
+	}
+
+	/**
+	 * Produces the shape-{@code [1]} stereo balance-law gain for {@code sceneChannel} on
+	 * this adapter's side, read live from {@link MixdownManager#getPan()} so a pan change
+	 * between buffers takes effect at the next {@link #automationRefresh}. The law is
+	 * unity at centre ({@code gL(p) = min(1, 1 − p)}, {@code gR(p) = min(1, 1 + p)}), so a
+	 * hard-left channel ({@code p = −1}) has {@code gR = 0} and vice versa.
+	 *
+	 * @param sceneChannel the scene channel whose pan drives the gain
+	 * @return the balance-law gain producer
+	 */
+	private Producer<PackedCollection> panGain(int sceneChannel) {
+		Producer<PackedCollection> p = cp(manager.getPan().range(shape(1), sceneChannel));
+		Producer<PackedCollection> raw = stereoSide == ChannelInfo.StereoChannel.LEFT
+				? c(1.0).subtract(p)
+				: c(1.0).add(p);
+		return min(raw, c(1.0));
 	}
 
 	/**
@@ -1231,6 +1297,13 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 	 * meaningless value that clamped near the floor and left the wet bus over-filtered.
 	 * It also rendered only a low-pass, dropping the cascade's high-pass half.)</p>
 	 *
+	 * <p>For the efx-off layer ({@code mixdown_master}, {@link #efx} {@code null}) the wet
+	 * arm has no per-channel volume or send stage to carry a channel's pan, so this adapter's
+	 * stereo balance-law gain is folded into each channel's coefficient row instead — a
+	 * linear scale of the FIR row scales that channel's wet output. The efx-on layer pans
+	 * through its volume and reverb-send stages, so folding here as well would double-count;
+	 * the fold is therefore guarded on the base layer.</p>
+	 *
 	 * @param high {@code true} for the cascade's high-pass half (gene slot 0);
 	 *             {@code false} for the low-pass half (gene slot 1)
 	 * @return shape-{@code [channels, fir_taps]} coefficient producer
@@ -1242,7 +1315,12 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 						? wetFilter.highPassFrequency(config.channel(ch))
 						: wetFilter.lowPassFrequency(config.channel(ch))),
 				AudioPassFilter.MIN_FREQUENCY, 20000);
-		return tableRows(biquadResponseTable(high), cutoffs, firTaps);
+		CollectionProducer rows = tableRows(biquadResponseTable(high), cutoffs, firTaps);
+		// efx-off wet arm has no per-channel volume/send; pan folds here (see javadoc).
+		if (efx != null || stereoSide == null) return rows;
+		CollectionProducer gains = c(perChannelProducer(config.channels,
+				ch -> panGain(config.channel(ch)))).repeat(1, firTaps);
+		return rows.multiply(gains).reshape(new TraversalPolicy(config.channels, firTaps));
 	}
 
 	/**

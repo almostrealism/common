@@ -32,7 +32,9 @@ import io.almostrealism.scope.Variable;
 import io.almostrealism.uml.Signature;
 
 import java.lang.ref.WeakReference;
+import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -114,6 +116,20 @@ public abstract class ComputationBase<I, O, T>
 	private WeakReference<ArgumentProvider> lastArgumentProvider;
 
 	/**
+	 * Whether every input of this computation has a fixed count, once {@link #isFixedCount()}
+	 * has determined it, or {@code null} before then. Each input's count is fixed or variable
+	 * from its construction (see {@link Countable#isFixedCount()}), so the answer is determined
+	 * once instead of walking the whole input graph on every call. Setting the inputs clears it.
+	 */
+	private volatile Boolean fixedCountInputs;
+
+	/**
+	 * The child processes presented by {@link #getChildren()}, built from the inputs on the
+	 * first request, or {@code null} before then. Setting the inputs clears it.
+	 */
+	private volatile List<Process<?, ?>> children;
+
+	/**
 	 * Prepares the operation metadata by incorporating process information and signature.
 	 * This method extends the parent implementation to add signature information. The signature
 	 * hashes the signatures of every input, so it is deferred until it is first requested (see
@@ -172,14 +188,41 @@ public abstract class ComputationBase<I, O, T>
 	 * Determines if this computation has a fixed iteration count.
 	 * A fixed count means the count will not change during execution.
 	 *
+	 * <p>The count is fixed when the count of every input is fixed, as each input reports
+	 * it through {@link Countable#isFixedCount(Object)}. Because that is decided when the
+	 * inputs are constructed, it is determined on the first call and remembered until the
+	 * inputs are set again. Optimization asks for the count of each node of a graph many
+	 * times, and every one of those questions would otherwise walk the entire input graph
+	 * below the node.</p>
+	 *
 	 * @return {@code true} if the count is fixed, {@code false} otherwise
 	 */
 	@Override
 	public boolean isFixedCount() {
+		Boolean fixed = fixedCountInputs;
+		if (fixed != null) return fixed;
+
 		List<Producer<I>> inputs = getInputs();
 		if (inputs == null) return false;
 
-		return inputs.stream().noneMatch(v -> v instanceof Countable && !((Countable) v).isFixedCount());
+		fixed = inputs.stream().allMatch(Countable::isFixedCount);
+		fixedCountInputs = fixed;
+		return fixed;
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>The inputs are stored as an unmodifiable snapshot of the given list, so that
+	 * {@link #getInputs()} cannot be used to replace an input in place: replacing the
+	 * inputs always goes through this method, which forgets whether the previous inputs
+	 * all had a fixed count, and the child processes built from them.</p>
+	 */
+	@Override
+	protected void setInputs(List<Producer<I>> inputs) {
+		super.setInputs(inputs == null ? null : Collections.unmodifiableList(new ArrayList<>(inputs)));
+		fixedCountInputs = null;
+		children = null;
 	}
 
 	/**
@@ -285,18 +328,31 @@ public abstract class ComputationBase<I, O, T>
 
 	/**
 	 * Returns the child processes (inputs) of this computation.
-	 * Each input producer is wrapped in a {@link Process} if not already one.
+	 * Each input is presented as a {@link Process} by
+	 * {@link Process#asProcess(java.util.function.Supplier)}: an input that is a process is
+	 * its own child, and any other input is wrapped.
+	 *
+	 * <p>The children are built once from the inputs and the same unmodifiable list is
+	 * returned until the inputs are set again. Optimization and the traversals of the
+	 * process tree ask every node for its children many times, so rebuilding the list
+	 * (and a new wrapper for each input that is not a {@link Process}) on every call is
+	 * a cost paid for each visit rather than once per node.</p>
 	 *
 	 * @return the collection of child processes, or {@code null} if inputs are not set
 	 */
 	@Override
 	public Collection<Process<?, ?>> getChildren() {
+		List<Process<?, ?>> result = children;
+		if (result != null) return result;
+
 		List<Producer<I>> inputs = getInputs();
 		if (inputs == null) return null;
 
-		return inputs.stream()
-				.map(in -> in instanceof Process<?, ?> ? (Process<?, ?>) in : Process.of(in))
-				.collect(Collectors.toList());
+		result = Collections.unmodifiableList(inputs.stream()
+				.map(Process::asProcess)
+				.collect(Collectors.toList()));
+		children = result;
+		return result;
 	}
 
 	/**

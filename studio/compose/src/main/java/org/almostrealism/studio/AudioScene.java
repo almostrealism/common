@@ -1388,6 +1388,10 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 	 * <p>Render-ahead streams registered by runners of this scene are stopped first, and
 	 * outside that aggregation: their producer threads read the pattern caches and write
 	 * the render buffers, so if a producer cannot be stopped nothing is released.</p>
+	 *
+	 * <p>Deregistration also releases this scene's entries in the shared note-audio
+	 * cache, except for notes another live scene still reaches; see
+	 * {@link AudioSceneRegistry#deregister(AudioScene)}.</p>
 	 */
 	@Override
 	public void destroy() {

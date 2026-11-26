@@ -94,9 +94,22 @@ public class ByteLevelEncoder {
      * @return Byte-level encoded string
      */
     public static String encode(String text) {
+        return encode(text.getBytes(StandardCharsets.UTF_8));
+    }
+
+    /**
+     * Encode a raw byte sequence to its byte-level Unicode string, one character per byte.
+     *
+     * <p>This is the form a vocabulary stored as raw token bytes (such as a tiktoken rank file)
+     * takes in a byte-level BPE tokenizer: a token's bytes need not be valid UTF-8 on their own,
+     * so they are mapped byte by byte rather than decoded as text first.</p>
+     *
+     * @param bytes the bytes
+     * @return the byte-level encoded string
+     */
+    public static String encode(byte[] bytes) {
         buildMapping();
 
-        byte[] bytes = text.getBytes(StandardCharsets.UTF_8);
         StringBuilder result = new StringBuilder(bytes.length);
 
         for (byte b : bytes) {

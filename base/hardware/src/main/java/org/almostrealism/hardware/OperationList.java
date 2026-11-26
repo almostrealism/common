@@ -32,7 +32,6 @@ import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.profile.OperationInfo;
 import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.profile.OperationProfile;
-import io.almostrealism.profile.OperationProfileNode;
 import io.almostrealism.profile.OperationWithInfo;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Producer;
@@ -867,6 +866,13 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 	 * <p>If the list is uniform (all operations have the same count), returns
 	 * that count. Otherwise returns 1.</p>
 	 *
+	 * <p>Uniformity is decided by the operations that do work, which are the
+	 * {@link #getChildren() children}: a nested list that is
+	 * {@link #isFunctionallyEmpty() functionally empty} is not one of them. The count of a
+	 * uniform list is therefore that of its first operation that does work, never that of an
+	 * empty nested list ahead of it, which would report a count of zero for a list whose
+	 * operations all share some other count.</p>
+	 *
 	 * @return The operation count
 	 */
 	@Override
@@ -874,8 +880,8 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 		if (count == null) {
 			if (isEmpty()) {
 				count = 0L;
-			} else if (isUniform() && get(0) instanceof Countable) {
-				count = ((Countable) get(0)).getCountLong();
+			} else if (isUniform()) {
+				count = functionalMembers().findFirst().map(Countable::countLong).orElse(1L);
 			} else {
 				count = 1L;
 			}
@@ -912,8 +918,8 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 				Hardware.getLocalHardware().getComputer().pushRequirements(getComputeRequirements());
 			}
 
-			if (profile instanceof OperationProfileNode) {
-				((OperationProfileNode) profile).addChild(getMetadata());
+			if (profile != null) {
+				profile.include(getMetadata());
 			}
 
 			if (!autoOptimized && enableAutomaticOptimization && !isUniform()) {
@@ -923,8 +929,7 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 				}
 				return opt.get();
 			} else if (isComputation() && (enableNonUniformCompilation || isUniform())) {
-				AcceleratedOperation op = (AcceleratedOperation) compileRunnable(this);
-				op.setFunctionName(functionName);
+				AcceleratedComputationOperation<Void> op = compileRunnable(this);
 				op.load();
 				return op;
 			} else {
@@ -1045,11 +1050,17 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 		return list;
 	}
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>The children are the {@link #functionalMembers() members that do work}, each
+	 * presented as a {@link Process} by {@link Process#asProcess(Supplier)}: a member that is
+	 * a process is its own child, and any other member is wrapped.</p>
+	 */
 	@Override
 	public Collection<Process<?, ?>> getChildren() {
-		return stream()
-				.filter(o -> !(o instanceof OperationList) || !((OperationList) o).isFunctionallyEmpty())
-				.map(o -> o instanceof Process ? (Process<?, ?>) o : Process.of(o))
+		return functionalMembers()
+				.map(Process::asProcess)
 				.collect(Collectors.toList());
 	}
 
@@ -1057,13 +1068,26 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 	 * Returns true if this operation list contains no operations, or contains only empty nested lists.
 	 *
 	 * <p>An operation list is functionally empty even when it has entries if all entries are
-	 * themselves functionally empty {@link OperationList} instances.</p>
+	 * themselves functionally empty {@link OperationList} instances, that is, when none of
+	 * its {@link #functionalMembers() members does work}.</p>
 	 *
 	 * @return True if there is no executable work in this list or any nested lists
 	 */
 	public boolean isFunctionallyEmpty() {
-		if (isEmpty()) return true;
-		return stream().noneMatch(o -> !(o instanceof OperationList) || !((OperationList) o).isFunctionallyEmpty());
+		return functionalMembers().findAny().isEmpty();
+	}
+
+	/**
+	 * Streams the members of this list that do work, in order: every member except a nested
+	 * list that is {@link #isFunctionallyEmpty() functionally empty}. These are the members
+	 * presented as {@link #getChildren() children}, the ones whose parallelism decides whether
+	 * the list {@link #isUniform() is uniform}, and so the ones whose count is the
+	 * {@link #getCountLong() count} of a uniform list.
+	 *
+	 * @return the members of this list that do work
+	 */
+	private Stream<Supplier<Runnable>> functionalMembers() {
+		return stream().filter(o -> !(o instanceof OperationList) || !((OperationList) o).isFunctionallyEmpty());
 	}
 
 	/**
@@ -1091,12 +1115,11 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 				.flatMap(o -> {
 					if (o instanceof OperationList) {
 						OperationList original = (OperationList) o;
-						String provenance = original.getDescription();
 						OperationList op = original.flatten();
 
 						if (op.getComputeRequirements() == null) {
-							if (enableProvenance && provenance != null) {
-								return op.stream().map(child -> withProvenance(child, provenance));
+							if (enableProvenance && original.getDescription() != null) {
+								return op.stream().map(original::attribute);
 							}
 							return op.stream();
 						} else {
@@ -1113,8 +1136,10 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 	}
 
 	/**
-	 * Returns an operation labelled with the given provenance, without mutating the
-	 * input or any metadata it shares with other holders.
+	 * Attributes an operation that {@link #flatten()} moved out of this list to this list:
+	 * returns the operation labelled with this list's {@link #getDescription() description}
+	 * as its provenance, without mutating the operation or any metadata it shares with other
+	 * holders.
 	 *
 	 * <p>When {@code op} is a leaf {@link OperationInfo} with non-null metadata, this
 	 * returns an {@link OperationWithInfo} wrapping {@code op} with a fresh
@@ -1123,7 +1148,7 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 	 * a subsequent {@link #flatten()}) is left untouched and provenance prefixes cannot
 	 * accumulate across repeated flattens.</p>
 	 *
-	 * <p>A nested {@link OperationList} child (which arises when a sub-list carried its
+	 * <p>A nested {@link OperationList} (which arises when a sub-list carried its
 	 * own {@link #getComputeRequirements() compute requirements} and was therefore kept
 	 * intact during the recursive flatten) is returned unchanged: wrapping it in an
 	 * {@link OperationWithInfo} would discard its list structure and compute
@@ -1131,16 +1156,15 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 	 * sub-list was flattened. Operations that are not {@link OperationInfo} or have no
 	 * metadata are also returned unchanged.</p>
 	 *
-	 * @param op         the operation to label
-	 * @param provenance the provenance string to prepend to the short description
+	 * @param op the operation moved out of this list by flattening
 	 * @return a provenance-labelled wrapper, or {@code op} unchanged when it is a nested
 	 *         list or carries no metadata
 	 */
-	private static Supplier<Runnable> withProvenance(Supplier<Runnable> op, String provenance) {
+	private Supplier<Runnable> attribute(Supplier<Runnable> op) {
 		if (op instanceof OperationInfo && !(op instanceof OperationList)) {
 			OperationMetadata metadata = ((OperationInfo) op).getMetadata();
 			if (metadata != null) {
-				return OperationWithInfo.of(metadata.withProvenance(provenance), op);
+				return OperationWithInfo.of(metadata.withProvenance(getDescription()), op);
 			}
 		}
 

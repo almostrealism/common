@@ -33,11 +33,10 @@ import org.almostrealism.audio.tone.KeyPosition;
 import org.almostrealism.audio.tone.KeyboardTuning;
 import org.almostrealism.audio.tone.WesternChromatic;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.hardware.OperationList;
-import org.almostrealism.hardware.mem.RAM;
 import org.almostrealism.io.Console;
 import org.almostrealism.util.KeyUtils;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -65,21 +64,17 @@ public class NoteAudioProvider implements NoteAudio, Validity, Comparable<NoteAu
 	private static final CacheManager<PackedCollection> audioCache = new CacheManager<>();
 
 	static {
-		OperationList accessListener = new OperationList();
-		accessListener.add(() -> CacheManager.maxCachedEntries(audioCache, 200));
-		accessListener.add(() -> () -> {
-			if (Math.random() < 0.005) {
+		audioCache.setMaxEntries(200);
+		audioCache.setAccessListener(() -> {
+			if (enableVerbose && Math.random() < 0.005) {
 				long size = audioCache.getCachedOrdered().stream()
 						.map(CachedValue::evaluate)
-						.map(PackedCollection::getMem)
-						.mapToLong(m -> m instanceof RAM ? ((RAM) m).getSize() : 0)
+						.mapToLong(c -> c.getMemLength() * (long) c.getMem().getProvider().getNumberSize())
 						.sum();
-				if (enableVerbose && size > 1024)
+				if (size > 1024)
 					CellFeatures.console.features(NoteAudioProvider.class).log("Cache size = " + (size / 1024 / 1024) + "mb");
 			}
 		});
-
-		audioCache.setAccessListener(accessListener.get());
 		audioCache.setValid(c -> !c.isDestroyed());
 		audioCache.setClear(c -> {
 			// If the cached value is a subset of another value,
@@ -97,18 +92,21 @@ public class NoteAudioProvider implements NoteAudio, Validity, Comparable<NoteAu
 	 * the source {@link io.almostrealism.relation.Evaluable} instances they
 	 * captured.
 	 *
-	 * <p>The {@code maxCachedEntries} eviction strategy attached to the cache
-	 * only marks evicted entries unavailable; the underlying access-time
-	 * {@code HashMap} retains them, which transitively keeps every
-	 * {@link NoteAudioProvider} that has ever cached audio alive for the
-	 * remainder of the JVM lifetime. Long-running drivers that build many
-	 * scenes back-to-back (e.g. {@code AudioSceneOptimizer}) should call this
-	 * after disposing a scene to allow that retained graph to be collected.</p>
+	 * <p>The cache's {@link CacheManager#setMaxEntries(int) entry bound} drops
+	 * evicted entries itself, but the up to 200 entries that are still available keep their
+	 * providers alive. {@link #releaseCachedAudio()} releases a single provider's
+	 * entries, and {@link org.almostrealism.audio.notes.NoteAudio#releaseCachedAudio()}
+	 * is how scene teardown releases the notes it owns. This method is for a
+	 * driver that knows no live user of the cache remains.</p>
 	 *
 	 * <p>This drops references only and does not actively destroy the cached
 	 * {@link org.almostrealism.collect.PackedCollection} instances. Doing so
 	 * would cascade into still-live state shared via delegate chains. Native
 	 * memory is released by ordinary GC + finalizer paths.</p>
+	 *
+	 * <p>Because the cache is shared by every provider in the JVM, this also stops
+	 * tracking entries that live scenes are still using. Scene teardown therefore
+	 * uses the per-provider {@link #releaseCachedAudio()} instead.</p>
 	 */
 	public static void clearCache() {
 		audioCache.dropAll();
@@ -131,6 +129,13 @@ public class NoteAudioProvider implements NoteAudio, Validity, Comparable<NoteAu
 
 	/** Cache mapping (target pitch, channel) pairs to their resampled audio producers. */
 	private final Map<NoteAudioKey, Producer<PackedCollection>> notes;
+
+	/**
+	 * The entries this provider created in the shared {@link #audioCache}, so that
+	 * {@link #releaseCachedAudio()} can drop exactly these and leave other providers'
+	 * entries tracked.
+	 */
+	private final List<CachedValue<PackedCollection>> cachedAudio;
 
 	/**
 	 * Creates a NoteAudioProvider at the default sample rate with no BPM or tuning.
@@ -170,6 +175,7 @@ public class NoteAudioProvider implements NoteAudio, Validity, Comparable<NoteAu
 		setBpm(bpm);
 		this.sampleRate = sampleRate;
 		this.notes = new HashMap<>();
+		this.cachedAudio = new ArrayList<>();
 	}
 
 	/** Returns the audio data provider. */
@@ -206,8 +212,42 @@ public class NoteAudioProvider implements NoteAudio, Validity, Comparable<NoteAu
 	public void setTuning(KeyboardTuning tuning) {
 		if (tuning != this.tuning) {
 			this.tuning = tuning;
-			notes.clear();
+			releaseCachedAudio();
 		}
+	}
+
+	/**
+	 * Drops every entry this provider created in the shared resampled-audio cache and
+	 * forgets its per-note producers, so the cache no longer keeps this provider and the
+	 * source graph its entries captured alive. The provider stays usable: a later
+	 * {@link #getAudio(KeyPosition, int)} computes and caches the audio again.
+	 *
+	 * <p>Only this provider's entries are dropped. The cache is shared by every provider
+	 * in the JVM, and entries that other providers, and the scenes that use them, still
+	 * rely on stay tracked for eviction. This is what makes a scene-scoped release
+	 * possible where {@link #clearCache()} is not.</p>
+	 *
+	 * <p>As with {@link #clearCache()}, the cached {@link PackedCollection} values are
+	 * dropped, not destroyed. A producer handed out earlier may still be referenced by
+	 * a compiled graph, and its value may share memory with live state through a
+	 * delegate chain, so native memory is left to ordinary GC.</p>
+	 */
+	@Override
+	public void releaseCachedAudio() {
+		cachedAudio.forEach(audioCache::drop);
+		cachedAudio.clear();
+		notes.clear();
+	}
+
+	/**
+	 * Returns the number of this provider's entries currently tracked by the shared
+	 * resampled-audio cache. An entry is tracked once its audio has been computed, and
+	 * stops being tracked when {@link #releaseCachedAudio()} drops it.
+	 *
+	 * @return the number of tracked cache entries owned by this provider
+	 */
+	public int getCachedAudioCount() {
+		return (int) cachedAudio.stream().filter(audioCache::contains).count();
 	}
 
 	/** Returns the keyboard tuning system used for frequency ratio computation. */
@@ -244,7 +284,9 @@ public class NoteAudioProvider implements NoteAudio, Validity, Comparable<NoteAu
 		NoteAudioKey key = new NoteAudioKey(target, channel);
 
 		if (!notes.containsKey(key)) {
-			notes.put(key, c(getShape(key), audioCache.get(computeAudio(key).get())));
+			CachedValue<PackedCollection> cached = audioCache.get(computeAudio(key).get());
+			cachedAudio.add(cached);
+			notes.put(key, c(getShape(key), cached));
 		}
 
 		return notes.get(key);

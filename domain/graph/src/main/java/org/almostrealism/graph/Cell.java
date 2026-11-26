@@ -26,6 +26,7 @@ import org.almostrealism.graph.temporal.TemporalFactorFromCell;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.heredity.Cellular;
 import org.almostrealism.heredity.CellularTemporalFactor;
+import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.SystemUtils;
 
 import java.util.Optional;
@@ -88,6 +89,45 @@ public interface Cell<T> extends Transmitter<T>, Receptor<T>, Cellular {
 	 * Controlled by the {@code AR_GRAPH_CELL_WARNINGS} system property.
 	 */
 	boolean cellWarnings = SystemUtils.isEnabled("AR_GRAPH_CELL_WARNINGS").orElse(false);
+
+	/**
+	 * Emits the shared diagnostic warning that an already-attached receptor is being
+	 * replaced. The warning is produced only when {@link #cellWarnings cell warnings}
+	 * are enabled and a receptor is already attached.
+	 *
+	 * <p>Every {@link #setReceptor(Receptor)} implementation across the graph performs
+	 * this same guarded warning before storing the new receptor; routing them all through
+	 * this method keeps the guard condition and the message consistent, so a cell that
+	 * already holds a receptor cannot silently log a replacement regardless of the flag.</p>
+	 *
+	 * @param context  the console features used to route the warning; typically the cell
+	 *                 performing the replacement, or a
+	 *                 {@link org.almostrealism.io.Console#features(Class)} context
+	 * @param existing the currently attached receptor, or {@code null} when none is attached
+	 */
+	static void warnReceptorReplacement(ConsoleFeatures context, Receptor<?> existing) {
+		warnReceptorReplacement(context, existing, cellWarnings);
+	}
+
+	/**
+	 * Emits the shared receptor-replacement warning, taking the enable flag explicitly
+	 * rather than reading {@link #cellWarnings}. The warning is produced only when
+	 * {@code warningsEnabled} is set and a receptor is already attached.
+	 *
+	 * <p>{@link #warnReceptorReplacement(ConsoleFeatures, Receptor)} delegates here with
+	 * the {@link #cellWarnings} default. This overload exposes the policy so both the
+	 * enabled and disabled paths can be exercised independently of the process-wide flag,
+	 * which is fixed at class initialization from {@code AR_GRAPH_CELL_WARNINGS}.</p>
+	 *
+	 * @param context         the console features used to route the warning
+	 * @param existing        the currently attached receptor, or {@code null} when none is attached
+	 * @param warningsEnabled whether receptor-replacement warnings are enabled
+	 */
+	static void warnReceptorReplacement(ConsoleFeatures context, Receptor<?> existing, boolean warningsEnabled) {
+		if (warningsEnabled && existing != null) {
+			context.warn("Replacing receptor");
+		}
+	}
 
 	/**
 	 * Performs any initialization required before the cell can process data.
@@ -311,11 +351,7 @@ public interface Cell<T> extends Transmitter<T>, Receptor<T>, Cellular {
 
 			@Override
 			public void setReceptor(Receptor<T> r) {
-				if (cellWarnings && this.r != null) {
-					CollectionFeatures.console.features(Cell.class)
-							.warn("Replacing receptor");
-				}
-
+				warnReceptorReplacement(CollectionFeatures.console.features(Cell.class), this.r);
 				this.r = r;
 			}
 
@@ -348,11 +384,7 @@ public interface Cell<T> extends Transmitter<T>, Receptor<T>, Cellular {
 
 			@Override
 			public void setReceptor(Receptor<T> r) {
-				if (cellWarnings && this.r != null) {
-					CollectionFeatures.console.features(Cell.class)
-							.warn("Replacing receptor");
-				}
-
+				warnReceptorReplacement(CollectionFeatures.console.features(Cell.class), this.r);
 				this.r = r;
 			}
 
@@ -390,11 +422,7 @@ public interface Cell<T> extends Transmitter<T>, Receptor<T>, Cellular {
 
 			@Override
 			public void setReceptor(Receptor<T> r) {
-				if (this.r != null) {
-					CollectionFeatures.console.features(Cell.class)
-							.warn("Replacing receptor");
-				}
-
+				warnReceptorReplacement(CollectionFeatures.console.features(Cell.class), this.r);
 				this.r = r;
 			}
 
@@ -440,11 +468,7 @@ public interface Cell<T> extends Transmitter<T>, Receptor<T>, Cellular {
 
 			@Override
 			public void setReceptor(Receptor<T> r) {
-				if (cellWarnings && this.r != null) {
-					CollectionFeatures.console.features(Cell.class)
-							.warn("Replacing receptor");
-				}
-
+				warnReceptorReplacement(CollectionFeatures.console.features(Cell.class), this.r);
 				this.r = r;
 			}
 
