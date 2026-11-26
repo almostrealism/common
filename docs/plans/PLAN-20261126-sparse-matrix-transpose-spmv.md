@@ -1,7 +1,7 @@
 ---
-status: proposed
+status: completed
 created: 2026-11-26
-closed:
+closed: 2026-11-26
 tracker: [ce31398a-93de-4294-9a7b-1087d52258c1]
 ---
 
@@ -9,7 +9,7 @@ tracker: [ce31398a-93de-4294-9a7b-1087d52258c1]
 
 **Tracker task:** `ce31398a-93de-4294-9a7b-1087d52258c1` —
 *Transposed (CSC) sparse matrix–vector product for SparseMatrix*
-**Release:** Common 0.78
+**Release:** the release under development (the version in the root `pom.xml`)
 
 ## Motivation
 

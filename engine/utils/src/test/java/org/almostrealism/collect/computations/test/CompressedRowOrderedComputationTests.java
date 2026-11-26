@@ -22,16 +22,12 @@ import org.almostrealism.algebra.computations.SegmentedWeightedSumComputation;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.CompressedRowTraversalOrdering;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.hardware.Hardware;
 import org.almostrealism.stats.DistributionFeatures;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
 import java.util.Arrays;
-import java.util.List;
 import java.util.function.Function;
-import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 /**
  * Tests that a {@link PackedCollection} read through a {@link CompressedRowTraversalOrdering} is
@@ -49,23 +45,13 @@ import java.util.stream.Stream;
  * <p>stored as eight entries, with an empty row, a full row and a row whose entries are stored
  * out of column order, so that the search of every row length up to the longest is exercised.</p>
  */
-public class CompressedRowOrderedComputationTests extends TestSuiteBase implements MatrixFeatures, DistributionFeatures {
+public class CompressedRowOrderedComputationTests extends TestSuiteBase implements MatrixFeatures, DistributionFeatures,
+		BackendTestFeatures {
 	/** The row offsets of the matrix. */
 	private static final int[] OFFSETS = { 0, 2, 2, 7, 8 };
 
 	/** The column of each entry of the matrix. */
 	private static final int[] COLUMNS = { 3, 0, 0, 1, 2, 3, 4, 2 };
-
-	/**
-	 * Returns the backends to evaluate on: the CPU, and the GPU when one is available.
-	 *
-	 * @return the compute requirements selecting each backend
-	 */
-	private List<ComputeRequirement> backends() {
-		return Stream.of(ComputeRequirement.CPU, ComputeRequirement.GPU)
-				.filter(r -> Hardware.getLocalHardware().isAvailable(r))
-				.collect(Collectors.toList());
-	}
 
 	/**
 	 * Returns the matrix as a collection of its eight entries read through a
@@ -112,23 +98,6 @@ public class CompressedRowOrderedComputationTests extends TestSuiteBase implemen
 			for (int i = 0; i < e.length; i++) {
 				assertEquals("element " + i + " on " + backend, e[i], a[i]);
 			}
-		}
-	}
-
-	/**
-	 * Evaluates the given computation with the given backend required.
-	 *
-	 * @param producer the computation
-	 * @param backend  the backend
-	 * @return the result
-	 */
-	private PackedCollection evaluate(CollectionProducer producer, ComputeRequirement backend) {
-		Hardware.getLocalHardware().getComputer().pushRequirements(List.of(backend));
-
-		try {
-			return producer.evaluate();
-		} finally {
-			Hardware.getLocalHardware().getComputer().popRequirements();
 		}
 	}
 

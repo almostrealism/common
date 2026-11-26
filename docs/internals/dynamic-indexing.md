@@ -160,6 +160,21 @@ atomics. It never forms a logical index of the matrix, so the matrix's logical s
 the range of an `int` (only its memory, the entries, is bounded by `int`); because its iteration
 count is data-dependent, it is always compiled into a kernel of its own.
 
+The transposed product `Aᵀ · g` (the input gradient of `A · x`) uses the same kernel.
+`order.transpose(entries)` returns the `(cols, rows)` transpose as a sparse collection whose
+ordering is the compressed-sparse-row structure of `Aᵀ`, which is the compressed-sparse-column
+structure of `A`. The ordering is derived on the host by a counting sort of the index arrays, and
+the entries are reordered into column-major order by one gather kernel through a
+`SplitIndexTraversalOrdering`, so it is exact above `2^24`. `matmul(cp(transposed), g)` then
+enumerates each column of `A` without densifying it. This structural transpose is different from
+`CollectionProducer.transpose()`, which reads every logical element and gives the dense transpose
+(see `CompressedRowTransposeTests`).
+
+```java
+PackedCollection transposed = order.transpose(values);
+CollectionProducer gradient = matmul(cp(transposed), cp(g));
+```
+
 ### Scatter (Writing with Dynamic Indices)
 
 Write to positions specified by an index array:
