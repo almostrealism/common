@@ -58,6 +58,31 @@ import java.util.function.Predicate;
  * grandchildren and deeper) to find invariant declarations at any nesting
  * depth.</p>
  *
+ * <h3>Buffer aliasing hazard</h3>
+ * <p>A declaration is loop-invariant only if its value cannot change across iterations, so a
+ * declaration that reads a buffer the loop writes is <em>variant</em> and must not be hoisted:
+ * hoisting it computes the value once, from the buffer's state before the loop, and every
+ * iteration then reads that stale value. The danger is that the read is easy to miss. The loop
+ * records what it writes partly by variable name, but an element read through an
+ * {@link InstanceReference} contributes no name, and argument aggregation can let one buffer be
+ * reached through variables of different names, so a write recorded under one name does not mark
+ * such a read as variant. The analysis therefore also asks, by array, which buffers the loop may
+ * write ({@link Scope#collectWrittenArrays()}, on the conservative terms of
+ * {@link VariableReferenceSupport#containsAssignment(ArrayVariable, long, long)}, so a call,
+ * explicit code or a masked destination counts as a write), and treats a declaration that may
+ * read any of them ({@link VariableReferenceSupport#containsReadOfAny(java.util.Collection)}, on
+ * the terms of {@link VariableReferenceSupport#containsRead(ArrayVariable, long, long)}, so a
+ * {@link StaticReference} referring to the buffer counts as a read) as variant. Buffers are
+ * matched on {@link Variable#hasSameRoot(Variable) shared storage}, as everywhere else. A
+ * change that makes replacement substitution more effective (a different target order, a higher
+ * replacement cap, smarter matching) relies on this soundness: without it, hoisted reads of
+ * written buffers silently corrupt loop kernels.</p>
+ *
+ * <p>An array the loop declares itself ({@link Scope#declareArray(String, Expression)}, among
+ * its own statements or within its body) is treated the same way whether or not the loop
+ * writes it: hoisted statements are emitted ahead of everything in the loop, including that
+ * declaration, so a hoisted read of the array would use it before it is declared.</p>
+ *
  * @param <T> the return type of this scope
  * @see Scope
  * @see ScopeSettings
@@ -264,11 +289,15 @@ public class Repeated<T> extends Scope<T> {
 
 		Set<String> variantNames = collectBaseVariantNames(allDeclarations);
 
-		// Collect all loop indices (this scope's index plus nested loop indices)
+		// Arrays the loop may write, from this scope so its own statements count, plus every
+		// array it declares: a hoisted read of one would precede the declaration.
+		List<ArrayVariable<?>> writtenArrays = collectWrittenArrays();
+		appendDeclaredArrays(writtenArrays);
+
 		List<Index> loopIndices = collectLoopIndices();
 
 		// Phase 2: propagate variance through declaration dependency chains (fixed-point).
-		propagateVariance(allDeclarations, variantNames, loopIndices);
+		propagateVariance(allDeclarations, variantNames, writtenArrays, loopIndices);
 
 		// Phase 3: hoist declarations whose names are NOT in the variant set.
 		List<Statement<?>> hoisted = new ArrayList<>();
@@ -280,7 +309,7 @@ public class Repeated<T> extends Scope<T> {
 		// Phase 4: extract loop-invariant sub-expressions from remaining variant
 		// declaration expressions.
 		List<Statement<?>> extractedDeclarations = new ArrayList<>();
-		extractInvariantSubExpressions(variantNames, loopIndices, extractedDeclarations);
+		extractInvariantSubExpressions(variantNames, writtenArrays, loopIndices, extractedDeclarations);
 
 		if (enableLicmDiagnostics && allDeclarations.size() > 10) {
 			log(getName() + ": " +
@@ -521,17 +550,19 @@ public class Repeated<T> extends Scope<T> {
 	 * ({@code minDepth = 3}) to avoid extracting trivially cheap sub-expressions.</p>
 	 *
 	 * @param variantNames the set of loop-variant variable names
+	 * @param writtenArrays the arrays the loop body may write, and those it declares
 	 * @param loopIndices all loop indices (outer and nested)
 	 * @param extractedDeclarations list to receive the new extracted declarations
 	 */
 	private void extractInvariantSubExpressions(Set<String> variantNames,
+												List<ArrayVariable<?>> writtenArrays,
 												List<Index> loopIndices,
 												List<Statement<?>> extractedDeclarations) {
 		Map<Expression<?>, StaticReference<?>> extracted = new HashMap<>();
 		int[] extractIdx = { 0 };
 
 		for (Scope<T> child : getChildren()) {
-			extractFromScope(child, variantNames, loopIndices, extracted, extractIdx, extractedDeclarations);
+			extractFromScope(child, variantNames, writtenArrays, loopIndices, extracted, extractIdx, extractedDeclarations);
 		}
 	}
 
@@ -546,12 +577,14 @@ public class Repeated<T> extends Scope<T> {
 	 *
 	 * @param scope the scope to scan
 	 * @param variantNames the set of loop-variant variable names
+	 * @param writtenArrays the arrays the loop body may write, and those it declares
 	 * @param loopIndices all loop indices
 	 * @param extracted map of already-extracted sub-expressions to their references (for dedup)
 	 * @param extractIdx counter for generating unique declaration names
 	 * @param declarations list to receive new extracted declarations
 	 */
 	private void extractFromScope(Scope<?> scope, Set<String> variantNames,
+								  List<ArrayVariable<?>> writtenArrays,
 								  List<Index> loopIndices,
 								  Map<Expression<?>, StaticReference<?>> extracted,
 								  int[] extractIdx, List<Statement<?>> declarations) {
@@ -562,7 +595,7 @@ public class Repeated<T> extends Scope<T> {
 			if (stmt instanceof ExpressionAssignment) {
 				ExpressionAssignment<?> assignment = (ExpressionAssignment<?>) stmt;
 				ExpressionAssignment<?> result = extractSubExpressionsFromAssignment(
-						assignment, variantNames, loopIndices, extracted, extractIdx, declarations);
+						assignment, variantNames, writtenArrays, loopIndices, extracted, extractIdx, declarations);
 				updatedStatements.add(result);
 				if (result != assignment) statementsChanged = true;
 			} else {
@@ -581,7 +614,7 @@ public class Repeated<T> extends Scope<T> {
 
 		for (ExpressionAssignment<?> var : scope.getVariables()) {
 			ExpressionAssignment<?> result = extractSubExpressionsFromAssignment(
-					var, variantNames, loopIndices, extracted, extractIdx, declarations);
+					var, variantNames, writtenArrays, loopIndices, extracted, extractIdx, declarations);
 			updatedVariables.add(result);
 			if (result != var) variablesChanged = true;
 		}
@@ -592,7 +625,7 @@ public class Repeated<T> extends Scope<T> {
 		}
 
 		for (Scope<?> child : scope.getChildren()) {
-			extractFromScope(child, variantNames, loopIndices, extracted, extractIdx, declarations);
+			extractFromScope(child, variantNames, writtenArrays, loopIndices, extracted, extractIdx, declarations);
 		}
 	}
 
@@ -612,6 +645,7 @@ public class Repeated<T> extends Scope<T> {
 	 *
 	 * @param assignment the assignment to process
 	 * @param variantNames the set of loop-variant variable names
+	 * @param writtenArrays the arrays the loop body may write, and those it declares
 	 * @param loopIndices all loop indices
 	 * @param extracted map of already-extracted sub-expressions (for dedup)
 	 * @param extractIdx counter for generating unique declaration names
@@ -620,13 +654,14 @@ public class Repeated<T> extends Scope<T> {
 	 */
 	private ExpressionAssignment<?> extractSubExpressionsFromAssignment(
 			ExpressionAssignment<?> assignment, Set<String> variantNames,
+			List<ArrayVariable<?>> writtenArrays,
 			List<Index> loopIndices, Map<Expression<?>, StaticReference<?>> extracted,
 			int[] extractIdx, List<Statement<?>> declarations) {
 		Expression<?> expr = assignment.getExpression();
-		if (expr != null && !isLoopInvariant(expr, variantNames, loopIndices)) {
+		if (expr != null && !isLoopInvariant(expr, variantNames, writtenArrays, loopIndices)) {
 			int minDepth = assignment.isDeclaration() ? 1 : 3;
 			Expression<?> replaced = replaceInvariantSubExpressions(
-					expr, variantNames, loopIndices, extracted, extractIdx, declarations, minDepth);
+					expr, variantNames, writtenArrays, loopIndices, extracted, extractIdx, declarations, minDepth);
 			if (replaced != expr) {
 				return new ExpressionAssignment(
 						assignment.isDeclaration(), assignment.getDestination(), replaced);
@@ -676,6 +711,7 @@ public class Repeated<T> extends Scope<T> {
 	 */
 	private Expression<?> replaceInvariantSubExpressions(Expression<?> expr,
 														 Set<String> variantNames,
+														 List<ArrayVariable<?>> writtenArrays,
 														 List<Index> loopIndices,
 														 Map<Expression<?>, StaticReference<?>> extracted,
 														 int[] extractIdx,
@@ -691,7 +727,7 @@ public class Repeated<T> extends Scope<T> {
 		for (int i = 0; i < children.size(); i++) {
 			Expression<?> child = children.get(i);
 
-			if (isLoopInvariant(child, variantNames, loopIndices)) {
+			if (isLoopInvariant(child, variantNames, writtenArrays, loopIndices)) {
 				if (isSubstantialForExtraction(child, minDepth)) {
 					newChildren.set(i, extractInvariant(child, extracted, extractIdx, declarations));
 					changed = true;
@@ -700,7 +736,7 @@ public class Repeated<T> extends Scope<T> {
 				}
 			} else {
 				Expression<?> replaced = replaceInvariantSubExpressions(
-						child, variantNames, loopIndices, extracted, extractIdx, declarations, minDepth);
+						child, variantNames, writtenArrays, loopIndices, extracted, extractIdx, declarations, minDepth);
 				if (replaced != child) {
 					newChildren.set(i, replaced);
 					changed = true;
@@ -878,17 +914,25 @@ public class Repeated<T> extends Scope<T> {
 	 * objects). When a declaration is found to be variant, its name is added to the variant set,
 	 * which may cause other declarations that reference it to become variant as well.</p>
 	 *
+	 * <p>A declaration that may read an array the loop may write (one of {@code writtenArrays},
+	 * matched by storage rather than by name) is loop-variant unconditionally: the buffer holds a different value once the loop
+	 * has run, and an element read through an {@link InstanceReference} contributes no name to the
+	 * name-based set, so the dependency-chain test alone would miss it.</p>
+	 *
 	 * @param declarations all declarations in the loop body
 	 * @param variantNames the set of variant names (modified in place)
+	 * @param writtenArrays the arrays the loop body may write, and those it declares
 	 * @param loopIndices indices from this and nested loops
 	 */
 	private static void propagateVariance(List<ExpressionAssignment<?>> declarations,
-										  Set<String> variantNames, List<Index> loopIndices) {
+										  Set<String> variantNames, List<ArrayVariable<?>> writtenArrays,
+										  List<Index> loopIndices) {
 		// Precompute declaration names and the set of all names referenced by each
 		// declaration's expression in a single O(N) traversal per declaration.
 		List<String> declNames = new ArrayList<>(declarations.size());
 		List<Set<String>> referencedNameSets = new ArrayList<>(declarations.size());
 		List<Boolean> containsLoopIndexFlags = new ArrayList<>(declarations.size());
+		List<Boolean> readsWrittenArrayFlags = new ArrayList<>(declarations.size());
 
 		for (ExpressionAssignment<?> decl : declarations) {
 			declNames.add(decl.getDeclaredName());
@@ -907,6 +951,7 @@ public class Repeated<T> extends Scope<T> {
 
 			referencedNameSets.add(names);
 			containsLoopIndexFlags.add(hasLoopIdx);
+			readsWrittenArrayFlags.add(expr.containsReadOfAny(writtenArrays));
 		}
 
 		// Fixed-point loop using precomputed name sets
@@ -916,7 +961,8 @@ public class Repeated<T> extends Scope<T> {
 			for (int i = 0; i < declarations.size(); i++) {
 				String name = declNames.get(i);
 				if (name != null && !variantNames.contains(name)) {
-					if (containsLoopIndexFlags.get(i) || intersectsVariant(referencedNameSets.get(i), variantNames)) {
+					if (containsLoopIndexFlags.get(i) || readsWrittenArrayFlags.get(i)
+							|| intersectsVariant(referencedNameSets.get(i), variantNames)) {
 						variantNames.add(name);
 						changed = true;
 					}
@@ -963,16 +1009,31 @@ public class Repeated<T> extends Scope<T> {
 	 *   <li>Via {@link StaticReference} nodes whose name matches a loop-assigned variable
 	 *       (handles local declarations like {@code double f_0 = ...} that are referenced
 	 *       by subsequent expressions via {@code StaticReference("f_0")})</li>
+	 *   <li>Via a read of an array the loop may write (checked against {@code writtenArrays}
+	 *       with {@link VariableReferenceSupport#containsReadOfAny(java.util.Collection)}, by
+	 *       {@link Variable#hasSameRoot(Variable) shared storage} rather than by name, so a read
+	 *       that names no array and a read through an aggregated view are both caught)</li>
 	 * </ul>
+	 *
+	 * <p>The written-array read test
+	 * ({@link VariableReferenceSupport#containsReadOfAny(java.util.Collection)}) costs nothing when
+	 * the loop writes no buffers (the overwhelmingly common case), and otherwise one walk of
+	 * {@code expr} per written buffer. Phase 4 calls this at each node it descends into, so for a
+	 * loop that writes buffers the sub-expression scan does that per-buffer walk at every level; a
+	 * single-traversal read-set collection would remove the repetition but is not required for
+	 * correctness.</p>
 	 *
 	 * @param expr the expression to check
 	 * @param loopAssignedVariables names of variables assigned inside the loop
+	 * @param writtenArrays the arrays the loop body may write, and those it declares
 	 * @param loopIndices indices from this and nested loops
 	 * @return true if the expression does not depend on any loop-variant variables
 	 */
-	private boolean isLoopInvariant(Expression<?> expr, Set<String> loopAssignedVariables, List<Index> loopIndices) {
+	private boolean isLoopInvariant(Expression<?> expr, Set<String> loopAssignedVariables,
+									List<ArrayVariable<?>> writtenArrays, List<Index> loopIndices) {
 		if (index == null) return false;
-		return expr.isLoopInvariant(loopAssignedVariables, Collections.emptyList(), loopIndices);
+		return expr.isLoopInvariant(loopAssignedVariables, Collections.emptyList(), loopIndices)
+				&& !expr.containsReadOfAny(writtenArrays);
 	}
 
 	/**

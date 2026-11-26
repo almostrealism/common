@@ -16,6 +16,7 @@
 
 package org.almostrealism.audio.data.test;
 
+import org.almostrealism.audio.data.FileWaveDataProvider;
 import org.almostrealism.audio.data.WaveData;
 import org.almostrealism.audio.data.WaveDataFeatureProvider;
 import org.almostrealism.audio.data.WaveDetails;
@@ -25,6 +26,8 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
+
+import java.io.File;
 
 /**
  * Verifies the frequency analysis {@link WaveDetailsFactory} computes for audio
@@ -121,6 +124,42 @@ public class WaveDetailsFactoryTest extends TestSuiteBase {
 
 		Assert.assertNotSame("Stale frequency buffer was kept", stale, details.getFreqData());
 		Assert.assertTrue("Superseded frequency buffer was not released", stale.isDestroyed());
+	}
+
+	/**
+	 * An unreadable provider is never asked for audio. When existing details are
+	 * supplied for a provider that has since been marked corrupt, the factory
+	 * completes them from what they already hold and returns them unchanged,
+	 * rather than calling {@code provider.get(...)} — which, on a corrupt source,
+	 * would divide by its zero sample rate or dereference its absent audio. With
+	 * no existing details and an unreadable (or null) provider it returns null.
+	 */
+	@Test(timeout = 60000)
+	public void unreadableProviderIsNotAskedForAudio() {
+		File missing = new File(System.getProperty("java.io.tmpdir"),
+				"ar-wavedetailsfactory-missing-" + System.nanoTime() + ".wav");
+		FileWaveDataProvider corrupt = new FileWaveDataProvider(missing);
+		try {
+			corrupt.getSampleRate();
+			Assert.fail("Expected a RuntimeException for an unreadable file");
+		} catch (RuntimeException expected) {
+			Assert.assertFalse("the provider is now marked corrupt", corrupt.isReadable());
+		}
+
+		WaveDetailsFactory factory = new WaveDetailsFactory(SAMPLE_RATE);
+
+		WaveDetails existing = new WaveDetails("corrupt", SAMPLE_RATE);
+		Assert.assertSame("existing details are returned, the corrupt provider never read",
+				existing, factory.forProvider(corrupt, existing));
+
+		Assert.assertNull("an unreadable provider with no existing details yields null",
+				factory.forProvider(corrupt, null));
+		Assert.assertNull("a null provider with no existing details yields null",
+				factory.forProvider(null, null));
+
+		WaveDetails preserved = new WaveDetails("null-provider", SAMPLE_RATE);
+		Assert.assertSame("a null provider leaves supplied details intact",
+				preserved, factory.forProvider(null, preserved));
 	}
 
 	/**
