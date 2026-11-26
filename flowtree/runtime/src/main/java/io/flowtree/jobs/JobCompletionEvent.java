@@ -78,7 +78,18 @@ public class JobCompletionEvent {
          * developer can tell that the agent's session is incomplete and from
          * FAILED so the agent's clean exit is not conflated with a crash.
          */
-        DEGRADED
+        DEGRADED,
+        /**
+         * Agent exited cleanly after declaring, through the
+         * {@code job_report_blocked} tool, that it could not proceed — a
+         * guardrail or hook blocked it, a required resource was missing, the
+         * task was ambiguous or out of scope, or the work already existed.
+         * Distinguished from {@link #FAILED} so a structured "cannot proceed"
+         * is not read as a crash, and from {@link #SUCCESS} so a declined task
+         * is not counted as completed. Enforcement rules do not retry a blocked
+         * job; the block's category and detail travel on the event.
+         */
+        BLOCKED
     }
 
     /** Marks an elision in {@link #shortDescription(int)}. */
@@ -708,6 +719,22 @@ public class JobCompletionEvent {
      */
     public String getRunnerName() { return null; }
     /**
+     * Returns the block category for a {@link Status#BLOCKED} event (one of
+     * {@link BlockReport#CATEGORIES}), or {@code null} when the job was not
+     * reported blocked. Only {@link CodingAgentJobEvent} returns a real value.
+     */
+    public String getBlockedCategory() { return null; }
+    /**
+     * Returns the agent's free-text block detail for a {@link Status#BLOCKED}
+     * event, or {@code null} when the job was not reported blocked.
+     */
+    public String getBlockedDetail() { return null; }
+    /**
+     * Returns whether a {@link Status#BLOCKED} event's claim was corroborated by
+     * the harness; {@code false} by default and for an unverified guardrail claim.
+     */
+    public boolean isBlockedVerified() { return false; }
+    /**
      * Returns the per-runner USD cost breakdown for this job, or an empty map
      * for non-coding-agent jobs and events that predate per-runner tracking.
      */
@@ -952,6 +979,9 @@ public class JobCompletionEvent {
         for (String t : getDeniedToolNames()) deniedArray.add(t);
         root.put("commitMessageSource", getCommitMessageSource());
         root.put("runnerName", getRunnerName());
+        root.put("blockedCategory", getBlockedCategory());
+        root.put("blockedDetail", getBlockedDetail());
+        root.put("blockedVerified", isBlockedVerified());
 
         putDoubleMap(root, "costByRunner", getCostByRunner());
         putDoubleMap(root, "costByModel", getCostByModel());

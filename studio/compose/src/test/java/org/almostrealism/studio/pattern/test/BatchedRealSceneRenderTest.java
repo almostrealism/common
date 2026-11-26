@@ -33,8 +33,6 @@ import org.almostrealism.studio.optimize.AudioSceneOptimizer;
 import org.almostrealism.studio.optimize.AudioScenePopulation;
 import org.almostrealism.studio.optimize.RealtimeContinuousRenderer;
 import org.almostrealism.util.TestDepth;
-import org.almostrealism.util.TestProperties;
-import org.almostrealism.util.TestUtils;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -407,13 +405,16 @@ public class BatchedRealSceneRenderTest extends AudioSceneTestBase {
 	 * Renders ~5 minutes of all-channel audio through the production continuous renderer
 	 * ({@link RealtimeContinuousRenderer}) on the default hybrid backend, with batching on,
 	 * writing {@code results/rt-live.wav} (overwritten each ~2-minute 64-measure arrangement
-	 * loop) for manual listening verification. Slower than real time by design — the point
-	 * is to confirm the audio is correct using this method, not throughput. The final file
-	 * holds the last completed arrangement loop; non-silence is asserted.
+	 * loop) for manual listening verification. The final file holds the last completed
+	 * arrangement loop; non-silence is asserted. This is the suite's sustained-render
+	 * coverage: the arrangement is looped, so a regression that only appears after minutes
+	 * of looping (a stalled render-ahead producer, native-memory growth) pushes the paced
+	 * render past its timeout or fails it. Every pass after the first also depends on
+	 * the renderer re-running setup after its loop-boundary reset, which restarts the
+	 * render-ahead producer.
 	 */
 	@Test(timeout = 2400000)
 	@TestDepth(3)
-	@TestProperties(excludeProfiles = TestUtils.PIPELINE)
 	public void renderAllChannelsContinuousToFile() throws Exception {
 		requireRealAssets();
 

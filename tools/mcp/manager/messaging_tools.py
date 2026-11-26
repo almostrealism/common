@@ -336,6 +336,94 @@ def send_message(
     return server._controller_post(path, body)
 
 
+# The fixed set of block categories, mirroring io.flowtree.jobs.BlockReport.
+BLOCK_CATEGORIES = (
+    "guardrail",
+    "missing_resource",
+    "ambiguous_task",
+    "out_of_scope",
+    "already_done",
+)
+
+
+@mcp.tool()
+def job_report_blocked(
+    category: str,
+    detail: str = "",
+    job_id: str = "",
+    workstream_id: str = "",
+) -> dict:
+    """Report that this job cannot proceed, ending it with a structured BLOCKED status.
+
+    Call this instead of exiting silently or writing a free-text abandonment
+    note when something genuinely prevents you from completing the task. The
+    harness records the report against the job bound to your token, does not
+    retry the job through enforcement, and ends it ``BLOCKED`` with the
+    ``category`` and ``detail`` visible in ``workstream_get_job`` and the job's
+    completion event. A ``guardrail`` claim is re-verified against the tool and
+    permission denials actually recorded in the session; a claim it cannot
+    corroborate is kept but marked unverified. Report a block only when it is
+    real — it is not an escape hatch from difficult but doable work.
+
+    Args:
+        category: Why the job is blocked. One of: ``guardrail`` (a guardrail or
+            hook denied an action you needed), ``missing_resource`` (a required
+            library, model, credential, or file is absent), ``ambiguous_task``
+            (the request needs a clarifying decision before it can be acted on),
+            ``out_of_scope`` (the change does not belong on this branch), or
+            ``already_done`` (the work already exists, typically on the base
+            branch).
+        detail: Free-text explanation of the specific block — name the rule,
+            resource, ambiguity, or existing work. Defaults to empty.
+        job_id: The job to report blocked. Defaults to empty, resolving to the
+            job bound to the in-flight request's token.
+        workstream_id: The owning workstream. Defaults to empty, resolving from
+            the token like ``job_id``.
+
+    Returns:
+        dict with ok=True on success, or ok=False with error details (including
+        an unknown category or a context with no resolvable job).
+    """
+    server._require_scope("write")
+
+    if category not in BLOCK_CATEGORIES:
+        return {
+            "ok": False,
+            "error": f"Unknown block category: {category!r}",
+            "next_steps": [f"Use one of: {', '.join(BLOCK_CATEGORIES)}"],
+        }
+
+    per_req_ws, per_req_job, _label, _reason = (
+        server._decode_current_request_token_full())
+    effective_ws = (workstream_id or per_req_ws
+                    or server._request_workstream_id.get(None)
+                    or getattr(server._thread_local, "workstream_id", None) or "")
+    effective_job = (job_id or per_req_job
+                     or server._request_job_id.get(None)
+                     or getattr(server._thread_local, "job_id", None) or "")
+
+    server._audit("job_report_blocked", workstream_id=effective_ws,
+                  job_id=effective_job, category=category, detail=detail[:200])
+
+    if not effective_ws or not effective_job:
+        return {
+            "ok": False,
+            "error": "A block can only be reported from a job session",
+            "next_steps": [
+                "Provide workstream_id and job_id, or call from a job session"
+                " whose token resolves to a job",
+            ],
+        }
+
+    err = server._check_length(detail, "detail", server.MAX_CONTENT_LEN)
+    if err:
+        return err
+
+    path = (f"/api/workstreams/{quote(effective_ws, safe='')}"
+            f"/jobs/{quote(effective_job, safe='')}/blocked")
+    return server._controller_post(path, {"category": category, "detail": detail})
+
+
 def _derived_message_id(sender: str, activity: str, text: str) -> str:
     """Derive a message identity from what the caller would repeat on a retry.
 

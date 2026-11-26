@@ -18,6 +18,7 @@ package org.almostrealism.studio;
 
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.HardwareException;
+import org.almostrealism.music.pattern.PatternRenderCancellation;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
@@ -46,12 +47,13 @@ public class PatternRenderStreamTest extends TestSuiteBase {
 	 * A render that is still running when the stream is stopped, and that outlasts the
 	 * warning period, must have finished by the time {@code stop()} returns.
 	 *
-	 * <p>The uninterruptible delay is started from the interrupt that {@link PatternRenderStream#stop()}
-	 * delivers to the producer, not from when the render begins, so the elapsed-time assertion does
-	 * not depend on how promptly the test thread is scheduled between observing that a render is in
-	 * flight and calling {@code stop()}. Since {@code stop()} interrupts the producer before joining
-	 * it, waiting for that interrupt before the delay keeps the full delay inside the join window
-	 * while still detecting a {@code stop()} that returns after the old two-second join timeout.</p>
+	 * <p>The uninterruptible delay is started from the cooperative cancellation that
+	 * {@link PatternRenderStream#stop()} signals to the producer, not from when the render begins, so
+	 * the elapsed-time assertion does not depend on how promptly the test thread is scheduled between
+	 * observing that a render is in flight and calling {@code stop()}. Since {@code stop()} cancels
+	 * the render before joining the producer, waiting for that cancellation before the delay keeps the
+	 * full delay inside the join window while still detecting a {@code stop()} that returns after the
+	 * old two-second join timeout.</p>
 	 */
 	@Test(timeout = 60000)
 	public void stopWaitsForRenderThatOutlastsWarningPeriod() throws InterruptedException {
@@ -61,9 +63,9 @@ public class PatternRenderStreamTest extends TestSuiteBase {
 
 		Runnable slowRender = () -> {
 			rendering.set(true);
-			// Wait for stop() to interrupt the producer, then begin the deliberately
-			// uninterruptible delay so it is measured from shutdown rather than render start.
-			while (!Thread.currentThread().isInterrupted()) {
+			// Wait for stop() to signal cancellation, then begin the deliberately uninterruptible
+			// delay so it is measured from shutdown rather than render start.
+			while (!PatternRenderCancellation.currentlyCancelled()) {
 				Thread.onSpinWait();
 			}
 			long deadline = System.nanoTime() + renderMillis * 1_000_000L;
@@ -177,8 +179,8 @@ public class PatternRenderStreamTest extends TestSuiteBase {
 	}
 
 	/**
-	 * A render that {@link PatternRenderStream#stop()} cancels, by failing on the interrupt
-	 * {@code stop()} delivers, is not reported as a render failure: a consumer blocked
+	 * A render that {@link PatternRenderStream#stop()} cancels, by failing on the cooperative
+	 * cancellation {@code stop()} signals, is not reported as a render failure: a consumer blocked
 	 * awaiting a slot is woken by the stop so teardown cannot strand it, and it is rejected
 	 * with {@link IllegalStateException} ("not running") rather than a "render-ahead failed"
 	 * error — the cancelled render is never surfaced as a failure or its cause.
@@ -190,7 +192,7 @@ public class PatternRenderStreamTest extends TestSuiteBase {
 
 		Runnable cancellableRender = () -> {
 			rendering.set(true);
-			while (!Thread.currentThread().isInterrupted()) {
+			while (!PatternRenderCancellation.currentlyCancelled()) {
 				Thread.onSpinWait();
 			}
 			throw new CancellationException("render cancelled by stop()");
@@ -233,6 +235,58 @@ public class PatternRenderStreamTest extends TestSuiteBase {
 			Assert.assertEquals(0, stream.buffersRendered());
 		} finally {
 			consumer.interrupt();
+			stream.destroy();
+			workingInput.destroy();
+		}
+	}
+
+	/**
+	 * {@link PatternRenderStream#stop()} stops the producer cooperatively and must never interrupt
+	 * the producer thread: an interrupt would abort any blocking wait the render is parked in (a
+	 * native dispatch completion wait), which logs a spurious fault at every genome boundary. The
+	 * render observes the cooperative cancellation to end, and reports that its thread was never
+	 * interrupted while it ran.
+	 */
+	@Test(timeout = 60000)
+	public void stopDoesNotInterruptProducerThread() throws InterruptedException {
+		AtomicBoolean rendering = new AtomicBoolean();
+		AtomicBoolean interruptedDuringRender = new AtomicBoolean();
+		AtomicInteger completed = new AtomicInteger();
+
+		Runnable render = () -> {
+			rendering.set(true);
+			// Spin until stop() signals cancellation, recording any interrupt along the way; a
+			// cooperative stop must wake the render through the signal and never through interrupt.
+			while (!PatternRenderCancellation.currentlyCancelled()) {
+				if (Thread.currentThread().isInterrupted()) {
+					interruptedDuringRender.set(true);
+				}
+				Thread.onSpinWait();
+			}
+			if (Thread.currentThread().isInterrupted()) {
+				interruptedDuringRender.set(true);
+			}
+			completed.incrementAndGet();
+			rendering.set(false);
+		};
+
+		PackedCollection workingInput = new PackedCollection(shape(1, BUFFER_SIZE));
+		PatternRenderStream stream = new PatternRenderStream(render, new long[1],
+				workingInput, SLOTS, 1, BUFFER_SIZE);
+
+		try {
+			stream.start(0);
+			while (!rendering.get()) {
+				Thread.sleep(5);
+			}
+
+			stream.stop();
+
+			Assert.assertEquals("the cancelled render should have run to completion", 1, completed.get());
+			Assert.assertFalse("stop() must stop the producer cooperatively, never by interrupting it",
+					interruptedDuringRender.get());
+			Assert.assertFalse("stop() must not leave the caller interrupted", Thread.currentThread().isInterrupted());
+		} finally {
 			stream.destroy();
 			workingInput.destroy();
 		}
