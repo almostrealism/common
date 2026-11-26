@@ -538,7 +538,7 @@ public class ProducerHookTest extends TestSuiteBase implements MatrixFeatures {
 				"delta", shape(3), shape(3),
 				(TraversableExpression[] args) ->
 						CollectionExpression.create(shape(3), idx -> args[1].getValueAt(idx)),
-				target, target);
+				null, target, target);
 		assertGeneratePreservesConfiguration(delta);
 	}
 

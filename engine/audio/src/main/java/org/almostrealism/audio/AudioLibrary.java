@@ -967,15 +967,13 @@ public class AudioLibrary implements ConsoleFeatures {
 	 */
 	protected WaveDetails computeDetails(WaveDataProvider provider, boolean persistent) {
 		try {
-			String id = provider.getIdentifier();
-
-			WaveDetails details;
-
-			if (store != null) {
-				details = store.get(id);
-			} else {
-				details = detailsCache.get(id);
+			if (!provider.isReadable()) {
+				warn("Failed to create WaveDetails for " + provider.getKey() + " (unreadable)");
+				return null;
 			}
+
+			String id = provider.getIdentifier();
+			WaveDetails details = store != null ? store.get(id) : detailsCache.get(id);
 
 			if (details == null) {
 				details = computeDetails(provider, null, persistent);

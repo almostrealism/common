@@ -30,6 +30,7 @@ import io.almostrealism.sequence.Index;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
+import io.almostrealism.uml.Signature;
 import org.almostrealism.calculus.ReduceAxis;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
@@ -121,6 +122,7 @@ import java.util.function.Supplier;
  *     expressionShape,    // Shape of the expression being differentiated
  *     targetShape,        // Shape of the variable we're differentiating with respect to
  *     args -> myExpression(args),  // Expression function
+ *     expressionSignature,  // Structural signature of the expression, or null to opt out of reuse
  *     targetVariable,     // Variable to differentiate with respect to
  *     inputProducers      // Input arguments
  * );
@@ -180,6 +182,14 @@ public class TraversableDeltaComputation
 	private final Function<TraversableExpression[], CollectionExpression> expression;
 
 	/**
+	 * A structural signature of {@link #expression}, supplied by the caller because the expression
+	 * is an arbitrary {@link Function} that cannot sign itself. Participates in {@link #signature()}
+	 * so two deltas whose expressions compute different values do not collide; {@code null} opts
+	 * this computation out of instruction reuse.
+	 */
+	private final String expressionSignature;
+
+	/**
 	 * The target variable with respect to which we're computing the derivative.
 	 * This is the variable whose gradient we want to find.
 	 */
@@ -206,16 +216,21 @@ public class TraversableDeltaComputation
 	 * @param name The operation identifier for this delta computation
 	 * @param shape The {@link TraversalPolicy} defining output shape (typically expression_shape.append(target_shape))
 	 * @param expression Function that computes the forward expression to be differentiated
+	 * @param expressionSignature A structural signature of {@code expression} (typically the
+	 *                            signature of the computation that supplies it), or {@code null} to
+	 *                            opt out of instruction reuse when the expression cannot be signed
 	 * @param target The {@link Producer} representing the variable to differentiate with respect to
 	 * @param args Input {@link Producer}s that provide data to the expression
 	 */
 	@SafeVarargs
 	protected TraversableDeltaComputation(String name, TraversalPolicy shape,
 										  Function<TraversableExpression[], CollectionExpression> expression,
+										  String expressionSignature,
 										  Producer<?> target,
 										  Producer<PackedCollection>... args) {
 		super(name, shape, validateArgs(args));
 		this.expression = expression;
+		this.expressionSignature = expressionSignature;
 		this.target = target;
 		if (target instanceof ScopeLifecycle) addDependentLifecycle((ScopeLifecycle) target);
 	}
@@ -419,8 +434,34 @@ public class TraversableDeltaComputation
 	 */
 	@Override
 	public TraversableDeltaComputation generate(List<Process<?, ?>> children) {
-		return copyConfigurationTo(new TraversableDeltaComputation(getName(), getShape(), expression, target,
-				children.stream().skip(1).toArray(Producer[]::new)));
+		return copyConfigurationTo(new TraversableDeltaComputation(getName(), getShape(), expression,
+				expressionSignature, target, children.stream().skip(1).toArray(Producer[]::new)));
+	}
+
+	/**
+	 * Extends the inherited collection-computation signature with the {@link #expressionSignature
+	 * expression} that is differentiated and the {@link #target} it is differentiated with respect
+	 * to. The expression is an arbitrary {@link Function} — like the lambda of a
+	 * {@link DefaultTraversableExpressionComputation} constructed without a signature — so it cannot
+	 * sign itself, and the target is obtained during scope preparation rather than passed as an
+	 * input, so neither reaches the inherited signature (only the target <em>shape</em> does,
+	 * through the appended output shape). Without these two components two deltas that differ only
+	 * in their expression or their target would share a signature and collide in the
+	 * signature-keyed instruction cache.
+	 *
+	 * @return the signature including the expression and target, or {@code null} when the base
+	 *         signature, the supplied expression signature, or the target's signature is
+	 *         unavailable
+	 */
+	@Override
+	public String signature() {
+		String signature = super.signature();
+		if (signature == null || expressionSignature == null) return null;
+
+		String targetSignature = Signature.of(target);
+		if (targetSignature == null) return null;
+
+		return signature + "{expression:" + expressionSignature + ",target:" + targetSignature + "}";
 	}
 
 	/**
@@ -505,6 +546,7 @@ public class TraversableDeltaComputation
 	 *     shape(3, 4),           // Expression shape
 	 *     shape(4, 5),           // Target shape
 	 *     args -> myExpression(args),
+	 *     expressionSignature,   // Structural signature of the expression, or null to opt out of reuse
 	 *     targetVariable,
 	 *     inputProducers
 	 * );
@@ -514,6 +556,9 @@ public class TraversableDeltaComputation
 	 * @param deltaShape The {@link TraversalPolicy} defining the shape of the expression being differentiated
 	 * @param targetShape The {@link TraversalPolicy} defining the shape of the target variable
 	 * @param expression Function that computes the forward expression to be differentiated
+	 * @param expressionSignature A structural signature of {@code expression} (typically the
+	 *                            signature of the computation that supplies it), or {@code null} to
+	 *                            opt out of instruction reuse when the expression cannot be signed
 	 * @param target The {@link Producer} representing the variable to differentiate with respect to
 	 * @param args Input {@link Producer}s that provide data to the expression
 	 * @return A new {@link TraversableDeltaComputation} configured for gradient computation
@@ -521,8 +566,10 @@ public class TraversableDeltaComputation
 	public static TraversableDeltaComputation create(
 			String name, TraversalPolicy deltaShape, TraversalPolicy targetShape,
 			Function<TraversableExpression[], CollectionExpression> expression,
+			String expressionSignature,
 			Producer<?> target,
 			Producer<PackedCollection>... args) {
-		return new TraversableDeltaComputation(name, deltaShape.append(targetShape), expression, target, args);
+		return new TraversableDeltaComputation(name, deltaShape.append(targetShape), expression,
+				expressionSignature, target, args);
 	}
 }

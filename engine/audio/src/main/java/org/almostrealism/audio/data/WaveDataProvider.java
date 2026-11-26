@@ -137,13 +137,27 @@ public interface WaveDataProvider extends AudioDataProvider, Supplier<WaveData>,
 	int getChannelCount();
 
 	/**
+	 * Returns whether this provider can supply audio data. A provider that
+	 * cannot read its source reports a sample rate of 0 (for example a
+	 * {@link FileWaveDataProvider} already marked corrupt), and callers should
+	 * skip such a provider rather than attempt to load or resample it.
+	 *
+	 * @return true if the provider has a usable (positive) sample rate
+	 */
+	default boolean isReadable() {
+		return getSampleRate() > 0;
+	}
+
+	/**
 	 * Returns audio data resampled to the target sample rate if necessary.
 	 *
 	 * @param sampleRate desired output sample rate in Hz
 	 * @return WaveData at the given sample rate
 	 */
 	default WaveData get(int sampleRate) {
-		if (getSampleRate() == sampleRate) {
+		if (getSampleRate() == sampleRate || getSampleRate() <= 0) {
+			// A source with no usable sample rate (e.g. an unreadable file) has
+			// nothing to resample; return its native data rather than dividing by it.
 			return get();
 		} else if (getChannelCount() == 1) {
 			return new WaveData(getChannelData(0, 1.0, sampleRate), sampleRate);

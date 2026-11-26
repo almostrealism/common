@@ -104,6 +104,41 @@ public class FileWaveDataProviderTest extends TestSuiteBase {
 	}
 
 	/**
+	 * {@link FileWaveDataProvider#isReadable()} honors the
+	 * {@link org.almostrealism.audio.data.WaveDataProvider#isReadable() contract}
+	 * that a readable provider has a positive sample rate: a well-formed fixture is
+	 * readable, a header reporting a zero sample rate is not (even though the file
+	 * opens cleanly), and a file already marked corrupt is not — answered from the
+	 * corrupt record without reopening the file.
+	 *
+	 * @throws IOException if the fixture cannot be written
+	 */
+	@Test(timeout = 60000)
+	public void isReadableRequiresAPositiveSampleRate() throws IOException {
+		File file = writeWav(1, 50);
+		Assert.assertTrue("a well-formed fixture is readable",
+				new FileWaveDataProvider(file).isReadable());
+
+		Assert.assertFalse("a zero-sample-rate header is not readable",
+				new ZeroRateProvider(file).isReadable());
+
+		File missing = new File(System.getProperty("java.io.tmpdir"),
+				"ar-filewaveprovider-isreadable-missing-" + System.nanoTime() + ".wav");
+		FileWaveDataProvider corrupt = new FileWaveDataProvider(missing);
+		try {
+			corrupt.getSampleRate();
+			Assert.fail("Expected a RuntimeException for an unreadable file");
+		} catch (RuntimeException expected) {
+			Assert.assertTrue("cause should be the underlying IOException",
+					expected.getCause() instanceof IOException);
+		}
+
+		Assert.assertFalse("a file marked corrupt is unreadable, answered from the record",
+				corrupt.isReadable());
+		Assert.assertFalse("a file marked corrupt stays unreadable", corrupt.isReadable());
+	}
+
+	/**
 	 * An unreadable file throws a {@link RuntimeException} wrapping an
 	 * {@link IOException} on first access, and every accessor then short-circuits
 	 * to its documented default because the file has been recorded as corrupt.
@@ -174,6 +209,31 @@ public class FileWaveDataProviderTest extends TestSuiteBase {
 		} catch (IllegalStateException e) {
 			Assert.assertTrue("the exception message must name the provider key",
 					e.getMessage().contains(missing.getPath()));
+		}
+	}
+
+	/**
+	 * Reports a zero sample rate for an otherwise readable file, standing in for a
+	 * WAV whose header declares a non-positive rate. The reader does not reject
+	 * such a header, so this pins that {@link FileWaveDataProvider#isReadable()}
+	 * treats it as unreadable without relying on a corrupt-file record.
+	 */
+	private static class ZeroRateProvider extends FileWaveDataProvider {
+		/**
+		 * Creates a provider for the given file.
+		 *
+		 * @param file the file to wrap
+		 */
+		ZeroRateProvider(File file) {
+			super(file);
+		}
+
+		/**
+		 * @return zero, standing in for a header that declares no usable rate
+		 */
+		@Override
+		public int getSampleRate() {
+			return 0;
 		}
 	}
 
