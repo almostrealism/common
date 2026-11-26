@@ -378,6 +378,8 @@ public class ReanalysisResumeTest extends TestSuiteBase {
 			log("Relaunch: " + relaunchModel.started.get() + " encode(s), " + relaunchErrors.size() +
 					" reported error(s), validated model " + launch.store.getValidatedModel());
 			Assert.assertEquals("the next launch encodes nothing again", 0, relaunchModel.started.get());
+			Assert.assertEquals("a file already marked corrupt is warned and skipped, not reported: "
+					+ relaunchErrors, 0, relaunchErrors.size());
 		}
 	}
 
