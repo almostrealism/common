@@ -372,8 +372,8 @@ There are two ways to put several layers on the same memory:
 - **Offsets are compiled into kernels.**
   - A view's offset is fixed when the kernel is compiled: `DefaultScopeInputManager.java`
     sets it, and `DefaultLanguageOperations.java` renders it as `root + offset`.
-  - The provider-leaf signature includes it: `offset:memLength + shape`
-    (`CollectionProviderProducer.java`).
+  - The provider-leaf signature includes it: `offset:memLength|shape`
+    (`CollectionProviderProducer.signature()`).
   - Under (A), identical layers at different arena offsets get different signatures, so the
     repeated DiT and T5Gemma blocks would stop sharing compiled kernels.
   - Under (B), offset 0 and the layer's own length give the same signature as today.
@@ -390,8 +390,11 @@ There are two ways to put several layers on the same memory:
     has the tenant's own length** (see "Block sizes" below).
 - **Aggregation has no aliasing check.**
   - `MemoryDataArgumentMap` identifies shared roots but never compares ranges.
-  - Copy-back skips only a slice that shares memory with the explicit `output`
-    (`MemoryDataArgumentMap.java`).
+  - The copy plan limits each direction to what the kernel needs, but never by address range.
+    `getPostprocessOperations` copies a slice back only if its source is writable, the kernel may
+    write it, and it does not share memory with the explicit `output`. Copy-in skips a slice the
+    kernel does not read when that slice is not copied back either (`MemoryDataArgumentMap`
+    class javadoc). Neither test asks whether two slices' sources overlap.
   - If two buffers of one kernel ever shared a pooled block, an aggregate copy-in of one and
     copy-back of the other could overwrite each other.
   - The step rule in §2 makes this impossible by construction: buffers of one kernel never share a
