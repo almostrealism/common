@@ -25,6 +25,7 @@ import org.almostrealism.audio.Cells;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.heredity.TemporalCellular;
+import org.almostrealism.io.TimingMetric;
 import org.almostrealism.dsl.PdslLoader;
 import org.almostrealism.dsl.PdslNode;
 import org.almostrealism.model.Block;
@@ -138,6 +139,38 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 	 * feedback/delay stage. Wire-first default chosen to make the reverb tail audible.
 	 */
 	public static int pdslDelaySamples = 6500;
+
+	/**
+	 * Wall time of each construction step of the Block-forward PDSL runner, keyed by step:
+	 * {@link #BUILD_PREPARE_RENDER_BUFFERS}, {@link #BUILD_RENDER_OPS},
+	 * {@link #BUILD_PARSE_PDSL}, {@link #BUILD_ARGS}, {@link #BUILD_LAYER},
+	 * {@link #BUILD_MODEL_COMPILE} and {@link #BUILD_FIRST_FORWARD}. Each runner build adds
+	 * one entry per step, so a caller attributes one build's cost by differencing
+	 * {@link org.almostrealism.io.MetricBase#getEntries()} before and after it. Durations are
+	 * measured in nanoseconds and stored (and so read back) in seconds.
+	 */
+	public static final TimingMetric buildTime = AudioScene.console.timing("pdslRunnerBuild");
+
+	/** {@link #buildTime} key for {@link AudioScene#prepareRenderBuffers}. */
+	public static final String BUILD_PREPARE_RENDER_BUFFERS = "prepareRenderBuffers";
+
+	/** {@link #buildTime} key for building the pattern render-ahead operation. */
+	public static final String BUILD_RENDER_OPS = "renderOps";
+
+	/** {@link #buildTime} key for parsing the mixdown PDSL program. */
+	public static final String BUILD_PARSE_PDSL = "parsePdsl";
+
+	/** {@link #buildTime} key for allocating the PDSL argument collections. */
+	public static final String BUILD_ARGS = "buildArgs";
+
+	/** {@link #buildTime} key for interpreting the PDSL layer into a {@link Block} graph. */
+	public static final String BUILD_LAYER = "buildLayer";
+
+	/** {@link #buildTime} key for {@link Model#compile(boolean)} of the mixdown block. */
+	public static final String BUILD_MODEL_COMPILE = "modelCompile";
+
+	/** {@link #buildTime} key for the throwaway forward pass that captures the output handle. */
+	public static final String BUILD_FIRST_FORWARD = "firstForward";
 
 	/** The scene this runner drives. */
 	private final AudioScene<?> scene;
@@ -390,8 +423,9 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 		try {
 		// Pattern position follows the arrangement timeline, not the raw render
 		// cursor: the reset schedule wraps it to zero at each break, ahead of playback.
-		Supplier<Runnable> patternSetup = scene.prepareRenderBuffers(channels, bufferSize,
-				() -> (int) scene.getTimeManager().positionForFrame(renderFrame[0]));
+		Supplier<Runnable> patternSetup = buildTime.measure(BUILD_PREPARE_RENDER_BUFFERS,
+				() -> scene.prepareRenderBuffers(channels, bufferSize,
+						() -> (int) scene.getTimeManager().positionForFrame(renderFrame[0])));
 
 		boolean wetVoicing = MixdownManager.enableEfx;
 		int inputChannels = wetVoicing ? channelCount * 2 : channelCount;
@@ -415,19 +449,21 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 		for (PatternAudioBuffer renderCell : scene.getRenderCells()) {
 			renderOps.add(renderCell.prepareBatch(false));
 		}
-		Runnable renderOp = renderOps.get();
+		Runnable renderOp = buildTime.measure(BUILD_RENDER_OPS, renderOps);
 
 		PdslLoader loader = new PdslLoader(AudioDspPrimitives::registerWith);
-		PdslNode.Program program = loader.parseResource(MIXDOWN_PDSL_RESOURCE);
+		PdslNode.Program program = buildTime.measure(BUILD_PARSE_PDSL,
+				() -> loader.parseResource(MIXDOWN_PDSL_RESOURCE));
 
-		Map<String, Object> args = adapter.buildArgsMap();
+		Map<String, Object> args = buildTime.measure(BUILD_ARGS, adapter::buildArgsMap);
 		CompiledModel compiled = compileMixdownModel(loader, program, layerName, inputShape, args);
 		rollback.add(compiled::destroy);
 
 		Supplier<Runnable> automationRefresh = adapter.automationRefresh(args);
 
 		// Throwaway pass to capture the stable output handle the streaming loop reads
-		PackedCollection masterOutput = compiled.forward(pdslInput);
+		PackedCollection masterOutput = buildTime.measure(BUILD_FIRST_FORWARD,
+				() -> compiled.forward(pdslInput));
 
 		// The mixdown renders one signal per frame; a stereo destination receives it
 		// on both channels, while a mono destination (or one with the master disabled)
@@ -633,9 +669,10 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 	private CompiledModel compileMixdownModel(PdslLoader loader, PdslNode.Program program,
 											  String layerName, TraversalPolicy inputShape,
 											  Map<String, Object> args) {
-		Block block = loader.buildLayer(program, layerName, inputShape, args);
+		Block block = buildTime.measure(BUILD_LAYER,
+				() -> loader.buildLayer(program, layerName, inputShape, args));
 		Model model = new Model(inputShape);
 		model.add(block);
-		return model.compile(false);
+		return buildTime.measure(BUILD_MODEL_COMPILE, () -> model.compile(false));
 	}
 }

@@ -1,7 +1,7 @@
 ---
-status: proposed
+status: completed
 created: 2026-11-25
-closed:
+closed: 2026-11-25
 tracker: [60b1a161-80d3-4450-b7fd-492f547de3c2]
 ---
 
@@ -284,6 +284,80 @@ A reviewer can confirm the task is done when:
   closing it on the profile evidence alone. The approver should confirm that
   outcome is acceptable before implementation, so the session does not stretch
   into the out-of-scope architectural change to force a number down.
+
+## Results
+
+Measured on a macOS Metal node with the pinned harness
+(`PdslSetupBreakdownTest.setupBreakdown`: seed 58, 120 BPM, 64 measures, 8192-frame
+buffer, `preWarmMaxSeconds = 0`), three fresh JVMs per configuration, in one session.
+
+**Harness.** `AudioSceneRealtimeRunner.buildTime` (a `TimingMetric`) now records each
+construction step of `createPdsl` (`prepareRenderBuffers`, `renderOps`, `parsePdsl`,
+`buildArgs`, `buildLayer`, `modelCompile`, `firstForward`). `AudioSceneTestBase.buildAttributedRunner`
+logs those steps with the Metal (`MetalProgram.compileTime`) and native C
+(`NativeCompiler.compileTime`) compile counts and times for the build.
+`PdslSetupBreakdownTest` builds under a hardware-assigned `OperationProfileNode`, saved
+to `results/pdsl-runner-build-profile.xml`. `KernelCacheReuseAcrossScenesTest` logs the same
+attribution for each scene, plus the Metal compiles of its render.
+
+**Attribution (before).** `runnerBuildMs` was 11565 / 8087 / 8224 ms (median 8224; an
+earlier set of three runs gave 12226 / 8567 / 10794). The 16 s figure in the task was not
+reproduced on this node. By step: `firstForward` 5.0–7.9 s, `buildArgs` 2.0–2.4 s,
+`modelCompile` 0.75–1.0 s, and every other step under 0.15 s. Metal compilation was not the
+cost: 64 kernels took about 5 ms once the driver's shader cache was warm, and 0.4 s cold.
+The cost was **44 native C (JNI) compilations, 6.4–9.8 s in total**. `ar-profile-analyzer`
+(`find_slowest_by_category compile`) shows them as tiny kernels, each taking 135–400 ms to
+compile: `add (1)`, `multiply (41)`, `equals (41)`, `concat (6)` and similar. `get_source`
+shows why there were so many. Each is one channel's gene → cutoff → coefficient
+computation, and it bakes that channel's gene offset into the kernel (for example
+`_v[offset + 187] * 20000`), so no two channels share a kernel. The largest group was
+`efx_filter_coeffs`, a windowed-sinc subgraph per channel, at 38% of the profile. Next
+came the `wet_filter_coeffs` / `wet_hp_coeffs` table-bin selection per channel, then two
+build-time `PDSL Automation Refresh` compiles (about 0.35 s each).
+
+**Reduction.** In `MixdownManagerPdslAdapter`, `efxFilterCoefficients` and
+`wetFilterCoefficients` now gather each gene into a `[channels]` bank and compute the
+coefficients over the whole bank. The new `tableRows` replaces the single-row `tableRow`,
+and the per-buffer `hp_coeffs` refresh uses it as well. The coefficient banks therefore
+compile once, not once per channel. The math is unchanged, and `MixdownManagerPdslAdapterTest`
+checks every row against that channel's own genes.
+
+**After.** `runnerBuildMs` was 6550 / 4858 / 4886 ms (median 4886, **−41%** against the
+same-session median of 8224). The first run of the set was the outlier in both sets. JNI
+compiles fell from 44 to 16 (2.8–3.7 s) and `firstForward` from 5.0–7.9 s to 1.3–2.3 s.
+`buildArgs` was 2.6–2.9 s, against 2.0–2.4 s before. The output remains finite and
+non-silent, which the harness asserts.
+
+**Tests.**
+
+- `MixdownManagerPdslAdapterTest` (new) checks every row of `efx_filter_coeffs`,
+  `wet_hp_coeffs`, `wet_filter_coeffs` and the refreshed `hp_coeffs` slot against that
+  channel's own genes, computed one channel at a time. Its
+  `coefficientBanksCompileIndependentlyOfChannelCount` fails on the per-channel graph,
+  which compiled 14 kernels for 2 channels and 18 for 3; the batched banks compile 10 and 9.
+- `MixdownManagerPdslVerificationTest` passes 14/14.
+- `KernelCacheReuseAcrossScenesTest` and `PdslSetupBreakdownTest` pass.
+- `AudioScenePdslCutoverTest` had 7 errors on the unmodified base and has 6 with this
+  change. `pdslHpForcedSweep` now passes, because the diagnostic `hpCutoffOverrideHz` is
+  bounded to the table range like the gene cutoff. Its 0 Hz override had produced a -∞
+  table bin that could not compile. The remaining 6 are the same `Memory Max Reached`
+  errors the base shows once the class has run for about 8 minutes in one JVM. They are
+  filed as their own tracker task.
+
+**What remains.** Sixteen JNI compiles, about 2.8 s, are left:
+
+- the two build-time automation refresh lists. `baseArgsMap` and `wetArgsMap` each
+  run one, and the runner builds a third in `tick()`. The base map's run is redundant for
+  the wet layer, but removing it changes the initial `volume_prev`/ramp state the map
+  hands to direct consumers, so it was left alone.
+- four `gridProducer` matrix assignments (transmission and feedback grids), which could be
+  batched the same way.
+- six delay-network head/modulo kernels that belong to the compiled model itself.
+
+Each remaining kernel costs roughly 150 ms of native C compilation. Small kernels go to the
+CPU backend, where every new kernel costs a compiler process. Kernels are not reused across
+scenes, because each signature includes buffer offsets. Both are framework-level levers
+(see Dependencies) outside this task.
 
 ## Estimated complexity
 
