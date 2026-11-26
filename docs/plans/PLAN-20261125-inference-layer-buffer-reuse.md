@@ -459,6 +459,7 @@ Every run is a bounded selection of a few classes, not a module suite.
 
 These were added in review, to make "done" checkable. Criteria 1–3 restate the test strategy.
 The thresholds in 4 and 5 are proposals for the owner to confirm or change (open question 10).
+Criterion 6 asks only for a measurement.
 Stage 2 is done when all of the following hold:
 
 1. Every training test listed under "Training unchanged" passes unmodified, and the new
@@ -475,6 +476,10 @@ Stage 2 is done when all of the following hold:
 5. Generation time per clip does not regress by more than 5% against master on the same node.
    The plan expects no change, because the kernels are the same and splitting adds dispatches only
    where `subdivide()` now cuts. This criterion is proposed; the owner may set a different bound.
+6. The time to compile each SA3 graph is reported against master. The two-pass compile of §2
+   pushes and runs `flatten().optimize()` twice, and the baseline does not separate compile time
+   from run time: text clip 1 takes 19.5 s against 10.3 s for later clips, and that gap includes
+   the lazy DiT and T5Gemma compiles. No bound is proposed (open question 12).
 
 ## Implementation outline (Stage 2, after approval)
 
@@ -500,6 +505,11 @@ Stage 2 is done when all of the following hold:
    `CompiledModel`'s pool. Should an inference compile mark the `Model` inference-only and make a later
    `compile(true)` throw? Or should a backprop compile restore standalone outputs and input records?
    Throwing is simpler and matches how models are used today.
+   - Part of this exists already. `CompiledModel.compile` starts with `Model.recordCompilation()`,
+     which counts compilations and warns from the second one on. Its javadoc and that of
+     `CompiledModel.destroy()` both say a `Model` must not be compiled twice. Throwing would turn
+     that warning into an error, for models compiled with reuse only. The two passes of §2 run
+     inside one `compile` call, so they count as one compilation.
 2. **`getOutput()` on a pooled layer.** Throwing plus an explicit `retainOutput()` (proposed), or
    returning the shared view with a documented validity window?
 3. **Sharing across compiled models.** The DiT, decoder and blend encoder of one generator run one
@@ -542,3 +552,9 @@ Stage 2 is done when all of the following hold:
     receipts from pass 2, not pass 1 (§2, step 5). Should Stage 2 add a way to clear a
     `CaptureReceptor`, or assert the push order instead? Adding a reset changes a type in
     `domain/graph` that many cells use.
+12. **Cost of the second pass.** Pass 2 repeats the push, `flatten()` and `optimize()` of every
+    inference compile, so compile time grows by up to one more optimization of the forward list.
+    The baseline does not measure compile time on its own. Should Stage 2 measure it first and
+    set a bound, or is any increase acceptable for the memory saved? If it is too slow, the
+    pass-1 tree could be reused with its leaves swapped instead of rebuilt. That would need its
+    own soundness argument, because the `subdivide()` cuts were made on pass-1 memory.
