@@ -29,7 +29,10 @@ import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.function.Function;
 
 /**
@@ -200,5 +203,76 @@ public class MultiChannelAudioOutputTest extends TestSuiteBase implements CellFe
 			MultiChannelAudioOutput noStems = new MultiChannelAudioOutput(master);
 			Assert.assertTrue(((OperationList) noStems.pushStem(0, frames)).isEmpty());
 		}
+	}
+
+	/**
+	 * The per-side push overloads used by true stereo route each side's own frame to that
+	 * side's receptor: the LEFT frame reaches only the LEFT receptor and the RIGHT frame
+	 * only the RIGHT one, for the master, stem and measure families alike. A dual-mono
+	 * caller would push one frame to both; this pins that the two sides are kept apart.
+	 */
+	@Test(timeout = 60000)
+	public void perSidePushRoutesEachFrameToItsSide() {
+		Map<String, Producer<PackedCollection>> received = new HashMap<>();
+		MultiChannelAudioOutput out = new MultiChannelAudioOutput(
+				side -> recorder(received, "master-" + side),
+				info -> recorder(received, "stem" + info.getPatternChannel() + "-" + info.getAudioChannel()),
+				info -> recorder(received, "measure-" + info.getVoicing()
+						+ "-" + info.getAudioChannel()));
+
+		Producer<PackedCollection> left = c(1.0);
+		Producer<PackedCollection> right = c(-1.0);
+		Function<ChannelInfo.StereoChannel, Producer<PackedCollection>> frame =
+				side -> side == ChannelInfo.StereoChannel.LEFT ? left : right;
+
+		Assert.assertEquals(2, ((OperationList) out.pushMaster(frame)).size());
+		Assert.assertEquals(2, ((OperationList) out.pushStem(0, frame)).size());
+		Assert.assertEquals(2, ((OperationList) out.pushMeasures(ChannelInfo.Voicing.WET, frame)).size());
+
+		Assert.assertSame(left, received.get("master-LEFT"));
+		Assert.assertSame(right, received.get("master-RIGHT"));
+		Assert.assertSame(left, received.get("stem0-LEFT"));
+		Assert.assertSame(right, received.get("stem0-RIGHT"));
+		Assert.assertSame(left, received.get("measure-WET-LEFT"));
+		Assert.assertSame(right, received.get("measure-WET-RIGHT"));
+		Assert.assertEquals("no other receptor may be pushed to", 6, received.size());
+	}
+
+	/**
+	 * With a mono master only the LEFT receptor exists, so the per-side push emits a single
+	 * operation and never asks the frame function for the RIGHT side's frame — the absent
+	 * side is skipped, not pushed to a null receptor.
+	 */
+	@Test(timeout = 60000)
+	public void perSidePushSkipsAbsentSide() {
+		List<ChannelInfo.StereoChannel> requested = new ArrayList<>();
+		Function<ChannelInfo.StereoChannel, Producer<PackedCollection>> frame = side -> {
+			requested.add(side);
+			return c(0.0);
+		};
+
+		try (WaveOutput mono = output(false)) {
+			MultiChannelAudioOutput out = new MultiChannelAudioOutput(mono);
+			Assert.assertEquals(1, ((OperationList) out.pushMaster(frame)).size());
+		}
+
+		Assert.assertEquals(List.of(ChannelInfo.StereoChannel.LEFT), requested);
+		Assert.assertTrue(((OperationList) new MultiChannelAudioOutput().pushMaster(frame)).isEmpty());
+		Assert.assertEquals("a disabled master requests no frame", 1, requested.size());
+	}
+
+	/**
+	 * Returns a receptor that records the producer it is asked to push under {@code key}.
+	 *
+	 * @param received the map the pushed producers are recorded in
+	 * @param key      the key identifying this receptor
+	 * @return the recording receptor
+	 */
+	private static Receptor<PackedCollection> recorder(Map<String, Producer<PackedCollection>> received,
+													   String key) {
+		return protein -> {
+			received.put(key, protein);
+			return new OperationList(key);
+		};
 	}
 }

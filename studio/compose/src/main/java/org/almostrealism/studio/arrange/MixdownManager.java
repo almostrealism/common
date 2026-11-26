@@ -282,6 +282,18 @@ public class MixdownManager implements Setup, Destroyable, CellFeatures, Optimiz
 	/** Channel indices to which reverb is applied. */
 	private List<Integer> reverbChannels;
 
+	/** The number of audio channels this manager mixes. */
+	private final int channels;
+
+	/**
+	 * Per-channel stereo placement in {@code [-1, 1]} (0 = centre), one entry per
+	 * channel. Held in a {@link PackedCollection} slot so a realtime client can change
+	 * a channel's pan between buffers; the {@link MixdownManagerPdslAdapter} reads it
+	 * live, folding each side's balance-law gain into that channel's dry volume and its
+	 * sends. Default centre, so a scene with no pan setting mixes exactly as before.
+	 */
+	private final PackedCollection pan;
+
 	/** Resources held by this manager that must be destroyed with it. */
 	private final List<Destroyable> dependencies;
 
@@ -348,7 +360,10 @@ public class MixdownManager implements Setup, Destroyable, CellFeatures, Optimiz
 		initRanges(new Configuration(channels), delayLayers);
 
 		this.reverbChannels = new ArrayList<>();
+		this.channels = channels;
+		this.pan = new PackedCollection(channels);
 		this.dependencies = new ArrayList<>();
+		this.dependencies.add(pan);
 	}
 
 	/** Returns the automation manager that drives time-varying parameter curves. */
@@ -469,6 +484,43 @@ public class MixdownManager implements Setup, Destroyable, CellFeatures, Optimiz
 	public void setReverbChannels(List<Integer> reverbChannels) {
 		this.reverbChannels = reverbChannels;
 	}
+
+	/** Returns the number of audio channels this manager mixes. */
+	public int getChannelCount() { return channels; }
+
+	/**
+	 * Returns the stereo placement of a channel, in {@code [-1, 1]} with {@code 0} the
+	 * centre, {@code -1} hard left and {@code +1} hard right.
+	 *
+	 * @param channel the channel index
+	 * @return the channel's pan position
+	 */
+	public double getPan(int channel) {
+		return pan.toArray(channel, 1)[0];
+	}
+
+	/**
+	 * Sets the stereo placement of a channel. The value is clamped to {@code [-1, 1]}
+	 * ({@code 0} centre, {@code -1} hard left, {@code +1} hard right). The change takes
+	 * effect on the next buffer the PDSL mixdown renders, so a realtime client may call
+	 * this between buffers.
+	 *
+	 * @param channel the channel index
+	 * @param value   the pan position (clamped to {@code [-1, 1]})
+	 */
+	public void setPan(int channel, double value) {
+		double clamped = Math.max(-1.0, Math.min(1.0, value));
+		a(1, cp(pan.range(shape(1), channel)), c(clamped)).get().run();
+	}
+
+	/**
+	 * Returns the live per-channel pan slot, shape {@code [channels]}. Exposed for
+	 * {@link MixdownManagerPdslAdapter} to read each channel's placement when folding the
+	 * stereo balance-law gain into that channel's volume and sends.
+	 *
+	 * @return the pan slot
+	 */
+	PackedCollection getPan() { return pan; }
 
 	/** Initializes the gene ranges for volume, pan, delay, and filter based on the given configuration. */
 	public void initRanges(Configuration config, int delayLayers) {
