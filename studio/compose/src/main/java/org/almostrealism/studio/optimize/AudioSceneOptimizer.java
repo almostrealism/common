@@ -214,8 +214,10 @@ public class AudioSceneOptimizer extends AudioPopulationOptimizer<TemporalCellul
 	 * shorter. Bounding the move by the distance keeps the offspring between its parents,
 	 * and leaves a parameter untouched when both parents agree on it.</p>
 	 *
-	 * <p>The bound is half the distance, not the whole of it, so the offspring never lands
-	 * on the second parent. With the whole distance as the bound, parents closer together
+	 * <p>The bound is half the distance, not the whole of it, so for two distinct parents
+	 * the offspring never lands on the second parent. Identical parents are the exception:
+	 * every parameter already agrees, so the half-distance bound is zero and the offspring
+	 * is an unchanged copy of them. With the whole distance as the bound, parents closer together
 	 * than the scale bred an exact copy of the second parent. That is common once a
 	 * population converges, because a child stays within the scale of the parent it was
 	 * bred from. With elitism the copy then took the only child slot. A population of one
