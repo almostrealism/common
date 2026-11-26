@@ -83,6 +83,7 @@ import io.flowtree.submission.PhaseConfigResolver;
  *   <tr><td>POST</td><td>/api/workstreams/{id}/jobs/{jobId}/messages</td><td>{@code {"text":"..."}}</td><td>Post a message to the job's thread</td></tr>
  *   <tr><td>GET</td><td>/api/workstreams/{id}/mailbox?since=&amp;wait=&amp;exclude=</td><td>--</td><td>Read the workstream's conversation, blocking until a peer posts — see {@link MailboxEndpointHandler}</td></tr>
  *   <tr><td>POST</td><td>/api/workstreams/{id}/submit</td><td>{@code {"prompt":"..."}}</td><td>Submit a new job to connected agents</td></tr>
+ *   <tr><td>POST</td><td>/api/workstreams/{id}/phase-config</td><td>{@code {"defaultPhaseConfig":{...}}} (optional)</td><td>Explain per-phase runner/model/effort/provider resolution and sources; dry-run validator — see {@link PhaseConfigQueryHandler}</td></tr>
  *   <tr><td>POST</td><td>/api/submit</td><td>{@code {"prompt":"...","targetBranch":"...","repoUrl":"...","createWorkstreamIfMissing":true}}</td><td>Submit a job, resolving the workstream from the request body and optionally creating it</td></tr>
  *   <tr><td>POST</td><td>/api/workstreams</td><td>{@code {"defaultBranch":"...","baseBranch":"...","planningDocument":"..."}}</td><td>Register a new workstream (auto-creates Slack channel)</td></tr>
  *   <tr><td>POST</td><td>/api/workstreams/{id}/update</td><td>{@code {"channelId":"...","channelName":"..."}}</td><td>Update an existing workstream</td></tr>
@@ -795,6 +796,11 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
             if ("/api/workstreams".equals(uri)) {
                 return workstreamRegistrationHandler().handleRegister(session);
             }
+            if (uri.startsWith("/api/workstreams/") && uri.endsWith("/phase-config")) {
+                String workstreamId = uri.substring("/api/workstreams/".length(),
+                        uri.length() - "/phase-config".length());
+                return phaseConfigQueryHandler().handle(workstreamId, readBody(session));
+            }
             Response workspaceConfigResp = workspaceConfigHandler().handleIfMatches(uri, session);
             if (workspaceConfigResp != null) return workspaceConfigResp;
             Matcher m = WORKSTREAM_PATTERN.matcher(uri);
@@ -1474,6 +1480,15 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
     private WorkstreamLifecycleHandler lifecycleHandler() {
         return new WorkstreamLifecycleHandler(notifiers, listener, this::readBody,
                 this::errorResponse, this::log);
+    }
+
+    /**
+     * Builds the {@code POST /api/workstreams/{id}/phase-config} diagnostic
+     * handler bound to this endpoint's workstream and workspace lookups.
+     * See {@link PhaseConfigQueryHandler}.
+     */
+    private PhaseConfigQueryHandler phaseConfigQueryHandler() {
+        return new PhaseConfigQueryHandler(notifiers::workstreamFor, workspaceLookup);
     }
 
     /** Builds the {@code /api/workspaces/{id}/config} handler bound to this endpoint. */

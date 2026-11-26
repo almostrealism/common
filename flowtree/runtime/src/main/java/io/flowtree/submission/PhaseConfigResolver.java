@@ -28,11 +28,14 @@ import io.flowtree.jobs.agent.Phase;
 import io.flowtree.jobs.agent.PhaseConfig;
 import io.flowtree.jobs.agent.PhaseConfigBundle;
 
+import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Function;
 import io.flowtree.workstream.Workstream;
 import io.flowtree.workstream.WorkspaceEntry;
 import io.flowtree.workstream.WorkstreamConfig;
@@ -266,6 +269,236 @@ public final class PhaseConfigResolver {
                 .overlayOnClearingInheritedProvider(middle)
                 .overlayOnClearingInheritedProvider(workspaceBundle.forPhase(phase))
                 .overlayOn(CONTROLLER_DEFAULT);
+    }
+
+    /** Source label: a per-phase entry in the per-job request bundle. */
+    public static final String SOURCE_JOB_PHASE = "job per-phase";
+    /** Source label: the default of the per-job request bundle. */
+    public static final String SOURCE_JOB_DEFAULT = "job default";
+    /** Source label: a per-phase entry in the workstream bundle. */
+    public static final String SOURCE_WORKSTREAM_PHASE = "workstream per-phase";
+    /** Source label: the default of the workstream bundle. */
+    public static final String SOURCE_WORKSTREAM_DEFAULT = "workstream default";
+    /** Source label: a per-phase entry in the per-job fallback bundle. */
+    public static final String SOURCE_FALLBACK_PHASE = "fallback per-phase";
+    /** Source label: the default of the per-job fallback bundle. */
+    public static final String SOURCE_FALLBACK_DEFAULT = "fallback default";
+    /** Source label: a per-phase entry in the workspace bundle. */
+    public static final String SOURCE_WORKSPACE_PHASE = "workspace per-phase";
+    /** Source label: the default of the workspace bundle. */
+    public static final String SOURCE_WORKSPACE_DEFAULT = "workspace default";
+    /** Source label: the built-in {@link #CONTROLLER_DEFAULT}. */
+    public static final String SOURCE_CONTROLLER_DEFAULT = "controller default";
+    /** Source label: no level supplied a value (the field resolves to {@code null}). */
+    public static final String SOURCE_NONE = "none";
+
+    /**
+     * The resolved value of one {@link PhaseConfig} field together with the
+     * precedence level that supplied it.
+     *
+     * @param value  the resolved field value, or {@code null} when no level set it
+     * @param source one of the {@code SOURCE_*} labels naming the level that
+     *               supplied {@code value} ({@link #SOURCE_NONE} when {@code value}
+     *               is {@code null})
+     */
+    public record FieldResolution(String value, String source) {
+    }
+
+    /**
+     * The resolved per-phase configuration with each field attributed to the
+     * precedence level that supplied it. The {@code value} of each
+     * {@link FieldResolution} matches the corresponding field of
+     * {@link #forPhase(Phase)} for the same phase.
+     *
+     * @param runner   resolution of the {@code runner} field
+     * @param model    resolution of the {@code model} field
+     * @param effort   resolution of the {@code effort} field
+     * @param provider resolution of the {@code provider} field
+     */
+    public record PhaseResolution(FieldResolution runner, FieldResolution model,
+                                  FieldResolution effort, FieldResolution provider) {
+    }
+
+    /** One labelled precedence level contributing to a phase's resolution. */
+    private record SourceLayer(String label, PhaseConfig config) {
+    }
+
+    /**
+     * Returns the resolved configuration for {@code phase} with each field
+     * attributed to the precedence level that supplied it. The resolved values
+     * are identical to {@link #forPhase(Phase)}; this method additionally reports
+     * <em>where</em> each value came from — one of the {@code SOURCE_*} labels
+     * ({@code job per-phase}, {@code job default}, {@code workstream per-phase},
+     * {@code workstream default}, {@code fallback per-phase},
+     * {@code fallback default}, {@code workspace per-phase},
+     * {@code workspace default}, {@code controller default}, or {@code none}).
+     *
+     * <p>A field is attributed to the highest-precedence layer whose value for
+     * that field equals the resolved value. Because the non-provider fields
+     * resolve by "highest non-null wins", that layer is the one that set the
+     * value; the provider field accounts for the runner-aware provider clearing
+     * of {@link PhaseConfig#overlayOnClearingInheritedProvider(PhaseConfig)} by
+     * matching against the surviving (post-clearing) resolved provider, so a
+     * provider suppressed by a runner mismatch is reported as {@code none}
+     * rather than attributed to the level that was cleared.</p>
+     *
+     * @param phase the phase to resolve; {@code null} resolves the default
+     * @return the per-field resolution with sources, never {@code null}
+     */
+    public PhaseResolution resolutionOf(Phase phase) {
+        PhaseConfig resolved = forPhase(phase);
+        List<SourceLayer> layers = sourceLayers(phase);
+        return new PhaseResolution(
+                new FieldResolution(resolved.runner(),
+                        sourceForField(layers, resolved.runner(), PhaseConfig::runner)),
+                new FieldResolution(resolved.model(),
+                        sourceForField(layers, resolved.model(), PhaseConfig::model)),
+                new FieldResolution(resolved.effort(),
+                        sourceForField(layers, resolved.effort(), PhaseConfig::effort)),
+                new FieldResolution(resolved.provider(),
+                        sourceForField(layers, resolved.provider(), PhaseConfig::provider)));
+    }
+
+    /**
+     * Builds the ordered (highest precedence first) list of labelled single-config
+     * layers that resolve {@code phase}, mirroring the overlay chain of
+     * {@link #forPhase(Phase)}: the per-job per-phase entry and default, then the
+     * workstream per-phase entry and default when the workstream sets the phase
+     * (else the fallback per-phase entry and default), then the workspace
+     * per-phase entry and default, and finally the controller default.
+     */
+    private List<SourceLayer> sourceLayers(Phase phase) {
+        List<SourceLayer> layers = new ArrayList<>();
+        layers.add(new SourceLayer(SOURCE_JOB_PHASE, entryOrEmpty(requestBundle, phase)));
+        layers.add(new SourceLayer(SOURCE_JOB_DEFAULT, requestBundle.defaultPhaseConfig()));
+        if (workstreamBundle.setsPhase(phase)) {
+            layers.add(new SourceLayer(SOURCE_WORKSTREAM_PHASE, entryOrEmpty(workstreamBundle, phase)));
+            layers.add(new SourceLayer(SOURCE_WORKSTREAM_DEFAULT, workstreamBundle.defaultPhaseConfig()));
+        } else {
+            layers.add(new SourceLayer(SOURCE_FALLBACK_PHASE, entryOrEmpty(fallbackBundle, phase)));
+            layers.add(new SourceLayer(SOURCE_FALLBACK_DEFAULT, fallbackBundle.defaultPhaseConfig()));
+        }
+        layers.add(new SourceLayer(SOURCE_WORKSPACE_PHASE, entryOrEmpty(workspaceBundle, phase)));
+        layers.add(new SourceLayer(SOURCE_WORKSPACE_DEFAULT, workspaceBundle.defaultPhaseConfig()));
+        layers.add(new SourceLayer(SOURCE_CONTROLLER_DEFAULT, CONTROLLER_DEFAULT));
+        return layers;
+    }
+
+    /** Returns {@code bundle}'s per-phase entry for {@code phase}, or {@link PhaseConfig#EMPTY}. */
+    private static PhaseConfig entryOrEmpty(PhaseConfigBundle bundle, Phase phase) {
+        if (phase == null) return PhaseConfig.EMPTY;
+        PhaseConfig entry = bundle.phaseConfigs().get(phase);
+        return entry == null ? PhaseConfig.EMPTY : entry;
+    }
+
+    /**
+     * Returns the {@code SOURCE_*} label of the highest-precedence layer whose
+     * {@code field} value equals {@code resolvedValue}, or {@link #SOURCE_NONE}
+     * when {@code resolvedValue} is {@code null}.
+     */
+    private static String sourceForField(List<SourceLayer> layers, String resolvedValue,
+                                         Function<PhaseConfig, String> field) {
+        if (resolvedValue == null) return SOURCE_NONE;
+        for (SourceLayer layer : layers) {
+            if (resolvedValue.equals(field.apply(layer.config()))) {
+                return layer.label();
+            }
+        }
+        return SOURCE_NONE;
+    }
+
+    /**
+     * Appends a {@code ,"phaseConfigResolution":{...}} fragment to {@code json}
+     * reporting, for every {@link Phase}, each resolved field's value and the
+     * precedence level ({@code source}) that supplied it. The fragment leads
+     * with a comma, so the caller must have written at least one prior field.
+     *
+     * <p>Unlike {@link #appendFallbackResolutionJson(StringBuilder)}, this is
+     * always emitted — it is the full per-phase resolution map, not just the
+     * fallback status.</p>
+     *
+     * @param json the target string builder; must not be {@code null}
+     */
+    public void appendPhaseConfigResolutionJson(StringBuilder json) {
+        json.append(",\"phaseConfigResolution\":{");
+        boolean first = true;
+        for (Phase phase : Phase.values()) {
+            if (!first) json.append(",");
+            first = false;
+            json.append("\"")
+                    .append(JsonFieldExtractor.escapeJson(phase.wireName()))
+                    .append("\":");
+            appendPhaseResolutionJson(json, resolutionOf(phase));
+        }
+        json.append("}");
+    }
+
+    /** Appends one {@link PhaseResolution} as a JSON object of {@code field:{value,source}} members. */
+    private static void appendPhaseResolutionJson(StringBuilder json, PhaseResolution resolution) {
+        json.append("{");
+        appendFieldResolutionJson(json, true, "runner", resolution.runner());
+        appendFieldResolutionJson(json, false, "model", resolution.model());
+        appendFieldResolutionJson(json, false, "effort", resolution.effort());
+        appendFieldResolutionJson(json, false, "provider", resolution.provider());
+        json.append("}");
+    }
+
+    /** Appends a {@code "name":{"value":...,"source":"..."}} member, comma-prefixed unless first. */
+    private static void appendFieldResolutionJson(StringBuilder json, boolean firstMember,
+                                                  String name, FieldResolution field) {
+        if (!firstMember) json.append(",");
+        json.append("\"").append(name).append("\":{\"value\":");
+        if (field.value() == null) {
+            json.append("null");
+        } else {
+            json.append("\"").append(JsonFieldExtractor.escapeJson(field.value())).append("\"");
+        }
+        json.append(",\"source\":\"")
+                .append(JsonFieldExtractor.escapeJson(field.source()))
+                .append("\"}");
+    }
+
+    /**
+     * Returns warnings for resolved phases whose configuration sets a capability
+     * the resolved runner does not honour. Currently a single check: an
+     * {@code effort} level set for a runner whose
+     * {@link AgentCapabilities#supportsEffortLevel()} is {@code false} — the
+     * runner silently ignores the effort at run time, which a submitter rarely
+     * intends. Unlike model and provider mismatches (which are hard submission
+     * errors), these are advisory because the job still runs correctly; they
+     * surface through the phase-config diagnostic rather than failing the submit.
+     *
+     * @return the list of human-readable warnings, in {@link Phase} declaration
+     *         order; never {@code null}, empty when every resolved capability is
+     *         honoured
+     */
+    public List<String> capabilityWarnings() {
+        List<String> warnings = new ArrayList<>();
+        for (Phase phase : Phase.values()) {
+            appendCapabilityWarning(warnings, phase.wireName(), forPhase(phase));
+        }
+        return warnings;
+    }
+
+    /** Adds an effort-capability warning for {@code config} under {@code phaseLabel} when applicable. */
+    private static void appendCapabilityWarning(List<String> warnings, String phaseLabel,
+                                                PhaseConfig config) {
+        String effort = config.effort();
+        String runner = config.runner();
+        if (effort == null || effort.isEmpty() || runner == null || runner.isEmpty()) return;
+        if (!AgentRunnerRegistry.available().contains(runner)) return;
+        AgentRunner instance;
+        try {
+            instance = AgentRunnerRegistry.get(runner);
+        } catch (Exception e) {
+            return;
+        }
+        if (instance == null) return;
+        if (!instance.capabilities().supportsEffortLevel()) {
+            warnings.add("phase " + phaseLabel + ": runner '" + runner
+                    + "' does not support effort levels, so effort='" + effort
+                    + "' will be ignored at run time");
+        }
     }
 
     /**

@@ -129,6 +129,7 @@ public class McpConfigBuilder implements ConsoleFeatures {
             "workstream_list",
             "workstream_get_status",
             "workstream_get_job",
+            "phase_config_explain",
             "workstream_submit_task",
             "github_pr_find",
             "github_pr_review_comments",

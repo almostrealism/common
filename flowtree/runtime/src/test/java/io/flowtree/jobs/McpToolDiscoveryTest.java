@@ -314,6 +314,7 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 			"workstream_submit_task",
 			"workstream_register",
 			"workstream_update_config",
+			"phase_config_explain",
 			"workspace_update_config",
 			"workstream_archive",
 			"workstream_archive_many",

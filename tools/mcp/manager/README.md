@@ -49,6 +49,7 @@ is a thin orchestration facade that:
 | `workstream_submit_task` | submit | Submit a coding task prompt |
 | `workstream_register` | write | Register a new workstream |
 | `workstream_update_config` | write | Update workstream settings |
+| `phase_config_explain` | read | Explain per-phase runner/model/effort/provider resolution and dry-run validate a submission |
 | `workspace_update_config` | write | Update workspace-level config (name, default channel, runner defaults) |
 | `send_message` | write | Send a Slack message |
 
@@ -222,6 +223,35 @@ variable, which `tools/ci/submit-agent-job.sh` forwards as `fallbackPhaseConfig`
 for the auto-review, code-policy, quality-gate, auto-resolve and
 auto-resolve-python submissions. Unset → nothing is sent and resolution is
 byte-for-byte what it is today.
+
+### Explaining resolution — `phase_config_explain`
+
+`phase_config_explain` is a read-only diagnostic that answers "what runner,
+model, effort and provider will each phase use, and where did each value come
+from?" for a workstream. For every phase it reports each field's resolved
+`value` and its `source` — one of `job per-phase`, `job default`,
+`workstream per-phase`, `workstream default`, `fallback per-phase`,
+`fallback default`, `workspace per-phase`, `workspace default`,
+`controller default`, or `none` — so an unexpected model or a per-phase
+override that silently did nothing is traceable without reading the raw
+workstream and workspace configuration by hand.
+
+The optional `default_phase_config` / `phase_configs` / `fallback_*`
+arguments preview a *hypothetical* submission: they are resolved exactly as
+`workstream_submit_task` would resolve them, on top of the workstream and
+workspace configuration, without submitting a job. Resolution runs the same
+validation the submit path does, so an unsupported model-for-runner or an
+incompatible provider is returned as an `error` here — the tool doubles as a
+dry-run validator. When a resolved phase sets an `effort` for a runner that
+cannot honour it, the response also carries a `warnings` entry (the job still
+runs; the effort is ignored).
+
+This is a dedicated tool rather than a field on `workstream_get_status`
+because that tool reports operational analytics (job counts, cost, turns),
+whereas `phase_config_explain` resolves configuration and accepts hypothetical
+per-job overrides to preview a submission. The controller serves it at
+`POST /api/workstreams/{id}/phase-config`
+(`io.flowtree.api.PhaseConfigQueryHandler`).
 
 ## Test Execution Limits
 
