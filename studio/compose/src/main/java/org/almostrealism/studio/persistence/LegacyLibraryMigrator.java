@@ -251,7 +251,19 @@ public class LegacyLibraryMigrator implements ConsoleFeatures {
 		@Override
 		public String description() {
 			return migratedCount() + " records were migrated from your old "
-					+ "library format; the original files are no longer needed by Rings.";
+					+ "library format; the original files are no longer needed by the application.";
+		}
+
+		/**
+		 * Present only when leftover legacy files remain and every record migrated
+		 * successfully. A record that failed to decode or lacked an identifier was
+		 * never written to the new store, so while any failure remains the legacy
+		 * files are its only copy and deleting them would discard it; the cleanup
+		 * withholds itself until no failures remain.
+		 */
+		@Override
+		public boolean isPresent() {
+			return failedCount == 0 && totalBytes > 0;
 		}
 
 		/**

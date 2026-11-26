@@ -54,8 +54,8 @@ import java.util.function.ToLongFunction;
  */
 public final class WaveFeatureCleanup implements LibraryCleanup {
 	/** The explanation shared by both kinds of stale analysis data. */
-	private static final String KEPT = " from an earlier version of Rings that this "
-			+ "version no longer uses; they are kept only so you can switch back to "
+	private static final String KEPT = " from an earlier version of the application that "
+			+ "this version no longer uses; they are kept only so you can switch back to "
 			+ "an older version of the app.";
 
 	/** The library the report was produced from. */
