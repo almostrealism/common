@@ -139,6 +139,28 @@ public class NodeConfigTest extends TestSuiteBase {
 	}
 
 	/**
+	 * A per-node label may use any key, including {@code kind}:
+	 * {@code nodes.<i>.labels.kind} is the label "kind" on that Node, not the Node's
+	 * {@link NodeKind}, so it must not be misread as a typed kind entry.
+	 */
+	@Test(timeout = 10000)
+	public void perNodeLabelNamedKindIsNotAKindEntry() {
+		Properties p = new Properties();
+		p.setProperty("nodes.0.kind", "native");
+		p.setProperty("nodes.0.labels.kind", "gpu-box");
+
+		NodeConfig config = NodeConfig.parse(p).get(0);
+		Node node = new Node(null, 0, 4, 4);
+		config.applyLabels(node, Collections.emptyMap());
+
+		Assert.assertEquals("the typed list builds exactly its one kind entry",
+				1, NodeConfig.parse(p).size());
+		Assert.assertEquals(NodeKind.NATIVE, config.kind());
+		Assert.assertEquals("a per-node label named kind is stored as a label", "gpu-box",
+				node.getLabels().get("kind"));
+	}
+
+	/**
 	 * A legacy {@code nodes.labels.*} key is not read as a typed entry, even when it
 	 * ends in {@code .kind}: a valid legacy configuration still falls back unchanged.
 	 */

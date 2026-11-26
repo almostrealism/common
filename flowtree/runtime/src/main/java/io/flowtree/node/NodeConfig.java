@@ -187,18 +187,19 @@ public class NodeConfig {
 			if (!key.startsWith(NODE_PREFIX)) continue;
 			if (key.startsWith(GROUP_LABEL_PREFIX)) continue;
 
-			if (key.endsWith(KIND_SUFFIX)) {
-				int index = parseIndex(key.substring(NODE_PREFIX.length(),
-						key.length() - KIND_SUFFIX.length()), key);
-				kinds.put(index, NodeKind.forKey(p.getProperty(key)));
-			} else {
-				int infix = key.indexOf(LABELS_INFIX, NODE_PREFIX.length());
-				if (infix < 0) continue;
-
+			// A per-node label may use any key, including "kind", so the .labels.
+			// infix is matched before the .kind suffix: nodes.<i>.labels.kind is the
+			// label "kind" on node <i>, not the kind of node <i>.labels.
+			int infix = key.indexOf(LABELS_INFIX, NODE_PREFIX.length());
+			if (infix >= 0) {
 				int index = parseIndex(key.substring(NODE_PREFIX.length(), infix), key);
 				String labelKey = key.substring(infix + LABELS_INFIX.length());
 				labelsByIndex.computeIfAbsent(index, i -> new LinkedHashMap<>())
 						.put(labelKey, p.getProperty(key));
+			} else if (key.endsWith(KIND_SUFFIX)) {
+				int index = parseIndex(key.substring(NODE_PREFIX.length(),
+						key.length() - KIND_SUFFIX.length()), key);
+				kinds.put(index, NodeKind.forKey(p.getProperty(key)));
 			}
 		}
 

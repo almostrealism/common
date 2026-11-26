@@ -266,7 +266,6 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 			// NodeConfig.applyLabels.
 			Map<String, String> hostLabels = NodeGroupNodeConfig.collectNodeLabels(p);
 
-			// TODO(review): typed path leaves the NodeGroup's own label map empty, unlike the legacy path.
 			log("NodeGroup: Constructing " + typedNodes.size() + " typed child nodes...");
 
 			for (NodeConfig cfg : typedNodes) {
@@ -277,6 +276,8 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 				log("NodeGroup: Added " + cfg.kind().key() + " node " + cfg.index()
 						+ " (" + n + ")");
 			}
+
+			applyHostLabelsToGroup(hostLabels);
 
 			this.relayNode = new Node(this, typedNodes.size(), nodeMaxJobs, relayMaxPeers);
 			this.relayNode.setLabel("role", "relay");
@@ -716,6 +717,33 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 
 		for (Node n : this.nodes) {
 			n.setLabel(key, value);
+		}
+	}
+
+	/**
+	 * Labels the group itself with the host-resident labels, so that this group
+	 * reports the same host capabilities through {@link #getLabels()} that the
+	 * legacy {@code nodes.initial} path gives it, without broadcasting them to the
+	 * child Nodes.
+	 *
+	 * <p>Broadcasting through {@link #setLabel(String, String)} would copy these
+	 * host labels onto every child, including container Nodes that must take their
+	 * platform from their image rather than from the host; the typed path has
+	 * already applied the host labels to its host-resident children individually
+	 * via {@link NodeConfig#applyLabels(Node, Map)}. The assignment therefore goes
+	 * straight to the group's own label map through {@code super::setLabel}, and
+	 * the automatic labels are detected with the same precedence
+	 * {@link NodeConfig#applyLabels(Node, Map)} uses for a host-resident Node:
+	 * group-level host labels first, then the host's detected values for any key
+	 * left unset.</p>
+	 *
+	 * @param hostLabels  The group-level and environment-provided host labels.
+	 */
+	private void applyHostLabelsToGroup(Map<String, String> hostLabels) {
+		hostLabels.forEach(super::setLabel);
+
+		for (AutomaticLabel label : AutomaticLabel.values()) {
+			label.applyTo(this, super::setLabel);
 		}
 	}
 	

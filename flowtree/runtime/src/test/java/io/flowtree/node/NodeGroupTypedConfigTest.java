@@ -161,6 +161,47 @@ public class NodeGroupTypedConfigTest extends OfflineNodeTestBase {
 				group.getNodes()[0].getLabels().get("gpu"));
 	}
 
+	/**
+	 * The typed path labels the group itself with the host labels, so the group —
+	 * which is publicly a {@link Node} — reports the same host metadata through
+	 * {@link Node#getLabels()} that the legacy path gives it, rather than an empty map.
+	 */
+	@Test(timeout = 20000)
+	public void typedGroupItselfCarriesHostLabels() {
+		Properties p = baseProperties();
+		p.setProperty("nodes.0.kind", "native");
+		p.setProperty("nodes.labels.node-id", "host-7");
+
+		NodeGroup group = new NodeGroup(p, null);
+
+		Assert.assertEquals("the group carries the group-level host label",
+				"host-7", group.getLabels().get("node-id"));
+		Assert.assertEquals("the group carries the host's detected platform",
+				AutomaticLabel.PLATFORM.detect(), group.getLabels().get("platform"));
+	}
+
+	/**
+	 * Labelling the group in the typed path does not broadcast the host labels back
+	 * onto the child Nodes, so a per-node label stays on its one Node: the group's
+	 * own label map and the children's are populated independently.
+	 */
+	@Test(timeout = 20000)
+	public void typedGroupLabelsDoNotBroadcastToChildren() {
+		Properties p = baseProperties();
+		p.setProperty("nodes.0.kind", "native");
+		p.setProperty("nodes.0.labels.gpu", "metal");
+		p.setProperty("nodes.1.kind", "native");
+
+		NodeGroup group = new NodeGroup(p, null);
+		Node[] nodes = group.getNodes();
+
+		Assert.assertNull("the group must not acquire a per-node label",
+				group.getLabels().get("gpu"));
+		Assert.assertEquals("metal", nodes[0].getLabels().get("gpu"));
+		Assert.assertNull("a per-node label must not reach a sibling node",
+				nodes[1].getLabels().get("gpu"));
+	}
+
 	/** The legacy count path is unchanged: a configured label still reaches every worker. */
 	@Test(timeout = 20000)
 	public void legacyPathStillBroadcasts() {
