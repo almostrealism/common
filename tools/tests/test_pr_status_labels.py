@@ -1,5 +1,6 @@
 """Tests for tools/ci/pr-status-labels.py and the workflow that runs it."""
 
+import dataclasses
 import datetime
 import importlib.util
 import os
@@ -646,7 +647,8 @@ class CapStatusTest(unittest.TestCase):
 
 
 class WorkflowTest(unittest.TestCase):
-    """The workflow runs no pull request code and has only what it needs."""
+    """This repository's caller: it has only what it needs and reproduces this
+    repository's own behaviour through the reusable workflow's inputs."""
 
     def setUp(self):
         with open(os.path.join(ROOT, ".github", "workflows",
@@ -660,10 +662,12 @@ class WorkflowTest(unittest.TestCase):
                          ["Build and Test", "Auto-Resolve Submit"])
         self.assertIn("schedule", triggers)
 
-    def test_checks_out_the_default_branch(self):
-        checkout = self.job["steps"][0]
-        self.assertTrue(checkout["uses"].startswith("actions/checkout@"))
-        self.assertEqual(checkout["with"]["ref"],
+    def test_calls_the_reusable_workflow(self):
+        self.assertEqual(self.job["uses"],
+                         "./.github/workflows/pr-status-labels-run.yaml")
+
+    def test_runs_from_the_default_branch(self):
+        self.assertEqual(self.job["with"]["framework-ref"],
                          "${{ github.event.repository.default_branch }}")
 
     def test_permissions(self):
@@ -671,11 +675,225 @@ class WorkflowTest(unittest.TestCase):
             "actions": "read", "checks": "read", "contents": "read",
             "issues": "write", "pull-requests": "write", "statuses": "read"})
 
+    def test_passes_this_repositorys_pipeline_as_inputs(self):
+        with_ = self.job["with"]
+        self.assertEqual(with_["workflow-file"], "analysis.yaml")
+        self.assertEqual(with_["all-checks"], "All Checks")
+        self.assertEqual(with_["test-checks"], "Test Checks")
+        self.assertEqual(with_["validate-submitters"],
+                         ",".join(labels.VALIDATE_SUBMITTERS))
+        self.assertEqual(with_["test-submitters"],
+                         ",".join(labels.TEST_SUBMITTERS))
+        self.assertEqual(with_["staged-request"], labels.STAGED_REQUEST)
+        self.assertEqual(with_["cap-status"], labels.CAP_STATUS)
+        self.assertIs(with_["expect-test-run"], True)
+        self.assertEqual(with_["plans-dir"], labels.PLANS_DIR)
+        self.assertEqual(with_["plan-exclude-pattern"],
+                         labels.PLAN_EXCLUDE_PATTERN)
+
     def test_max_attempts_matches_the_retry_gate(self):
         with open(os.path.join(ROOT, ".github", "workflows",
                                "auto-resolve-submit.yaml")) as handle:
             text = handle.read()
         self.assertIn('MAX_ATTEMPTS: "%d"' % labels.MAX_ATTEMPTS, text)
+
+
+class ReusableWorkflowTest(unittest.TestCase):
+    """The reusable workflow: a trusted checkout of the framework, generic
+    (non-FlowTree, non-this-repository) defaults, and only what it needs."""
+
+    def setUp(self):
+        with open(os.path.join(ROOT, ".github", "workflows",
+                               "pr-status-labels-run.yaml")) as handle:
+            self.workflow = yaml.safe_load(handle)
+        self.job = self.workflow["jobs"]["label"]
+        self.inputs = self.workflow[True]["workflow_call"]["inputs"]
+
+    def test_triggered_only_by_workflow_call(self):
+        self.assertEqual(list(self.workflow[True].keys()), ["workflow_call"])
+
+    def test_checks_out_the_framework_explicitly(self):
+        checkout = self.job["steps"][0]
+        self.assertTrue(checkout["uses"].startswith("actions/checkout@"))
+        self.assertEqual(checkout["with"]["repository"],
+                         "${{ inputs.framework-repository }}")
+        self.assertEqual(checkout["with"]["ref"], "${{ inputs.framework-ref }}")
+        self.assertFalse(checkout["with"].get("persist-credentials", True))
+
+    def test_permissions(self):
+        self.assertEqual(self.job["permissions"], {
+            "actions": "read", "checks": "read", "contents": "read",
+            "issues": "write", "pull-requests": "write", "statuses": "read"})
+
+    def test_defaults_assume_no_particular_repositorys_pipeline(self):
+        # A repository with no FlowTree workstream and no particular job or
+        # check-run names must get no label that assumes any of them exist.
+        for name in ("workflow-file", "all-checks", "test-checks",
+                     "validate-submitters", "test-submitters",
+                     "staged-request", "cap-status", "plans-dir",
+                     "plan-exclude-pattern"):
+            self.assertEqual(self.inputs[name]["default"], "", name)
+        self.assertIs(self.inputs["expect-test-run"]["default"], False)
+
+    def test_runs_the_script_with_every_input_as_an_environment_variable(self):
+        run = self.job["steps"][1]["run"]
+        env = self.job["steps"][1]["env"]
+        for env_name, config_field in (
+                ("WORKFLOW_FILE", "workflow_file"),
+                ("VALIDATE_EVENT", "validate_event"),
+                ("TEST_EVENT", "test_event"),
+                ("ALL_CHECKS", "all_checks"),
+                ("TEST_CHECKS", "test_checks"),
+                ("VALIDATE_SUBMITTERS", "validate_submitters"),
+                ("TEST_SUBMITTERS", "test_submitters"),
+                ("STAGED_REQUEST", "staged_request"),
+                ("CAP_STATUS", "cap_status"),
+                ("MAX_ATTEMPTS", "max_attempts"),
+                ("RETRY_DECISION_MINUTES", "retry_decision_minutes"),
+                ("EXPECT_TEST_RUN", "expect_test_run"),
+                ("PLANS_DIR", "plans_dir"),
+                ("DOCS_DIR", "docs_dir"),
+                ("PLAN_EXCLUDE_PATTERN", "plan_exclude_pattern")):
+            self.assertIn(env_name, env, config_field)
+            self.assertTrue(
+                any(field.name == config_field
+                    for field in dataclasses.fields(labels.Config)),
+                config_field)
+        self.assertIn("pr-status-labels.py", run)
+
+
+class ConfigTest(unittest.TestCase):
+    """``Config.from_env`` reads the environment the reusable workflow sets,
+    distinguishing unset (keep this repository's default) from set-but-empty
+    (disable the feature)."""
+
+    def test_defaults_match_this_repository(self):
+        self.assertEqual(labels.DEFAULTS, labels.Config())
+        self.assertEqual(labels.DEFAULTS.workflow_file, labels.WORKFLOW_FILE)
+        self.assertEqual(labels.DEFAULTS.validate_submitters,
+                         labels.VALIDATE_SUBMITTERS)
+        self.assertTrue(labels.DEFAULTS.expect_test_run)
+        self.assertEqual(labels.DEFAULTS.plans_dir, labels.PLANS_DIR)
+
+    def test_an_unset_variable_keeps_the_default(self):
+        self.assertEqual(labels.Config.from_env({}), labels.DEFAULTS)
+
+    def test_an_empty_submitters_variable_means_no_such_job(self):
+        config = labels.Config.from_env({"VALIDATE_SUBMITTERS": ""})
+        self.assertEqual(config.validate_submitters, ())
+
+    def test_a_submitters_variable_is_comma_separated(self):
+        config = labels.Config.from_env(
+            {"TEST_SUBMITTERS": "one-submit, two-submit"})
+        self.assertEqual(config.test_submitters, ("one-submit", "two-submit"))
+
+    def test_integers_and_booleans_are_parsed(self):
+        config = labels.Config.from_env(
+            {"MAX_ATTEMPTS": "5", "RETRY_DECISION_MINUTES": "30",
+             "EXPECT_TEST_RUN": "False"})
+        self.assertEqual(config.max_attempts, 5)
+        self.assertEqual(config.retry_decision_minutes, 30)
+        self.assertFalse(config.expect_test_run)
+
+    def test_an_invalid_boolean_is_an_error(self):
+        with self.assertRaises(ValueError):
+            labels.Config.from_env({"EXPECT_TEST_RUN": "yes"})
+
+    def test_an_empty_plans_dir_disables_the_marker(self):
+        config = labels.Config.from_env({"PLANS_DIR": ""})
+        self.assertEqual(config.plans_dir, "")
+
+
+class GeneralizationTest(unittest.TestCase):
+    """The behaviour each generalization switch turns on or off, for a
+    repository whose pipeline does not match this one's."""
+
+    GENERIC = labels.Config(
+        workflow_file="", validate_submitters=(), test_submitters=(),
+        staged_request="", cap_status="", all_checks="", test_checks="",
+        expect_test_run=False, plans_dir="")
+
+    def test_empty_submitters_never_report_an_agent_sent(self):
+        state = labels.derive(
+            {"pr": {"number": 7},
+             "validate_run": run("pull_request", conclusion="failure")},
+            NOW, self.GENERIC)
+        self.assertEqual(state[0], labels.NEEDS_ATTENTION)
+
+    def test_expect_test_run_false_makes_a_passing_validate_run_ready(self):
+        state = labels.derive(
+            {"pr": {"number": 7, "mergeable_state": "clean"},
+             "validate_run": run("pull_request", conclusion="success")},
+            NOW, self.GENERIC)
+        self.assertEqual(state[0], labels.READY)
+
+    def test_expect_test_run_false_still_reports_a_merge_conflict(self):
+        state = labels.derive(
+            {"pr": {"number": 7, "mergeable_state": "dirty"},
+             "validate_run": run("pull_request", conclusion="success")},
+            NOW, self.GENERIC)
+        self.assertEqual(state[0], labels.NEEDS_ATTENTION)
+
+    def test_expect_test_run_true_awaits_a_test_run_instead(self):
+        state = labels.derive(
+            {"pr": {"number": 7},
+             "validate_run": run("pull_request", conclusion="success")},
+            NOW, labels.DEFAULTS)
+        self.assertEqual(state[0], labels.NEEDS_ATTENTION)
+
+    def test_empty_checks_skip_the_gate(self):
+        state = labels.derive(
+            {"pr": {"number": 7, "mergeable_state": "clean"},
+             "test_run": run("deployment")},
+            NOW, self.GENERIC)
+        self.assertEqual(state[0], labels.READY)
+
+    def test_an_empty_cap_status_is_never_matched(self):
+        self.assertIsNone(labels.capped_at(
+            [{"context": "remediation-cap", "state": "failure",
+              "created_at": stamp(1)}], self.GENERIC))
+
+    def test_an_empty_plans_dir_disables_ready_to_launch(self):
+        self.assertFalse(labels.ready_to_launch(
+            {"pr": plan_pr(), "files": [changed("docs/plans/PLAN-x.md")]},
+            "owner/repo", self.GENERIC))
+
+    def test_gather_skips_the_files_request_when_plans_dir_is_empty(self):
+        item = {"number": 7, "head": {"sha": "abc", "ref": "project/plan-x",
+                                      "repo": {"full_name": "owner/repo"}}}
+        client = FakeClient([
+            ("pulls/7", plan_pr()),
+            ("actions/runs?", {"workflow_runs": []}),
+            ("commits/abc/check-runs", {"check_runs": []}),
+        ])
+        facts = labels.gather(client, item, self.GENERIC)
+        self.assertNotIn("files", facts)
+
+    def test_an_empty_workflow_file_reads_every_workflows_runs(self):
+        client = FakeClient([
+            ("pulls/7", {"number": 7}),
+            ("actions/runs?", {"workflow_runs": [dict(run("pull_request"),
+                                                      id=14)]}),
+            ("commits/abc/check-runs", {"check_runs": []}),
+            ("actions/runs/14/jobs", {"jobs": []}),
+        ])
+        facts = labels.gather(client, PR, self.GENERIC)
+        self.assertEqual(facts["validate_run"]["id"], 14)
+        self.assertIn("actions/runs?head_sha=abc&per_page=50",
+                      client.requested)
+
+    def test_an_empty_staged_request_skips_the_artifact_request(self):
+        test_run = dict(run("deployment", conclusion="failure", attempt=3),
+                        id=11)
+        client = FakeClient([
+            ("pulls/7", {"number": 7}),
+            ("actions/runs?", {"workflow_runs": [test_run]}),
+            ("commits/abc/check-runs", {"check_runs": []}),
+            ("actions/runs/11/attempts/3/jobs", {"jobs": []}),
+        ])
+        facts = labels.gather(client, PR, self.GENERIC)
+        self.assertFalse(facts["staged"])
+        self.assertNotIn("actions/runs/11/artifacts", client.requested[-1])
 
 
 if __name__ == "__main__":

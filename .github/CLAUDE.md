@@ -2109,7 +2109,8 @@ or a workstream that names no repository, is never enough.
 
 ### What the `PR Status Labels` workflow does
 
-Lives in `.github/workflows/pr-status-labels.yaml`. A pull request passes
+Lives in `.github/workflows/pr-status-labels.yaml`, a thin caller of the
+reusable `.github/workflows/pr-status-labels-run.yaml`. A pull request passes
 through a validate run, an agent's review loop, the test run with its retries,
 possibly an agent fixing what the test run found, and back again, so a running
 or green check no longer says whether anything is still to come. This workflow
@@ -2122,6 +2123,7 @@ gives every open pull request from this repository one label for its stage:
 | `ci: full tests` | The head commit's test run is running, including a re-run attempt, or failed within the last 15 minutes on an attempt before `MAX_ATTEMPTS`, so the retry gate may still re-run it |
 | `ci: auto-fix` | The test run failed and an agent was sent: `auto-resolve` staged a request in the latest attempt, or `auto-resolve-python-submit` succeeded |
 | `ci: ready for review` | The head commit's newest test run succeeded, the newest `Test Checks` and `All Checks` check runs (by id, so a queued one counts) both passed, and the pull request has no merge conflict |
+| `ci: ready to launch` | A settled draft plan pull request an approver could launch now by marking it ready for review. Replaces `ci: ready for review` on that one settled stage (both would otherwise read "green and done"); sits beside `ci: needs attention` or `ci: review limit` instead. Never both `ci: ready to launch` and an in-progress stage (`ci: validating`/`ci: auto-review`/`ci: full tests`/`ci: auto-fix`) |
 | `ci: needs attention` | CI stopped with no agent working on it: a run failed or was cancelled without a submission, a test run passed while `All Checks` did not, or a merge conflict |
 | `ci: review limit` | Shown in place of `ci: auto-review` or `ci: auto-fix` when the controller refused the pass because the pull request reached the per-PR remediation cap (`RemediationBudgetGuard`, 10 passes by default). Auto-dispatch is paused until a commit no pass produced lands; a person needs to look. Never stalls |
 | `ci: stalled` | Added beside the stage label when the stage has lasted longer than `LABELS` in the script allows (1 h validating, 4 h auto-review or auto-fix, 10 h full tests) |
@@ -2155,6 +2157,56 @@ and executes no pull request code: it checks out the default branch's
 script's `MAX_ATTEMPTS` must equal `auto-resolve-submit.yaml`'s;
 `tools/tests/test_pr_status_labels.py` pins that, the workflow's permissions
 and checkout, and each state.
+
+**Adopting it in another repository.** Everything about the script that is
+specific to this repository's own pipeline — the CI workflow file name, the
+FlowTree remediation job and artifact names, the aggregator check-run names,
+whether a separate test-run stage exists at all, and the plan-approval
+directory layout — is read through `pr-status-labels.py`'s `Config` class, set
+from environment variables the reusable workflow's inputs populate. A
+consumer's caller needs only this (see `pr-status-labels-run.yaml`'s header
+for the full adoption example and every input):
+
+```yaml
+on:
+  workflow_run:
+    workflows: ["<its CI workflow's name>"]
+    types: [requested, completed]
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+concurrency:
+  group: pr-status-labels-${{ github.event.workflow_run.head_branch || 'all' }}
+  cancel-in-progress: false
+jobs:
+  label:
+    uses: almostrealism/common/.github/workflows/pr-status-labels-run.yaml@master
+    permissions:
+      actions: read
+      checks: read
+      contents: read
+      issues: write
+      pull-requests: write
+    with:
+      branch: ${{ github.event.workflow_run.head_branch || '' }}
+      workflow-file: ci.yml   # its own CI workflow's file name
+```
+
+The reusable workflow's own input defaults assume **none** of this
+repository's FlowTree machinery (empty submitters, no aggregator checks, no
+plan-approval directory, no separate test-run stage), so a repository with no
+equivalent gets only the labels that apply to it — `ci: validating`,
+`ci: needs attention`, `ci: ready for review`, `ci: stalled` — and never one
+that assumes a job, artifact or check it does not have. This repository's own
+caller (`pr-status-labels.yaml`) passes every FlowTree-specific input
+explicitly, so its behaviour is unchanged by the extraction. It checks out
+`tools/ci` from an explicit `framework-repository`/`framework-ref` (this
+repository's own checkout, by default), never from the consumer's tree, the
+same trust rule the other reusable workflows follow (see "Reusable workflows"
+in `tools/ci/README.md`). `tools/tests/test_pr_status_labels.py`'s `ConfigTest`
+and `GeneralizationTest` cover the environment-variable parsing and each
+generalization switch; `ReusableWorkflowTest` pins the trusted checkout and the
+generic defaults.
 
 ### What the `analysis` job does
 
