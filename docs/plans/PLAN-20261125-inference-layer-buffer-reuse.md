@@ -216,10 +216,10 @@ numbers. Lifetimes are therefore taken from what the forward pass actually does:
    it. Distinct memory is a requirement, not a convenience. `optimize()` runs `subdivide()`, which
    cuts a list wherever `MemoryRegionList.overlaps` finds two regions on the same `getMem()` with
    overlapping ranges. Pass-1 objects that overlapped one another would make pass 1 cut where today's
-   compile does not, so the grouping the analysis records would not be today's. Walk the optimized tree in execution order, and
-   for each step (defined below) record the set of layer-output roots it reads and the set it
-   writes. `MemoryRegionList.writes(member)` and `MemoryRegionList.dependentReads(member)` already
-   do this for `OperationList.subdivide()` (`OperationList.java`). Reads must also cover
+   compile does not, so the grouping the analysis records would not be today's. Walk the optimized
+   tree in execution order, and for each step (defined below) record the set of layer-output roots
+   it reads and the set it writes. `MemoryRegionList.writes(member)` and
+   `MemoryRegionList.dependentReads(member)` already do this for `OperationList.subdivide()` (`OperationList.java`). Reads must also cover
    inline (non-isolated) reads, so the walk collects every `CollectionProviderProducer` leaf in a
    member's producer tree, not only the isolated ones.
 2. **Interval of a buffer.** From the first step that writes it to the last step that reads it,
@@ -345,7 +345,8 @@ There are two ways to put several layers on the same memory:
   - Under (B), offset 0 and the layer's own length give the same signature as today.
 - **Aggregation is decided by root size.**
   - An argument is eligible only if its *root* is at most `maxAggregateLength` elements, 1024 by
-    default (`MemoryDataArgumentMap.java`).
+    default (`MemoryDataArgumentMap.maxAggregateLength`, overridable with
+    `AR_HARDWARE_AGGREGATE_MAX`).
   - Views of the same root collapse to one kernel argument (`MemoryDataArgumentMap.java`).
   - Under (A), a multi-GB arena is never aggregated, which differs from today for small outputs.
     It also merges, into one argument, every layer that touches the arena.
@@ -421,7 +422,9 @@ of floating-point operations (open question 6). Each test also asserts `pooledBy
   - an `andThen(into(...))` tap;
   - the deprecated `CaptureReceptor` accum (with `allowNonComposites`);
   - output monitoring on;
-  - a graph with outputs of at most 1024 elements, so that they aggregate.
+  - a graph with outputs of at most 1024 elements, so that they aggregate. The test must run with
+    `AR_HARDWARE_AGGREGATE_MAX` unset (or assert `maxAggregateLength` is at least its output size),
+    since a lower value would silently leave those outputs as direct arguments.
 
   Each runs in the verify mode of §2. One test asserts that `getOutput()` on a pooled layer throws,
   and that a retained layer's output equals the unpooled one.
