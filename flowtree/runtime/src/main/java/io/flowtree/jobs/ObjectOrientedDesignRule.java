@@ -72,7 +72,9 @@ import java.util.stream.Collectors;
  * writes each settled verdict into the ledger — keyed by both the reviewed content and the content
  * the session left behind — so later jobs skip the unchanged class. With the selection frozen, one
  * session covers the job in the common case; a class that received no verdict is offered again, but
- * the set never grows. The commit
+ * the set never grows, and {@link #MAX_SESSIONS_PER_JOB} is a hard ceiling on how many sessions a
+ * single job dispatches so a session whose verdict cannot be recorded cannot be reviewed without
+ * bound. The commit
  * message describes the job's work, not the review: the primary session's {@code commit.txt} is
  * captured before the review session and restored after it, whatever the review wrote.</p>
  *
@@ -102,6 +104,18 @@ class ObjectOrientedDesignRule implements EnforcementRule {
     static final int MAX_CLASSES = 12;
 
     /**
+     * Hard cap on the number of review sessions this rule dispatches in a single job, independent of
+     * how many classes remain unsettled. It is a backstop against a session that reports its verdict
+     * in a form the rule cannot record (so the class never leaves {@link #unreviewed}): without it the
+     * rule re-enters every outer enforcement pass until the job-wide attempt ceiling stops it, which is
+     * how one job once ran two dozen identical clean reviews of the same classes. With a reliable
+     * verdict record one session settles the whole job; the second is slack for a session that genuinely
+     * settled only part of its set. When the cap is reached with classes still unsettled the rule stops
+     * and logs it, leaving the remainder for a later job (or a human) rather than spinning.
+     */
+    static final int MAX_SESSIONS_PER_JOB = 2;
+
+    /**
      * How many times the reviewed classes' own added lines a review session may add before the rule
      * warns that the review has outgrown the change it was reviewing.
      */
@@ -112,6 +126,9 @@ class ObjectOrientedDesignRule implements EnforcementRule {
 
     /** Classes given a review session this job, by repository-relative path. */
     private final Set<String> reviewed = new LinkedHashSet<>();
+
+    /** Review sessions dispatched this job, capped at {@link #MAX_SESSIONS_PER_JOB}. */
+    private int sessionsRun;
 
     /** The classes named in the review prompt most recently built, whose session has not yet completed. */
     private List<Candidate> pending;
@@ -156,8 +173,11 @@ class ObjectOrientedDesignRule implements EnforcementRule {
     public Set<String> getProgressPaths() { return Set.of(VERDICT_PATH); }
 
     /**
-     * Returns {@code true} while a flagged, unsettled production class remains unreviewed this job
-     * and fewer than {@link #MAX_CLASSES} classes have been reviewed.
+     * Returns {@code true} while a flagged, unsettled production class remains unreviewed this job,
+     * fewer than {@link #MAX_CLASSES} classes have been reviewed, and the per-job session cap
+     * {@link #MAX_SESSIONS_PER_JOB} has not been reached. The session cap is what bounds the rule when
+     * a session reports a verdict the rule cannot record: without it the rule would re-enter every
+     * outer enforcement pass until the job-wide attempt ceiling stopped it.
      *
      * @param job the job whose working tree is inspected
      * @return whether another review session is due
@@ -165,7 +185,9 @@ class ObjectOrientedDesignRule implements EnforcementRule {
     @Override
     public boolean isViolated(CodingAgentJob job) {
         if (job.getWorkingDirectory() == null) return false;
-        return reviewed.size() < MAX_CLASSES && !unreviewed(job).isEmpty();
+        return sessionsRun < MAX_SESSIONS_PER_JOB
+                && reviewed.size() < MAX_CLASSES
+                && !unreviewed(job).isEmpty();
     }
 
     /**
@@ -226,21 +248,78 @@ class ObjectOrientedDesignRule implements EnforcementRule {
         savedCommitMessage = null;
         if (pending == null) return;
 
+        sessionsRun++;
         Set<String> files = verdictFiles(pending);
-        Set<String> verdicts = verdictLines(job, files);
-        for (Candidate candidate : pending) {
-            String settled = settledVerdict(verdicts, candidate.path);
-            if (settled == null) continue;
-            reviewed.add(candidate.path);
-            ledger(job).record(candidate.path, candidate.blobId, settled);
-            String after = blobId(job, candidate.path);
-            if (after != null && !after.equals(candidate.blobId)) {
-                ledger(job).record(candidate.path, after, settled);
-            }
-        }
+        recordVerdicts(job, pending, verdictLines(job, files));
         discardVerdictFiles(job, files);
         reportSession(job, pending);
         pending = null;
+        if (sessionsRun >= MAX_SESSIONS_PER_JOB && !unreviewed(job).isEmpty()) {
+            String message = "Object-oriented design review reached its per-job cap of "
+                    + MAX_SESSIONS_PER_JOB + " session(s) with " + unreviewed(job).size()
+                    + " class(es) still unsettled; leaving the rest for a later job";
+            job.warn(message);
+            job.harnessStatus().unusual(message);
+        }
+    }
+
+    /**
+     * Settles each pending class a verdict line identifies, recording it in {@link #reviewed} and the
+     * ledger (keyed by both the content it was reviewed at and the content the session left behind).
+     *
+     * <p>A line that names a class by its full repository-relative path settles that class, which is
+     * unambiguous because paths are unique. A line that uses a looser form — a bare simple name, a
+     * {@code .java} file name, a path suffix, or a fully-qualified name — settles a class only when it
+     * identifies exactly one pending candidate ({@link #resolve}), so a verdict for one {@code Window}
+     * never silently settles another {@code Window} in a different package that the session did not
+     * review. A looser identifier that matches more than one pending candidate settles none of them,
+     * leaving each to be offered again rather than recorded as reviewed without having been.</p>
+     *
+     * @param job          the job after the review session
+     * @param pending      the classes the session was asked to review
+     * @param verdictLines the trimmed verdict lines the session wrote
+     */
+    private void recordVerdicts(CodingAgentJob job, List<Candidate> pending, Set<String> verdictLines) {
+        for (String line : verdictLines) {
+            String stripped = Candidate.stripDecoration(line);
+            int colon = stripped.indexOf(':');
+            if (colon < 0) continue;
+            String word = Candidate.leadingWord(stripped.substring(colon + 1));
+            if (!ObjectOrientedReviewLedger.REVIEW_VERDICTS.contains(word)) continue;
+            Candidate target = resolve(pending, Candidate.stripDecoration(stripped.substring(0, colon)));
+            if (target == null) continue;
+            reviewed.add(target.path);
+            ledger(job).record(target.path, target.blobId, word);
+            String after = blobId(job, target.path);
+            if (after != null && !after.equals(target.blobId)) {
+                ledger(job).record(target.path, after, word);
+            }
+        }
+    }
+
+    /**
+     * Finds the one pending candidate a verdict identifier names: the candidate whose full
+     * repository-relative path it equals, or — failing an exact path — the single candidate it matches
+     * by a looser form. A looser form that matches more than one pending candidate is ambiguous and
+     * resolves to nothing, so a same-named class the session did not review is never settled by
+     * another's verdict.
+     *
+     * @param pending    the classes the session was asked to review
+     * @param identifier the text before a verdict's colon, with decoration removed
+     * @return the one candidate it identifies, or {@code null} when none or more than one match loosely
+     */
+    private static Candidate resolve(List<Candidate> pending, String identifier) {
+        for (Candidate candidate : pending) {
+            if (candidate.matchesPath(identifier)) return candidate;
+        }
+        Candidate loose = null;
+        for (Candidate candidate : pending) {
+            if (candidate.matchesLeniently(identifier)) {
+                if (loose != null) return null;
+                loose = candidate;
+            }
+        }
+        return loose;
     }
 
     /**
@@ -552,22 +631,6 @@ class ObjectOrientedDesignRule implements EnforcementRule {
     }
 
     /**
-     * Returns the settled verdict recorded for a class — the word after {@code <path>: } when it is
-     * {@code CLEAN} or {@code FIXED} — or {@code null} when none was recorded.
-     *
-     * @param verdictLines the trimmed verdict lines read from the working tree
-     * @param target       the repository-relative path of the class
-     * @return {@code "CLEAN"}, {@code "FIXED"}, or {@code null}
-     */
-    private static String settledVerdict(Set<String> verdictLines, String target) {
-        for (String line : verdictLines) {
-            if (line.startsWith(target + ": CLEAN")) return "CLEAN";
-            if (line.startsWith(target + ": FIXED")) return "FIXED";
-        }
-        return null;
-    }
-
-    /**
      * Returns the classes already given a review session this job.
      *
      * @return repository-relative paths, in review order
@@ -729,6 +792,74 @@ class ObjectOrientedDesignRule implements EnforcementRule {
             StringJoiner joiner = new StringJoiner("; ");
             for (ObjectOrientedRiskGate.Signal signal : signals) joiner.add(signal.description());
             return joiner.toString();
+        }
+
+        /** The simple name of this class, without package or {@code .java} extension. */
+        private String simpleName() { return ObjectOrientedDesignRule.simpleName(path); }
+
+        /**
+         * Whether a verdict identifier is this class's full repository-relative path. Paths are
+         * unique, so a path identifier names exactly this class and settles it unambiguously.
+         *
+         * @param identifier the text before a verdict's colon, with decoration already removed
+         * @return whether it is this class's full repository-relative path
+         */
+        boolean matchesPath(String identifier) { return identifier.equals(path); }
+
+        /**
+         * Whether a verdict identifier names this class by a looser form than its full path: its bare
+         * simple name, its simple name with the {@code .java} suffix, a path ending in that file name,
+         * or a fully-qualified name ending in that simple name.
+         *
+         * <p>A session writes the class name in whatever form reads naturally into the markdown scratch
+         * file, so these looser forms must be recognised or a verdict the rule cannot read becomes a
+         * class it never settles and reviews again and again. But a looser form can name more than one
+         * class — two {@code Window} classes in different packages share a simple name, a file name, and
+         * an FQN suffix — so the rule settles a class by a looser form only when it matches exactly one
+         * pending candidate ({@link ObjectOrientedDesignRule#resolve}). The verdict word after the first
+         * colon must still be exactly {@code CLEAN} or {@code FIXED}; any other word leaves the class
+         * unsettled.</p>
+         *
+         * @param identifier the text before a verdict's colon, with decoration already removed
+         * @return whether the identifier names this class by a non-path form
+         */
+        boolean matchesLeniently(String identifier) {
+            String simple = simpleName();
+            return identifier.equals(simple)
+                    || identifier.equals(simple + ".java")
+                    || identifier.endsWith("/" + simple + ".java")
+                    || identifier.endsWith("." + simple);
+        }
+
+        /**
+         * Removes markdown bullets, emphasis, backticks and surrounding whitespace that a session may
+         * wrap a verdict line or identifier in, so the identifier and verdict can be read plainly. Both
+         * ends are stripped: an emphasised identifier such as {@code **Window**} leaves decoration after
+         * the name as well as before it, and a trailing {@code **} left on the identifier would stop it
+         * matching the class.
+         *
+         * @param text a verdict line or the identifier portion of one
+         * @return the text without leading or trailing markdown decoration
+         */
+        static String stripDecoration(String text) {
+            return text.replace("`", "")
+                    .replaceAll("^[\\s\\-*>#.]+", "")
+                    .replaceAll("[\\s*>#]+$", "")
+                    .trim();
+        }
+
+        /**
+         * Returns the verdict word a line carries after the class's colon.
+         *
+         * @param text the portion of a verdict line after the class's colon
+         * @return its leading run of letters, upper-cased, or empty when it starts with no letter
+         */
+        static String leadingWord(String text) {
+            int start = 0;
+            while (start < text.length() && !Character.isLetter(text.charAt(start))) start++;
+            int end = start;
+            while (end < text.length() && Character.isLetter(text.charAt(end))) end++;
+            return text.substring(start, end).toUpperCase(Locale.ROOT);
         }
     }
 }
