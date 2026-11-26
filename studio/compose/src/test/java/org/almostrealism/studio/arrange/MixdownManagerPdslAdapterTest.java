@@ -98,7 +98,9 @@ public class MixdownManagerPdslAdapterTest extends TestSuiteBase implements Cell
 		boolean enableEfxFilters = MixdownManager.enableEfxFilters;
 		boolean enableReverb = MixdownManager.enableReverb;
 		boolean enableAutomationManager = MixdownManager.enableAutomationManager;
+		double hpCutoffOverrideHz = MixdownManagerPdslAdapter.hpCutoffOverrideHz;
 		restoreFlags = () -> {
+			MixdownManagerPdslAdapter.hpCutoffOverrideHz = hpCutoffOverrideHz;
 			MixdownManager.enableMainFilterUp = enableMainFilterUp;
 			MixdownManager.enableEfx = enableEfx;
 			MixdownManager.enableEfxFilters = enableEfxFilters;
@@ -207,6 +209,29 @@ public class MixdownManagerPdslAdapterTest extends TestSuiteBase implements Cell
 		try (PackedCollection table = adapter.biquadResponseTable(true)) {
 			for (int ch = 0; ch < CHANNELS; ch++) {
 				assertRow("hp_coeffs", bank, ch, table, bin(cutoffs.toDouble(ch)) * TAPS);
+			}
+		}
+	}
+
+	/**
+	 * With {@link MixdownManagerPdslAdapter#hpCutoffOverrideHz} set, every row of the refreshed
+	 * {@code hp_coeffs} slot is the response-table row of the override, bounded to the table's
+	 * range exactly as a gene cutoff is: {@code 0} selects the lowest bin rather than an
+	 * out-of-range row, {@code 30000} the highest, and {@code 2000} the bin nearest 2 kHz.
+	 */
+	@Test(timeout = 300_000)
+	public void highPassOverrideSelectsBoundedTableRow() {
+		double[] overrides = { 0.0, 2000.0, 30000.0 };
+		int[] expectedBins = { 0, bin(2000.0), TABLE_BINS - 1 };
+		for (int i = 0; i < overrides.length; i++) {
+			MixdownManagerPdslAdapter.hpCutoffOverrideHz = overrides[i];
+			buildFixture();
+			PackedCollection bank = (PackedCollection) args.get("hp_coeffs");
+			try (PackedCollection table = adapter.biquadResponseTable(true)) {
+				for (int ch = 0; ch < CHANNELS; ch++) {
+					assertRow("hp_coeffs(override=" + overrides[i] + ")", bank, ch, table,
+							expectedBins[i] * TAPS);
+				}
 			}
 		}
 	}
