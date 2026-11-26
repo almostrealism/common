@@ -219,9 +219,19 @@ numbers. Lifetimes are therefore taken from what the forward pass actually does:
    compile does not, so the grouping the analysis records would not be today's. Walk the optimized
    tree in execution order, and for each step (defined below) record the set of layer-output roots
    it reads and the set it writes. `MemoryRegionList.writes(member)` and
-   `MemoryRegionList.dependentReads(member)` already do this for `OperationList.subdivide()` (`OperationList.java`). Reads must also cover
-   inline (non-isolated) reads, so the walk collects every `CollectionProviderProducer` leaf in a
-   member's producer tree, not only the isolated ones.
+   `MemoryRegionList.dependentReads(member)` already do this for `OperationList.subdivide()`
+   (`OperationList.java`). Reads must also cover inline (non-isolated) reads, so the walk collects
+   every `CollectionProviderProducer` leaf in a member's producer tree, not only the isolated ones.
+   Writes need the same widening. `MemoryRegionList.writes` records only `Assignment`
+   destinations; any other writer is not treated as one. That covers more than custom cells:
+   `LayerFeatures.into(name, in, out, copy, ...)` emits `Ops.o().copy(...)` when `copy` is true and
+   the shape's count is 1, and `DefaultCellularLayer.output` passes `enableMemoryDataCopy` (default
+   `true`). With `AR_HARDWARE_ASSIGNMENT_COPY` unset (default off,
+   `MemoryDataFeatures.enableAssignmentCopy`), `copy(...)` returns a `MemoryDataCopy`, so a layer
+   whose output shape has count 1 writes its output through a member `writes` does not see. A
+   `MemoryDataCopy` built from producers exposes its source and target as `getChildren()`, so the
+   walk can resolve both. Any writer it still cannot resolve must leave every buffer it might touch
+   unpooled, rather than be read as writing nothing (open question 13).
 2. **Interval of a buffer.** From the first step that writes it to the last step that reads it,
    inclusive at both ends. A buffer that no step reads still occupies the step that writes it. The
    last layer's output is read by the `"Model Forward Output"` assignment into `CompiledModel.output`,
@@ -561,3 +571,8 @@ Stage 2 is done when all of the following hold:
     set a bound, or is any increase acceptable for the memory saved? If it is too slow, the
     pass-1 tree could be reused with its leaves swapped instead of rebuilt. That would need its
     own soundness argument, because the `subdivide()` cuts were made on pass-1 memory.
+13. **Writers the analysis cannot see.** §2, step 1 notes that `MemoryRegionList.writes` ignores
+    every writer except an `Assignment`, including the `MemoryDataCopy` that `LayerFeatures.into`
+    produces for count-1 shapes. Nobody has yet checked how many SA3 layer outputs take that path.
+    Should Stage 2 first count them (a layer census by writer type), and should an unresolved
+    writer disable pooling for the whole compile or only for the buffers it might touch?
