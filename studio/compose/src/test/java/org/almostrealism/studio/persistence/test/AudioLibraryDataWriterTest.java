@@ -59,6 +59,9 @@ public class AudioLibraryDataWriterTest extends TestSuiteBase {
 	/** The destination backing the writer under test. */
 	private LibraryDestination destination;
 
+	/** Writers created during a test, destroyed in teardown to release their executors. */
+	private final List<AudioLibraryDataWriter> writers = new ArrayList<>();
+
 	/**
 	 * Creates the temporary directory and an append-mode destination.
 	 *
@@ -71,12 +74,17 @@ public class AudioLibraryDataWriterTest extends TestSuiteBase {
 	}
 
 	/**
-	 * Recursively deletes the test's temporary directory.
+	 * Destroys every writer created during the test — each owns a non-daemon
+	 * executor thread that would otherwise outlive the test fork — and then
+	 * recursively deletes the test's temporary directory.
 	 *
 	 * @throws IOException if directory traversal fails
 	 */
 	@After
 	public void tearDown() throws IOException {
+		writers.forEach(AudioLibraryDataWriter::destroy);
+		writers.clear();
+
 		if (tempDir != null && Files.exists(tempDir)) {
 			try (Stream<Path> walk = Files.walk(tempDir)) {
 				walk.sorted(Comparator.reverseOrder())
@@ -84,6 +92,16 @@ public class AudioLibraryDataWriterTest extends TestSuiteBase {
 						.forEach(File::delete);
 			}
 		}
+	}
+
+	/**
+	 * Creates a writer backed by the test destination and registers it for
+	 * executor shutdown in {@link #tearDown()}.
+	 */
+	private AudioLibraryDataWriter newWriter() {
+		AudioLibraryDataWriter writer = new AudioLibraryDataWriter(destination);
+		writers.add(writer);
+		return writer;
 	}
 
 	/** Builds a wave-detail entry with the fixed frame count and the given silence flag. */
@@ -96,19 +114,10 @@ public class AudioLibraryDataWriterTest extends TestSuiteBase {
 				.build();
 	}
 
-	/** Polls for the first batch file at the destination prefix, up to a bounded wait. */
-	private boolean awaitFirstBatch() throws InterruptedException {
-		File batch = new File(tempDir.resolve("lib").toString() + "_0.bin");
-		for (int i = 0; i < 200 && !batch.exists(); i++) {
-			Thread.sleep(50);
-		}
-		return batch.exists();
-	}
-
 	/** A group is exclusive: starting a second while one is active is rejected. */
 	@Test(timeout = 90000)
 	public void startRejectsSecondStartWhileGroupActive() {
-		AudioLibraryDataWriter writer = new AudioLibraryDataWriter(destination);
+		AudioLibraryDataWriter writer = newWriter();
 		Assert.assertEquals("start(key) returns the key", "g1", writer.start("g1"));
 		try {
 			writer.start("g2");
@@ -121,7 +130,7 @@ public class AudioLibraryDataWriterTest extends TestSuiteBase {
 	/** Configuration accessors round-trip and the frame limit defaults to unlimited. */
 	@Test(timeout = 90000)
 	public void configurationAccessorsRoundTrip() {
-		AudioLibraryDataWriter writer = new AudioLibraryDataWriter(destination);
+		AudioLibraryDataWriter writer = newWriter();
 
 		Assert.assertNull("No sample listener by default", writer.getSampleListener());
 		Assert.assertNull("No group key provider by default", writer.getGroupKeyProvider());
@@ -136,7 +145,7 @@ public class AudioLibraryDataWriterTest extends TestSuiteBase {
 	/** A second concurrent sample within a group is rejected. */
 	@Test(timeout = 90000)
 	public void startSampleRejectsWhenSampleAlreadyActive() {
-		AudioLibraryDataWriter writer = new AudioLibraryDataWriter(destination);
+		AudioLibraryDataWriter writer = newWriter();
 		writer.setSampleListener(key -> { });
 		writer.start("g1");
 
@@ -156,7 +165,7 @@ public class AudioLibraryDataWriterTest extends TestSuiteBase {
 	@Test(timeout = 90000)
 	public void soundThenSilenceEndsSampleAndNotifiesListener() {
 		List<String> endedSamples = new ArrayList<>();
-		AudioLibraryDataWriter writer = new AudioLibraryDataWriter(destination);
+		AudioLibraryDataWriter writer = newWriter();
 		writer.setSampleListener(endedSamples::add);
 		writer.start("g1");
 
@@ -172,7 +181,7 @@ public class AudioLibraryDataWriterTest extends TestSuiteBase {
 	/** {@link AudioLibraryDataWriter#restart(String)} swaps the active group key. */
 	@Test(timeout = 90000)
 	public void restartSwapsActiveGroupKey() {
-		AudioLibraryDataWriter writer = new AudioLibraryDataWriter(destination);
+		AudioLibraryDataWriter writer = newWriter();
 		writer.setSampleListener(key -> { });
 		writer.start("g1");
 
@@ -193,7 +202,7 @@ public class AudioLibraryDataWriterTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 120000)
 	public void bufferedRecordingsReachTheDestinationOnReset() throws Exception {
-		AudioLibraryDataWriter writer = new AudioLibraryDataWriter(destination);
+		AudioLibraryDataWriter writer = newWriter();
 		writer.setSampleListener(key -> { });
 		writer.start("group-key");
 
@@ -202,7 +211,12 @@ public class AudioLibraryDataWriterTest extends TestSuiteBase {
 		writer.bufferData(detail(true));
 		writer.reset();
 
-		Assert.assertTrue("A batch file must be written by the flush", awaitFirstBatch());
+		// destroy() blocks until the executor drains the write submitted by
+		// reset(), so the batch is fully persisted before it is read back.
+		writer.destroy();
+
+		File batch = new File(tempDir.resolve("lib").toString() + "_0.bin");
+		Assert.assertTrue("A batch file must be written by the flush", batch.exists());
 
 		List<Audio.AudioLibraryData> batches = destination.load();
 		List<Audio.WaveRecording> recordings = new ArrayList<>();
@@ -220,7 +234,7 @@ public class AudioLibraryDataWriterTest extends TestSuiteBase {
 	@Test(timeout = 120000)
 	public void exceedingGroupFrameLimitRequestsANewGroupKey() {
 		AtomicInteger providerCalls = new AtomicInteger();
-		AudioLibraryDataWriter writer = new AudioLibraryDataWriter(destination);
+		AudioLibraryDataWriter writer = newWriter();
 		writer.setSampleListener(key -> { });
 		// A limit a single recording crosses but does not overshoot by the grace
 		// factor (1.3x), so the limit is handled by a provider-supplied restart.
