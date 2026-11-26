@@ -16,6 +16,8 @@
 
 package io.flowtree.controller;
 
+import io.flowtree.jobs.BlockReport;
+import io.flowtree.jobs.CodingAgentJobEvent;
 import io.flowtree.jobs.JobCompletionEvent;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
@@ -296,6 +298,69 @@ public class JobStatsStoreLifecycleTest extends TestSuiteBase {
                     store.getPendingJobs("ws-1").isEmpty());
             Assert.assertEquals("the job stays terminal",
                     JobCompletionEvent.Status.SUCCESS, store.getJob("job-1").getStatus());
+        } finally {
+            store.close();
+        }
+    }
+
+    /**
+     * A {@code BLOCKED} completion persists its structured category, detail, and
+     * verification flag, and they survive a close/reopen (the controller-restart
+     * case): without persistence a reopened store would reconstruct the base
+     * event whose block getters are all null.
+     */
+    @Test(timeout = 30000)
+    public void blockedJobPersistsCategoryDetailAndVerified() throws Exception {
+        File dir = Files.createTempDirectory("lifecycle-blocked").toFile();
+        dir.deleteOnExit();
+
+        JobStatsStore first = newStore(dir);
+        Instant submittedAt = Instant.parse("2026-08-22T12:00:00Z");
+        first.recordJobSubmitted("job-blk", "ws-1", "do the thing", null, null, submittedAt);
+        first.recordJobStarted("job-blk", "ws-1", "do the thing", "node-a", submittedAt.plusSeconds(60));
+        first.recordJobCompleted("ws-1", CodingAgentJobEvent.blocked("job-blk", "do the thing",
+                new BlockReport(BlockReport.MISSING_RESOURCE, "model file absent", true)));
+
+        JobCompletionEvent persisted = first.getJob("job-blk");
+        Assert.assertEquals(JobCompletionEvent.Status.BLOCKED, persisted.getStatus());
+        Assert.assertEquals("missing_resource", persisted.getBlockedCategory());
+        Assert.assertEquals("model file absent", persisted.getBlockedDetail());
+        assertTrue("the verified flag is persisted", persisted.isBlockedVerified());
+        first.close();
+
+        JobStatsStore second = newStore(dir);
+        try {
+            JobCompletionEvent reread = second.getJob("job-blk");
+            Assert.assertEquals("the block survives a reopen",
+                    JobCompletionEvent.Status.BLOCKED, reread.getStatus());
+            Assert.assertEquals("the category survives a reopen",
+                    "missing_resource", reread.getBlockedCategory());
+            Assert.assertEquals("the detail survives a reopen",
+                    "model file absent", reread.getBlockedDetail());
+            assertTrue("the verified flag survives a reopen", reread.isBlockedVerified());
+        } finally {
+            second.close();
+        }
+    }
+
+    /**
+     * An unverified guardrail block persists its {@code false} verification flag,
+     * so a reader can still tell an asserted block from a corroborated one.
+     */
+    @Test(timeout = 30000)
+    public void blockedJobPersistsUnverifiedFlag() throws Exception {
+        File dir = Files.createTempDirectory("lifecycle-blocked-unverified").toFile();
+        dir.deleteOnExit();
+        JobStatsStore store = newStore(dir);
+        try {
+            store.recordJobStarted("job-u", "ws-1", "job", "node-a", Instant.now());
+            store.recordJobCompleted("ws-1", CodingAgentJobEvent.blocked("job-u", "job",
+                    new BlockReport(BlockReport.GUARDRAIL, "claimed a hook denial", false)));
+
+            JobCompletionEvent persisted = store.getJob("job-u");
+            Assert.assertEquals(JobCompletionEvent.Status.BLOCKED, persisted.getStatus());
+            Assert.assertEquals("guardrail", persisted.getBlockedCategory());
+            Assert.assertFalse("an unverified claim stays unverified", persisted.isBlockedVerified());
         } finally {
             store.close();
         }
