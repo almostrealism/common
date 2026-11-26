@@ -16,6 +16,8 @@
 
 package org.almostrealism.hardware.test;
 
+import io.almostrealism.collect.CollectionExpression;
+import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.uml.Signature;
 import org.almostrealism.algebra.MatrixFeatures;
@@ -25,11 +27,15 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.CollectionMaxComputation;
 import org.almostrealism.collect.computations.CollectionMinComputation;
 import org.almostrealism.collect.computations.CollectionSumComputation;
+import org.almostrealism.collect.computations.ConstantRepeatedDeltaComputation;
 import org.almostrealism.collect.computations.IndexOfMaxComputation;
 import org.almostrealism.collect.computations.IndexOfMinComputation;
+import org.almostrealism.collect.computations.RepeatedProducerComputationAdapter;
+import org.almostrealism.collect.computations.TraversableDeltaComputation;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
+import java.util.function.Function;
 import java.util.function.Supplier;
 
 /**
@@ -315,5 +321,129 @@ public class AggregationSignatureTests extends TestSuiteBase {
 
 		assertNotNull("Weighted sums should have a signature", standardSignature);
 		assertNotEquals(standardSignature, alternateSignature);
+	}
+
+	/**
+	 * Verifies that a {@link RepeatedProducerComputationAdapter} includes the adapted expression in
+	 * its signature. The adapter's loop body is the expression it wraps, but its name, inputs,
+	 * output shape, and concrete class are identical for every adapter over the same inputs, so
+	 * without the expression two adapters that wrap {@code add(a, b)} and {@code multiply(a, b)}
+	 * would share a signature and the signature-keyed instruction cache could run one in place of
+	 * the other. The adapters are constructed directly over identical inputs so the expression is
+	 * the only state that differs. Rebuilding the identical adapter reproduces the identical
+	 * signature.
+	 */
+	@Test(timeout = 60000)
+	public void repeatedAdapterExpressionDisambiguates() {
+		PackedCollection a = new PackedCollection(shape(4)).randFill();
+		PackedCollection b = new PackedCollection(shape(4)).randFill();
+
+		RepeatedProducerComputationAdapter addAdapter = new RepeatedProducerComputationAdapter(
+				shape(4), (TraversableExpression) add(cp(a), cp(b)), cp(a), cp(b));
+		RepeatedProducerComputationAdapter multiplyAdapter = new RepeatedProducerComputationAdapter(
+				shape(4), (TraversableExpression) multiply(cp(a), cp(b)), cp(a), cp(b));
+
+		String addSignature = addAdapter.signature();
+		String multiplySignature = multiplyAdapter.signature();
+		log("repeated add signature = " + addSignature);
+		log("repeated multiply signature = " + multiplySignature);
+
+		assertNotNull("Repeated adapter should have a signature", addSignature);
+		assertNotEquals(addSignature, multiplySignature);
+
+		assertEquals(addSignature, new RepeatedProducerComputationAdapter(
+				shape(4), (TraversableExpression) add(cp(a), cp(b)), cp(a), cp(b)).signature());
+	}
+
+	/**
+	 * Verifies that a {@link ConstantRepeatedDeltaComputation} includes the source being
+	 * differentiated and the target it is differentiated with respect to in its signature. The
+	 * delta's loop body differentiates the source's iteration step with respect to the target, yet
+	 * the inherited signature sees neither (the source's behaviour is not an input, and only the
+	 * target <em>shape</em> reaches the signature through the appended output shape). Without these
+	 * two components the gradients of an index-of-maximum and an index-of-minimum over the same
+	 * data — or of one source with respect to two distinct same-shape targets — would share a
+	 * signature. Rebuilding the identical delta reproduces the identical signature.
+	 */
+	@Test(timeout = 60000)
+	public void constantRepeatedDeltaSourceAndTargetDisambiguate() {
+		PackedCollection data = pack(5.0, 3.0, 7.0, 10.0).reshape(2, 2).traverse(1);
+		PackedCollection target = new PackedCollection(shape(4)).randFill();
+
+		ConstantRepeatedDeltaComputation maxDelta =
+				new ConstantRepeatedDeltaComputation(new IndexOfMaxComputation(cp(data)), cp(target));
+		ConstantRepeatedDeltaComputation minDelta =
+				new ConstantRepeatedDeltaComputation(new IndexOfMinComputation(cp(data)), cp(target));
+
+		String maxSignature = maxDelta.signature();
+		log("indexOfMax delta signature = " + maxSignature);
+		assertNotNull("Delta should have a signature", maxSignature);
+		assertNotEquals(maxSignature, minDelta.signature());
+
+		assertEquals(maxSignature,
+				new ConstantRepeatedDeltaComputation(new IndexOfMaxComputation(cp(data)), cp(target)).signature());
+
+		PackedCollection targetPair = new PackedCollection(shape(2, 4)).randFill();
+		ConstantRepeatedDeltaComputation firstTargetDelta = new ConstantRepeatedDeltaComputation(
+				new IndexOfMaxComputation(cp(data)), cp(targetPair.range(shape(4), 0)));
+		ConstantRepeatedDeltaComputation secondTargetDelta = new ConstantRepeatedDeltaComputation(
+				new IndexOfMaxComputation(cp(data)), cp(targetPair.range(shape(4), 4)));
+		assertNotEquals(firstTargetDelta.signature(), secondTargetDelta.signature());
+	}
+
+	/**
+	 * Verifies that a {@link TraversableDeltaComputation} includes both the expression it
+	 * differentiates and the target it differentiates with respect to in its signature. The
+	 * expression is an arbitrary function that cannot sign itself, and the target is not an input,
+	 * so neither reaches the inherited signature (only the target shape does). This covers the two
+	 * candidate collisions behind the delta's instruction-cache gap: the deltas of one expression
+	 * with respect to two distinct same-shape targets (as produced by
+	 * {@code TraversableExpressionComputation.deltaMatrix}), and the deltas of two different
+	 * aggregations over the same inputs (as produced by the non-transitive fallback of
+	 * {@code AggregatedProducerComputation.deltaMatrix}, which names every such delta
+	 * {@code "delta"}). Rebuilding the identical delta reproduces the identical signature.
+	 */
+	@Test(timeout = 60000)
+	public void traversableDeltaExpressionAndTargetDisambiguate() {
+		int n = 4;
+		PackedCollection source = new PackedCollection(shape(n)).randFill();
+		PackedCollection targetPair = new PackedCollection(shape(2, n)).randFill();
+		PackedCollection targetA = targetPair.range(shape(n), 0);
+		PackedCollection targetB = targetPair.range(shape(n), n);
+
+		Function<TraversableExpression[], CollectionExpression> expression =
+				args -> CollectionExpression.create(shape(n), idx -> args[1].getValueAt(idx));
+		String expressionSignature = "identity";
+
+		TraversableDeltaComputation deltaTargetA = TraversableDeltaComputation.create(
+				"\u03B4x", shape(n), shape(n), expression, expressionSignature, cp(targetA), cp(source));
+		TraversableDeltaComputation deltaTargetB = TraversableDeltaComputation.create(
+				"\u03B4x", shape(n), shape(n), expression, expressionSignature, cp(targetB), cp(source));
+
+		String signatureA = deltaTargetA.signature();
+		log("delta target A signature = " + signatureA);
+		assertNotNull("Delta should have a signature", signatureA);
+		assertNotEquals(signatureA, deltaTargetB.signature());
+
+		assertEquals(signatureA, TraversableDeltaComputation.create(
+				"\u03B4x", shape(n), shape(n), expression, expressionSignature,
+				cp(targetA), cp(source)).signature());
+
+		CollectionSumComputation sumSource = new CollectionSumComputation(cp(source));
+		CollectionMaxComputation maxSource = new CollectionMaxComputation(cp(source));
+
+		TraversableDeltaComputation sumDelta = TraversableDeltaComputation.create(
+				"delta", shape(1), shape(n),
+				args -> CollectionExpression.create(shape(1), sumSource::getValueAt),
+				sumSource.signature(), cp(targetA), cp(source));
+		TraversableDeltaComputation maxDelta = TraversableDeltaComputation.create(
+				"delta", shape(1), shape(n),
+				args -> CollectionExpression.create(shape(1), maxSource::getValueAt),
+				maxSource.signature(), cp(targetA), cp(source));
+
+		String sumDeltaSignature = sumDelta.signature();
+		log("sum delta signature = " + sumDeltaSignature);
+		assertNotNull("Delta of a sum should have a signature", sumDeltaSignature);
+		assertNotEquals(sumDeltaSignature, maxDelta.signature());
 	}
 }
