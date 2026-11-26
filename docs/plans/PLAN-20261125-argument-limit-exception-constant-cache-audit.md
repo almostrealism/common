@@ -104,6 +104,28 @@ In scope:
    nothing to fix — the likely outcome given the first pass — record the enumeration and the
    reasoning in the PR description so a reviewer can see the contract was checked, not skipped.
 
+   **Audit verdict (nothing needed fixing).** Every enumerated implementation is safe because it
+   either returns the `false` default, delegates to another `isConstant()`, or conjoins over its
+   non-destination inputs — so none can report constant unless a leaf it reaches does, and no leaf
+   forces `true`:
+
+   | Implementation | Constant when | Verdict |
+   | --- | --- | --- |
+   | `Computable.isConstant()` | never (default) | safe |
+   | `Provider` / `FixedEvaluable` | inherit the `false` default; not overridden | safe |
+   | `AcceleratedComputationEvaluable` | `getComputation().isConstant()` | safe (delegate) |
+   | `HardwareEvaluable` | `getKernel().getValue().isConstant()` | safe (delegate) |
+   | `ReshapeProducer` | delegate `isConstant()` | safe (delegate) |
+   | `TraversableExpressionComputation` | all inputs after the destination are constant | safe (conjunction) |
+   | `CollectionProducerComputation` inner operator | `op.isConstant()` | safe (delegate) |
+   | `CollectionProducerComputation.IsolatedProcess` | `op.isConstant()` | safe (delegate) |
+
+   The risky leaves are the ones that wrap a `PackedCollection` directly (`Provider` /
+   `FixedEvaluable`); both inherit the `false` default, so a mutable-memory argument is never cached
+   as constant. `ConstantArgumentCacheAuditTest` pins this: the leaves report non-constant, and
+   non-constancy propagates through a computation, its compiled evaluable, and an `IsolatedProcess`
+   wrapper.
+
 Out of scope (name as dependencies / follow-ups, do not widen this change):
 
 - Re-deriving or changing the fold policy, the aggregate copy machinery, `getArgumentBound`, or the
