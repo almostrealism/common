@@ -185,6 +185,48 @@ class NearDuplicateMergeTests(unittest.TestCase):
         finally:
             store_mod.MERGE_NEAR_DUPLICATES = original
 
+    def test_per_call_opt_out_preserves_duplicates(self):
+        # A caller (e.g. a bulk import/restore) that passes
+        # merge_near_duplicates=False must keep every entry even while the
+        # global merge default is on, so historical notes are never silently
+        # dropped by the loop-collapse heuristic.
+        original = store_mod.MERGE_NEAR_DUPLICATES
+        store_mod.MERGE_NEAR_DUPLICATES = True
+        try:
+            first = self.store.store(
+                content="alpha beta review CLEAN", namespace="bugs",
+                repo_url=_REPO, branch=_BRANCH, merge_near_duplicates=False)
+            second = self.store.store(
+                content="alpha beta review CLEAN", namespace="bugs",
+                repo_url=_REPO, branch=_BRANCH, merge_near_duplicates=False)
+            self.assertEqual(first["merged_count"], 1)
+            self.assertEqual(second["merged_count"], 1)
+            self.assertEqual(second["merged_ids"], [])
+            remaining = self.store.search_by_branch(
+                repo_url=_REPO, branch=_BRANCH, namespace="bugs")
+            self.assertEqual(len(remaining), 2)
+        finally:
+            store_mod.MERGE_NEAR_DUPLICATES = original
+
+    def test_per_call_merge_opt_in_overrides_disabled_global(self):
+        # The parameter also forces merging on when the global default is off,
+        # confirming None-vs-explicit resolution rather than an OR of the two.
+        original = store_mod.MERGE_NEAR_DUPLICATES
+        store_mod.MERGE_NEAR_DUPLICATES = False
+        try:
+            self.store.store(
+                content="alpha beta review CLEAN", namespace="bugs",
+                repo_url=_REPO, branch=_BRANCH, merge_near_duplicates=True)
+            second = self.store.store(
+                content="alpha beta review CLEAN", namespace="bugs",
+                repo_url=_REPO, branch=_BRANCH, merge_near_duplicates=True)
+            self.assertEqual(second["merged_count"], 2)
+            self.assertEqual(
+                len(self.store.search_by_branch(
+                    repo_url=_REPO, branch=_BRANCH, namespace="bugs")), 1)
+        finally:
+            store_mod.MERGE_NEAR_DUPLICATES = original
+
 
 if __name__ == "__main__":
     unittest.main()

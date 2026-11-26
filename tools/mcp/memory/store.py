@@ -360,6 +360,7 @@ class MemoryStore:
         source: Optional[str] = None,
         repo_url: Optional[str] = None,
         branch: Optional[str] = None,
+        merge_near_duplicates: Optional[bool] = None,
     ) -> dict:
         """Store a new memory entry.
 
@@ -370,6 +371,13 @@ class MemoryStore:
             source: Optional source identifier.
             repo_url: Optional repository URL to associate with this memory.
             branch: Optional branch name to associate with this memory.
+            merge_near_duplicates: Whether to collapse this arrival into an
+                existing near-identical note on the same repo+branch, keeping
+                the newest and deleting the older. ``None`` (default) defers to
+                the :data:`MERGE_NEAR_DUPLICATES` global. A caller that must
+                preserve every entry it stores — a bulk import or restore, where
+                merging would silently drop historical entries — passes ``False``
+                to opt out regardless of the global setting.
 
         Returns:
             Dictionary with the created entry's fields.
@@ -394,11 +402,16 @@ class MemoryStore:
         # BEFORE the new entry is indexed, so the new (newest) note is never
         # compared against itself. Scoped to repo+branch so a loop on one branch
         # never collapses a note from another.
+        merge_enabled = (
+            MERGE_NEAR_DUPLICATES
+            if merge_near_duplicates is None
+            else merge_near_duplicates
+        )
         duplicates = []
         vector = None
         if semantic:
             vector = self._embedder.embed(content)
-            if MERGE_NEAR_DUPLICATES and repo_url and branch:
+            if merge_enabled and repo_url and branch:
                 duplicates = self._find_near_duplicates(
                     namespace, vector, repo_url, branch)
 
