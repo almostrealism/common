@@ -67,14 +67,17 @@ def _uploaded_artifacts(job):
 class RemediationJobConditionTests(unittest.TestCase):
     """The static wiring in analysis.yaml and auto-resolve-submit.yaml."""
 
-    def test_auto_review_is_not_pinned_to_the_first_attempt(self):
-        """A validate run reaches attempt 2+ only when the infra retry gate
-        re-ran a gate that failed on infrastructure. If auto-review were pinned
-        to attempt 1 it would skip that later attempt, so a validate run whose
-        attempt 1 suppressed its dispatch as infrastructure would be stranded
-        when a later attempt passes — no review agent, no test run. auto-review
-        must therefore run on any attempt (the single-handoff guard, below,
-        keeps it from starting a second review round)."""
+    def test_auto_review_runs_on_the_first_attempt_only(self):
+        """Auto-review hands off on the first attempt only — but no longer by
+        pinning its ``if:`` to attempt 1. A validate run reaches attempt 2+ only
+        when the infra retry gate re-ran a gate that failed on infrastructure;
+        pinning to attempt 1 would skip that later attempt, stranding a validate
+        run whose attempt 1 suppressed its dispatch as infrastructure (no review
+        agent, no test run) when a later attempt passes. So the job now runs on
+        any attempt and the single-handoff guard (below) keeps it from starting
+        a second review round, leaving the same net effect: one handoff, on the
+        first attempt that produces one. This asserts the pin is gone; the guard
+        tests below assert the handoff still happens at most once."""
         self.assertNotIn("fromJSON(github.run_attempt) == 1",
                          _condition(_jobs()["auto-review"]))
 
