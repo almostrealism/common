@@ -672,9 +672,7 @@ public class SequentialBlock implements Block, Learning, Tracking, LayerRoutingF
 
 				@Override
 				public void setReceptor(Receptor<PackedCollection> r) {
-					if (cellWarnings && SequentialBlock.this.downstream != null) {
-						warn("Replacing receptor");
-					}
+					Cell.warnReceptorReplacement(SequentialBlock.this, SequentialBlock.this.downstream);
 
 					Block last = lastBlock();
 					if (last != null) {
@@ -727,9 +725,7 @@ public class SequentialBlock implements Block, Learning, Tracking, LayerRoutingF
 
 				@Override
 				public void setReceptor(Receptor<PackedCollection> r) {
-					if (cellWarnings && SequentialBlock.this.upstream != null) {
-						warn("Replacing receptor");
-					}
+					Cell.warnReceptorReplacement(SequentialBlock.this, SequentialBlock.this.upstream);
 
 					Block first = firstBlock();
 					if (first == null) {
