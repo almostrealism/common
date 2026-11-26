@@ -123,9 +123,12 @@ In `compute/algebra`:
 Grounded in the code as it is:
 
 - **`CompressedRowTraversalOrdering`** (`compute/algebra`, `org.almostrealism.collect`) gains
-  `transpose()`. It already reads its index arrays back to the host for `getMaxRowLength()`
-  and `getLength()` (`rowOffsets.getPositions()` / `getColumns()` decoded via
-  `SplitIndexTraversalOrdering`), so computing the column histogram, its prefix sums, and the
+  `transpose()`. It already reads its row offsets back to the host through the
+  `SplitIndexTraversalOrdering` that holds them — `rowOffsets.getPositions()` for
+  `getMaxRowLength()` and `rowOffsets.getPosition(getRows())` for `getLength()`. Reading the
+  columns back the same way (the `columns` ordering's `getPositions()`, decoding the split
+  lanes that `getColumns()` exposes) gives the column of every entry, which is a new host read
+  this method adds; with it, computing the column histogram, its prefix sums, and the
   `rowIndices`/`perm` arrays is a host-side counting sort over those arrays — the same kind of
   one-time host index construction that `of(int, int[], int[])` already performs. The new
   ordering is built with the existing `of(cols' = rows, int[] colOffsets, int[] rowIndices)`
@@ -186,6 +189,13 @@ A reviewer confirms:
    both transposes and multiplies. Option (a) is more composable (`matmul` stays the single
    product entry point) and keeps the index logic on the ordering; recommended unless review
    prefers a single fused call. Either way, no new utility/exporter class is introduced.
+   **Naming constraint:** `CollectionProducer::transpose` already exists and, on a sparse
+   collection, produces the *dense/logical* transpose by reading every logical element through
+   the ordering — the densifying path this task avoids, and the one pinned by the existing
+   `CompressedRowOrderedComputationTests.transpose()`. The structural sparse transpose must
+   therefore be a distinct entry point, not a redefinition of `transpose()`, so that this
+   pinned behaviour is unchanged. (In the success criteria above, `transpose(A)` denotes the
+   new structural transpose and `transpose(denseForm(A))` the existing logical one.)
 2. **Lazy vs. materialised entries.** The entry reorder could stay a lazy gather producer or
    be materialised once at transpose-construction time (like `of(...)` uploads its arrays).
    Materialising keeps the transposed matrix a concrete entry-packed `PackedCollection`, which
