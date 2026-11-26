@@ -291,4 +291,33 @@ public class ParallelismStrategyQueryTests extends TestSuiteBase {
 		Assert.assertEquals(List.of(false, false), result.childIsolation());
 		assertTrue(parent.outputSizeQueries > 0);
 	}
+
+	/**
+	 * When the decision reaches the scores, the target strategy still processes the children
+	 * for analysis exactly once, and reads the parallelism and output size of each child
+	 * exactly once, reusing the parallelism it read for the count tests in the scores.
+	 */
+	@Test(timeout = 10000)
+	public void targetProcessesChildrenOnceOnTheScorePath() {
+		Stage a = Stage.of("a", 1000, 1000);
+		Stage b = Stage.of("b", 10, 10);
+		Stage parent = Stage.of("parent", 10, 10, a, b);
+
+		int[] applications = new int[1];
+		Function<Collection<Process<?, ?>>, Stream<Process<?, ?>>> processor = c -> {
+			applications[0]++;
+			return c.stream();
+		};
+
+		Stage result = (Stage) new ParallelismTargetOptimization()
+				.optimize(ProcessContext.base(), parent, parent.getChildren(), processor);
+
+		Assert.assertEquals(List.of(true, true), result.childIsolation());
+		Assert.assertEquals(1, applications[0]);
+		Assert.assertEquals(1, a.parallelismQueries);
+		Assert.assertEquals(1, b.parallelismQueries);
+		Assert.assertEquals(1, a.outputSizeQueries);
+		Assert.assertEquals(1, b.outputSizeQueries);
+		Assert.assertEquals(1, parent.outputSizeQueries);
+	}
 }

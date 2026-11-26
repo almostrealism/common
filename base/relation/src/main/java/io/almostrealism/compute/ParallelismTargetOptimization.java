@@ -17,7 +17,9 @@
 package io.almostrealism.compute;
 
 import java.util.Collection;
+import java.util.List;
 import java.util.function.Function;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 /**
@@ -150,7 +152,8 @@ public class ParallelismTargetOptimization implements ProcessOptimizationStrateg
 
 		ParallelProcessContext context = ParallelProcessContext.of(ctx);
 
-		long counts[] = childProcessor.apply(children).mapToLong(ParallelProcess::parallelism).toArray();
+		List<P> processed = childProcessor.apply(children).collect(Collectors.toList());
+		long counts[] = processed.stream().mapToLong(ParallelProcess::parallelism).toArray();
 		long cn = ParallelProcess.parallelism(parent); // Countable.countLong(parent);
 		long p = counts.length;
 
@@ -174,7 +177,7 @@ public class ParallelismTargetOptimization implements ProcessOptimizationStrateg
 		} else if (enableNarrowMax && max > targetCount && context.getCountLong() >= minCount) {
 			isolate = false;
 		} else {
-			isolate = isIsolationScoreFavored(parent, cn, childProcessor.apply(children));
+			isolate = isIsolationScoreFavored(parent, cn, processed, counts);
 		}
 
 		// TODO  It is preferable to return null if no isolation,
@@ -188,16 +191,25 @@ public class ParallelismTargetOptimization implements ProcessOptimizationStrateg
 	 * children inline with the parent against the best score among the children, the
 	 * last test {@link #optimize} applies. The scores are only computed when every
 	 * cheaper test has left isolation open, since each one reads the parallelism and
-	 * output size of a process.
+	 * output size of a process. The parallelism of each child has already been read by
+	 * {@link #optimize}, so only the output size of each child is read here.
 	 *
 	 * @param parent      the parent process being optimized
 	 * @param parallelism the parallelism of the parent
 	 * @param children    the children, as presented for analysis
+	 * @param counts      the parallelism of each child, in the order of {@code children}
 	 * @return {@code true} if isolating the children scores better
 	 */
-	protected boolean isIsolationScoreFavored(Process<?, ?> parent, long parallelism, Stream<?> children) {
+	protected boolean isIsolationScoreFavored(Process<?, ?> parent, long parallelism,
+											  List<? extends Process<?, ?>> children, long[] counts) {
 		double currentScore = ParallelismSettings.score(parallelism, Process.outputSize(parent));
-		double altScore = ParallelismSettings.scores(children).max().orElse(Integer.MIN_VALUE);
+
+		double altScore = Integer.MIN_VALUE;
+		for (int i = 0; i < counts.length; i++) {
+			double score = ParallelismSettings.score(counts[i], Process.outputSize(children.get(i)));
+			// TODO(review): a NaN score after the first is skipped here, where DoubleStream.max() propagated it.
+			if (i == 0 || score > altScore) altScore = score;
+		}
 
 		double min = Math.min(currentScore, altScore);
 		if (min < 0) {
