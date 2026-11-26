@@ -292,6 +292,50 @@ class LabelChangesTest(unittest.TestCase):
                                                ready=True)
             self.assertNotIn(labels.READY_TO_LAUNCH, add, state)
 
+    def test_ready_to_launch_replaces_ready_for_review(self):
+        # On the settled ready-for-review stage the marker takes that label's
+        # place: the wanted set is {READY_TO_LAUNCH}, never both green labels.
+        add, remove = labels.label_changes([], labels.READY, False, ready=True)
+        self.assertEqual((add, remove), ([labels.READY_TO_LAUNCH], []))
+
+    def test_ready_for_review_stays_when_not_ready_to_launch(self):
+        # A settled PR that is not a ready-to-launch draft plan keeps
+        # ci: ready for review exactly as before.
+        self.assertEqual(
+            labels.label_changes([], labels.READY, False, ready=False),
+            ([labels.READY], []))
+        self.assertEqual(
+            labels.label_changes([labels.READY], labels.READY, False,
+                                 ready=False), ([], []))
+
+    def test_a_pr_carrying_both_green_labels_loses_ready_for_review(self):
+        # A pull request that already shows both gets ci: ready for review
+        # removed so only ci: ready to launch remains.
+        add, remove = labels.label_changes(
+            [labels.READY, labels.READY_TO_LAUNCH], labels.READY, False,
+            ready=True)
+        self.assertEqual((add, remove), ([], [labels.READY]))
+
+    def test_the_marker_sits_beside_review_limit(self):
+        # ci: review limit is a settled stage the marker joins, as before.
+        add, remove = labels.label_changes([labels.REVIEW_LIMIT],
+                                           labels.REVIEW_LIMIT, False,
+                                           ready=True)
+        self.assertEqual((add, remove), ([labels.READY_TO_LAUNCH], []))
+
+    def test_the_two_green_labels_are_never_both_wanted(self):
+        # The owner's rule, across every stage and both markers: a pull request
+        # is never wanted to carry ci: ready for review and ci: ready to launch
+        # at once.
+        for stage in labels.LABELS:
+            for stalled in (False, True):
+                for ready in (False, True):
+                    wanted = labels.wanted_labels(stage, stalled, ready)
+                    self.assertFalse(
+                        labels.READY in wanted
+                        and labels.READY_TO_LAUNCH in wanted,
+                        (stage, stalled, ready))
+
 
 class ReadyToLaunchTest(unittest.TestCase):
     """Each condition of the ready-to-launch marker, on and off. It mirrors the
