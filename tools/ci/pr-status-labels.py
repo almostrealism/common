@@ -442,7 +442,8 @@ def ready_to_launch(facts, repo, config=DEFAULTS):
         return False
     files = facts.get("files") or []
     names = [item.get("filename", "") for item in files]
-    if not names or not all(name.startswith(config.docs_dir) for name in names):
+    docs_prefix = config.docs_dir.rstrip("/") + "/"
+    if not names or not all(name.startswith(docs_prefix) for name in names):
         return False
     plans_prefix = config.plans_dir.rstrip("/") + "/"
     exclude = re.compile(config.plan_exclude_pattern) \
@@ -584,7 +585,11 @@ def gather(client, pr, config=DEFAULTS):
         # past 100 check runs, and the newest gate may be on a later page.
         "check_runs": client.get_all(
             "commits/%s/check-runs" % sha, "check_runs"),
-        "capped": capped_at(client.get_all("commits/%s/statuses" % sha), config),
+        # Only a pipeline with a cap-status convention has a status to read;
+        # without one the request is skipped, so a consumer needs statuses:read
+        # only when it configures the cap.
+        "capped": capped_at(client.get_all("commits/%s/statuses" % sha), config)
+        if config.cap_status else None,
     }
     validate = facts["validate_run"]
     if validate and validate.get("status") == "completed":

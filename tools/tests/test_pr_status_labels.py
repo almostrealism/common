@@ -264,6 +264,15 @@ class LabelChangesTest(unittest.TestCase):
                          sorted([labels.STALLED, labels.READY_TO_LAUNCH]))
         self.assertEqual(remove, [])
 
+    def test_ready_to_launch_replaces_ready_for_review(self):
+        # The settled stage where the marker takes the label's place: a draft
+        # plan currently ci: ready for review that is ready to launch shows the
+        # marker alone, so ci: ready for review is removed as the marker is added.
+        add, remove = labels.label_changes([labels.READY], labels.READY, False,
+                                           ready=True)
+        self.assertEqual((add, remove),
+                         ([labels.READY_TO_LAUNCH], [labels.READY]))
+
     def test_ready_to_launch_is_removed_when_no_longer_ready(self):
         add, remove = labels.label_changes(
             [labels.FULL_TESTS, labels.READY_TO_LAUNCH], labels.FULL_TESTS,
@@ -352,6 +361,16 @@ class ReadyToLaunchTest(unittest.TestCase):
         self.assertTrue(self.ready(files=[
             changed("docs/guide.md", "modified"),
             changed("docs/plans/sub/PLAN-y.md")]))
+
+    def test_docs_dir_without_a_trailing_slash_is_a_directory_boundary(self):
+        # A consumer passing "docs" (no slash) must not accept a sibling such
+        # as "docs-other/": a change there is outside the docs directory and
+        # blocks the marker, exactly as the normalized plans_dir does.
+        config = dataclasses.replace(labels.DEFAULTS, docs_dir="docs")
+        facts = {"pr": plan_pr(),
+                 "files": [changed("docs/plans/PLAN-x.md"),
+                           changed("docs-other/thing.py", "modified")]}
+        self.assertFalse(labels.ready_to_launch(facts, self.REPO, config))
 
     def test_the_marker_is_the_same_green_as_ready_for_review(self):
         self.assertEqual(labels.LABELS[labels.READY_TO_LAUNCH][0],
@@ -666,7 +685,7 @@ class WorkflowTest(unittest.TestCase):
         self.assertEqual(self.job["uses"],
                          "./.github/workflows/pr-status-labels-run.yaml")
 
-    def test_runs_from_the_default_branch(self):
+    def test_checks_out_the_default_branch(self):
         self.assertEqual(self.job["with"]["framework-ref"],
                          "${{ github.event.repository.default_branch }}")
 
@@ -847,6 +866,19 @@ class GeneralizationTest(unittest.TestCase):
              "test_run": run("deployment")},
             NOW, self.GENERIC)
         self.assertEqual(state[0], labels.READY)
+
+    def test_an_empty_cap_status_skips_the_statuses_request(self):
+        client = FakeClient([
+            ("pulls/7", {"number": 7}),
+            ("actions/runs?", {"workflow_runs": [dict(run("pull_request"),
+                                                      id=21)]}),
+            ("commits/abc/check-runs", {"check_runs": []}),
+            ("actions/runs/21/jobs", {"jobs": []}),
+        ])
+        facts = labels.gather(client, PR, self.GENERIC)
+        self.assertIsNone(facts["capped"])
+        self.assertNotIn("commits/abc/statuses?per_page=100&page=1",
+                         client.requested)
 
     def test_an_empty_cap_status_is_never_matched(self):
         self.assertIsNone(labels.capped_at(
