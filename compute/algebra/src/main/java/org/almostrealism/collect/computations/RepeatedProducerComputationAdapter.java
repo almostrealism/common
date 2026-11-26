@@ -23,6 +23,7 @@ import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
+import io.almostrealism.uml.Signature;
 import org.almostrealism.collect.PackedCollection;
 
 import java.util.List;
@@ -191,6 +192,31 @@ public class RepeatedProducerComputationAdapter extends RepeatedProducerComputat
 	public RepeatedProducerComputationAdapter generate(List<Process<?, ?>> children) {
 		return new RepeatedProducerComputationAdapter(getShape(), expression,
 				children.stream().skip(1).toArray(Producer[]::new));
+	}
+
+	/**
+	 * Extends the {@link RepeatedProducerComputation#signature() class-identified} signature with
+	 * the signature of the adapted {@link TraversableExpression}, which supplies this adapter's
+	 * loop body through {@link #getExpression(TraversableExpression[], Expression, Expression)}.
+	 * The concrete class is the same for every adapter, so without the expression two adapters
+	 * that share a shape and inputs but evaluate different expressions — {@code add(a, b)} versus
+	 * {@code subtract(a, b)}, say — would share a signature and collide in the signature-keyed
+	 * instruction cache. The expression is a {@link TraversableExpression}; when it does not
+	 * provide a signature (an arbitrary lambda, for example), this signature is {@code null} so
+	 * the adapter opts out of reuse rather than claim a structural identity it cannot back up.
+	 *
+	 * @return the signature including the adapted expression, or {@code null} when the base
+	 *         signature or the expression's signature is unavailable
+	 */
+	@Override
+	public String signature() {
+		String signature = super.signature();
+		if (signature == null) return null;
+
+		String expressionSignature = Signature.of(expression);
+		if (expressionSignature == null) return null;
+
+		return signature + "{expression:" + expressionSignature + "}";
 	}
 
 	/**

@@ -194,7 +194,7 @@ public abstract class TraversableExpressionComputation
 	protected CollectionProducer deltaMatrix(Producer<?> target) {
 		return TraversableDeltaComputation.create(
 				"\u03B4" + getName(), getShape(), shape(target),
-				this::getExpression, target,
+				this::getExpression, signature(), target,
 				getInputs().stream().skip(1).toArray(Producer[]::new));
 	}
 
