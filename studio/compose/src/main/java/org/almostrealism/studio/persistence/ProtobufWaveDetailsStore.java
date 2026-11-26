@@ -22,8 +22,8 @@ import org.almostrealism.audio.data.WaveDetailsStore;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.persist.index.DiskStore;
+import org.almostrealism.persist.index.HnswIndex;
 import org.almostrealism.persist.index.ProtobufDiskStore;
-import org.almostrealism.persist.index.SearchResult;
 
 import java.io.File;
 import java.io.IOException;
@@ -194,10 +194,11 @@ public class ProtobufWaveDetailsStore implements WaveDetailsStore, ConsoleFeatur
 
 	@Override
 	public List<NeighborResult> searchNeighbors(PackedCollection queryVector, int topK) {
-		List<SearchResult<Audio.WaveDetailData>> results = diskStore.search(queryVector, topK);
+		// Only identifiers and scores are reported, so no record is loaded
+		List<HnswIndex.IdScore> results = diskStore.searchIdentifiers(queryVector, topK);
 		List<NeighborResult> neighbors = new ArrayList<>(results.size());
-		for (SearchResult<Audio.WaveDetailData> result : results) {
-			neighbors.add(new NeighborResult(result.getId(), result.getSimilarity()));
+		for (HnswIndex.IdScore result : results) {
+			neighbors.add(new NeighborResult(result.id, result.score));
 		}
 		return neighbors;
 	}
