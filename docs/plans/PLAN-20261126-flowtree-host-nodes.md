@@ -1,8 +1,8 @@
 ---
 status: proposed
-tracker_task: c2e54a19-0204-46b6-9500-dd8fdf8826bd
-title: Run FlowTree on the host and make containers a kind of Node, not a place to put a Server
 created: 2026-11-26
+closed:
+tracker: [c2e54a19-0204-46b6-9500-dd8fdf8826bd]
 ---
 
 # FlowTree on the Host: Containers as a Node Kind
@@ -41,8 +41,8 @@ in the container that speaks the existing wire format.**
 `flowtree/CLAUDE.md` opens with "the job is the source of truth for the workload":
 every property that describes what a job does already lives on `CodingAgentJob`,
 travels over the wire, and is visible in the job record. The job *already*
-serializes — `Node.addFailedJob(j.toWire())` (`Node.java:430`) encodes a job to a
-String and `Server.instantiateJobClass(String)` (`Node.java:1063`) decodes it. A
+serializes — `Node.addFailedJob(j.toWire())` (`Node.java`) encodes a job to a
+String and `Server.instantiateJobClass(String)` decodes it. A
 container Node therefore needs no second description of the work: it encodes the
 `Job` it dequeued with the same codec path (`CodingAgentJobCodec`,
 `GitManagedJobCodec`) and hands the bytes to a worker in the container.
@@ -51,9 +51,9 @@ The container runs a **new thin main — `io.flowtree.jobs.CodingAgentJobWorker`
 NOT a `Server`. It has no `NodeGroup`, no peer connections, no relay. It reads one
 encoded job (from a file or stdin), decodes it via `Server.instantiateJobClass`,
 wires it to an `OutputServer`/output consumer exactly as `Node.prepareJob`
-(`Node.java:1077`) does, calls `job.run()`, streams events to stdout, and exits
+(`Node.java`) does, calls `job.run()`, streams events to stdout, and exits
 with a status that encodes success/failure. This reuses the **entire** existing
-execution path — `GitManagedJob.run()` (`GitManagedJob.java:443`), the
+execution path — `GitManagedJob.run()` (`GitManagedJob.java`), the
 `AgentRunner` (`ClaudeCodeRunner`), `RestartGovernor`, the inactivity watchdog —
 unchanged, inside the container.
 
@@ -66,18 +66,28 @@ type, and duplicates logic the codec already owns. It is exactly the shortcut
 image's classpath, because the worker decodes and runs it the same way a native
 Node's worker thread does.
 
+**Dependency on in-progress serialization work.** This decision reuses whatever
+codec a job already carries rather than defining a new container wire format, so it
+composes with the separate, in-progress *pluggable job serialization* work
+(`docs/plans/PLAN-20261115-pluggable-job-serialization.md`): that effort has landed
+a codec SPI (the string codec stays the default) and proposes an opt-in protobuf
+format for coding-agent jobs. A container Node inherits whichever codec its job uses
+with no change here — but both efforts touch the encode/decode path, so the
+implementer of Stage 2 should confirm the codec SPI is the stable entry point before
+building `CodingAgentJobWorker` on top of `Server.instantiateJobClass` directly.
+
 ### Decision 2 — Container lifetime — **one container per job (ephemeral)**
 
 **Recommendation: one fresh container per job.**
 
 The current isolation guarantees are all per-container-start: each agent clones the
-repo onto its own overlay filesystem (`entrypoint.sh:98-100`,
-`docker-compose.yml:47-49`), gets an isolated Maven install space
-(`install.sh:157-167`, `MavenInstallSpace`), and its own transcript sink. A
+repo onto its own overlay filesystem (`entrypoint.sh`,
+`docker-compose.yml`), gets an isolated Maven install space
+(`install.sh`, `MavenInstallSpace`), and its own transcript sink. A
 long-lived container that runs jobs in sequence would have to *reset* all of that
 between jobs, and a missed reset is a silent cross-job data leak — precisely the
 April 2026 collision class documented in the `entrypoint.sh` guard
-(`entrypoint.sh:22-45`). Ephemeral containers get the same guarantees FlowTree has
+(`entrypoint.sh`). Ephemeral containers get the same guarantees FlowTree has
 today, by construction, with no reset logic to get wrong.
 
 **How per-job state is provided** (this is what Decision 2 settles):
@@ -108,7 +118,7 @@ not the implementation) favour the subtype: a Docker Node *is* a `Node`. Introdu
 a single protected seam the worker thread calls instead of `j.run()`:
 
 ```
-// Node.java worker thread, today (line 419):
+// Node.java worker thread, today:
 j.setExecutorService(pool);
 j.run();
 
@@ -124,9 +134,9 @@ queue, `satisfies`, relay, peer connections, status — is inherited unchanged, 
 container Node takes part in routing and relay exactly as a native Node does
 (task intent #4).
 
-`NodeGroup` stops calling `new Node(this, i, ...)` directly (`NodeGroup.java:242`)
+`NodeGroup` stops calling `new Node(this, i, ...)` directly (`NodeGroup.java`)
 and instead asks a small factory to build the Node for each typed configuration
-entry (`kind -> Node`). The relay Node (`NodeGroup.java:249`) stays a plain `Node`
+entry (`kind -> Node`). The relay Node (`NodeGroup.java`) stays a plain `Node`
 with `role=relay`.
 
 A launcher *object* a Node is configured with is rejected: it would make a Docker
@@ -139,14 +149,14 @@ split of behaviour away from the type that owns it.
 entries in the existing properties file, each carrying its own kind, labels, and
 resource overrides.**
 
-Today `NodeGroup` reads a single `nodes.initial` count (`NodeGroup.java:229`) and
+Today `NodeGroup` reads a single `nodes.initial` count (`NodeGroup.java`) and
 builds homogeneous Nodes, and `NodeGroup.setLabel` broadcasts one label set to
-*every* child Node (`NodeGroup.java:684-693`). That broadcast is the specific thing
+*every* child Node (`NodeGroup.java`). That broadcast is the specific thing
 that makes a mixed-kind Server impossible: a Server holding a macOS-native Node and
 Linux Docker Nodes cannot give them all `platform=linux`.
 
 New format (additive; parsed by `NodeGroupNodeConfig`, which already owns the
-`nodes.*` dispatch table, `NodeGroupNodeConfig.java:101`):
+`nodes.*` dispatch table, `NodeGroupNodeConfig.java`):
 
 ```
 # Typed node list. Index is the node id.
@@ -171,9 +181,9 @@ nodes.2.labels.platform=linux
   the host. The native Node's `hostname` label continues to come from
   `AutomaticLabel.HOSTNAME`.
 - **Routing is already per-Node:** `findNodeForJob` iterates child Nodes and checks
-  each one's own `satisfies(requirements)` (`NodeGroupMetrics.java:249-269`), and the
+  each one's own `satisfies(requirements)` (`NodeGroupMetrics.java`), and the
   worker relays a mismatched job to the parent for re-routing
-  (`Node.java:396-404`). So routing by `required_labels` keeps working per Node with
+  (`Node.java`). So routing by `required_labels` keeps working per Node with
   **no change to the routing code** — the only change is that each Node now carries
   distinct labels instead of inheriting the group's. This is the single most
   important reason the redesign is tractable.
@@ -184,7 +194,7 @@ not broadcast.
 
 ### Decision 5 — How the Server reaches the runtime — recommend CLI, host install default
 
-**Recommendation: drive Docker/Colima through their **CLIs** (`docker run`,
+**Recommendation: drive Docker/Colima through their CLIs (`docker run`,
 `docker kill`, `docker rm`; Colima via its Docker context), not the socket API, at
 least through Stage 4.** The host install is the **default** deployment.
 
@@ -212,15 +222,15 @@ cancellation becomes a container kill.
   stream and transcript capture are unchanged from a consumer's point of view.
 - **Inactivity:** the existing `AgentInactivityMonitor` /
   `AgentRunner.DEFAULT_INACTIVITY_TIMEOUT_MILLIS` (35 min stdout silence,
-  `AgentRunner.java:49`) runs **inside** the container (it is part of the job's own
+  `AgentRunner.java`) runs **inside** the container (it is part of the job's own
   `run()` path), so it already governs the agent subprocess. The Docker Node adds a
   coarser outer guard: if the **container process** emits no output for a longer
   bound, the Node `docker kill`s it — this catches a container that wedges below the
   worker (e.g. a hung clone before the agent starts).
-- **Cancellation:** today `Node.sendKill(task, relay)` (`Node.java:1116`) removes
+- **Cancellation:** today `Node.sendKill(task, relay)` (`Node.java`) removes
   *queued* jobs with that task id and broadcasts `Message.Kill`, but a job already
   running keeps running — the controller only marks the record `CANCELLED`
-  (`JobStatsStore.java:570-580`: "a cancelled job's agent keeps running"). For a
+  (`JobStatsStore.java`: "a cancelled job's agent keeps running"). For a
   Docker Node, `sendKill` must additionally `docker kill`/`docker rm` the container
   for the running task id, so cancellation actually reaches a containerized agent —
   a genuine *improvement* over today's native behaviour. The seam for this is a
@@ -241,7 +251,7 @@ Node is injected only the credentials its job needs, at launch, via the containe
 environment and read-only mounts — never a shared writable mount.
 
 Today each container gets tokens/keys from compose env and `:ro` binds
-(`docker-compose.yml:76-111`, `*vol-ssh`). In the new model the Server owns those
+(`docker-compose.yml`, `*vol-ssh`). In the new model the Server owns those
 values and passes per-container `-e`/`--mount ...:ro` flags when it `docker run`s a
 job, so a job in one container cannot read another's: distinct env, distinct
 `/agent-transcripts` subdir, no shared writable volume (the `entrypoint.sh` guard
@@ -250,7 +260,7 @@ containers).
 
 **Open questions:** where the Server reads the credential superset from (an
 operator env file like `macos/agent.env`, or the `ar-secrets` path); whether
-per-workstream env (`CodingAgentJob` per-workstream env vars, `CodingAgentJob.java:127`)
+per-workstream env (`CodingAgentJob` per-workstream env vars, `CodingAgentJob.java`)
 is injected by the Server or remains inside the job record.
 
 ### Decision 8 — Resource limits — recommend runtime-enforced per-Node limits
@@ -258,11 +268,11 @@ is injected by the Server or remains inside the job record.
 **Recommendation:** the Server enforces per-Node CPU/memory through the runtime,
 from the typed config, mirroring today's compose limits.
 
-`docker-compose.yml:71-75` sets `deploy.resources.limits` (`AGENT_CPUS`,
+`docker-compose.yml` sets `deploy.resources.limits` (`AGENT_CPUS`,
 `AGENT_MEMORY`). Those move to `nodes.<i>.cpus` / `nodes.<i>.memory` and become
 `docker run --cpus/--memory` flags. GPU maps to Node kind: the native macOS Node has
 Metal (the whole reason `macos/install.sh` exists — containers have no Metal,
-`install.sh:6-8`); Linux Docker Nodes get CUDA/OpenCL via `--gpus` when configured.
+`install.sh`); Linux Docker Nodes get CUDA/OpenCL via `--gpus` when configured.
 
 **Open questions:** whether the native Node needs any Server-side cap at all (it
 shares the host JVM); how GPU contention between several Docker Nodes on one host is
@@ -289,30 +299,30 @@ All paths verified against current `master`.
 
 | Concern | File / symbol | Current behaviour | Change |
 |---|---|---|---|
-| In-process execution | `flowtree/runtime/.../node/Node.java:419` (worker thread, `j.run()`) | Worker dequeues, checks `satisfies`, runs `j.run()` in-process | Replace `j.run()` with `launch(j)` seam; native body unchanged |
-| Node construction | `Node.java:368` (`Node(NodeGroup,int,int,int)`) | Single concrete class | Add `DockerNode`/`ColimaNode extends Node` overriding `launch` |
-| Homogeneous build | `NodeGroup.java:229,242-251` (`nodes.initial`, `new Node(...)` loop, relay Node) | Builds N identical Nodes from a count | Build from typed `nodes.<i>.*` entries via a kind→Node factory; keep count path for back-compat |
-| Label broadcast | `NodeGroup.java:684-693` (`setLabel` → all children) | One label set applied to every child | Per-Node labels from typed config; broadcast only on the legacy path |
-| Config dispatch | `NodeGroupNodeConfig.java:101` (`setParam`), `:256` (`applyNodeLabels`) | `nodes.*` keys and `nodes.labels.*` | Parse `nodes.<i>.kind/image/cpus/memory/labels.*` |
-| Routing | `NodeGroupMetrics.java:249-269` (`findNodeForJob`), `NodeGroup.java:1278-1282` (`routeJob`) | Least-active child whose own labels `satisfy` the job | **No change** — already per-Node; benefits directly from per-Node labels |
-| Relay on mismatch | `Node.java:396-404` | Worker relays a mismatched job to parent for re-routing | **No change** — correctly refuses to run a wrong-kind job |
-| Label matching | `NodeLabelMatcher.java:46`, `Node.satisfies` (`Node.java:355`) | `role=relay` never runs; empty reqs match any non-relay | **No change** |
-| Auto labels | `AutomaticLabel.java:50` (`PLATFORM`), `:71` (`HOSTNAME`) | Detects host platform/hostname, applied to group | Apply to the **native** Node only; container Nodes take platform from config |
-| Job execution path | `GitManagedJob.java:443` (`run()`, final) → `doWork()` → `AgentRunner` | Clone, lock, prepare, `doWork`, commit; agent via runner | **No change** — runs unchanged inside the container worker |
-| Serialization | `Node.java:430` (`toWire`), `:1063` (`instantiateJobClass`), `CodingAgentJobCodec`, `GitManagedJobCodec` | Encode/decode jobs over the wire and for failed-job retry | Reused to carry the job into the container |
-| Required labels | `CodingAgentJobFactory.java:1434` (`getRequiredLabels().forEach(job::setRequiredLabel)`) | Factory stamps required labels onto the job | **No change** — routing works per Node from these |
-| Inactivity | `AgentRunner.java:49` (`DEFAULT_INACTIVITY_TIMEOUT_MILLIS`), `AgentInactivityMonitor` | 35-min stdout-silence kill of the agent process tree | Runs inside the container worker; Node adds an outer container guard |
-| Cancellation | `Node.java:1116` (`sendKill`), `JobStatsStore.java:570-580` | Removes queued jobs, broadcasts `Message.Kill`; running agent keeps going | Docker Node also `docker kill`s the running task's container |
-| Container entry | `flowtree/runtime/agent/entrypoint.sh:160-163` (`exec java io.flowtree.Server`) | Container starts a full Server | New `CodingAgentJobWorker` main; no Server in the container (Stage 2/5) |
-| Pool definition | `flowtree/runtime/agent/docker-compose.yml:126-146` | Explicit `agent-N` services, each a Server | Retired; the host Server launches containers per job (Stage 5) |
+| In-process execution | `flowtree/runtime/.../node/Node.java` (worker thread, `j.run()`) | Worker dequeues, checks `satisfies`, runs `j.run()` in-process | Replace `j.run()` with `launch(j)` seam; native body unchanged |
+| Node construction | `Node.java` (`Node(NodeGroup,int,int,int)`) | Single concrete class | Add `DockerNode`/`ColimaNode extends Node` overriding `launch` |
+| Homogeneous build | `NodeGroup.java` (`nodes.initial`, `new Node(...)` loop, relay Node) | Builds N identical Nodes from a count | Build from typed `nodes.<i>.*` entries via a kind→Node factory; keep count path for back-compat |
+| Label broadcast | `NodeGroup.java` (`setLabel` → all children) | One label set applied to every child | Per-Node labels from typed config; broadcast only on the legacy path |
+| Config dispatch | `NodeGroupNodeConfig.java` (`setParam`, `applyNodeLabels`) | `nodes.*` keys and `nodes.labels.*` | Parse `nodes.<i>.kind/image/cpus/memory/labels.*` |
+| Routing | `NodeGroupMetrics.java` (`findNodeForJob`), `NodeGroup.java` (`routeJob`) | Least-active child whose own labels `satisfy` the job | **No change** — already per-Node; benefits directly from per-Node labels |
+| Relay on mismatch | `Node.java` | Worker relays a mismatched job to parent for re-routing | **No change** — correctly refuses to run a wrong-kind job |
+| Label matching | `NodeLabelMatcher.java`, `Node.satisfies` (`Node.java`) | `role=relay` never runs; empty reqs match any non-relay | **No change** |
+| Auto labels | `AutomaticLabel.java` (`PLATFORM`, `HOSTNAME`) | Detects host platform/hostname, applied to group | Apply to the **native** Node only; container Nodes take platform from config |
+| Job execution path | `GitManagedJob.java` (`run()`, final) → `doWork()` → `AgentRunner` | Clone, lock, prepare, `doWork`, commit; agent via runner | **No change** — runs unchanged inside the container worker |
+| Serialization | `Node.toWire`, `Server.instantiateJobClass`, `CodingAgentJobCodec`, `GitManagedJobCodec` | Encode/decode jobs over the wire and for failed-job retry | Reused to carry the job into the container |
+| Required labels | `CodingAgentJobFactory.java` (`getRequiredLabels().forEach(job::setRequiredLabel)`) | Factory stamps required labels onto the job | **No change** — routing works per Node from these |
+| Inactivity | `AgentRunner.java` (`DEFAULT_INACTIVITY_TIMEOUT_MILLIS`), `AgentInactivityMonitor` | 35-min stdout-silence kill of the agent process tree | Runs inside the container worker; Node adds an outer container guard |
+| Cancellation | `Node.java` (`sendKill`), `JobStatsStore.java` | Removes queued jobs, broadcasts `Message.Kill`; running agent keeps going | Docker Node also `docker kill`s the running task's container |
+| Container entry | `flowtree/runtime/agent/entrypoint.sh` (`exec java io.flowtree.Server`) | Container starts a full Server | New `CodingAgentJobWorker` main; no Server in the container (Stage 2/5) |
+| Pool definition | `flowtree/runtime/agent/docker-compose.yml` | Explicit `agent-N` services, each a Server | Retired; the host Server launches containers per job (Stage 5) |
 | Host install model | `flowtree/runtime/agent/macos/install.sh`, `run.sh`, `*.plist` | Native host Server as a launchd daemon | The template for the Linux host install (Stage 3) |
-| Server bootstrap | `flowtree/runtime/.../Server.java:395-397` (`new NodeGroup(p, …)`) | Builds the group from properties | **No change** to call site; the group reads typed config |
+| Server bootstrap | `flowtree/runtime/.../Server.java` (`new NodeGroup(p, …)`) | Builds the group from properties | **No change** to call site; the group reads typed config |
 
 Key structural facts that make this safe:
 
 1. **Routing is already per-Node and label-driven.** The hard part — selecting the
    right Node by capability — exists (`findNodeForJob`), and a mismatched job is
-   relayed, not run (`Node.java:396-404`). The redesign mostly feeds it *distinct*
+   relayed, not run (`Node.java`). The redesign mostly feeds it *distinct*
    per-Node labels instead of uniform ones.
 2. **The job already serializes.** `toWire` / `instantiateJobClass` /
    `CodingAgentJobCodec` are exercised today by the failed-job retry path, so the
@@ -333,7 +343,7 @@ one-to-one onto these five stages.
 
 **Changes**
 - Add the `launch(Job)` seam to `Node`; the native body is today's `j.run()`
-  (`Node.java:419`). The worker thread calls `launch(j)`.
+  (`Node.java`). The worker thread calls `launch(j)`.
 - Add typed-config parsing to `NodeGroupNodeConfig` (`nodes.<i>.kind=native`,
   `nodes.<i>.labels.*`) and a kind→Node factory used by `NodeGroup` instead of the
   bare `new Node(...)` loop. Only `kind=native` is implemented.
@@ -369,7 +379,7 @@ one-to-one onto these five stages.
 - `DockerNode.sendKill` override: `docker kill`/`rm` the running task's container.
 - A worker image (reusing the existing `Dockerfile`) whose entrypoint runs the
   worker main instead of the Server. The existing writable-mount guard
-  (`entrypoint.sh:46-110`) is retained for the worker.
+  (`entrypoint.sh`) is retained for the worker.
 
 **Tests that prove it**
 - Round-trip: `GitManagedJobSerializationTest.roundTripFactory` already proves a
@@ -392,15 +402,15 @@ one-to-one onto these five stages.
 
 **Changes**
 - A `flowtree/runtime/agent/linux/` install path mirroring `macos/`: build/stage/
-  swap JARs atomically (`install.sh:204-262`), a systemd unit in place of the
-  launchd plist, the same split-Maven-repo precondition (`install.sh:157-167`), and
-  the same controller-connection verification (`install.sh:442-453`).
+  swap JARs atomically (`install.sh`), a systemd unit in place of the
+  launchd plist, the same split-Maven-repo precondition (`install.sh`), and
+  the same controller-connection verification (`install.sh`).
 - The host Server runs native + Docker Nodes from one typed `agent.properties`.
 
 **Tests that prove it**
 - Script-level: a dry-run/CI lint of the install script (shellcheck + the existing
   `--no-build` path) and a unit/integration check that the rendered unit matches the
-  registered one, mirroring the macOS `cmp -s` guard (`install.sh:355-361`).
+  registered one, mirroring the macOS `cmp -s` guard (`install.sh`).
 - An end-to-end smoke (ops-gated, not in the unit suite): one host Server with one
   native and one Docker Node takes one job of each kind through the controller.
 
@@ -435,9 +445,9 @@ one-to-one onto these five stages.
   running a Server" to "a host Server with configured Nodes": draining a machine
   drains its host Server; rebuild restarts one host Server, not N containers.
 - The agent image's entrypoint stops starting a `Server`
-  (`entrypoint.sh:160-163`) — the image is now only the per-job worker.
+  (`entrypoint.sh`) — the image is now only the per-job worker.
 - Retire `docker-compose.yml`'s explicit `agent-N` Server services
-  (`docker-compose.yml:126-146`).
+  (`docker-compose.yml`).
 - Update architecture/operations docs (`flowtree/runtime/README.md`,
   `flowtree/runtime/docs/node-relay.md`, operations docs) to the new model.
 
@@ -456,7 +466,7 @@ one-to-one onto these five stages.
 
 ## 4. The controller's own deployment is not disturbed
 
-The controller Server is constructed the same way (`Server.java:395`); none of the
+The controller Server is constructed the same way (`Server.java`); none of the
 stages change controller code. The controller keeps routing by `required_labels`
 and relaying to peer Servers exactly as today, because the wire protocol and
 `routeJob`/`findNodeForJob` are unchanged. A host Server is just another peer that
@@ -469,9 +479,9 @@ happens to own container Nodes.
 | Risk | Why it matters | Mitigation this plan relies on |
 |---|---|---|
 | **Wider blast radius** | One Server per machine means one failure stops every agent on it, where today a container fails alone. | A container Node's failures are contained in its container; the Node maps a container crash to a job failure (`addFailedJob`) and never propagates it into the Server process. A Node kind must not run host code that can wedge the shared JVM: the Docker Node only shells out (CLI) and reads a stream — it never runs the agent in-process. Stage 1 is behaviour-identical, so the shared-process risk is introduced only with Docker Nodes, incrementally. |
-| **Host access** | A Server that can start containers can do anything the runtime can; on shared machines that is real privilege and changes what the isolation/exfil controls protect. | Host install is the **default** (Decision 5), so the Server runs as an ordinary account (as `macos/install.sh` already does — never root, `install.sh:20-29`), not as a container with the host Docker socket. The exfil/mount guards (`entrypoint.sh`, `validate_agent_volume_isolation.py`) continue to apply to each launched container. |
+| **Host access** | A Server that can start containers can do anything the runtime can; on shared machines that is real privilege and changes what the isolation/exfil controls protect. | Host install is the **default** (Decision 5), so the Server runs as an ordinary account (as `macos/install.sh` already does — never root, `install.sh`), not as a container with the host Docker socket. The exfil/mount guards (`entrypoint.sh`, `validate_agent_volume_isolation.py`) continue to apply to each launched container. |
 | **Isolation regressions** | Today isolation of filesystem, Maven repo, transcripts, credentials is by construction (separate containers); each becomes something the Docker Node must set up, and a mistake is silent. | One container per job (Decision 2) keeps the by-construction guarantees. The per-job launch reuses the existing in-container guard (`entrypoint.sh`) and the CI isolation validator, extended in Stage 5 to assert the per-job launch (distinct transcript subdir, no shared writable mount). No warm-pool reset logic is introduced in the isolation-critical stages. |
-| **Relay with mixed Node kinds** | Relay/peer selection treats Nodes in a group as interchangeable; mixed kinds make that false, and a job relayed to the wrong kind must be refused, not run in the wrong environment. | Already enforced: `findNodeForJob` only returns a Node whose own labels `satisfy` the job (`NodeGroupMetrics.java:256`), and a worker that still receives a mismatch relays it rather than running it (`Node.java:396-404`). Per-Node labels (Decision 4) make "wrong kind" visible to this existing machinery. Residual gap: a job with **no** required labels can run on any kind — mitigated by having `CodingAgentJobFactory` stamp a `platform` requirement (it already stamps required labels, `:1434`) so platform-specific work is always routed. |
+| **Relay with mixed Node kinds** | Relay/peer selection treats Nodes in a group as interchangeable; mixed kinds make that false, and a job relayed to the wrong kind must be refused, not run in the wrong environment. | Already enforced: `findNodeForJob` only returns a Node whose own labels `satisfy` the job (`NodeGroupMetrics.java`), and a worker that still receives a mismatch relays it rather than running it (`Node.java`). Per-Node labels (Decision 4) make "wrong kind" visible to this existing machinery. Residual gap: a job with **no** required labels can run on any kind — mitigated by having `CodingAgentJobFactory` stamp a `platform` requirement (it already stamps required labels) so platform-specific work is always routed. |
 | **Operational change** | Deploy/rebuild/drain/fleet scripts are written around "an agent is a container running a Server"; each needs an equivalent, and the controller's deployment must not be disturbed. | Stage 5 ports each script with the old layout still working until then; the host-install scripts are a port of the proven `macos/` scripts; the controller is untouched ([§4](#4-the-controllers-own-deployment-is-not-disturbed)). |
 
 ---
