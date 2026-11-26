@@ -407,12 +407,26 @@ There are two ways to put several layers on the same memory:
     `MemoryData.isReadOnly()`. Pooled blocks are ordinary writable `PackedCollection`s, so they
     never qualify. If that precondition is ever relaxed to "this kernel does not write it", a
     pooled block written by another kernel between dispatches would be copied in stale.
-- **Kernel reuse with substituted arguments.** Reused kernels match arguments by root `getMem()`
-  identity (`ProcessArgumentMap.java`), and an aggregating reused operation replays its fold
-  and throws `InstructionCacheCollisionException` if positions differ
-  (`AcceleratedComputationOperation.java`). (B) changes which object is the root, not the
-  offsets or lengths, so it does not change fold positions. Stage 2 must confirm this with the
-  instruction cache on.
+- **Kernel reuse with substituted arguments.** `ProcessArgumentMap` works in two steps:
+  - When the map is built for the compiled operation, each kernel argument is tied to a position
+    in that operation's process tree. `ProcessArgumentMap.match` ties a `RootDelegateProviderSupplier`
+    argument to the leaf whose memory has the same `getMem()`.
+  - A reusing operation then supplies its own producer for each position
+    (`putSubstitutions`), and `verifySubstitutions` throws `InstructionCacheCollisionException`
+    (kind `STRUCTURE`) for any position left without one. For a root-delegate argument,
+    `getEvaluable` binds the **root delegate** of the value it gets.
+
+  An aggregating reused operation replays its fold and throws `InstructionCacheCollisionException`
+  if positions differ (`AcceleratedComputationOperation.java`). (B) changes which object is the
+  root, not the offsets or lengths, so it does not change tree positions or fold positions. Stage 2
+  must confirm this with the instruction cache on.
+  - **Review note: under (B) a kernel is bound to the whole pooled block.** Because the binding is
+    the root delegate, a layer whose block is longer than it is gets the whole block as its
+    argument. The rendered index is still `root + 0`, so this reads correctly, but code that acts
+    on a whole root acts on every tenant's block. `HardwareOperator` reallocates the entire root
+    when a kernel cannot use its provider, and `MemoryReplacementManager` groups replacements by
+    root. Pooled blocks come from the normal provider, so neither should apply on the paths SA3
+    uses, but Stage 2 should confirm that no dispatch moves a pooled block.
 - **Block sizes.** Best fit by length, with a block never smaller than its tenant. Blocks are
   `PackedCollection`s from the normal provider, so precision and memory accounting are unchanged.
   - **Review note: a block larger than its tenant changes small outputs.** The aggregation
