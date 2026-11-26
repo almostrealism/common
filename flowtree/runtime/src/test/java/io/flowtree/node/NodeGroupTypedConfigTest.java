@@ -134,6 +134,33 @@ public class NodeGroupTypedConfigTest extends OfflineNodeTestBase {
 		Assert.assertEquals("relay", group.getRelayNode().getLabels().get("role"));
 	}
 
+	/** A typed host-resident Node still inherits a group-level {@code nodes.labels.*} label. */
+	@Test(timeout = 20000)
+	public void typedHostNodeInheritsGroupLevelLabel() {
+		Properties p = baseProperties();
+		p.setProperty("nodes.0.kind", "native");
+		p.setProperty("nodes.labels.node-id", "host-5");
+
+		NodeGroup group = new NodeGroup(p, null);
+
+		Assert.assertEquals("a group-level host label reaches a typed native node",
+				"host-5", group.getNodes()[0].getLabels().get("node-id"));
+	}
+
+	/** A per-node typed label overrides a group-level label of the same key. */
+	@Test(timeout = 20000)
+	public void perNodeLabelOverridesGroupLevelLabel() {
+		Properties p = baseProperties();
+		p.setProperty("nodes.0.kind", "native");
+		p.setProperty("nodes.0.labels.gpu", "metal");
+		p.setProperty("nodes.labels.gpu", "cuda");
+
+		NodeGroup group = new NodeGroup(p, null);
+
+		Assert.assertEquals("the more specific per-node label wins", "metal",
+				group.getNodes()[0].getLabels().get("gpu"));
+	}
+
 	/** The legacy count path is unchanged: a configured label still reaches every worker. */
 	@Test(timeout = 20000)
 	public void legacyPathStillBroadcasts() {

@@ -261,15 +261,18 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 				label.applyTo(this);
 			}
 		} else {
-			// Typed path: each Node carries its own kind and labels. Nothing is
-			// broadcast, so a mixed-kind group can hold Nodes with distinct labels.
-			// TODO(review): typed path skips group-level nodes.labels.* and FLOWTREE_NODE_LABELS env labels.
+			// Typed path: each Node carries its own kind and labels (not broadcast).
+			// Group-level host labels reach host-resident Nodes only; see
+			// NodeConfig.applyLabels.
+			Map<String, String> hostLabels = NodeGroupNodeConfig.collectNodeLabels(p);
+
+			// TODO(review): typed path leaves the NodeGroup's own label map empty, unlike the legacy path.
 			log("NodeGroup: Constructing " + typedNodes.size() + " typed child nodes...");
 
 			for (NodeConfig cfg : typedNodes) {
 				Node n = cfg.createNode(this, nodeMaxJobs, nodeMaxPeers);
 				this.nodes.add(n);
-				cfg.applyLabels(n);
+				cfg.applyLabels(n, hostLabels);
 
 				log("NodeGroup: Added " + cfg.kind().key() + " node " + cfg.index()
 						+ " (" + n + ")");

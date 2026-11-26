@@ -22,6 +22,8 @@ import org.almostrealism.io.ConsoleFeatures;
 
 import java.util.Collection;
 import java.util.Iterator;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.Properties;
 
 /**
@@ -254,11 +256,34 @@ public class NodeGroupNodeConfig implements ConsoleFeatures {
 	 * @param p      The properties containing optional label entries.
 	 */
 	static void applyNodeLabels(NodeGroup group, Properties p) {
+		collectNodeLabels(p).forEach(group::setLabel);
+	}
+
+	/**
+	 * Collects the group-level node labels from the supplied {@link Properties}
+	 * (keys with prefix {@code nodes.labels.}) and from the
+	 * {@code FLOWTREE_NODE_LABELS} environment variable ({@code key:value} pairs
+	 * separated by commas), with the environment taking precedence over a property
+	 * of the same key.
+	 *
+	 * <p>These labels describe the machine the group runs on. The legacy
+	 * {@code nodes.initial} path broadcasts them to every child Node via
+	 * {@link #applyNodeLabels(NodeGroup, Properties)}; the typed
+	 * {@code nodes.<i>.kind} path applies them only to its host-resident Nodes, so a
+	 * container Node never inherits a host's {@code hostname} or {@code node-id}.</p>
+	 *
+	 * @param p  The properties containing optional label entries.
+	 * @return  The collected labels, ordered property entries first; never
+	 *          {@code null} and the caller may mutate it freely.
+	 */
+	static Map<String, String> collectNodeLabels(Properties p) {
+		Map<String, String> labels = new LinkedHashMap<>();
+
 		String labelPrefix = "nodes.labels.";
 		for (Object keyObj : p.keySet()) {
 			String key = (String) keyObj;
 			if (key.startsWith(labelPrefix)) {
-				group.setLabel(key.substring(labelPrefix.length()), p.getProperty(key));
+				labels.put(key.substring(labelPrefix.length()), p.getProperty(key));
 			}
 		}
 
@@ -267,10 +292,12 @@ public class NodeGroupNodeConfig implements ConsoleFeatures {
 			for (String pair : envLabels.split(",")) {
 				String[] parts = pair.split(":", 2);
 				if (parts.length == 2 && !parts[0].isEmpty() && !parts[1].isEmpty()) {
-					group.setLabel(parts[0].trim(), parts[1].trim());
+					labels.put(parts[0].trim(), parts[1].trim());
 				}
 			}
 		}
+
+		return labels;
 	}
 
 	/**

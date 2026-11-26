@@ -66,6 +66,14 @@ public class NodeConfig {
 	/** The infix separating a node index from its per-node label key. */
 	private static final String LABELS_INFIX = ".labels.";
 
+	/**
+	 * The prefix of the legacy group-level label namespace. A key such as
+	 * {@code nodes.labels.kind} belongs to this namespace, not to a typed
+	 * {@code nodes.<index>.kind} entry, so these keys are left to
+	 * {@link NodeGroupNodeConfig#applyNodeLabels(NodeGroup, Properties)}.
+	 */
+	private static final String GROUP_LABEL_PREFIX = NODE_PREFIX + "labels.";
+
 	/** The Node's id, which is its index in the configuration and the group roster. */
 	private final int index;
 
@@ -119,17 +127,34 @@ public class NodeConfig {
 	}
 
 	/**
-	 * Applies this entry's labels to the given Node and, for a host-resident kind,
-	 * the host's {@link AutomaticLabel} values for any label key not already
-	 * configured. Configured labels are applied first so they take precedence over
-	 * detected ones, exactly as {@link AutomaticLabel#applyTo(Node)} guarantees.
+	 * Applies labels to the given Node in order of increasing specificity, so that a
+	 * more specific source overrides a less specific one:
+	 * <ol>
+	 *   <li>the group-level {@code hostLabels} (from {@code nodes.labels.*} and
+	 *       {@code FLOWTREE_NODE_LABELS}), but only for a host-resident kind, since
+	 *       they describe the machine the group runs on;</li>
+	 *   <li>this entry's own {@code nodes.<i>.labels.*} labels, which override any
+	 *       group-level value for the same key;</li>
+	 *   <li>for a host-resident kind, the host's detected {@link AutomaticLabel}
+	 *       values, assigned only for a key no earlier source already set, exactly as
+	 *       {@link AutomaticLabel#applyTo(Node)} guarantees.</li>
+	 * </ol>
 	 *
-	 * <p>A container kind does not take the host's automatic labels: its platform is
-	 * a property of its image, supplied through {@code nodes.<i>.labels.platform}.</p>
+	 * <p>A container kind takes neither the group-level host labels nor the automatic
+	 * labels: its platform is a property of its image, supplied through
+	 * {@code nodes.<i>.labels.platform}. Applying the host's machine labels (such as
+	 * {@code hostname} or {@code node-id}) to a container Node would misroute jobs
+	 * meant for the host onto the container.</p>
 	 *
-	 * @param node  The Node to label; must be the one this entry describes.
+	 * @param node        The Node to label; must be the one this entry describes.
+	 * @param hostLabels  The group-level and environment-provided labels that
+	 *                    describe the host; applied only to a host-resident kind.
 	 */
-	void applyLabels(Node node) {
+	void applyLabels(Node node, Map<String, String> hostLabels) {
+		if (kind.describesHost()) {
+			hostLabels.forEach(node::setLabel);
+		}
+
 		labels.forEach(node::setLabel);
 
 		if (kind.describesHost()) {
@@ -144,10 +169,14 @@ public class NodeConfig {
 	 *
 	 * @param p  The configuration properties.
 	 * @return  The typed entries ordered by ascending index, or an empty list when
-	 *          no {@code nodes.<i>.kind} entry is present (the legacy path).
+	 *          no {@code nodes.<i>.kind} entry is present (the legacy path). Keys in
+	 *          the legacy {@code nodes.labels.*} namespace are never read as typed
+	 *          entries, so a legacy configuration keeps falling back unchanged.
 	 * @throws IllegalArgumentException  If a kind value is unknown, an index is not a
-	 *         non-negative integer, or the indices are not a contiguous range from
-	 *         zero.
+	 *         non-negative integer, the indices are not a contiguous range from zero,
+	 *         or a {@code nodes.<i>.labels.*} entry has no matching
+	 *         {@code nodes.<i>.kind} (a mislabelled Node is reported rather than
+	 *         silently dropped).
 	 */
 	public static List<NodeConfig> parse(Properties p) {
 		Map<Integer, NodeKind> kinds = new TreeMap<>();
@@ -156,6 +185,7 @@ public class NodeConfig {
 		for (Object keyObj : p.keySet()) {
 			String key = (String) keyObj;
 			if (!key.startsWith(NODE_PREFIX)) continue;
+			if (key.startsWith(GROUP_LABEL_PREFIX)) continue;
 
 			if (key.endsWith(KIND_SUFFIX)) {
 				int index = parseIndex(key.substring(NODE_PREFIX.length(),
@@ -172,7 +202,23 @@ public class NodeConfig {
 			}
 		}
 
-		if (kinds.isEmpty()) return new ArrayList<>();
+		if (kinds.isEmpty()) {
+			if (!labelsByIndex.isEmpty()) {
+				throw new IllegalArgumentException("Typed node labels were configured for "
+						+ "indices " + labelsByIndex.keySet() + " but no nodes.<i>.kind entry "
+						+ "is present; add the matching kind or move the labels to the legacy "
+						+ "nodes.labels.* namespace");
+			}
+
+			return new ArrayList<>();
+		}
+
+		for (Integer labelIndex : labelsByIndex.keySet()) {
+			if (!kinds.containsKey(labelIndex)) {
+				throw new IllegalArgumentException("Typed node labels for index " + labelIndex
+						+ " have no matching nodes." + labelIndex + ".kind entry");
+			}
+		}
 
 		List<NodeConfig> result = new ArrayList<>(kinds.size());
 		int expected = 0;
@@ -184,7 +230,6 @@ public class NodeConfig {
 			}
 			expected++;
 
-			// TODO(review): labels for an index with no matching .kind entry are silently dropped.
 			Map<String, String> labels = labelsByIndex.getOrDefault(entry.getKey(),
 					new LinkedHashMap<>());
 			result.add(new NodeConfig(entry.getKey(), entry.getValue(), labels));

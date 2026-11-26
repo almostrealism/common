@@ -20,7 +20,10 @@ import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Properties;
 
 /**
@@ -70,10 +73,84 @@ public class NodeConfigTest extends TestSuiteBase {
 
 		NodeConfig config = NodeConfig.parse(p).get(0);
 		Node node = new Node(null, 0, 4, 4);
-		config.applyLabels(node);
+		config.applyLabels(node, Collections.emptyMap());
 
 		Assert.assertEquals("macos", node.getLabels().get("platform"));
 		Assert.assertEquals("metal", node.getLabels().get("gpu"));
+	}
+
+	/**
+	 * A host-resident Node takes the group-level host labels, and a per-node label
+	 * overrides a host label of the same key.
+	 */
+	@Test(timeout = 10000)
+	public void hostLabelsApplyToHostNodeAndPerNodeWins() {
+		Properties p = new Properties();
+		p.setProperty("nodes.0.kind", "native");
+		p.setProperty("nodes.0.labels.gpu", "metal");
+
+		Map<String, String> hostLabels = new HashMap<>();
+		hostLabels.put("node-id", "host-5");
+		hostLabels.put("gpu", "cuda");
+
+		NodeConfig config = NodeConfig.parse(p).get(0);
+		Node node = new Node(null, 0, 4, 4);
+		config.applyLabels(node, hostLabels);
+
+		Assert.assertEquals("a host label reaches a native node", "host-5",
+				node.getLabels().get("node-id"));
+		Assert.assertEquals("the per-node label overrides the host label", "metal",
+				node.getLabels().get("gpu"));
+	}
+
+	/**
+	 * A typed {@code nodes.<i>.labels.*} entry with no matching {@code nodes.<i>.kind}
+	 * is reported rather than silently dropped.
+	 */
+	@Test(timeout = 10000)
+	public void labelsWithoutMatchingKindRejected() {
+		Properties p = new Properties();
+		p.setProperty("nodes.0.kind", "native");
+		p.setProperty("nodes.1.labels.platform", "linux");
+
+		try {
+			NodeConfig.parse(p);
+			Assert.fail("a typed label for an index with no kind must be rejected");
+		} catch (IllegalArgumentException expected) {
+			// a mislabelled node must surface rather than lose its label
+		}
+	}
+
+	/**
+	 * Typed labels present with no {@code nodes.<i>.kind} entry at all are reported
+	 * rather than falling through to the legacy path and discarding them.
+	 */
+	@Test(timeout = 10000)
+	public void typedLabelsWithNoKindEntriesRejected() {
+		Properties p = new Properties();
+		p.setProperty("nodes.0.labels.platform", "linux");
+
+		try {
+			NodeConfig.parse(p);
+			Assert.fail("typed labels with no kind entry must be rejected");
+		} catch (IllegalArgumentException expected) {
+			// the typed namespace is incomplete; do not silently drop the labels
+		}
+	}
+
+	/**
+	 * A legacy {@code nodes.labels.*} key is not read as a typed entry, even when it
+	 * ends in {@code .kind}: a valid legacy configuration still falls back unchanged.
+	 */
+	@Test(timeout = 10000)
+	public void legacyGroupLabelNamespaceIsNotTyped() {
+		Properties p = new Properties();
+		p.setProperty("nodes.initial", "2");
+		p.setProperty("nodes.labels.kind", "gpu-box");
+		p.setProperty("nodes.labels.role", "worker");
+
+		Assert.assertTrue("a nodes.labels.* key must not be read as a typed entry",
+				NodeConfig.parse(p).isEmpty());
 	}
 
 	/** Entries are returned ordered by ascending index regardless of property order. */
