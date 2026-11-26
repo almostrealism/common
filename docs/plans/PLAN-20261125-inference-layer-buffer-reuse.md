@@ -343,7 +343,8 @@ There are two ways to put several layers on the same memory:
 - **(B) A pool of standalone blocks.** Each layer's buffer is a view at **offset 0** of the pooled
   block it was assigned, with the layer's own length and shape.
 
-**Recommendation: (B).** The evidence, from the hardware module:
+**Recommendation: (B).** The evidence, from the code and hardware modules and from
+`CollectionProviderProducer` (`compute/algebra`):
 
 - **Offsets are compiled into kernels.**
   - A view's offset is fixed when the kernel is compiled: `DefaultScopeInputManager.java`
@@ -362,7 +363,8 @@ There are two ways to put several layers on the same memory:
     It also merges, into one argument, every layer that touches the arena.
   - Under (B), a small output lands on a small pooled block, just as it lands on a small
     standalone buffer today. It aggregates on the same terms, with `&aggRoot=` in its signature
-    as today. Large ones are direct arguments, as today.
+    as today. Large ones are direct arguments, as today. **This holds only when the pooled block
+    has the tenant's own length** (see "Block sizes" below).
 - **Aggregation has no aliasing check.**
   - `MemoryDataArgumentMap` identifies shared roots but never compares ranges.
   - Copy-back skips only a slice that shares memory with the explicit `output`
@@ -390,6 +392,21 @@ There are two ways to put several layers on the same memory:
   instruction cache on.
 - **Block sizes.** Best fit by length, with a block never smaller than its tenant. Blocks are
   `PackedCollection`s from the normal provider, so precision and memory accounting are unchanged.
+  - **Review note: a block larger than its tenant changes small outputs.** The aggregation
+    signature and eligibility read the *root*, not the view.
+    `CollectionProviderProducer.signature()` appends `&aggRoot=` plus
+    `getRootDelegate().getMemLength()`. `MemoryDataArgumentMap.isAggregationTarget(MemoryData)`
+    tests the root's `getMemLength()` against `maxAggregateLength`.
+  - A 600-element output given a 900-element block therefore gets a different signature from
+    today's, so identical layers on blocks of different sizes stop sharing a compiled kernel. A
+    600-element output given a 2,000-element block stops aggregating at all.
+  - Neither change is wrong, but both break the "same signature as today" premise of (B). Two
+    simple ways to keep it:
+    - pool aggregation-eligible outputs (root at most `maxAggregateLength`) only on blocks of
+      exactly their own length;
+    - leave them out of the pool. They are at most 4 KB each, so this costs little memory.
+  - Best fit applies without change to direct (non-aggregated) arguments: their signature is
+    `offset:memLength|shape` of the view, which is the same on any block. See open question 14.
   The compile logs `layerOutputBytes=` (per-layer total) and `pooledBytes=` (pool total), which the
   after-measurement uses directly.
 
@@ -557,7 +574,10 @@ Stage 2 is done when all of the following hold:
      not overlap. Releasing real standalone buffers after the analysis meets that requirement, but
      it puts the full per-layer set (2.7 GB per autoencoder graph) back into the compile-time peak.
      Unallocated handles would meet it only if `MemoryRegionList` and the argument signature code
-     accept memory that has not been allocated. That has not been checked.
+     accept memory that has not been allocated. That has not been checked. One known case:
+     `MemoryDataArgumentMap.isAggregationTarget(MemoryData)` returns `false` when `getMem()` is
+     `null`, so a signature computed on an unallocated handle would lack the `&aggRoot=` part
+     it gets once the memory exists.
 10. **Success thresholds.** The 4 GB saving at rest and the 5% time bound under "Success
     criteria" were added in review, not measured. Are these the right bars, or should the saving be
     stated per graph instead (for example, decoder outputs under 500 MB pooled)?
@@ -576,3 +596,8 @@ Stage 2 is done when all of the following hold:
     produces for count-1 shapes. Nobody has yet checked how many SA3 layer outputs take that path.
     Should Stage 2 first count them (a layer census by writer type), and should an unresolved
     writer disable pooling for the whole compile or only for the buffers it might touch?
+14. **Small outputs on larger blocks.** Under best fit, an aggregation-eligible output can land on
+    a block longer than itself. That changes its `&aggRoot=` signature and can make it stop
+    aggregating (§4, "Block sizes"). Should small outputs be pooled only by exact length, or left
+    out of the pool? Exact length keeps the most memory, and leaving them out is the simplest.
+    Either keeps the kernel-sharing and aggregation behaviour of today.
