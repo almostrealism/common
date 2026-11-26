@@ -284,6 +284,18 @@ public class OperationProfileNode extends OperationProfile
 	}
 
 	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Adds the child node for the operation, as {@link #addChild(OperationMetadata)} does,
+	 * so that the tree holds the operation, and the operations its metadata describes as its
+	 * children, before any of them records a result.</p>
+	 */
+	@Override
+	public void include(OperationMetadata metadata) {
+		addChild(metadata);
+	}
+
+	/**
 	 * Adds all nodes in the list as children by delegating to
 	 * {@link #addChild(OperationProfileNode)} for each.
 	 *

@@ -19,7 +19,9 @@ package io.almostrealism.compute;
 import io.almostrealism.relation.Countable;
 
 import java.util.Collection;
+import java.util.List;
 import java.util.function.Function;
+import java.util.stream.Collectors;
 import java.util.stream.LongStream;
 import java.util.stream.Stream;
 
@@ -57,6 +59,15 @@ public class ParallelismDiversityOptimization implements ProcessOptimizationStra
 		this.factor = parallelismRatio;
 	}
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Isolation requires more distinct child parallelisms than the diversity threshold,
+	 * which a process with no more children than the threshold cannot have, so for such a
+	 * process (nearly every one) this returns without asking any child for its parallelism.
+	 * The children are processed for analysis once, and that one result is both counted and,
+	 * when it is large enough, asked for the parallelism of each child.</p>
+	 */
 	@Override
 	public <P extends Process<?, ?>, T> Process<P, T> optimize(ProcessContext ctx,
 															   Process<P, T> parent,
@@ -64,7 +75,10 @@ public class ParallelismDiversityOptimization implements ProcessOptimizationStra
 															   Function<Collection<P>, Stream<P>> childProcessor) {
 		listeners.forEach(l -> l.accept(parent));
 
-		long counts[] = childProcessor.apply(children).mapToLong(ParallelProcess::parallelism).toArray();
+		List<P> processed = childProcessor.apply(children).collect(Collectors.toList());
+		if (processed.size() <= threshold) return null;
+
+		long counts[] = processed.stream().mapToLong(ParallelProcess::parallelism).toArray();
 		long distinct = LongStream.of(counts).distinct().count();
 		double average = LongStream.of(counts).average().orElse(0);
 		long count = Countable.countLong(parent);
