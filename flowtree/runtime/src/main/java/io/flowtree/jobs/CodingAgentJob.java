@@ -1021,6 +1021,13 @@ public class CodingAgentJob extends GitManagedJob {
         // overwrites exitCode with a successful result.
         capturePrimaryOutcome();
 
+        // Learn whether the agent reported itself blocked (job_report_blocked);
+        // a reported block skips enforcement and ends the job BLOCKED.
+        accumulator.setBlockReport(BlockReport.fetch(resolveWorkstreamUrl(), getTaskId(),
+                accumulator.getPermissionDenials() > 0
+                        || (accumulator.getDeniedToolNames() != null
+                                && !accumulator.getDeniedToolNames().isEmpty())));
+
         // Falsification runs after primary and before enforcement so review/dedup
         // see the redone tree; skipped when primary hard-failed (nothing sound to falsify).
         falsification.reset();

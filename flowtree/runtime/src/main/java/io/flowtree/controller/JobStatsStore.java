@@ -16,6 +16,8 @@
 
 package io.flowtree.controller;
 
+import io.flowtree.jobs.BlockReport;
+import io.flowtree.jobs.CodingAgentJobEvent;
 import io.flowtree.jobs.JobCompletionEvent;
 import org.almostrealism.io.Truncation;
 
@@ -71,6 +73,9 @@ public class JobStatsStore extends ControllerDatabase {
         + "    commit_hash    VARCHAR(64),"
         + "    pull_request_url VARCHAR(1000),"
         + "    error_message  VARCHAR(2000),"
+        + "    blocked_category VARCHAR(32),"
+        + "    blocked_detail VARCHAR(2000),"
+        + "    blocked_verified BOOLEAN,"
         + "    trigger_reason VARCHAR(64) DEFAULT 'manual',"
         + "    heartbeat_at   TIMESTAMP,"
         + "    phase          VARCHAR(64),"
@@ -125,6 +130,9 @@ public class JobStatsStore extends ControllerDatabase {
         "ALTER TABLE job_timing ADD COLUMN commit_hash VARCHAR(64)",
         "ALTER TABLE job_timing ADD COLUMN pull_request_url VARCHAR(1000)",
         "ALTER TABLE job_timing ADD COLUMN error_message VARCHAR(2000)",
+        "ALTER TABLE job_timing ADD COLUMN blocked_category VARCHAR(32)",
+        "ALTER TABLE job_timing ADD COLUMN blocked_detail VARCHAR(2000)",
+        "ALTER TABLE job_timing ADD COLUMN blocked_verified BOOLEAN",
         "ALTER TABLE job_timing ADD COLUMN slack_message_ts VARCHAR(64)",
         "ALTER TABLE job_timing ADD COLUMN trigger_reason VARCHAR(64) DEFAULT 'manual'",
         "ALTER TABLE job_timing ADD COLUMN heartbeat_at TIMESTAMP",
@@ -561,8 +569,34 @@ public class JobStatsStore extends ControllerDatabase {
             event.getPermissionDenials(),
             event.getTargetBranch(), event.getCommitHash(),
             event.getPullRequestUrl(), event.getErrorMessage());
+        if (event.getBlockedCategory() != null) {
+            recordBlockedFields(event);
+        }
         recordRunnerCosts(event.getJobId(), event.getCostByRunner());
         recordModelCosts(event.getJobId(), event.getCostByModel());
+    }
+
+    /**
+     * Persists the structured block fields of a {@link Status#BLOCKED} event so
+     * {@code getJob}/{@code getRecentJobs} can report its category and detail
+     * after the in-memory event has aged out or the controller has restarted.
+     * The base row (status, {@code error_message} carrying the human summary)
+     * is written by {@link #recordJobCompleted}; this refines it.
+     *
+     * @param event the blocked completion event
+     */
+    private void recordBlockedFields(JobCompletionEvent event) {
+        try (PreparedStatement ps = connection().prepareStatement(
+                "UPDATE job_timing SET blocked_category = ?, blocked_detail = ?, "
+                + "blocked_verified = ? WHERE job_id = ?")) {
+            ps.setString(1, truncate(event.getBlockedCategory(), 32));
+            ps.setString(2, truncate(event.getBlockedDetail(), 2000));
+            ps.setBoolean(3, event.isBlockedVerified());
+            ps.setString(4, event.getJobId());
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            warn("Failed to record blocked fields: " + e.getMessage());
+        }
     }
 
     /**
@@ -1103,6 +1137,11 @@ public class JobStatsStore extends ControllerDatabase {
             event = JobCompletionEvent.degraded(jobId, description, errorMessage);
         } else if (status == JobCompletionEvent.Status.CANCELLED) {
             event = JobCompletionEvent.cancelled(jobId, description, errorMessage);
+        } else if (status == JobCompletionEvent.Status.BLOCKED
+                && rs.getString("blocked_category") != null) {
+            event = CodingAgentJobEvent.blocked(jobId, description, new BlockReport(
+                    rs.getString("blocked_category"), rs.getString("blocked_detail"),
+                    rs.getBoolean("blocked_verified")));
         } else {
             event = new JobCompletionEvent(jobId, status, description);
         }
