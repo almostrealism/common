@@ -77,6 +77,11 @@ public class ReceptorReplacementWarningTest extends TestSuiteBase {
 	/**
 	 * The consolidated method warns only when a receptor is already attached and cell
 	 * warnings are enabled; a null existing receptor never warns regardless of the flag.
+	 *
+	 * <p>Both flag configurations are asserted explicitly through the flag-injecting
+	 * overload so the enabled and disabled paths are each exercised, independently of the
+	 * process-wide {@link Cell#cellWarnings} default that the JVM happened to start with.
+	 * The no-flag convenience is then confirmed to delegate to that default.</p>
 	 */
 	@Test(timeout = 30000)
 	public void methodGatesOnFlagAndNullReceptor() {
@@ -86,8 +91,21 @@ public class ReceptorReplacementWarningTest extends TestSuiteBase {
 			public void warn(String message) { captured.add(message); }
 		};
 
-		Cell.warnReceptorReplacement(sink, null);
+		Cell.warnReceptorReplacement(sink, null, true);
 		assertEquals(0, captured.size());
+
+		Cell.warnReceptorReplacement(sink, receptor(), true);
+		assertEquals(1, captured.size());
+
+		captured.clear();
+
+		Cell.warnReceptorReplacement(sink, receptor(), false);
+		assertEquals(0, captured.size());
+
+		Cell.warnReceptorReplacement(sink, null, false);
+		assertEquals(0, captured.size());
+
+		captured.clear();
 
 		Cell.warnReceptorReplacement(sink, receptor());
 		assertEquals(Cell.cellWarnings ? 1 : 0, captured.size());

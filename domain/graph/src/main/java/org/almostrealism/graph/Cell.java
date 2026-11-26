@@ -106,7 +106,25 @@ public interface Cell<T> extends Transmitter<T>, Receptor<T>, Cellular {
 	 * @param existing the currently attached receptor, or {@code null} when none is attached
 	 */
 	static void warnReceptorReplacement(ConsoleFeatures context, Receptor<?> existing) {
-		if (cellWarnings && existing != null) {
+		warnReceptorReplacement(context, existing, cellWarnings);
+	}
+
+	/**
+	 * Emits the shared receptor-replacement warning, taking the enable flag explicitly
+	 * rather than reading {@link #cellWarnings}. The warning is produced only when
+	 * {@code warningsEnabled} is set and a receptor is already attached.
+	 *
+	 * <p>{@link #warnReceptorReplacement(ConsoleFeatures, Receptor)} delegates here with
+	 * the {@link #cellWarnings} default. This overload exposes the policy so both the
+	 * enabled and disabled paths can be exercised independently of the process-wide flag,
+	 * which is fixed at class initialization from {@code AR_GRAPH_CELL_WARNINGS}.</p>
+	 *
+	 * @param context         the console features used to route the warning
+	 * @param existing        the currently attached receptor, or {@code null} when none is attached
+	 * @param warningsEnabled whether receptor-replacement warnings are enabled
+	 */
+	static void warnReceptorReplacement(ConsoleFeatures context, Receptor<?> existing, boolean warningsEnabled) {
+		if (warningsEnabled && existing != null) {
 			context.warn("Replacing receptor");
 		}
 	}
