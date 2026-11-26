@@ -16,6 +16,7 @@
 
 package io.flowtree.jobs;
 
+import io.flowtree.jobs.agent.AgentRunResult;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
@@ -88,6 +89,48 @@ public class CodingAgentJobBlockedExitTest extends TestSuiteBase {
         assertTrue(event.isBlockedVerified());
         assertTrue("the reason summary travels in the error-message slot",
                 event.getErrorMessage().contains("model file absent"));
+    }
+
+    /**
+     * A reported block is authoritative over a non-zero process exit. An agent
+     * that declares it cannot proceed and whose session then exits non-zero
+     * still ends {@link JobCompletionEvent.Status#BLOCKED}, not {@code FAILED}:
+     * the block is a deliberate, recorded declaration, so the exit code does not
+     * override it. Only a genuine worker exception would.
+     */
+    @Test(timeout = 30000)
+    public void reportedBlockOutranksNonZeroExit() {
+        CodingAgentJob job = new CodingAgentJob("blk-nonzero-exit", "write the report");
+        job.absorbResult(new AgentRunResult(
+                3, false, "partial output", "sess-blk",
+                5000L, 4000L, 2, 0.02,
+                "error", true,
+                Collections.emptyList(), Collections.emptyMap()));
+        job.sessionAccumulator().setBlockReport(
+                new BlockReport(BlockReport.MISSING_RESOURCE, "model file absent", true));
+
+        CodingAgentJobEvent event = job.createEvent(null);
+
+        assertEquals(JobCompletionEvent.Status.BLOCKED, event.getStatus());
+        assertEquals("missing_resource", event.getBlockedCategory());
+        assertEquals("model file absent", event.getBlockedDetail());
+    }
+
+    /**
+     * A genuine worker exception still takes precedence over a reported block:
+     * when the job machinery itself threw, the terminal status is
+     * {@code FAILED}, carrying the exception, rather than {@code BLOCKED}.
+     */
+    @Test(timeout = 30000)
+    public void workerExceptionOutranksReportedBlock() {
+        CodingAgentJob job = new CodingAgentJob("blk-worker-exc", "write the report");
+        job.sessionAccumulator().setBlockReport(
+                new BlockReport(BlockReport.MISSING_RESOURCE, "model file absent", true));
+
+        CodingAgentJobEvent event = job.createEvent(
+                new IllegalStateException("worker machinery failed"));
+
+        assertEquals(JobCompletionEvent.Status.FAILED, event.getStatus());
     }
 
     /** An unverified guardrail claim still ends BLOCKED but is flagged unverified. */
