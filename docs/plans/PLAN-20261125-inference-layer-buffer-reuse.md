@@ -127,15 +127,18 @@ the census; Stage 2 replaces it with a measurement.
 
 ## Current mechanics, with evidence
 
-- **When a layer's output producer is created.** In `init`, the output buffer is read only inside
-  lambdas:
-  - `Cell.of((in, next) -> output(in, p(output)))` at `DefaultCellularLayer.java`;
-  - `next.push(p(output))` there.
+- **When a layer's output producer is created.** The output buffer is read only inside lambdas
+  that dereference the `output` field when the cell is pushed:
+  - the exit cell built in `DefaultCellularLayer.init`, `Cell.of((in, next) -> output(in, p(output)))`;
+  - the forward cell that `DefaultCellularLayer.getForward()` builds once and caches in `fw`,
+    which pushes `next.push(p(output))` downstream.
 
   So the `p(output)` producer is created when the cell is pushed, during `CompiledModel.compile`
   (`CompiledModel.java`). From then on, a compiled kernel holds that exact object. A
   `Provider` of it is captured when the argument map is built (`RootDelegateProviderSupplier.java`).
-  Replacing the field after compiling has no effect on compiled kernels.
+  Replacing the field after compiling has no effect on compiled kernels. Replacing it *before* a
+  push does take effect, because neither lambda captures the buffer itself; the cached `fw` cell
+  therefore does not need to be rebuilt for a second push (see §2, step 5).
 - **What an inference compile changes today.** With `backprop == false`, `CompiledModel.compile`
   only calls `model.setInputTracking(false)` (`CompiledModel.java`). That destroys the
   input records, and each entry cell then passes the incoming producer straight through
@@ -155,19 +158,34 @@ the census; Stage 2 replaces it with a measurement.
   - `AssignmentRecordingDiagTest`.
 
   All of these are training or `compile()` paths.
-- **Output monitoring.** It is off by default (`HardwareFeatures.java`). When it is on, the
-  `MonitorReceptor` is pushed `p(output)` in the same operation list that writes it
-  (`DefaultCellularLayer.java`).
+- **Output monitoring.** It is off by default (`HardwareFeatures.outputMonitoring`, read from
+  `AR_HARDWARE_OUTPUT_MONITORING`). When it is on, `LayerFeatures.layer(...)` gives the layer a
+  `MonitorReceptor` through `setMonitor`, and `DefaultCellularLayer.output(...)` pushes it `p(output)`
+  in the same operation list that writes it. Compose layers built by `LayerRoutingFeatures.compose`
+  get no output monitor. The entry cell's input monitor reads `p(input)`, which an inference
+  compile does not have.
 - **Persistent buffers that are not layer outputs:**
   - **Compose-layer `auxInput` records.** They are allocated whenever `Layer.ioTracking` is on
-    (`LayerRoutingFeatures.java`), and `setInputTracking(false)` does not clear them.
+    (`AR_GRAPH_IO_TRACKING`, default on; `LayerRoutingFeatures.compose`), and
+    `setInputTracking(false)` does not clear them. The compose layer reads its branch through a
+    `Cell.CaptureReceptor` (`auxReceptor`) created once, when the layer is built. Its receipt
+    persists from one push to the next, and `CaptureReceptor` has no way to clear it.
   - **The DiT's conditioning copies** (`timestep`, `globalCond`, pre/post-transformer taps).
   - **KV caches**, which belong to the caller.
   - **`CompiledModel.output`**, which callers rely on (`DiffusionSampler`, `StableAudio3.generateFrom`).
 - **`BranchBlock`'s gradient accumulator** is already allocated lazily, by `BranchBlock.gradient()`,
-  only when a backward cell is built. `ParallelBlock.gradient` is lazy too. An inference compile
-  does not allocate either, so the saving the task lists as related is already on master and is not
-  part of this work.
+  only when a backward cell is built. `ParallelBlock`'s `gradient` field is lazy too: it is allocated
+  only when a gradient is first pushed. An inference compile allocates neither, so the saving the
+  task lists as related is already on master and is not part of this work.
+- **Existing reuse of memory.** The only other reuse mechanism is `AllocationCache`
+  (`base/hardware/.../mem/AllocationCache.java`). It keeps native allocations a provider has
+  *released* and hands them out again for an allocation of the same size, and only
+  `CudaMemoryProvider` uses it. It does nothing for buffers that stay allocated for the life of the
+  model, which is the case here, and it is not used on Metal. No plan in `docs/plans/` covers sharing
+  live layer buffers. `PLAN-20261123-audio-tagging-model-spike.md` measures against the memory cap of
+  "the in-flight buffer-reuse work", and its open question 7 asks which work that is. This plan is
+  the likely candidate, but it sets no cap. It only reports the baseline below and the
+  after-measurement Stage 2 will add.
 
 ## Design
 
@@ -192,8 +210,13 @@ compose, deprecated `CaptureReceptor` accum, PDSL `DefaultBlock`s, DiT `into()` 
 would always be one custom `Cell` behind the code. A reader it missed would silently produce wrong
 numbers. Lifetimes are therefore taken from what the forward pass actually does:
 
-1. **Pass 1, analysis.** Push the cells as today and `flatten().optimize()` the forward list, using
-   the per-layer buffers. Never `get()`/compile it. Walk the optimized tree in execution order, and
+1. **Pass 1, analysis.** Push the cells as today and `flatten().optimize()` the forward list, with
+   every layer output on memory of its own, distinct from every other layer's (§3 and open question 9
+   cover how pass 1 gets those objects without the full per-layer allocation). Never `get()`/compile
+   it. Distinct memory is a requirement, not a convenience. `optimize()` runs `subdivide()`, which
+   cuts a list wherever `MemoryRegionList.overlaps` finds two regions on the same `getMem()` with
+   overlapping ranges. Pass-1 objects that overlapped one another would make pass 1 cut where today's
+   compile does not, so the grouping the analysis records would not be today's. Walk the optimized tree in execution order, and
    for each step (defined below) record the set of layer-output roots it reads and the set it
    writes. `MemoryRegionList.writes(member)` and `MemoryRegionList.dependentReads(member)` already
    do this for `OperationList.subdivide()` (`OperationList.java`). Reads must also cover
@@ -203,11 +226,18 @@ numbers. Lifetimes are therefore taken from what the forward pass actually does:
    inclusive at both ends. A buffer that no step reads still occupies the step that writes it. The
    last layer's output is read by the `"Model Forward Output"` assignment into `CompiledModel.output`,
    so it lives to the end of the pass. Nothing crosses a pass boundary: no layer reads its own
-   previous output (verified: KV state lives in caller-owned caches, `attention.pdsl`), so
-   every interval closes within one pass.
+   previous output, so every interval closes within one pass. The SA3 graphs use the non-cached
+   `sequence_attention.pdsl` layers, and where state does persist across passes, as in the
+   autoregressive layers of `attention.pdsl`, it is held in caller-owned KV caches, not in layer
+   outputs. Stage 2's analysis should assert this rather than assume it: an interval whose first
+   read comes before its first write is a cross-pass reader and must leave that buffer unpooled.
 3. **What a step is.** It is the largest unit whose internal order the analysis cannot rely on: a
-   **fused kernel**. An `OperationList` whose members are all computations compiles into one kernel
-   (`OperationList.get`). In that kernel, member *k*'s read of `X[j]` by one thread and
+   **fused kernel**. `OperationList.get` compiles a list into one kernel only when every member is a
+   computation (`isComputation()`) **and** the list is uniform (`isUniform()`). The second condition
+   applies because `OperationList.enableNonUniformCompilation` defaults to `false`. Any other list
+   runs member by member through an `OperationListRunner`. The step walk must apply the same two
+   tests `OperationList.get` applies, read from the same methods; a copy of the rule would drift. In
+   a fused kernel, member *k*'s read of `X[j]` by one thread and
    member *k+1*'s write of `Y[t]` by another are not ordered. Within a fused list, writes are ordered
    before inline reads only for the same element in the same thread (the reason
    `subdivide()` exists). So two buffers touched anywhere in the same kernel must never share memory,
@@ -216,10 +246,23 @@ numbers. Lifetimes are therefore taken from what the forward pass actually does:
 4. **Assignment.** Sort the buffers by interval start and assign them to pooled blocks by best fit,
    on the interval-graph coloring. A block is reused only after the last step of its current
    tenant's interval.
-5. **Pass 2, build.** Install the assigned memory into the layers. Clear the cells' captured state
-   (e.g. `CaptureReceptor` receipts and the cached `fw` cell; these must be re-created, not
-   re-pushed) and push, flatten and optimize again. The existing compile then continues with
-   `get()`.
+5. **Pass 2, build.** Install the assigned memory into the layers, then push, flatten and optimize
+   again. The existing compile then continues with `get()`. The state left over from pass 1 has to
+   be accounted for:
+   - The cached `fw` cell and the exit cell read the `output` field when they are pushed, so they
+     pick up the new memory with no change (see "Current mechanics").
+   - The deprecated `accum(shape, Cell)` and `product(shape, shape, Cell, Cell)` in
+     `LayerRoutingFeatures` create a fresh `CaptureReceptor` on every push, so they need nothing.
+   - A compose layer's `auxReceptor` is created once, at construction, and keeps its pass-1 receipt.
+     Pass 2 is correct only if every branch is pushed again before its compose layer reads it, which
+     holds when pass 2 pushes in the same order as pass 1. Stage 2 must either clear the receipt
+     before pass 2 (`CaptureReceptor` has no method for this today) or assert that each compose read
+     in pass 2 sees a receipt written in pass 2.
+   - `CompiledModel.compile` chains `outputReceptor` onto the last block's existing receptor
+     (`Receptor.to(existingReceptor, outputReceptor)`). That must happen once, not once per pass.
+
+   Stage 2 also has to audit every other `Cell` that captures a producer at push time and reuses it
+   on a later push. This list covers only the ones named in this plan.
 6. **Refinement check.** Pass 2's kernel grouping must be a refinement of pass 1's: the same steps,
    or steps split further. `subdivide()` may cut more when buffers share memory, and cutting more
    only shortens the intervals, so the assignment stays safe. If pass 2 groups members that pass 1
@@ -253,8 +296,9 @@ numbers. Lifetimes are therefore taken from what the forward pass actually does:
     read by each block's attention. Their intervals simply span most of the pass and they are not
     shared, which is correct.
   - The adaLN `into(timestep/globalCond)` copies target non-layer buffers and are not pooled.
-- **T5Gemma.** Two `accum` blocks per layer, `branch keys`/`values`, and a `product`
-  (`t5gemma_encoder.pdsl`). Same treatment.
+- **T5Gemma.** Two `accum` blocks per layer (`t5gemma_encoder.pdsl`). The `branch keys`/`branch
+  values` come from the attention layers it imports (`sequence_attention.pdsl`), and the gated
+  `product` from its feed-forward (`feed_forward.pdsl`). Same treatment.
 
 ### 3. Which buffers are pooled
 
@@ -277,9 +321,9 @@ numbers. Lifetimes are therefore taken from what the forward pass actually does:
 **Allocation becomes lazy.** `init` keeps the output's *shape*. The standalone buffer is created
 the first time a backprop compile, or a caller of `getOutput()` on an uncompiled layer, needs it.
 That makes the per-layer allocation at construction go away, which is also what lets pass 1 avoid
-holding the full per-layer set. Pass 1 still needs distinct objects to analyse. One option is
-placeholder collections that are views over a small shared root; open question 9 asks whether
-creating them as unallocated handles is preferable. Pass-1 objects are never compiled or run.
+holding the full per-layer set. Pass 1 still needs distinct objects to analyse, and they must not
+overlap in memory (§2, step 1). Open question 9 weighs the options; views over one small shared root
+do not meet that requirement. Pass-1 objects are never compiled or run.
 
 ### 4. Pool representation, argument aggregation and kernel argument maps
 
@@ -315,9 +359,18 @@ There are two ways to put several layers on the same memory:
   - If two buffers of one kernel ever shared a pooled block, an aggregate copy-in of one and
     copy-back of the other could overwrite each other.
   - The step rule in §2 makes this impossible by construction: buffers of one kernel never share a
-    block. The verify mode asserts it. Stage 2 must also run on the native backend, which has no
-    argument limit and so folds every eligible argument
-    (`AcceleratedOperation.java`), to exercise aggregation with pooled blocks.
+    block. The verify mode asserts it.
+  - Stage 2 must also run on a backend that reports no argument limit, to exercise aggregation
+    with pooled blocks. `AcceleratedOperation.isArgumentFoldingRequired()` folds every eligible
+    argument when `ComputeContext.getArgumentLimit()` is empty, and only `MetalComputeContext`
+    reports a limit. On Metal, therefore, only kernels that would exceed the limit fold at all, and
+    a Metal-only run would leave most of the aggregation path untested. The native backend is the
+    natural choice.
+  - **Read-only copy-once.** `PLAN-20261103-read-only-aggregate-copy-once.md` (in progress) skips
+    the per-dispatch copy-in for aggregated roots it can prove unchanged. Its precondition is
+    `MemoryData.isReadOnly()`. Pooled blocks are ordinary writable `PackedCollection`s, so they
+    never qualify. If that precondition is ever relaxed to "this kernel does not write it", a
+    pooled block written by another kernel between dispatches would be copied in stale.
 - **Kernel reuse with substituted arguments.** Reused kernels match arguments by root `getMem()`
   identity (`ProcessArgumentMap.java`), and an aggregating reused operation replays its fold
   and throws `InstructionCacheCollisionException` if positions differ
@@ -394,9 +447,34 @@ of floating-point operations (open question 6). Each test also asserts `pooledBy
   A new test asserts that a `compile(true)` model has no pooled layers and that every layer's
   `getOutput()` is a distinct standalone buffer.
 - **After-measurement.** Repeat the harness above exactly, on the same node and settings, against
-  master and against the branch. Record both tables on the tracker task.
+  master and against the branch. Record both tables on the tracker task. The Stage 1 harness was not
+  committed, so Stage 2 has to rebuild it from the description under "How it was measured". To make
+  the before and after tables come from the same code, Stage 2 should commit the rebuilt harness as a
+  test that is skipped unless the SA3 weights are present (`skipLongTests`, plus a high
+  `@TestDepth`), and run that same class against master and against the branch.
 
 Every run is a bounded selection of a few classes, not a module suite.
+
+## Success criteria
+
+These were added in review, to make "done" checkable. Criteria 1–3 restate the test strategy.
+The thresholds in 4 and 5 are proposals for the owner to confirm or change (open question 10).
+Stage 2 is done when all of the following hold:
+
+1. Every training test listed under "Training unchanged" passes unmodified, and the new
+   `compile(true)` test shows no pooled layer.
+2. Every equivalence test passes with reuse on and in the verify mode of §2, on Metal and on the
+   native backend, and compares exactly (or within the tolerance the owner chose under open
+   question 6).
+3. The refinement check of §2 did not fall back to per-layer buffers for the SA3 decoder, the
+   blend encoder, the DiT or T5Gemma. The compile log shows `pooledBytes=` for each graph.
+4. In the after-measurement, the tracked memory at rest falls by at least 4 GB for text generation
+   followed by a blend, against the baseline of 12,394 MB. That is two-thirds of the roughly 6 GB the
+   census predicts. Physical memory at rest falls by a comparable amount, and the peaks do not rise.
+   A smaller saving is a finding to report before merging, not a reason to tune the criterion.
+5. Generation time per clip does not regress by more than 5% against master on the same node.
+   The plan expects no change, because the kernels are the same and splitting adds dispatches only
+   where `subdivide()` now cuts. This criterion is proposed; the owner may set a different bound.
 
 ## Implementation outline (Stage 2, after approval)
 
@@ -414,9 +492,12 @@ Every run is a bounded selection of a few classes, not a module suite.
 ## Open questions for the owner
 
 1. **Recompiling a `Model` that was compiled for inference.** Today `compile(false)` already
-   mutates the shared `Model`: it destroys the input records, and the `TODO(review)` at
-   `CompiledModel.java` notes that a later `compile(true)` could wire backward cells to freed
-   memory. Should an inference compile mark the `Model` inference-only and make a later
+   mutates the shared `Model`: it destroys the input records. The `TODO(review)` notes in
+   `CompiledModel.compile` and `DefaultCellularLayer.setInputTracking` both point out that a later
+   `compile(true)` could wire backward cells to freed memory, because `BackPropagationCell` keeps
+   the input buffer it was given at construction. Pooling adds a second case: a backprop compile
+   after an inference compile would find layers whose outputs are views of another
+   `CompiledModel`'s pool. Should an inference compile mark the `Model` inference-only and make a later
    `compile(true)` throw? Or should a backprop compile restore standalone outputs and input records?
    Throwing is simpler and matches how models are used today.
 2. **`getOutput()` on a pooled layer.** Throwing plus an explicit `retainOutput()` (proposed), or
@@ -440,6 +521,24 @@ Every run is a bounded selection of a few classes, not a module suite.
 8. **Temporary memory during a pass.** Peaks are 2.5–3.3 GB above the resting tracked memory and
    about 4 GB above the resting physical memory, from temporaries created per evaluation, not from
    layer buffers. This plan does not address it. Should it be a separate task?
-9. **Pass-1 placeholders.** Views over a small shared root (no allocation, and never run), or
-   reusing the lazily created standalone buffers and releasing them after the analysis (simpler,
-   but it allocates them once during the compile)?
+9. **Pass-1 placeholders.** The options are views over a small shared root (no allocation, and
+   never run), unallocated handles, or the lazily created standalone buffers, released after the
+   analysis (simpler, but they are allocated once during the compile).
+   - **Review note:** the shared-root option does not work as described. Views over one small root
+     share `getMem()` and must overlap, since their offsets have to fall inside the root.
+     `MemoryRegionList.overlaps` would then report hazards between unrelated layers, and
+     `subdivide()` would cut pass 1 where today's compile does not (see §2, step 1). Pass 1's
+     grouping would then be finer than the real one, pass 2 would group members pass 1 kept apart,
+     and the refinement check would reject the layout on every model.
+   - Whatever placeholder is chosen must give each layer a distinct `getMem()`, or ranges that do
+     not overlap. Releasing real standalone buffers after the analysis meets that requirement, but
+     it puts the full per-layer set (2.7 GB per autoencoder graph) back into the compile-time peak.
+     Unallocated handles would meet it only if `MemoryRegionList` and the argument signature code
+     accept memory that has not been allocated. That has not been checked.
+10. **Success thresholds.** The 4 GB saving at rest and the 5% time bound under "Success
+    criteria" were added in review, not measured. Are these the right bars, or should the saving be
+    stated per graph instead (for example, decoder outputs under 500 MB pooled)?
+11. **Pass-2 dependence on push order.** Correctness of pass 2 depends on compose layers seeing
+    receipts from pass 2, not pass 1 (§2, step 5). Should Stage 2 add a way to clear a
+    `CaptureReceptor`, or assert the push order instead? Adding a reset changes a type in
+    `domain/graph` that many cells use.
