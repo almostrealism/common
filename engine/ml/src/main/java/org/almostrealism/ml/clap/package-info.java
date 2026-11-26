@@ -20,8 +20,16 @@
  * scores how well the caption describes the clip. This is the basis of zero-shot audio tagging
  * against a vocabulary an application defines and can change without retraining.
  *
+ * <p>The tagging entry point is {@link org.almostrealism.ml.clap.Clap2#score}: a waveform of any
+ * length and a {@link org.almostrealism.ml.clap.TagVocabulary} (or a plain list of tags) become one
+ * score per tag, with the captions tokenized by the native
+ * {@link org.almostrealism.ml.clap.Clap2Tokenizer} and the clip embedded through one fixed-window
+ * audio tower ({@link org.almostrealism.ml.clap.Clap2AudioEncoder#encodeClip}).</p>
+ *
  * @see org.almostrealism.ml.clap.Clap2
  * @see org.almostrealism.ml.clap.Clap2AudioEncoder
  * @see org.almostrealism.ml.clap.Clap2TextEncoder
+ * @see org.almostrealism.ml.clap.Clap2Tokenizer
+ * @see org.almostrealism.ml.clap.TagVocabulary
  */
 package org.almostrealism.ml.clap;

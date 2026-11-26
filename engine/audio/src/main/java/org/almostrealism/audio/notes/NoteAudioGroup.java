@@ -229,6 +229,18 @@ public class NoteAudioGroup implements NoteAudio, Validity {
 		members.forEach(m -> m.setTuning(tuning));
 	}
 
+	/** Releases the cached audio of every member. */
+	@Override
+	public void releaseCachedAudio() {
+		members.forEach(NoteAudioProvider::releaseCachedAudio);
+	}
+
+	/** Returns the members, which are what hold this group's cached audio. */
+	@Override
+	public List<NoteAudio> getCachedAudioOwners() {
+		return new ArrayList<>(members);
+	}
+
 	/**
 	 * A group is usable only when it has at least one pitched member to deliver
 	 * audio from; pitchless-only and empty groups report {@code false} so the
