@@ -21,6 +21,7 @@ import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.FixedEvaluable;
 import io.almostrealism.relation.Provider;
 import org.almostrealism.collect.CollectionProducer;
+import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.util.TestFeatures;
 import org.almostrealism.util.TestSuiteBase;
@@ -82,5 +83,27 @@ public class ConstantArgumentCacheAuditTest extends TestSuiteBase implements Tes
 
 		Evaluable evaluable = sum.get();
 		Assert.assertFalse(((Computable) evaluable).isConstant());
+	}
+
+	/**
+	 * {@link CollectionProducerComputation.IsolatedProcess#isConstant()} only passes along the
+	 * constancy of the operation it wraps, so a mutable computation wrapped in an isolated process
+	 * must still report non-constant. This pins that override directly: were it to return constant
+	 * over a mutable delegate, the wrapped producer could reach the constant-argument cache and be
+	 * served a stale value. The compiled evaluable is not re-checked here because the isolated
+	 * process delegates directly, so its evaluable is the delegate's, already covered by
+	 * {@link #nonConstancyPropagatesThroughComputationAndEvaluable()}.
+	 */
+	@Test(timeout = 30000)
+	public void isolatedProcessOverMutableMemoryIsNotConstant() {
+		PackedCollection a = new PackedCollection(shape(SIZE)).fill(2.0);
+		PackedCollection b = new PackedCollection(shape(SIZE)).fill(3.0);
+
+		CollectionProducer sum = cp(a).add(cp(b));
+		CollectionProducerComputation.IsolatedProcess isolated =
+				new CollectionProducerComputation.IsolatedProcess(sum);
+
+		Assert.assertFalse(isolated.isConstant());
+		Assert.assertFalse(Computable.constant(isolated));
 	}
 }
