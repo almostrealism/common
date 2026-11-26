@@ -457,12 +457,13 @@ public interface LayerRoutingFeatures extends LayerFeatures {
 	 * into the branch's backward cell. The record exists only while
 	 * {@link Layer#ioTracking IO tracking} is enabled; without it, an unreached branch is an error.</p>
 	 *
-	 * <p>When the layer's input tracking is off, as a compile without backpropagation leaves it, a
-	 * branch reached by the same pass is not copied into the record: the operator reads the branch's
-	 * output directly, and the record, which only the backward pass would read, is released when the
-	 * branch is pushed. A layer that has already been pushed reading the record, because its branch
-	 * was not reached, keeps it. This removes a copy and a buffer per composed layer, and leaves the branch's
-	 * output live until this layer reads it.</p>
+	 * <p>When the model is compiled for inference with layer buffer reuse (a
+	 * {@link LayerOutputPool} is in use and the layer's input tracking is off), a branch reached by
+	 * the same pass is not copied into the record: the operator reads the branch's output directly,
+	 * which leaves that output live until this layer reads it. The record, which only the backward
+	 * pass reads, stays allocated so that a later compile with backpropagation can use it. A layer
+	 * that has already been pushed reading the record, because its branch was not reached, keeps the
+	 * copy. Without buffer reuse the copy is always made, as before.</p>
 	 *
 	 * @param name         a human-readable label for the composed layer
 	 * @param inputShape   the main input shape
@@ -515,11 +516,9 @@ public interface LayerRoutingFeatures extends LayerFeatures {
 		Cell<PackedCollection> auxExit = Cell.of((in, next) -> {
 			if (auxInput == null) {
 				return next.push(in);
-			// TODO(review): this bypass ignores CompiledModel.enableLayerBufferReuse, and a destroyed record breaks a later compile(true)
-			} else if (!layer.isInputTracking() && !recordRead.get()) {
-				// Compiled for inference with the branch reached first: only the backward pass would
-				// read the record, so the branch's output is read directly and the record released.
-				auxInput.destroy();
+			} else if (LayerOutputPool.getCurrent() != null && !layer.isInputTracking() && !recordRead.get()) {
+				// Compiled for inference with buffer reuse and the branch reached first: only the
+				// backward pass reads the record, which is kept for a later backward compile.
 				return next.push(in);
 			} else {
 				OperationList op = new OperationList(name + " composed layer (Entry)");

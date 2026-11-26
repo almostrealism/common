@@ -16,13 +16,17 @@
 
 package org.almostrealism.hardware.mem;
 
-import io.almostrealism.code.Computation;
 import io.almostrealism.compute.Process;
 import io.almostrealism.profile.OperationInfo;
+import io.almostrealism.relation.Provider;
+import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.OperationList;
 
 import java.util.Collection;
+import java.util.Collections;
+import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.Set;
 import java.util.function.Supplier;
 
 /**
@@ -108,10 +112,10 @@ public class ExecutionStep {
 
 	/**
 	 * Returns whether {@link #getTouched()} is known to cover all the memory this step
-	 * touches. It is not when a member of the step is not a {@link Process}, or is a
-	 * process that is not a {@link Computation} and exposes no children, such as a
-	 * {@link MemoryDataCopy} created from raw suppliers: such a member may read or write
-	 * memory no walk of the tree can find.
+	 * touches. It is not when a member of the step is not a {@link Process}, or its tree has
+	 * a leaf that hides memory, such as a {@link MemoryDataCopy} created from raw suppliers or
+	 * a computation argument produced by a closure over a collection: such a member may read
+	 * or write memory no walk of the tree can find.
 	 *
 	 * @return true when every member of the step exposes the memory it touches
 	 */
@@ -126,9 +130,9 @@ public class ExecutionStep {
 
 	/**
 	 * Returns whether the given operation exposes all the memory it touches through its
-	 * process tree: a {@link Computation} can only touch its arguments, which are its
-	 * children; another {@link Process} is trusted to do so when it has children; an
-	 * {@link OperationList} does when each of its members does.
+	 * process tree: an {@link OperationList} does when each of its members does, and any
+	 * other operation does when it is a {@link Process} whose whole tree is
+	 * {@link #isVisibleTree(Process, Set) visible}.
 	 *
 	 * @param op the operation to inspect
 	 * @return true when the operation's tree is visible
@@ -142,11 +146,33 @@ public class ExecutionStep {
 			return true;
 		}
 
-		// TODO(review): a Computation child that is an opaque producer (a closure over memory) hides regions from this walk
-		if (op instanceof Computation) return true;
 		if (!(op instanceof Process)) return false;
+		return isVisibleTree((Process<?, ?>) op, Collections.newSetFromMap(new IdentityHashMap<>()));
+	}
 
-		Collection<? extends Process<?, ?>> children = ((Process<?, ?>) op).getChildren();
-		return children != null && !children.isEmpty();
+	/**
+	 * Returns whether every node of the given process tree exposes the memory it touches, so
+	 * that {@link MemoryRegionList#touches(Supplier)} finds all of it: a provider of
+	 * {@link MemoryData} is visible, since the walk records its region; any other node is
+	 * visible when it reports no {@link Process#hasHiddenMemory() hidden memory} and all its
+	 * children are visible.
+	 *
+	 * @param node    the process node to inspect
+	 * @param visited the nodes already inspected, so that shared subtrees are visited once
+	 * @return true when the tree beneath the node is visible
+	 */
+	private static boolean isVisibleTree(Process<?, ?> node, Set<Object> visited) {
+		if (!visited.add(node)) return true;
+		if (Provider.valueOf(node, MemoryData.class) != null) return true;
+		if (node.hasHiddenMemory()) return false;
+
+		Collection<? extends Process<?, ?>> children = node.getChildren();
+		if (children == null) return true;
+
+		for (Process<?, ?> child : children) {
+			if (child == null || !isVisibleTree(child, visited)) return false;
+		}
+
+		return true;
 	}
 }

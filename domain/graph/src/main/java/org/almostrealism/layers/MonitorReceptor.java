@@ -119,13 +119,17 @@ public class MonitorReceptor implements Receptor<PackedCollection>, ConsoleFeatu
 	 * for NaN values, all-zero values, and (if {@link #enableLargeWarning} is set) excessively
 	 * large values. Any detected condition logs a warning and returns immediately.</p>
 	 *
-	 * <p>The returned operation is a {@link Process} whose child is {@code in} (see
-	 * {@link Process#of(java.util.function.Supplier, java.util.function.Supplier[])}), so that an
-	 * analysis of the memory a pass touches sees what the monitor reads.</p>
+	 * <p>Without a consumer, the returned operation is a {@link Process} whose child is
+	 * {@code in} (see {@link Process#of(java.util.function.Supplier, java.util.function.Supplier[])}),
+	 * so that an analysis of the memory a pass touches sees what the monitor reads. A consumer may
+	 * touch any memory, or keep the evaluated output beyond the pass, so with one the operation
+	 * exposes nothing, as {@link org.almostrealism.graph.CollectionReceptor} does with a callback.</p>
 	 */
 	@Override
 	public Supplier<Runnable> push(Producer<PackedCollection> in) {
-		return Process.of(() -> () -> inspect(in.get().evaluate()), in);
+		Supplier<Runnable> monitor = () -> () -> inspect(in.get().evaluate());
+		if (op != null) return monitor;
+		return Process.of(monitor, in);
 	}
 
 	/**

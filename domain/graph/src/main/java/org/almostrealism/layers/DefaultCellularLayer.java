@@ -385,6 +385,11 @@ public class DefaultCellularLayer implements CellularLayer, CodeFeatures, Learni
 	 * layer's output is not {@link #retainOutput() retained}, and as a buffer of its own
 	 * otherwise.
 	 *
+	 * <p>An output that an earlier compile's pool created without sharing it is memory of that
+	 * pool, released when the compiled model holding the pool is destroyed. A push under any
+	 * other pool, or under none, therefore replaces it with a new output, leaving the earlier
+	 * compiled model with the one it was compiled against.</p>
+	 *
 	 * @return the output buffer the pushed operations write and read
 	 * @throws IllegalStateException if the output shares memory under a pool other than the one
 	 *                               in use, which is to say the layer belongs to a model that
@@ -393,14 +398,15 @@ public class DefaultCellularLayer implements CellularLayer, CodeFeatures, Learni
 	private PackedCollection outputForPush() {
 		LayerOutputPool current = LayerOutputPool.getCurrent();
 
-		if (output == null) {
-			outputPool = outputRetained ? null : current;
-			output = outputPool == null ? new PackedCollection(outputShape) : outputPool.allocate(this);
-		// TODO(review): an unshared output from an earlier compile's pool is reused here, but that pool frees it on destroy()
-		} else if (outputShared && outputPool != current) {
+		if (outputShared && outputPool != current) {
 			throw new IllegalStateException("The output of " + getName() + " shares memory with other " +
 					"layers of a model compiled for inference with layer buffer reuse; that model " +
 					"cannot be compiled again");
+		}
+
+		if (output == null || (outputPool != null && outputPool != current)) {
+			outputPool = outputRetained ? null : current;
+			output = outputPool == null ? new PackedCollection(outputShape) : outputPool.allocate(this);
 		}
 
 		return output;

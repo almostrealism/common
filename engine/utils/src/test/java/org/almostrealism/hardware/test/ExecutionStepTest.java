@@ -17,6 +17,7 @@
 package org.almostrealism.hardware.test;
 
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.computations.DynamicCollectionProducer;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.hardware.mem.ExecutionStep;
@@ -81,6 +82,32 @@ public class ExecutionStepTest extends TestSuiteBase {
 		assertContains(steps.get(0).getWritten().getRegions(), b);
 		assertContains(steps.get(2).getWritten().getRegions(), a);
 		Assert.assertTrue(steps.get(1).getTouched().getRegions().isEmpty());
+	}
+
+	/**
+	 * A computation whose argument is produced by a closure over a collection hides that
+	 * collection from the walk of its tree, so the step is not resolvable, even though the
+	 * operation itself is a computation; the same computation over a provider is resolvable.
+	 */
+	@Test(timeout = 60000)
+	public void computationWithOpaqueArgumentIsNotResolvable() {
+		PackedCollection a = new PackedCollection(8);
+		PackedCollection b = new PackedCollection(8);
+		PackedCollection hidden = new PackedCollection(8);
+
+		OperationList visible = new OperationList("visible");
+		visible.add(a(p(b), cp(a).add(cp(hidden))));
+		Assert.assertTrue(visible.getExecutionSteps().get(0).isResolvable());
+
+		OperationList opaque = new OperationList("opaque");
+		opaque.add(a(p(b), cp(a).add(new DynamicCollectionProducer(shape(8), args -> hidden))));
+
+		List<ExecutionStep> steps = opaque.getExecutionSteps();
+		Assert.assertEquals(1, steps.size());
+		Assert.assertFalse(steps.get(0).isResolvable());
+		assertContains(steps.get(0).getTouched().getRegions(), a, b);
+		Assert.assertTrue(steps.get(0).getTouched().getRegions().stream()
+				.noneMatch(r -> r.getRootDelegate() == hidden.getRootDelegate()));
 	}
 
 	/**

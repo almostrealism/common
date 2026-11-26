@@ -433,6 +433,180 @@ public class LayerBufferReuseTest extends TestSuiteBase {
 	}
 
 	/**
+	 * A monitor with a consumer may keep or touch any memory, so it is opaque and the compile
+	 * keeps one buffer per layer; the consumer sees the same values as without reuse.
+	 */
+	@Test(timeout = 5 * 60000)
+	public void monitorWithConsumerFallsBack() {
+		List<PackedCollection> w = weights(new Random(36), 3, SIZE, SIZE);
+		PackedCollection x = randn(shape(SIZE), 0.0, 1.0, new Random(37)).evaluate();
+
+		List<double[]> expected = new ArrayList<>();
+		List<DefaultCellularLayer> off = new ArrayList<>();
+		Model offModel = chain(w, off);
+		off.get(1).setMonitor(new MonitorReceptor(out -> expected.add(out.toArray())));
+		CompiledModel offCompiled = compile(offModel, false);
+		try {
+			offCompiled.forward(x);
+		} finally {
+			offCompiled.destroy();
+		}
+
+		List<double[]> actual = new ArrayList<>();
+		List<DefaultCellularLayer> on = new ArrayList<>();
+		Model onModel = chain(w, on);
+		on.get(1).setMonitor(new MonitorReceptor(out -> actual.add(out.toArray())));
+		CompiledModel onCompiled = compile(onModel, true);
+		try {
+			LayerOutputPool pool = onCompiled.getLayerOutputPool();
+			Assert.assertNotNull(pool.getFallbackReason());
+			Assert.assertEquals(0, pool.getSharedLayerCount());
+			onCompiled.forward(x);
+		} finally {
+			onCompiled.destroy();
+		}
+
+		Assert.assertEquals(1, expected.size());
+		Assert.assertEquals(1, actual.size());
+		Assert.assertArrayEquals(expected.get(0), actual.get(0), 0.0);
+	}
+
+	/**
+	 * A model whose compile fell back, so that no output is shared, can be compiled again; the
+	 * outputs the first compile's pool created are replaced rather than reused, so destroying the
+	 * first compiled model, which releases its pool, leaves the second one computing correct values.
+	 */
+	@Test(timeout = 5 * 60000)
+	public void recompilingAFallbackModelReplacesPooledOutputs() {
+		List<PackedCollection> w = weights(new Random(30), 3, SIZE, SIZE);
+		PackedCollection x = randn(shape(SIZE), 0.0, 1.0, new Random(31)).evaluate();
+
+		List<DefaultCellularLayer> off = new ArrayList<>();
+		double[] expected;
+		double[] expectedLayer;
+		CompiledModel offCompiled = compile(opaqueChain(w, off), false);
+		try {
+			expected = offCompiled.forward(x).toArray();
+			expectedLayer = off.get(1).getOutput().toArray();
+		} finally {
+			offCompiled.destroy();
+		}
+
+		List<DefaultCellularLayer> layers = new ArrayList<>();
+		Model model = opaqueChain(w, layers);
+		CompiledModel first = compile(model, true);
+		LayerOutputPool firstPool = first.getLayerOutputPool();
+		List<PackedCollection> firstOutputs = new ArrayList<>();
+		try {
+			Assert.assertNotNull(firstPool.getFallbackReason());
+			Assert.assertEquals(0, firstPool.getSharedLayerCount());
+			for (DefaultCellularLayer layer : layers) {
+				Assert.assertSame(firstPool, layer.getOutputPool());
+				firstOutputs.add(layer.getOutput());
+			}
+		} finally {
+			first.destroy();
+		}
+
+		CompiledModel second = compile(model, true);
+		try {
+			LayerOutputPool secondPool = second.getLayerOutputPool();
+			Assert.assertNotSame(firstPool, secondPool);
+			for (int i = 0; i < layers.size(); i++) {
+				Assert.assertSame(secondPool, layers.get(i).getOutputPool());
+				Assert.assertNotSame(firstOutputs.get(i), layers.get(i).getOutput());
+			}
+
+			Assert.assertArrayEquals(expected, second.forward(x).toArray(), 0.0);
+			Assert.assertArrayEquals(expectedLayer, layers.get(1).getOutput().toArray(), 0.0);
+		} finally {
+			second.destroy();
+		}
+	}
+
+	/**
+	 * An inference compile with reuse skips the copy of a compose layer's auxiliary branch into
+	 * the record the backward pass reads, but keeps the record: a later compile of the same model
+	 * with reuse off copies into it again, and computes the same output as a model only ever
+	 * compiled with reuse off. The compile with reuse falls back, so that no output is shared and
+	 * the model may be compiled again.
+	 */
+	@Test(timeout = 5 * 60000)
+	public void composeRecordSurvivesInferenceCompile() {
+		List<PackedCollection> w = weights(new Random(32), 2, SIZE, SIZE);
+		PackedCollection projection = randn(shape(SIZE, SIZE), 0.0, 1.0, new Random(33)).evaluate();
+		PackedCollection x = randn(shape(SIZE), 0.0, 1.0, new Random(34)).evaluate();
+		PackedCollection context = randn(shape(SIZE), 0.0, 1.0, new Random(35)).evaluate();
+
+		CompiledModel reference = compile(composeModel(w, projection), false);
+		double[] expected;
+		try {
+			expected = reference.forward(x, context).toArray();
+		} finally {
+			reference.destroy();
+		}
+
+		Model model = composeModel(w, projection);
+		CompiledModel pooled = compile(model, true);
+		try {
+			Assert.assertNotNull(pooled.getLayerOutputPool().getFallbackReason());
+			Assert.assertArrayEquals(expected, pooled.forward(x, context).toArray(), 0.0);
+		} finally {
+			pooled.destroy();
+		}
+
+		CompiledModel unpooled = compile(model, false);
+		try {
+			Assert.assertNull(unpooled.getLayerOutputPool());
+			Assert.assertArrayEquals(expected, unpooled.forward(x, context).toArray(), 0.0);
+		} finally {
+			unpooled.destroy();
+		}
+	}
+
+	/**
+	 * Builds a model with an auxiliary input whose projection is the branch of a compose layer,
+	 * and an opaque receptor after the first dense layer so that an inference compile falls back.
+	 *
+	 * @param w          the weights of the two dense layers of the main chain
+	 * @param projection the weight of the auxiliary input's projection
+	 * @return the model
+	 */
+	private Model composeModel(List<PackedCollection> w, PackedCollection projection) {
+		Model model = new Model(shape(SIZE));
+		SequentialBlock context = new SequentialBlock(shape(SIZE));
+		model.addInput(context);
+		SequentialBlock branch = context.branch();
+		branch.add(dense(projection));
+
+		DefaultCellularLayer first = (DefaultCellularLayer) dense(shape(SIZE), w.get(0), false, false);
+		Receptor<PackedCollection> opaque = in -> () -> () -> { };
+		first.andThen(opaque);
+
+		SequentialBlock main = model.sequential();
+		main.add(first);
+		main.add(silu());
+		main.add(compose("c", branch, (in, other) -> multiply(in, other)));
+		main.add(dense(w.get(1)));
+		return model;
+	}
+
+	/**
+	 * Builds the chain of {@link #chain(List, List)} with an opaque receptor after its second
+	 * dense layer, so that an inference compile with reuse falls back to one buffer per layer.
+	 *
+	 * @param w      the weights of the dense layers
+	 * @param layers receives the dense layers
+	 * @return the model
+	 */
+	private Model opaqueChain(List<PackedCollection> w, List<DefaultCellularLayer> layers) {
+		Model model = chain(w, layers);
+		Receptor<PackedCollection> opaque = in -> () -> () -> { };
+		layers.get(1).andThen(opaque);
+		return model;
+	}
+
+	/**
 	 * Builds a chain of dense layers and activations, recording each dense layer.
 	 *
 	 * @param w      the weights of the dense layers

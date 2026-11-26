@@ -92,6 +92,17 @@ public class CollectionContainer extends DynamicCollectionProducer {
 	}
 
 	/**
+	 * Returns false: the memory a container reads is the collection its caller sets between
+	 * passes, which the caller owns. It is not memory that the graph the container is part of
+	 * allocates, so an analysis that assigns memory to the graph's own buffers has nothing to
+	 * find here.
+	 *
+	 * @return false
+	 */
+	@Override
+	public boolean hasHiddenMemory() { return false; }
+
+	/**
 	 * Returns a function of the collection that is set, ignoring the evaluation's arguments.
 	 *
 	 * @return the function the evaluable of this container delegates to

@@ -148,6 +148,26 @@ public interface Process<P extends Process<?, ?>, T> extends Node, Supplier<T>, 
 	}
 
 	/**
+	 * Returns whether running this process may touch memory, beyond that of its
+	 * {@link #getChildren() children} and the result it allocates itself, which no walk of the
+	 * process tree can find. An analysis that must find every region an operation touches,
+	 * such as the memory sharing of inference layer buffer reuse, treats such a process as
+	 * opaque.
+	 *
+	 * <p>The default reports hidden memory for a process without children, whose work nothing
+	 * is known about (a producer created from a closure over a collection, for example), and
+	 * none for a process with children, which is trusted to touch only what they produce.
+	 * A leaf that is known to touch nothing hidden, such as a computation or a producer that
+	 * only allocates its result, overrides it.</p>
+	 *
+	 * @return true when this process may touch memory its tree does not expose
+	 */
+	default boolean hasHiddenMemory() {
+		Collection<P> children = getChildren();
+		return children == null || children.isEmpty();
+	}
+
+	/**
 	 * Optimizes this process using the default base context.
 	 *
 	 * <p>This is a convenience method equivalent to calling
@@ -374,6 +394,11 @@ public interface Process<P extends Process<?, ?>, T> extends Node, Supplier<T>, 
 			public Collection<Process<?, ?>> getDestinations() {
 				return supplier instanceof Process ?
 						((Process<P, T>) supplier).getDestinations() : Collections.emptyList();
+			}
+
+			@Override
+			public boolean hasHiddenMemory() {
+				return !(supplier instanceof Process) || ((Process<P, T>) supplier).hasHiddenMemory();
 			}
 
 			@Override
