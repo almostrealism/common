@@ -162,6 +162,12 @@ class EnforcementRunner implements ConsoleFeatures {
      * <p>Exits early if the agent commits during a correction session — the
      * tampering-detection path in {@code GitManagedJob} handles that case.</p>
      *
+     * <p>Exits immediately, running no rule, when the agent reported a
+     * {@link BlockReport} for this job: it declared it could not proceed, so
+     * retrying a rule would re-ask a question the agent already answered. The
+     * block is the terminal outcome (see {@link CodingAgentJobEvent#statusFor}),
+     * not a violation to correct.</p>
+     *
      * <p>A rule that exhausts its retries is retired for good only when its
      * per-rule cap exceeded the absolute ceiling (re-running would hit the
      * ceiling again), an exhaustion fallback resolved it, or it reports no
@@ -173,6 +179,15 @@ class EnforcementRunner implements ConsoleFeatures {
      * else, such as another rule's correction, changes the tree.</p>
      */
     void run() {
+        BlockReport blockReport = job.sessionAccumulator().blockReport();
+        if (blockReport != null) {
+            // A reported block is the outcome, not a violation; no rule is retried.
+            log("Enforcement skipped — agent reported blocked (" + blockReport.getCategory()
+                    + (blockReport.isVerified() ? "" : ", unverified") + ")");
+            job.harnessStatus().unusual("Enforcement skipped: agent reported blocked ("
+                    + blockReport.getCategory() + ")");
+            return;
+        }
         List<EnforcementRule> rules = buildActiveRules();
         int totalAttempts = 0;
         boolean anyRuleCorrectionRan;
