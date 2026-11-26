@@ -239,10 +239,8 @@ public class AudioSceneOptimizer extends AudioPopulationOptimizer<TemporalCellul
 			CollectionProducer from = o.cp(a).reshape(shape);
 			CollectionProducer toward = o.cp(b).reshape(shape);
 
-			// The bounds are expanded to the parameter shape because min/max collapse to a
-			// scalar when their operands differ in size, which would clamp by one parameter.
-			// Half the distance is the most a parameter can move, so the offspring is never
-			// a copy of the second parent (see the javadoc above).
+			// Bounds are shape-matched constants: min/max collapse to a scalar
+			// when operands differ in size, which would clamp by one parameter.
 			CollectionProducer step = o.min(
 					o.max(toward.subtract(from).multiply(0.5), o.constant(shape, -scale)),
 					o.constant(shape, scale));

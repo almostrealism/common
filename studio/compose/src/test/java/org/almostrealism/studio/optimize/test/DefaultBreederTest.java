@@ -30,7 +30,7 @@ import java.util.Set;
 /**
  * Verifies the contract of {@link AudioSceneOptimizer#defaultBreeder}: every parameter of
  * the offspring moves from the first parent toward the second, by the breeding scale or by
- * the whole distance between them if that is shorter.
+ * half the distance between them if that is shorter.
  *
  * <p>The scale is drawn at random per call, so the assertions are the properties that hold
  * for any draw rather than exact values. The parents differ in every parameter, and differ
