@@ -332,37 +332,29 @@ public abstract class ByteLevelBPETokenizer implements Tokenizer {
     /**
      * Applies BPE merges to a list of tokens.
      *
-     * <p>This method iteratively merges adjacent token pairs according to the learned
-     * merge rules. At each step, it finds the highest-priority merge (earliest in the
-     * merge file) and applies it. This continues until no more merges are possible.</p>
+     * <p>This method iteratively merges adjacent token pairs. At each step it finds the adjacent
+     * pair with the best (lowest) {@link #getMergePriority(String, String) merge priority},
+     * taking the leftmost on a tie, and replaces it with the concatenation of the two tokens.
+     * This continues until no adjacent pair merges.</p>
      *
      * @param tokens List of single-character or previously-merged tokens
      * @return List of tokens after all applicable merges have been applied
      */
     protected List<String> applyBPEMerges(List<String> tokens) {
-        if (tokens.size() <= 1 || bpeMerges.isEmpty()) {
+        if (tokens.size() <= 1) {
             return tokens;
         }
 
         while (true) {
             // Find the highest priority merge
             int bestIdx = -1;
-            String bestMerge = null;
             int bestPriority = Integer.MAX_VALUE;
 
             for (int i = 0; i < tokens.size() - 1; i++) {
-                String pair = tokens.get(i) + " " + tokens.get(i + 1);
-                String merged = bpeMerges.get(pair);
-
-                if (merged != null) {
-                    // Priority is the order in which merges were learned
-                    // Earlier merges (lower index in merge file) have higher priority
-                    int priority = getMergePriority(pair);
-                    if (priority < bestPriority) {
-                        bestPriority = priority;
-                        bestIdx = i;
-                        bestMerge = merged;
-                    }
+                int priority = getMergePriority(tokens.get(i), tokens.get(i + 1));
+                if (priority < bestPriority) {
+                    bestPriority = priority;
+                    bestIdx = i;
                 }
             }
 
@@ -375,10 +367,8 @@ public abstract class ByteLevelBPETokenizer implements Tokenizer {
             List<String> newTokens = new ArrayList<>();
             for (int i = 0; i < tokens.size(); i++) {
                 if (i == bestIdx) {
-                    newTokens.add(bestMerge);
-                } else if (i == bestIdx + 1) {
-                    // Skip - already merged
-                } else {
+                    newTokens.add(tokens.get(i) + tokens.get(i + 1));
+                } else if (i != bestIdx + 1) {
                     newTokens.add(tokens.get(i));
                 }
             }
@@ -386,6 +376,25 @@ public abstract class ByteLevelBPETokenizer implements Tokenizer {
         }
 
         return tokens;
+    }
+
+    /**
+     * The priority of merging two adjacent tokens into their concatenation, lower being merged
+     * first, or {@link Integer#MAX_VALUE} when the pair does not merge.
+     *
+     * <p>The default reads the learned merge list: a pair merges when {@link #bpeMerges} holds it,
+     * with the priority {@link #getMergePriority(String)} gives it. A tokenizer whose vocabulary
+     * ranks are themselves the merge order (a tiktoken encoding, where a pair merges when its
+     * concatenation is a vocabulary token, and the token's rank is the priority) overrides this
+     * instead of materializing a merge list.</p>
+     *
+     * @param left  the left token
+     * @param right the right token
+     * @return the merge priority, or {@link Integer#MAX_VALUE} if the pair does not merge
+     */
+    protected int getMergePriority(String left, String right) {
+        String pair = left + " " + right;
+        return bpeMerges.containsKey(pair) ? getMergePriority(pair) : Integer.MAX_VALUE;
     }
 
     /**
@@ -403,7 +412,7 @@ public abstract class ByteLevelBPETokenizer implements Tokenizer {
                 continue;
             }
 
-            if (tokenId >= 0 && tokenId < vocab.length) {
+            if (tokenId >= 0 && tokenId < vocab.length && vocab[tokenId] != null) {
                 tokens.add(vocab[tokenId]);
             }
         }
