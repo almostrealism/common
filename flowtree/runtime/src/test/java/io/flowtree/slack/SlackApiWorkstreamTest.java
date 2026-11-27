@@ -355,7 +355,7 @@ public class SlackApiWorkstreamTest extends TestSuiteBase {
     }
 
     /**
-     * channelNameFromBranch: {@code feature/foo} produces {@code w-feature-foo}, because
+     * fromBranch: {@code feature/foo} produces {@code w-feature-foo}, because
      * {@code foo} alone is shorter than {@link WorkstreamChannelName#MIN_SEGMENT_CHARACTERS}
      * and the type segment is the only one left to add.
      */
@@ -365,7 +365,7 @@ public class SlackApiWorkstreamTest extends TestSuiteBase {
     }
 
     /**
-     * channelNameFromBranch: {@code release/v2/bar} adds segments from the end until they hold
+     * fromBranch: {@code release/v2/bar} adds segments from the end until they hold
      * four characters, producing {@code w-v2-bar}.
      */
     @Test(timeout = 10000)
@@ -373,19 +373,19 @@ public class SlackApiWorkstreamTest extends TestSuiteBase {
         assertEquals("w-v2-bar", WorkstreamChannelNameTest.name("release/v2/bar"));
     }
 
-    /** channelNameFromBranch: {@code singlename} (no slash) produces {@code w-singlename}. */
+    /** fromBranch: {@code singlename} (no slash) produces {@code w-singlename}. */
     @Test(timeout = 10000)
     public void testChannelNameFromBranchNoSlash() {
         assertEquals("w-singlename", WorkstreamChannelNameTest.name("singlename"));
     }
 
-    /** channelNameFromBranch: branch ending with {@code /} is malformed and returns null. */
+    /** fromBranch: branch ending with {@code /} is malformed and returns null. */
     @Test(timeout = 10000)
     public void testChannelNameFromBranchMalformed() {
         assertNull(WorkstreamChannelNameTest.name("feature/"));
     }
 
-    /** channelNameFromBranch sanitizes uppercase letters, spaces, and underscores to lowercase hyphens. */
+    /** fromBranch sanitizes uppercase letters, spaces, and underscores to lowercase hyphens. */
     @Test(timeout = 10000)
     public void testChannelNameFromBranchSanitization() {
         assertEquals("w-my-xyz", WorkstreamChannelNameTest.name("feature/My XYZ!"));
@@ -393,7 +393,7 @@ public class SlackApiWorkstreamTest extends TestSuiteBase {
         assertEquals("w-foo-bar", WorkstreamChannelNameTest.name("feature/foo--bar"));
     }
 
-    /** channelNameFromBranch truncates names exceeding 80 characters. */
+    /** fromBranch truncates names exceeding 80 characters. */
     @Test(timeout = 10000)
     public void testChannelNameFromBranchLengthTruncation() {
         String longSuffix = "a".repeat(79);
@@ -443,6 +443,52 @@ public class SlackApiWorkstreamTest extends TestSuiteBase {
             String cn = registered.getChannelName();
             assertNotNull("Channel name should be set", cn);
             assertTrue("Channel name should be w-auto-gen", cn.equals("w-auto-gen"));
+        } finally {
+            endpoint.stop();
+        }
+    }
+
+    /**
+     * When channelName is omitted and the branch's last segment is shorter than
+     * {@link WorkstreamChannelName#MIN_SEGMENT_CHARACTERS}, the registration path
+     * must derive the multi-segment name through the endpoint: {@code feature/foo}
+     * becomes {@code w-feature-foo}, the type segment prepended. This exercises the
+     * endpoint wiring for the new rule, which the longer-segment auto-channel test
+     * ({@code feature/auto-gen} → {@code w-auto-gen}) does not reach.
+     */
+    @Test(timeout = 10000)
+    public void testApiRegisterWorkstreamAutoChannelShortBranch() throws Exception {
+        SlackNotifier notifier = new SlackNotifier(null);
+        SlackListener listener = new SlackListener(notifier);
+
+        FlowTreeApiEndpoint endpoint = new FlowTreeApiEndpoint(0, notifier);
+        endpoint.setListener(listener);
+        endpoint.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false);
+
+        try {
+            int port = endpoint.getListeningPort();
+            String body = "{\"defaultBranch\":\"feature/foo\","
+                    + "\"baseBranch\":\"master\"}";
+
+            HttpURLConnection conn = (HttpURLConnection) new URL(
+                    "http://localhost:" + port + "/api/workstreams").openConnection();
+            conn.setRequestMethod("POST");
+            conn.setDoOutput(true);
+            conn.setRequestProperty("Content-Type", "application/json");
+
+            try (OutputStream os = conn.getOutputStream()) {
+                os.write(body.getBytes(StandardCharsets.UTF_8));
+            }
+
+            assertEquals(200, conn.getResponseCode());
+            String response = new String(conn.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+            assertTrue("Response must be ok", response.contains("\"ok\":true"));
+            assertTrue("Short branch must derive the multi-segment name through the endpoint",
+                    response.contains("\"channelName\":\"w-feature-foo\""));
+
+            Workstream registered = notifier.findWorkstreamByBranch("feature/foo");
+            assertNotNull("Workstream should be registered", registered);
+            assertEquals("w-feature-foo", registered.getChannelName());
         } finally {
             endpoint.stop();
         }
