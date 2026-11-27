@@ -140,6 +140,70 @@ public class ResourceLimitOverridesTest extends TestSuiteBase {
     }
 
     /**
+     * A fractional turn cap or silence budget is refused rather than truncated:
+     * {@code inactivityTimeoutSeconds:1.5} must not quietly become one second.
+     */
+    @Test(timeout = 30000)
+    public void fractionalIntegerLimitsAreRejected() {
+        assertEquals("inactivityTimeoutSeconds must be a whole number",
+                new ResourceLimitOverrides("{\"inactivityTimeoutSeconds\":1.5}").validationError());
+        assertEquals("inactivityTimeoutSeconds must be a whole number",
+                new ResourceLimitOverrides("{\"inactivityTimeoutSeconds\":0.5}").validationError());
+        assertEquals("maxTurns must be a whole number",
+                new ResourceLimitOverrides("{\"maxTurns\":75.5}").validationError());
+        assertNull(new ResourceLimitOverrides("{\"maxTurns\":75.0,\"inactivityTimeoutSeconds\":\"300\"}")
+                .validationError());
+    }
+
+    /** An integer limit too large for an {@code int} is refused rather than saturated. */
+    @Test(timeout = 30000)
+    public void outOfRangeIntegerLimitsAreRejected() {
+        assertEquals("maxTurns must be a whole number",
+                new ResourceLimitOverrides("{\"maxTurns\":3000000000}").validationError());
+        assertEquals("inactivityTimeoutSeconds must be a whole number",
+                new ResourceLimitOverrides("{\"inactivityTimeoutSeconds\":1e12}").validationError());
+    }
+
+    /**
+     * A non-finite spend cap is refused, so it can never reach the job or be
+     * echoed into the response as an invalid JSON token, even when the
+     * workstream has no spend ceiling to clamp it to.
+     */
+    @Test(timeout = 30000)
+    public void nonFiniteBudgetIsRejected() {
+        assertEquals("maxBudgetUsd must be a finite number",
+                new ResourceLimitOverrides("{\"maxBudgetUsd\":\"Infinity\"}").validationError());
+        assertEquals("maxBudgetUsd must be a finite number",
+                new ResourceLimitOverrides("{\"maxBudgetUsd\":1e400}").validationError());
+        assertEquals("maxBudgetUsd must be a finite number",
+                new ResourceLimitOverrides("{\"maxBudgetUsd\":\"NaN\"}").validationError());
+        assertNull(new ResourceLimitOverrides("{\"maxBudgetUsd\":12.5}").validationError());
+    }
+
+    /** A silence budget that is named but not numeric is refused. */
+    @Test(timeout = 30000)
+    public void nonNumericSilenceBudgetIsRejected() {
+        assertEquals("inactivityTimeoutSeconds must be a whole number",
+                new ResourceLimitOverrides("{\"inactivityTimeoutSeconds\":\"soon\"}").validationError());
+    }
+
+    /** Applying overrides that fail validation throws instead of configuring the job. */
+    @Test(timeout = 30000)
+    public void invalidOverridesAreNotApplied() {
+        Workstream workstream = new Workstream("C1", "w-limits");
+        workstream.setMaxBudgetUsd(0.0);
+        CodingAgentJob.Factory unconfigured = workstream.newJobFactory("prompt", "feature/limits");
+        double budgetBefore = unconfigured.getMaxBudgetUsd();
+        try {
+            new ResourceLimitOverrides("{\"maxBudgetUsd\":\"Infinity\"}").applyTo(workstream, unconfigured);
+            fail("invalid overrides must not be applied");
+        } catch (IllegalStateException expected) {
+            assertEquals("maxBudgetUsd must be a finite number", expected.getMessage());
+            assertEquals(budgetBefore, unconfigured.getMaxBudgetUsd(), 0.0);
+        }
+    }
+
+    /**
      * A same-named key nested in an earlier field must not be read in place of
      * the top-level value: otherwise a request could hide a nested positive
      * budget to slip a non-positive top-level one past validation, or a nested

@@ -121,6 +121,24 @@ public class ResourceLimitSubmitTest extends FlowTreeApiSubmitTestBase {
     }
 
     /**
+     * A fractional silence budget and a non-finite spend cap are refused with a
+     * 400 rather than truncated or echoed into the response as an invalid JSON
+     * token, and nothing is queued for either.
+     */
+    @Test(timeout = 15000)
+    public void fractionalOrNonFiniteLimitsAreRefused() throws IOException {
+        HttpURLConnection fractional = post(",\"inactivityTimeoutSeconds\":1.5");
+        assertEquals(400, fractional.getResponseCode());
+        assertTrue(readErrorBody(fractional).contains("inactivityTimeoutSeconds must be a whole number"));
+
+        HttpURLConnection infinite = post(",\"maxBudgetUsd\":\"Infinity\"");
+        assertEquals(400, infinite.getResponseCode());
+        assertTrue(readErrorBody(infinite).contains("maxBudgetUsd must be a finite number"));
+
+        assertTrue("nothing may be queued for a refused submission", server.queued.isEmpty());
+    }
+
+    /**
      * Submits to the registered workstream and parses a successful response.
      *
      * @param extraFields JSON members to append, each with a leading comma

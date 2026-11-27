@@ -41,14 +41,17 @@ import java.util.Map;
  */
 public final class ResourceLimitOverrides {
 
-    /** Requested turn cap, or a non-positive value when none was given. */
-    private final int maxTurns;
+    /** Requested turn cap as parsed, or {@code null} when none was given. */
+    private final Double maxTurns;
 
-    /** Requested spend cap in US dollars, or a non-positive value when none was given. */
-    private final double maxBudgetUsd;
+    /** Requested spend cap in US dollars as parsed, or {@code null} when none was given. */
+    private final Double maxBudgetUsd;
 
-    /** Requested silence budget in seconds, or {@code null} when none was given. */
-    private final Integer inactivityTimeoutSeconds;
+    /** Whether the submission names a silence budget at all, numeric or not. */
+    private final boolean inactivityTimeoutGiven;
+
+    /** Requested silence budget in seconds as parsed, or {@code null} when it is absent or not numeric. */
+    private final Double inactivityTimeoutSeconds;
 
     /**
      * The overrides that were clamped, by request field name, to the value the
@@ -57,28 +60,55 @@ public final class ResourceLimitOverrides {
     private final Map<String, String> clamped = new LinkedHashMap<>();
 
     /**
-     * Reads the overrides from a submission body.
+     * Reads the overrides from a submission body. Values are kept exactly as
+     * parsed; {@link #validationError()} decides whether they are acceptable.
      *
      * @param body the JSON submission body
      */
     public ResourceLimitOverrides(String body) {
-        this.maxTurns = JsonFieldExtractor.getInt(body, "maxTurns", 0);
-        this.maxBudgetUsd = JsonFieldExtractor.getDouble(body, "maxBudgetUsd", 0.0);
-        this.inactivityTimeoutSeconds = JsonFieldExtractor.hasField(body, "inactivityTimeoutSeconds")
-                ? Integer.valueOf(JsonFieldExtractor.getInt(body, "inactivityTimeoutSeconds", 0)) : null;
+        this.maxTurns = JsonFieldExtractor.getNumber(body, "maxTurns");
+        this.maxBudgetUsd = JsonFieldExtractor.getNumber(body, "maxBudgetUsd");
+        this.inactivityTimeoutGiven = JsonFieldExtractor.hasField(body, "inactivityTimeoutSeconds");
+        this.inactivityTimeoutSeconds = JsonFieldExtractor.getNumber(body, "inactivityTimeoutSeconds");
     }
 
     /**
      * Returns why these overrides cannot be accepted, or {@code null} when
-     * they can.
+     * they can. A turn cap and a silence budget must be whole numbers that fit
+     * an {@code int}, and a spend cap must be finite: a fractional or
+     * non-finite request is refused rather than truncated or passed through.
+     * The silence budget must also be positive.
      *
      * @return the error message, or {@code null}
      */
     public String validationError() {
-        if (inactivityTimeoutSeconds != null && inactivityTimeoutSeconds.intValue() <= 0) {
-            return "inactivityTimeoutSeconds must be positive";
+        if (maxTurns != null && !isWholeInt(maxTurns)) {
+            return "maxTurns must be a whole number";
+        }
+        if (maxBudgetUsd != null && !Double.isFinite(maxBudgetUsd)) {
+            return "maxBudgetUsd must be a finite number";
+        }
+        if (inactivityTimeoutGiven) {
+            if (inactivityTimeoutSeconds == null || !isWholeInt(inactivityTimeoutSeconds)) {
+                return "inactivityTimeoutSeconds must be a whole number";
+            }
+            if (inactivityTimeoutSeconds <= 0) {
+                return "inactivityTimeoutSeconds must be positive";
+            }
         }
         return null;
+    }
+
+    /**
+     * Returns whether a parsed value is a whole number within the range of an
+     * {@code int}.
+     *
+     * @param value the parsed value
+     * @return {@code true} when the value converts to an {@code int} exactly
+     */
+    private static boolean isWholeInt(double value) {
+        return Double.isFinite(value) && value == Math.rint(value)
+                && value >= Integer.MIN_VALUE && value <= Integer.MAX_VALUE;
     }
 
     /**
@@ -89,22 +119,27 @@ public final class ResourceLimitOverrides {
      *
      * @param workstream the workstream whose limits are the ceiling
      * @param factory    the job factory to configure
+     * @throws IllegalStateException when {@link #validationError()} reports an error
      */
     public void applyTo(Workstream workstream, CodingAgentJobFactory factory) {
-        if (maxTurns > 0) {
+        String error = validationError();
+        if (error != null) throw new IllegalStateException(error);
+
+        if (maxTurns != null && maxTurns > 0) {
+            int requested = maxTurns.intValue();
             int ceiling = workstream.getMaxTurns();
-            int turns = ceiling > 0 ? Math.min(maxTurns, ceiling) : maxTurns;
-            if (turns != maxTurns) clamped.put("maxTurns", String.valueOf(turns));
+            int turns = ceiling > 0 ? Math.min(requested, ceiling) : requested;
+            if (turns != requested) clamped.put("maxTurns", String.valueOf(turns));
             factory.setMaxTurns(turns);
         }
-        if (maxBudgetUsd > 0) {
+        if (maxBudgetUsd != null && maxBudgetUsd > 0) {
             double ceiling = workstream.getMaxBudgetUsd();
             double budget = ceiling > 0 ? Math.min(maxBudgetUsd, ceiling) : maxBudgetUsd;
             if (budget != maxBudgetUsd) clamped.put("maxBudgetUsd", String.valueOf(budget));
             factory.setMaxBudgetUsd(budget);
         }
-        if (inactivityTimeoutSeconds != null) {
-            factory.setInactivityTimeoutSeconds(inactivityTimeoutSeconds);
+        if (inactivityTimeoutGiven) {
+            factory.setInactivityTimeoutSeconds(inactivityTimeoutSeconds.intValue());
         }
     }
 

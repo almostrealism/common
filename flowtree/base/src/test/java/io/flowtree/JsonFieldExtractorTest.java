@@ -484,41 +484,53 @@ public class JsonFieldExtractorTest extends TestSuiteBase {
 	}
 
 	/**
-	 * {@link JsonFieldExtractor#getInt(String, String, int)} and
-	 * {@link JsonFieldExtractor#getDouble(String, String, double)} read the
-	 * top-level field's numeric value, accepting a numeric string, and fall back
-	 * to the default when the field is absent, non-numeric, or the body is not an
-	 * object.
+	 * {@link JsonFieldExtractor#getNumber(String, String)} reads the top-level
+	 * field's numeric value, accepting a numeric string, and returns {@code null}
+	 * when the field is absent, null, non-numeric, or the body is not an object.
 	 */
 	@Test(timeout = 10000)
-	public void getIntAndGetDoubleReadTopLevelValueOrDefault() {
-		Assert.assertEquals(5000, JsonFieldExtractor.getInt("{\"maxTurns\":5000}", "maxTurns", 0));
-		Assert.assertEquals(42, JsonFieldExtractor.getInt("{\"maxTurns\":\"42\"}", "maxTurns", 0));
-		Assert.assertEquals(7, JsonFieldExtractor.getInt("{\"other\":1}", "maxTurns", 7));
-		Assert.assertEquals(7, JsonFieldExtractor.getInt("{\"maxTurns\":null}", "maxTurns", 7));
-		Assert.assertEquals(7, JsonFieldExtractor.getInt("not json", "maxTurns", 7));
-		Assert.assertEquals(7, JsonFieldExtractor.getInt(null, "maxTurns", 7));
+	public void getNumberReadsTopLevelValueOrNull() {
+		Assert.assertEquals(Double.valueOf(5000), JsonFieldExtractor.getNumber("{\"maxTurns\":5000}", "maxTurns"));
+		Assert.assertEquals(Double.valueOf(42), JsonFieldExtractor.getNumber("{\"maxTurns\":\"42\"}", "maxTurns"));
+		Assert.assertEquals(Double.valueOf(75.5), JsonFieldExtractor.getNumber("{\"maxBudgetUsd\":75.5}", "maxBudgetUsd"));
+		Assert.assertEquals(Double.valueOf(1.5), JsonFieldExtractor.getNumber("{\"maxBudgetUsd\":\"1.5\"}", "maxBudgetUsd"));
+		Assert.assertNull(JsonFieldExtractor.getNumber("{\"other\":1}", "maxTurns"));
+		Assert.assertNull(JsonFieldExtractor.getNumber("{\"maxTurns\":null}", "maxTurns"));
+		Assert.assertNull(JsonFieldExtractor.getNumber("{\"maxTurns\":\"many\"}", "maxTurns"));
+		Assert.assertNull(JsonFieldExtractor.getNumber("not json", "maxTurns"));
+		Assert.assertNull(JsonFieldExtractor.getNumber(null, "maxTurns"));
+	}
 
-		Assert.assertEquals(75.5, JsonFieldExtractor.getDouble("{\"maxBudgetUsd\":75.5}", "maxBudgetUsd", 0.0), 0.0);
-		Assert.assertEquals(1.5, JsonFieldExtractor.getDouble("{\"maxBudgetUsd\":\"1.5\"}", "maxBudgetUsd", 0.0), 0.0);
-		Assert.assertEquals(9.0, JsonFieldExtractor.getDouble("{\"other\":1}", "maxBudgetUsd", 9.0), 0.0);
+	/**
+	 * {@link JsonFieldExtractor#getNumber(String, String)} returns the value as
+	 * parsed, without truncating a fraction or hiding a non-finite value, so the
+	 * caller can refuse it rather than receive a silently coerced number.
+	 */
+	@Test(timeout = 10000)
+	public void getNumberDoesNotCoerceFractionalOrNonFiniteValues() {
+		Assert.assertEquals(Double.valueOf(1.5), JsonFieldExtractor.getNumber("{\"seconds\":1.5}", "seconds"));
+		Assert.assertTrue(JsonFieldExtractor.getNumber("{\"usd\":\"Infinity\"}", "usd").isInfinite());
+		Assert.assertTrue(JsonFieldExtractor.getNumber("{\"usd\":1e400}", "usd").isInfinite());
+		Assert.assertTrue(JsonFieldExtractor.getNumber("{\"usd\":\"NaN\"}", "usd").isNaN());
 	}
 
 	/**
 	 * A same-named key nested in an <em>earlier</em> field must not be read as the
 	 * top-level numeric value. The raw-text {@link JsonFieldExtractor#extractInt(String, String)}
-	 * matches that first token and reports the nested number; {@code getInt} reads
+	 * matches that first token and reports the nested number; {@code getNumber} reads
 	 * the genuine top-level value, the same robustness
 	 * {@link #getBooleanReadsTopLevelFieldNotAnEarlierNestedKey()} documents.
 	 */
 	@Test(timeout = 10000)
-	public void getIntReadsTopLevelFieldNotAnEarlierNestedKey() {
+	public void getNumberReadsTopLevelFieldNotAnEarlierNestedKey() {
 		String json = "{\"meta\":{\"maxTurns\":5000},\"maxTurns\":75}";
 
 		Assert.assertEquals("raw-text scan matches the earlier nested key",
 				5000, JsonFieldExtractor.extractInt(json, "maxTurns"));
 		Assert.assertEquals("structural read honours the real top-level field",
-				75, JsonFieldExtractor.getInt(json, "maxTurns", 0));
+				Double.valueOf(75), JsonFieldExtractor.getNumber(json, "maxTurns"));
+		Assert.assertNull("a key that exists only nested is absent at the top level",
+				JsonFieldExtractor.getNumber("{\"meta\":{\"maxTurns\":5000}}", "maxTurns"));
 	}
 
 	/** Asserts that the strict extractor refuses {@code json}'s {@code roles} field. */
