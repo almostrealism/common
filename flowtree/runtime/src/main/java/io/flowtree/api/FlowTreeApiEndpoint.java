@@ -56,6 +56,7 @@ import io.flowtree.controller.RemediationBudgetGuard;
 import io.flowtree.controller.RemediationEscalation;
 import io.flowtree.controller.RemediationStateStore;
 import io.flowtree.controller.PendingJob;
+import io.flowtree.submission.ResourceLimitOverrides;
 import io.flowtree.submission.SubmissionConfigResolver;
 import io.flowtree.workstream.MailboxRegistry;
 import io.flowtree.workstream.Workstream;
@@ -1020,8 +1021,8 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         String repoUrl = bodyRepoUrl;
         String baseBranch = JsonFieldExtractor.extractString(body, "baseBranch");
         String jobDescription = JsonFieldExtractor.extractString(body, "description");
-        int maxTurns = JsonFieldExtractor.extractInt(body, "maxTurns");
-        double maxBudgetUsd = JsonFieldExtractor.extractDouble(body, "maxBudgetUsd");
+        ResourceLimitOverrides limits = new ResourceLimitOverrides(body);
+        if (limits.validationError() != null) return errorResponse(limits.validationError());
         boolean protectTestFiles = JsonFieldExtractor.extractBoolean(body, "protectTestFiles");
         boolean enforceChanges = JsonFieldExtractor.extractBoolean(body, "enforceChanges");
         String deduplicationMode = JsonFieldExtractor.extractString(body, "deduplicationMode");
@@ -1060,8 +1061,9 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         }
         factory.setAgentEnv(workstream.agentEnvWith(
                 JsonFieldExtractor.extractStringObject(body, "agentEnv")));
-        if (maxTurns > 0) factory.setMaxTurns(maxTurns);
-        if (maxBudgetUsd > 0) factory.setMaxBudgetUsd(maxBudgetUsd);
+        limits.applyTo(workstream, factory);
+        limits.getClamped().forEach((field, value) -> log("Clamped " + field + " to the workstream limit "
+                + value + " for workstream " + workstreamId));
         if (baseBranch != null) factory.setBaseBranch(baseBranch);
         if (repoUrl != null) factory.setRepoUrl(repoUrl);
 
@@ -1244,6 +1246,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         // Report which optional phases are active so callers can confirm
         // the effective job configuration without inspecting phase bundles.
         SubmissionConfigResolver.appendResolvedJobConfigJson(json, factory);
+        limits.appendClampedJson(json);
         List<String> accepted = factory.operatorGrants().getAcceptedMergeResolutions();
         if (!accepted.isEmpty()) {
             json.append(",\"acceptedMergeResolutions\":").append(JsonFieldExtractor.toJsonArray(accepted));

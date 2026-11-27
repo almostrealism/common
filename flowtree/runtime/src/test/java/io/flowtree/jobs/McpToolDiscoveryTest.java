@@ -864,11 +864,18 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 			"src/main/java/io/flowtree/api/WorkstreamRegistrationHandler.java");
 		assertNotNull("WorkstreamRegistrationHandler.java must be locatable for the"
 			+ " submit parity guard", registration);
+		// The resource limits (maxTurns, maxBudgetUsd, inactivityTimeoutSeconds)
+		// are read off the body here, which clamps them to the workstream's.
+		Path limits = locateModuleSource(
+			"src/main/java/io/flowtree/submission/ResourceLimitOverrides.java");
+		assertNotNull("ResourceLimitOverrides.java must be locatable for the"
+			+ " submit parity guard", limits);
 
 		Set<String> consumed = new HashSet<>();
 		consumed.addAll(controllerConsumedKeys(endpoint));
 		consumed.addAll(controllerConsumedKeys(resolver));
 		consumed.addAll(controllerConsumedKeys(registration));
+		consumed.addAll(controllerConsumedKeys(limits));
 
 		List<String> missing = new ArrayList<>();
 		for (String key : toolKeys) {

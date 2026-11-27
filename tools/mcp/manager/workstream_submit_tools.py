@@ -42,6 +42,7 @@ def workstream_submit_task(
     falsification_enabled: bool = False,
     use_tmux: Optional[bool] = None,
     max_wall_clock_hours: Optional[int] = None,
+    inactivity_timeout_seconds: Optional[int] = None,
     sensitive_file_protection_enabled: bool = True,
     accepted_merge_resolutions: str = "",
     skip_agent_permission_prompts: bool = False,
@@ -138,7 +139,10 @@ def workstream_submit_task(
         description: Short human-readable description of the task (shown
             in Slack notifications).
         max_turns: Maximum Claude Code turns (0 = use workstream default).
+            A value above the workstream's own limit is clamped to it; the
+            response's ``clampedLimits`` names what was clamped.
         max_budget_usd: Maximum cost in USD (0 = use workstream default).
+            Clamped to the workstream's limit like ``max_turns``.
         protect_test_files: If true, the harness keeps every test method that
             exists on the base branch exactly as it is (new tests and
             helpers are still allowed). Use it for a job sent to make failing
@@ -240,6 +244,12 @@ def workstream_submit_task(
             only forwarded when explicitly set, an explicit ``False`` reaches
             the controller and overrides the workstream default. Falls back to a
             direct launch with a warning if ``tmux`` is not on the node's PATH.
+        inactivity_timeout_seconds: Per-job silence budget, in seconds: how
+            long an agent session may produce no output before the inactivity
+            watchdog destroys it. It can only shorten the runner's own budget
+            (about 35 minutes for Claude Code); a longer value is held to the
+            runner's when the job launches. Leave unset (``None``) to use the
+            runner's. Must be positive.
         max_wall_clock_hours: Per-job ceiling on total elapsed wall-clock time,
             in hours, after which the controller stops launching further agent
             sessions for this job. Overrides the workstream's
@@ -626,6 +636,15 @@ def workstream_submit_task(
                 "Omit max_wall_clock_hours to inherit the workstream setting",
             ],
         }
+    if inactivity_timeout_seconds is not None and inactivity_timeout_seconds <= 0:
+        return {
+            "ok": False,
+            "error": (
+                "inactivity_timeout_seconds must be positive; got "
+                f"{inactivity_timeout_seconds}. Omit it to use the runner's "
+                "own silence budget."
+            ),
+        }
     err = server._check_short_strings(
         workstream_id=workstream_id, target_branch=target_branch,
         repo_url=repo_url, description=description, started_after=started_after,
@@ -847,6 +866,8 @@ def workstream_submit_task(
     # default, apply in turn.
     if max_wall_clock_hours is not None:
         payload["maxWallClockHours"] = int(max_wall_clock_hours)
+    if inactivity_timeout_seconds is not None:
+        payload["inactivityTimeoutSeconds"] = int(inactivity_timeout_seconds)
     # sensitiveFileProtectionEnabled defaults to TRUE; forward only when the
     # operator has explicitly disabled it. Mirrors the inverted semantics of
     # the other activation booleans (which default to false and forward on true).
