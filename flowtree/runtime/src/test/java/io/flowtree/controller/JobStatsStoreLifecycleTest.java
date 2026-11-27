@@ -504,6 +504,46 @@ public class JobStatsStoreLifecycleTest extends TestSuiteBase {
     }
 
     /**
+     * A job cancelled while still {@code SUBMITTED} never started, so its
+     * {@code started_at} column still holds the submission placeholder; the event
+     * read back must expose no {@code startedAt}, or a job that never ran would
+     * appear to have started at submission time. A job cancelled after a real
+     * start keeps that start time, proving the guard distinguishes the two.
+     */
+    @Test(timeout = 30000)
+    public void cancelledBeforeStartExposesNoStartedAt() throws Exception {
+        File dir = Files.createTempDirectory("lifecycle-cancel-nostart").toFile();
+        dir.deleteOnExit();
+        JobStatsStore store = newStore(dir);
+        try {
+            Instant submittedAt = Instant.parse("2026-08-22T12:00:00Z");
+            store.recordJobSubmitted("job-1", "ws-1", "job", null, null, submittedAt);
+            assertTrue("a pending job cancels",
+                    store.cancelIfInFlight("job-1", submittedAt.plusSeconds(120), "superseded"));
+
+            JobRecord record = store.getJobRecord("job-1");
+            Assert.assertEquals(JobCompletionEvent.Status.CANCELLED, record.event().getStatus());
+            Assert.assertNull("a job cancelled before it started exposes no startedAt",
+                    record.event().getStartedAt());
+            Assert.assertNull("getJob agrees the cancelled-never-started job has no startedAt",
+                    store.getJob("job-1").getStartedAt());
+
+            Instant realStart = submittedAt.plusSeconds(60);
+            store.recordJobSubmitted("job-2", "ws-1", "job", null, null, submittedAt);
+            store.recordJobStarted("job-2", "ws-1", "job", "node-a", realStart);
+            assertTrue("a running job cancels",
+                    store.cancelIfInFlight("job-2", submittedAt.plusSeconds(300), "superseded"));
+
+            JobCompletionEvent started = store.getJob("job-2");
+            Assert.assertEquals(JobCompletionEvent.Status.CANCELLED, started.getStatus());
+            Assert.assertEquals("a job cancelled after a real start keeps that start time",
+                    realStart, started.getStartedAt());
+        } finally {
+            store.close();
+        }
+    }
+
+    /**
      * A job that already completed on its own keeps its terminal record: the
      * cancellation does not transition it, and an unknown job or null arguments
      * transition nothing.

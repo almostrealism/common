@@ -146,6 +146,24 @@ public class JobLookupEndpointTest extends TestSuiteBase {
         assertEquals("SUCCESS", job.get("state").asText());
     }
 
+    /**
+     * A job cancelled before it ever started is found with its terminal state,
+     * and its response must not surface the submission placeholder as
+     * {@code startedAt} — a job that never ran must not look started.
+     */
+    @Test(timeout = 30000)
+    public void cancelledBeforeStartExposesNoStartedAt() throws Exception {
+        Instant submitted = Instant.now().minus(Duration.ofMinutes(5));
+        store.recordJobSubmitted("scrapped", "ws-1", "queued work", "someone", null, submitted);
+        assertTrue(store.cancelIfInFlight("scrapped", Instant.now(), "superseded"));
+
+        JsonNode job = get("/api/jobs/scrapped");
+        assertEquals("CANCELLED", job.get("status").asText());
+        assertEquals("CANCELLED", job.get("state").asText());
+        assertFalse("a job cancelled before it started must not surface a placeholder startedAt",
+                job.has("startedAt"));
+    }
+
     /** A job neither the store nor any notifier knows is a 404. */
     @Test(timeout = 30000)
     public void unknownJobIsNotFound() throws Exception {

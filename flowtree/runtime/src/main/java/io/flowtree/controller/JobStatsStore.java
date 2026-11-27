@@ -1163,10 +1163,13 @@ public class JobStatsStore extends ControllerDatabase {
      * constructor stamps {@code Instant.now()}, which would make every read return the
      * read-time instant rather than when the job actually happened.</p>
      *
-     * <p>The event's {@code startedAt} is left {@code null} for a {@code SUBMITTED}
-     * row: that row's {@code started_at} column is only a {@code NOT NULL} placeholder
-     * seeded to the submission time (see {@link #recordJobSubmitted}), not a real
-     * start, so presenting it as one would make a pending job look started.</p>
+     * <p>The event's {@code startedAt} is left {@code null} for a job that never
+     * started: that row's {@code started_at} column is only a {@code NOT NULL}
+     * placeholder seeded to the submission time (see {@link #recordJobSubmitted})
+     * until a real start overwrites it, so a {@code started_at} still equal to
+     * {@code submitted_at} — on a {@code SUBMITTED} row, or on one cancelled before
+     * it ever started — is that placeholder, and presenting it as a real start
+     * would make a job that never ran look started.</p>
      */
     private JobCompletionEvent rowToEvent(ResultSet rs) throws SQLException {
         String jobId = rs.getString("job_id");
@@ -1201,14 +1204,16 @@ public class JobStatsStore extends ControllerDatabase {
         // started_at otherwise.
         Timestamp completedTs = rs.getTimestamp("completed_at");
         Timestamp startedTs = rs.getTimestamp("started_at");
+        Timestamp submittedTs = rs.getTimestamp("submitted_at");
         Instant rowInstant = completedTs != null ? completedTs.toInstant()
                 : (startedTs != null ? startedTs.toInstant() : null);
         if (rowInstant != null) {
             event.setTimestamp(rowInstant);
         }
-        // started_at is seeded to submitted_at for a SUBMITTED row, so it is a
-        // real start time only once the job has started.
-        if (startedTs != null && status != JobCompletionEvent.Status.SUBMITTED) {
+        // started_at is seeded to submitted_at at submission and overwritten only
+        // on a real start, so a started_at still equal to submitted_at is the
+        // placeholder (a SUBMITTED row, or one cancelled before it started).
+        if (startedTs != null && !startedTs.equals(submittedTs)) {
             event.setStartedAt(startedTs.toInstant());
         }
         if (completedTs != null) {
