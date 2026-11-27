@@ -30,7 +30,7 @@ import java.util.Set;
 /**
  * Verifies the contract of {@link AudioSceneOptimizer#defaultBreeder}: every parameter of
  * the offspring moves from the first parent toward the second, by the breeding scale or by
- * the whole distance between them if that is shorter.
+ * half the distance between them if that is shorter.
  *
  * <p>The scale is drawn at random per call, so the assertions are the properties that hold
  * for any draw rather than exact values. The parents differ in every parameter, and differ
@@ -108,18 +108,18 @@ public class DefaultBreederTest extends TestSuiteBase implements CollectionFeatu
 	}
 
 	/**
-	 * Parents closer together than the breeding scale breed the second parent
-	 * exactly, and go on doing so however many times they are paired.
+	 * Parents closer together than the breeding scale breed a new genome that lies
+	 * strictly between them. It must never be a copy of either parent.
 	 *
-	 * <p>This is the one case where breeding is a function of its parents: the
-	 * move is bounded by the distance between them, so once that distance is
-	 * within reach of any scale the draw stops mattering. It is pinned here
-	 * because it is the point at which a pairing stops contributing anything
-	 * new, and because the identical signatures it produces are indistinguishable
-	 * from a fault elsewhere.</p>
+	 * <p>Before the move was capped at half the distance, such parents bred an
+	 * exact copy of the second parent. With elitism, a population of one elite
+	 * and one child then kept reproducing its non-elite member under the same
+	 * signature, so a cycle produced nothing new. The offspring here is the
+	 * midpoint of its parents, so it is the same for every draw of the scale.
+	 * Being the same each time is expected here. Being a copy of a parent is not.</p>
 	 */
 	@Test(timeout = 60000)
-	public void parentsWithinTheScaleBreedTheSecondParentExactly() {
+	public void parentsWithinTheScaleBreedANewGenomeBetweenThem() {
 		// Every parameter differs by less than MAGNITUDE / 2, the smallest
 		// scale that can be drawn, so every move is bounded by the distance.
 		PackedCollection first = linear(0.40, 0.50, PARAMETERS).evaluate().reshape(PARAMETERS);
@@ -128,20 +128,26 @@ public class DefaultBreederTest extends TestSuiteBase implements CollectionFeatu
 		ProjectedGenome a = new ProjectedGenome(first);
 		ProjectedGenome b = new ProjectedGenome(second);
 
-		Set<String> signatures = new HashSet<>();
 		for (int i = 0; i < 4; i++) {
-			PackedCollection offspring = ((ProjectedGenome) AudioSceneOptimizer
-					.defaultBreeder(MAGNITUDE).combine(a, b)).getParameters();
-			signatures.add(new ProjectedGenome(offspring).signature());
+			ProjectedGenome offspring = (ProjectedGenome) AudioSceneOptimizer
+					.defaultBreeder(MAGNITUDE).combine(a, b);
+
+			Assert.assertNotEquals("Close parents bred a copy of the second parent",
+					b.signature(), offspring.signature());
+			Assert.assertNotEquals("Close parents bred a copy of the first parent",
+					a.signature(), offspring.signature());
 
 			for (int j = 0; j < PARAMETERS; j++) {
-				Assert.assertEquals("parameter " + j + " must arrive at the second parent",
-						second.toDouble(j), offspring.toDouble(j), EPS);
+				double lo = Math.min(first.toDouble(j), second.toDouble(j));
+				double hi = Math.max(first.toDouble(j), second.toDouble(j));
+				double o = offspring.getParameters().toDouble(j);
+
+				Assert.assertTrue("parameter " + j + " (" + o + ") must lie strictly between "
+						+ lo + " and " + hi, o > lo && o < hi);
+				Assert.assertEquals("parameter " + j + " must move half way toward the second parent",
+						(lo + hi) / 2, o, EPS);
 			}
 		}
-
-		Assert.assertEquals("Converged parents breed one offspring, not several",
-				1, signatures.size());
 	}
 
 	/** Identical parents must breed an offspring identical to them. */

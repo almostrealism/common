@@ -56,7 +56,8 @@
 # test-media-mac, test-media-cl, …). The deterministic `*-check` validators
 # (test-timeout-check, test-integrity-check) are explicitly NOT flaky-eligible.
 #
-# Any other failed job — a `*-check` validator, `build`, `checkstyle` — is
+# Any other failed job — a `*-check` validator, `build`, `checkstyle`,
+# `analysis` (and the "Test Checks" gate it then fails) — is
 # deterministic unless its log shows an infrastructure failure: a dependency or
 # plugin that could not be downloaded, a dropped or timed-out connection, a
 # server error from a package or artifact host, a runner that shut down or lost
@@ -74,9 +75,11 @@
 # (most often because the per-job log is not archived the instant the run
 # completes) is what left those pipelines stuck. The fetch therefore retries
 # before giving up and reports a persistent failure as a ::warning:: rather than
-# discarding it; and when the log of a failed `*-check` validator or the `build`
-# job still cannot be read, the run is retried while attempts remain rather than
-# classified deterministic. The retry is bounded by MAX_ATTEMPTS and the final
+# discarding it; and when the log of a failed `*-check` validator, the `build`
+# job or the `analysis` job still cannot be read, the run is retried while
+# attempts remain rather than classified deterministic. (`analysis` merges the
+# test lanes' coverage after they passed; no agent can be handed its failure,
+# because auto-resolve stages nothing for a run whose test jobs did not fail.) The retry is bounded by MAX_ATTEMPTS and the final
 # attempt proceeds exactly as a deterministic failure would, so nothing is
 # masked: a genuine deterministic failure is still reported and handed on, at
 # most MAX_ATTEMPTS-1 re-runs later.
@@ -238,8 +241,10 @@ while IFS=$'\t' read -r name id; do
             # skips every test lane, so the slow path never classifies the run).
             # Retry such a job while attempts remain — bounded by MAX_ATTEMPTS,
             # and the final attempt proceeds to auto-resolve exactly as a
-            # deterministic failure would. Any other job stays deterministic.
-            if [ "$kind" = "check" ] || [ "$name" = "build" ]; then
+            # deterministic failure would. `analysis` is included because its
+            # failure reaches no agent either way. Any other job stays
+            # deterministic.
+            if [ "$kind" = "check" ] || [ "$name" = "build" ] || [ "$name" = "analysis" ]; then
                 INFRA_FOUND=true
                 echo "::warning::Could not read the log of failed ${kind} job '$name' — retrying while attempts remain rather than treating it as deterministic"
             else
