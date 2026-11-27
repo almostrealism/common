@@ -976,15 +976,60 @@ public class GitHubProxyHandler implements ConsoleFeatures {
     /**
      * The unresolved review threads of a pull request, and whether the listing
      * was obtained completely and reliably. It is {@code complete} only when the
-     * GraphQL query succeeded and returned every unresolved thread; a transport
-     * failure or a result truncated at the page limit leaves it {@code false}, so
-     * the repeat check can tell "no open threads" from "could not list them".
+     * GraphQL query succeeded and returned every unresolved thread, each
+     * identifiable by its first comment; a transport failure, a result truncated
+     * at the page limit, or a thread whose first comment is absent leaves it
+     * {@code false}, so the repeat check can tell "no open threads" from "could
+     * not list them".
      *
      * @param findings the unresolved threads that were listed
      * @param complete whether that listing is the whole, reliably-read set
      */
-    private record ReviewThreadListing(List<PullRequestEscalation.Finding> findings,
-                                       boolean complete) {
+    record ReviewThreadListing(List<PullRequestEscalation.Finding> findings,
+                               boolean complete) {
+
+        /**
+         * Parses the {@code reviewThreads} GraphQL response into a listing.
+         *
+         * <p>Each unresolved thread is anchored to its first comment's file, line
+         * and URL. The listing is complete only when the response could be read,
+         * was not truncated at the page limit, and every unresolved thread carried
+         * a first comment: a {@code null} root (a failed query), a non-array
+         * {@code nodes}, a {@code hasNextPage} truncation, or an unresolved thread
+         * whose first comment is missing each marks it incomplete, so an unknown or
+         * partial listing cannot be mistaken for "no open threads" by the repeat
+         * check. A thread dropped for a missing first comment is omitted from
+         * {@code findings} but still forces {@code complete} to {@code false}.</p>
+         *
+         * @param root the GraphQL response root, or {@code null} on a failed query
+         * @return the listing, {@code complete} only when reliably whole
+         */
+        static ReviewThreadListing from(JsonNode root) {
+            List<PullRequestEscalation.Finding> findings = new ArrayList<>();
+            if (root == null) return new ReviewThreadListing(findings, false);
+            JsonNode reviewThreads = root.path("data").path("repository").path("pullRequest")
+                    .path("reviewThreads");
+            JsonNode nodes = reviewThreads.path("nodes");
+            if (!nodes.isArray()) return new ReviewThreadListing(findings, false);
+            boolean complete = !reviewThreads.path("pageInfo").path("hasNextPage").asBoolean(false);
+            for (JsonNode thread : nodes) {
+                if (thread.path("isResolved").asBoolean(false)) continue;
+                JsonNode comment = thread.path("comments").path("nodes").path(0);
+                if (comment.isMissingNode()) {
+                    // An unresolved thread we cannot anchor to a first comment is a
+                    // thread we cannot identify, so the listing is no longer the
+                    // reliably-read whole set and the repeat check must fail open.
+                    complete = false;
+                    continue;
+                }
+                findings.add(PullRequestEscalation.Finding.reviewComment(
+                        comment.path("path").asText(""),
+                        comment.path("line").asInt(0),
+                        comment.path("url").asText(null),
+                        comment.path("body").asText("")));
+            }
+            return new ReviewThreadListing(findings, complete);
+        }
     }
 
     /**
@@ -1000,32 +1045,14 @@ public class GitHubProxyHandler implements ConsoleFeatures {
      */
     private ReviewThreadListing unresolvedReviewThreads(
             String ownerRepo, int number, String token) {
-        List<PullRequestEscalation.Finding> findings = new ArrayList<>();
         int slash = ownerRepo.indexOf('/');
-        if (slash < 0) return new ReviewThreadListing(findings, false);
+        if (slash < 0) return new ReviewThreadListing(new ArrayList<>(), false);
         String owner = ownerRepo.substring(0, slash);
         String name = ownerRepo.substring(slash + 1);
         String query = "{\"query\":\"query{repository(owner:\\\"" + owner + "\\\",name:\\\"" + name
             + "\\\"){pullRequest(number:" + number + "){reviewThreads(first:100){pageInfo{hasNextPage} "
             + "nodes{isResolved comments(first:1){nodes{path line url body}}}}}}}\"}";
-        JsonNode root = apiGraphQl(query, token);
-        if (root == null) return new ReviewThreadListing(findings, false);
-        JsonNode reviewThreads = root.path("data").path("repository").path("pullRequest")
-                .path("reviewThreads");
-        JsonNode nodes = reviewThreads.path("nodes");
-        if (!nodes.isArray()) return new ReviewThreadListing(findings, false);
-        for (JsonNode thread : nodes) {
-            if (thread.path("isResolved").asBoolean(false)) continue;
-            JsonNode comment = thread.path("comments").path("nodes").path(0);
-            if (comment.isMissingNode()) continue;
-            findings.add(PullRequestEscalation.Finding.reviewComment(
-                    comment.path("path").asText(""),
-                    comment.path("line").asInt(0),
-                    comment.path("url").asText(null),
-                    comment.path("body").asText("")));
-        }
-        return new ReviewThreadListing(findings,
-                !reviewThreads.path("pageInfo").path("hasNextPage").asBoolean(false));
+        return ReviewThreadListing.from(apiGraphQl(query, token));
     }
 
     /**
