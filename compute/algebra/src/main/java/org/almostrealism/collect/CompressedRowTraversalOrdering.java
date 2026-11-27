@@ -26,6 +26,7 @@ import io.almostrealism.expression.Conjunction;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
 import org.almostrealism.collect.computations.DefaultTraversableExpressionComputation;
+import org.almostrealism.hardware.MemoryData;
 
 import java.util.Arrays;
 import java.util.Optional;
@@ -332,9 +333,14 @@ public class CompressedRowTraversalOrdering implements TraversalOrdering, Orderi
 	 * producer, which read every logical element through this ordering and so give the dense
 	 * transpose.</p>
 	 *
+	 * <p>The entries are read from the backing memory that the given collection occupies,
+	 * starting at its absolute offset, rather than through the collection as a view, so that the
+	 * sparse matrix itself may be passed whatever its logical size: a matrix whose logical size
+	 * exceeds the range of an {@code int} has no {@code int} length to bound a view of it by.</p>
+	 *
 	 * @param entries the entries of the matrix in the physical order of this ordering: the
-	 *                collection of entry values the sparse matrix reads or, when its logical size
-	 *                is within the range of an {@code int}, the sparse matrix itself
+	 *                collection of entry values the sparse matrix reads, or the sparse matrix
+	 *                itself
 	 * @return the transposed sparse matrix
 	 * @throws IllegalArgumentException if the collection holds fewer elements than there are
 	 *         entries
@@ -367,9 +373,10 @@ public class CompressedRowTraversalOrdering implements TraversalOrdering, Orderi
 		CompressedRowTraversalOrdering order = of(rows, columnOffsets, entryRows);
 		PackedCollection reordered = new PackedCollection(Math.max(1, count));
 		if (count > 0) {
+			MemoryData memory = entries.getRootDelegate();
 			TraversalPolicy shape = new TraversalPolicy(count);
-			PackedCollection gathered = new PackedCollection(shape, 0, entries, 0,
-					SplitIndexTraversalOrdering.of(permutation));
+			PackedCollection gathered = new PackedCollection(shape, 0, memory,
+					entries.getOffset() - memory.getOffset(), SplitIndexTraversalOrdering.of(permutation));
 			new DefaultTraversableExpressionComputation("sparseTransposeEntries", shape,
 					args -> CollectionExpression.create(shape, args[1]::getValueAt),
 					CollectionFeatures.getInstance().cp(gathered)).get().into(reordered).evaluate();

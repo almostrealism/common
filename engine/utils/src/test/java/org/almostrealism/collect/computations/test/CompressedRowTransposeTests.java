@@ -137,6 +137,64 @@ public class CompressedRowTransposeTests extends TestSuiteBase implements Matrix
 		}
 	}
 
+	/**
+	 * The entries may be a view that starts part way into a larger collection: the transpose
+	 * reads them from the absolute offset of the view, not from the start of its backing memory.
+	 */
+	@Test(timeout = 60000)
+	public void transposeOfOffsetView() {
+		PackedCollection buffer = pack(9.0, 9.0, 9.0, 2.0, -1.0, 3.0, -4.0, 5.0, 6.0, -7.0, 8.0, 9.0);
+		PackedCollection view = new PackedCollection(shape(8), 0, buffer, 3);
+		PackedCollection transposed = CompressedRowTraversalOrdering.of(6, OFFSETS, COLUMNS).transpose(view);
+
+		double[] expected = { -1.0, 3.0, -4.0, 5.0, 8.0, 2.0, 6.0, -7.0 };
+		double[] actual = transposed.getDelegate().toArray(0, 8);
+		for (int i = 0; i < expected.length; i++) {
+			assertEquals("entry " + i, expected[i], actual[i]);
+		}
+	}
+
+	/** Entries that are fewer than the stored entries of the matrix are rejected. */
+	@Test(timeout = 60000)
+	public void transposeRejectsTooFewEntries() {
+		CompressedRowTraversalOrdering order = CompressedRowTraversalOrdering.of(6, OFFSETS, COLUMNS);
+		try {
+			order.transpose(pack(1.0, 2.0, 3.0));
+			throw new AssertionError("three entries should be rejected for a matrix storing eight");
+		} catch (IllegalArgumentException expected) {
+			assertTrue(expected.getMessage().contains("8"));
+		}
+	}
+
+	/**
+	 * The sparse matrix itself, a {@code 60000 × 60000} matrix with one entry per row whose
+	 * logical size exceeds the range of an {@code int}, may be transposed: the entries are read
+	 * from its backing memory rather than through a view bounded by its logical length.
+	 */
+	@Test(timeout = 120000)
+	public void transposeOfMatrixBeyondIntRange() {
+		int n = 60000;
+		int[] offsets = IntStream.rangeClosed(0, n).toArray();
+		int[] columns = IntStream.range(0, n).map(i -> (int) ((7L * i) % n)).toArray();
+		int[] rowOfColumn = new int[n];
+		for (int i = 0; i < n; i++) rowOfColumn[columns[i]] = i;
+
+		CompressedRowTraversalOrdering order = CompressedRowTraversalOrdering.of(n, offsets, columns);
+		try (PackedCollection values = integers(0, n).mod(3).add(c(1.0)).evaluate();
+			 PackedCollection g = integers(0, n).mod(11).evaluate()) {
+			PackedCollection matrix = new PackedCollection(shape(n, n), 0, values, 0, order);
+			PackedCollection transposed = order.transpose(matrix);
+			PackedCollection y = matmul(cp(transposed), cp(g)).evaluate();
+			assertEquals(n, y.getShape().getTotalSize());
+
+			double[] result = y.toArray();
+			for (int j = 0; j < n; j += 997) {
+				int i = rowOfColumn[j];
+				assertEquals("element " + j, (i % 3 + 1) * (i % 11), result[j]);
+			}
+		}
+	}
+
 	/** Read element by element, the transpose equals the dense transpose, including a zero row. */
 	@Test(timeout = 60000)
 	public void transposeReadsDense() { assertFixed(m -> m.multiply(1.0)); }
