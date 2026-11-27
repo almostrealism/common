@@ -127,7 +127,7 @@ import io.flowtree.submission.PhaseConfigResolver;
  *   <tr><td>GET</td><td>/api/config/accept-automated-jobs</td><td>--</td><td>Check whether automated job submissions are accepted</td></tr>
  *   <tr><td>POST</td><td>/api/config/accept-automated-jobs</td><td>{@code {"accept":true}}</td><td>Enable or disable automated job submissions</td></tr>
  *   <tr><td>GET</td><td>/api/health</td><td>--</td><td>Health check; response includes {@code server_time} (ISO-8601 UTC)</td></tr>
- *   <tr><td>GET</td><td>/api/agents</td><td>--</td><td>Enumerate available runners, phases, model names, and the built-in default runner</td></tr>
+ *   <tr><td>GET</td><td>/api/agents</td><td>--</td><td>Enumerate available runners, phases, model names, the built-in default runner, and the connected nodes with the labels and busy state each reported</td></tr>
  *   <tr><td>GET</td><td>/api/stats</td><td>--</td><td>Weekly job statistics ({@code thisWeek}/{@code lastWeek}, computed in UTC) from the configured
  *       {@link io.flowtree.controller.JobStatsStore} — see {@link StatsQueryHandler}</td></tr>
  *   <tr><td>GET</td><td>/api/stats/daily</td><td>--</td><td>Agent wall-clock time per day across every workstream, for
@@ -672,7 +672,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         }
 
         if (Method.GET.equals(method) && "/api/agents".equals(uri)) {
-            return agentsQueryHandler.handle();
+            return agentsQueryHandler.handle(server);
         }
 
         if (Method.POST.equals(method) && "/api/alerts".equals(uri)) {
