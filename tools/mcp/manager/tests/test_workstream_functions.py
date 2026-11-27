@@ -137,6 +137,42 @@ class TestWorkstreamGetJob(unittest.TestCase):
             server.workstream_get_job(job_id="j-123")
 
     @patch.object(server, "_controller_get")
+    def test_workstream_get_job_surfaces_pending_state(self, mock_controller_get):
+        """A job that is accepted but not started comes back with its derived state."""
+        _grant_all_scopes()
+        mock_controller_get.return_value = {
+            "jobId": "j-lost",
+            "status": "SUBMITTED",
+            "state": "LOST",
+            "submittedAt": "2026-11-26T10:00:00Z",
+            "workstreamId": "ws-1",
+        }
+        result = server.workstream_get_job(job_id="j-lost")
+        self.assertEqual("LOST", result["state"])
+        self.assertEqual("2026-11-26T10:00:00Z", result["submittedAt"])
+
+    @patch.object(server, "_is_workspace_allowed", return_value=True)
+    @patch.object(server, "_workspace_for_workstream", return_value="TAAA")
+    @patch.object(server, "_get_workspace_scopes", return_value=["TAAA"])
+    @patch.object(server, "_controller_get")
+    def test_scoped_caller_sees_pending_job_by_its_workstream(
+        self, mock_controller_get, _scopes, _workspace, _allowed
+    ):
+        """A scoped caller sees a pending job once the controller names its workstream,
+        and a job with no workstream stays hidden from it."""
+        _grant_all_scopes()
+        mock_controller_get.return_value = {
+            "jobId": "j-pending", "status": "SUBMITTED", "state": "SUBMITTED",
+            "workstreamId": "ws-1",
+        }
+        self.assertEqual("SUBMITTED", server.workstream_get_job(job_id="j-pending")["state"])
+
+        mock_controller_get.return_value = {"jobId": "j-pending", "status": "SUBMITTED"}
+        result = server.workstream_get_job(job_id="j-pending")
+        self.assertFalse(result["ok"])
+        self.assertEqual("Job not found", result["error"])
+
+    @patch.object(server, "_controller_get")
     def test_workstream_get_job_long_id_rejected(self, mock_controller_get):
         """workstream_get_job validates that job_id does not exceed max length."""
         _grant_all_scopes()

@@ -33,6 +33,7 @@ import java.util.Map;
 import io.flowtree.controller.ActiveJob;
 import io.flowtree.controller.DailyAgentTime;
 import io.flowtree.controller.JobInterval;
+import io.flowtree.controller.JobRecord;
 import io.flowtree.controller.JobStatsStore;
 import io.flowtree.controller.PendingJob;
 import io.flowtree.controller.WeeklyStats;
@@ -149,14 +150,98 @@ class StatsQueryHandler {
     }
 
     /**
-     * Returns the phase most recently recorded for a job.
+     * Returns the store-derived enrichment of a single-job lookup — a job's
+     * derived lifecycle state and, for a job that has not finished, the
+     * workstream that owns it — resolved from a single read of the job's
+     * pending or active record.
      *
-     * @param jobId the job identifier
-     * @return the phase description, or {@code null} when none is recorded
-     *         or no store is configured
+     * <p>The derived state is the same label the pending and active listings
+     * give it: {@link PendingJob#SUBMITTED} or {@link PendingJob#LOST} for a
+     * job no worker has started, {@link ActiveJob#RUNNING} or
+     * {@link ActiveJob#UNRESPONSIVE} for one that is running, and the recorded
+     * status for one that has finished. {@code LOST} and {@code UNRESPONSIVE}
+     * are labels, not terminal statuses: a lost job may still be queued for a
+     * worker whose labels match, or be re-dispatched when the controller
+     * restarts, and {@link io.flowtree.controller.LostJobRecovery} already
+     * escalates it once to a person; recording it as finished would cut both
+     * off.</p>
+     *
+     * <p>Resolving the state and the workstream together from one record keeps
+     * a single-job response from reading the same row twice and from reporting
+     * a state and a workstream drawn from different snapshots. The workstream
+     * is {@code null} for a finished job (whose workstream is known from
+     * notifier history) and for a job the store does not know.</p>
+     *
+     * @param record the single-read snapshot of the job's row, or {@code null}
+     *               when the job is known only to notifier history
+     * @param status the job's recorded status
+     * @param now    the reference instant for the thresholds
+     * @return the derived view; never {@code null}
      */
-    String jobPhase(String jobId) {
-        return statsStore == null ? null : statsStore.getJobPhase(jobId);
+    DerivedJobView derivedJob(JobRecord record, JobCompletionEvent.Status status, Instant now) {
+        if (status == JobCompletionEvent.Status.SUBMITTED) {
+            PendingJob pending = record == null ? null : record.pending();
+            return pending == null
+                    ? new DerivedJobView(PendingJob.SUBMITTED, null)
+                    : new DerivedJobView(pending.derivedState(lostThreshold, now), pending.workstreamId());
+        } else if (status == JobCompletionEvent.Status.STARTED) {
+            ActiveJob active = record == null ? null : record.active();
+            return active == null
+                    ? new DerivedJobView(ActiveJob.RUNNING, null)
+                    : new DerivedJobView(active.derivedState(silentThreshold, now), active.workstreamId());
+        }
+
+        return new DerivedJobView(status.name(), null);
+    }
+
+    /**
+     * The store-derived enrichment of a single-job lookup: a job's derived
+     * lifecycle {@link #state() state} and, for a job that has not finished,
+     * the {@link #workstreamId() workstream} that owns it.
+     *
+     * <p>Both fields are resolved from one read of the job's pending or active
+     * record (see {@link #derivedJob}), so they always describe the same
+     * snapshot.</p>
+     */
+    static final class DerivedJobView {
+
+        /** The job's derived lifecycle state. */
+        private final String state;
+
+        /** The owning workstream of an unfinished job, or {@code null}. */
+        private final String workstreamId;
+
+        /**
+         * Constructs a view.
+         *
+         * @param state        the derived lifecycle state
+         * @param workstreamId the owning workstream, or {@code null}
+         */
+        DerivedJobView(String state, String workstreamId) {
+            this.state = state;
+            this.workstreamId = workstreamId;
+        }
+
+        /**
+         * Returns the job's derived lifecycle state; see {@link #derivedJob}.
+         *
+         * @return the derived state
+         */
+        String state() {
+            return state;
+        }
+
+        /**
+         * Returns the workstream owning a job that has not finished — the only
+         * place a submitted-but-unstarted job's workstream is known, since it
+         * has no in-memory history on any notifier.
+         *
+         * @return the workstream identifier, or {@code null} when the job is
+         *         finished, unknown to the store, or no store is configured
+         */
+        String workstreamId() {
+            return workstreamId;
+        }
     }
 
     /**
