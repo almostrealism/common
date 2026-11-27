@@ -1218,6 +1218,22 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
                 appendSummaryFooter(sb, event);
                 break;
 
+            case BLOCKED:
+                sb.append(":octagonal_sign: *Work blocked* - agent could not proceed\n");
+                if (event.getBlockedCategory() != null) {
+                    sb.append("   Reason: ").append(event.getBlockedCategory());
+                    if (!event.isBlockedVerified()) {
+                        sb.append(" (unverified)");
+                    }
+                    sb.append("\n");
+                }
+                if (event.getBlockedDetail() != null && !event.getBlockedDetail().isEmpty()) {
+                    sb.append("   Detail: ").append(truncate(event.getBlockedDetail(), 200)).append("\n");
+                }
+                sb.append("   Job ID: `").append(event.getJobId()).append("`\n");
+                appendSummaryFooter(sb, event);
+                break;
+
             default:
                 sb.append(":grey_question: Job status: ").append(event.getStatus());
         }

@@ -16,20 +16,23 @@
 
 package org.almostrealism.studio;
 
+import org.almostrealism.audio.notes.NoteAudio;
 import org.almostrealism.music.pattern.BatchedPatternLayerRenderer;
 
 import java.lang.ref.WeakReference;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 
 /**
  * Registry of every {@link AudioScene} that has been constructed and not yet
  * {@link AudioScene#destroy() destroyed}, held by {@link WeakReference} so a scene a caller
  * abandons without destroying is not pinned alive by it.
  *
- * <p>The entries exist only to drive {@link AudioScene#destroyAll()} and to gate the shared
- * compiled-renderer cache reclamation on there being no live scene; nothing reads scene
- * state through them, so holding them weakly costs no correctness. A scene still in use is
+ * <p>The entries exist only to drive {@link AudioScene#destroyAll()}, to gate the shared
+ * compiled-renderer cache reclamation on there being no live scene, and to keep a destroyed
+ * scene from releasing note audio that a live scene still uses; a collected scene uses
+ * nothing, so holding them weakly costs no correctness. A scene still in use is
  * strongly reachable through its user and so is never collected here. An abandoned scene,
  * by contrast, becomes unreachable, and only once it is unreachable can the native memory it
  * owns — its consolidated render buffers, pattern caches, and delay lines — be reclaimed
@@ -75,6 +78,18 @@ class AudioSceneRegistry {
 	 * The remaining entries all have live referents, so an empty registry means no scene is
 	 * live and the shared renderer cache can be dropped.</p>
 	 *
+	 * <p>Deregistration also releases the scene's entries in the JVM-global note-audio
+	 * cache ({@link NoteAudio#releaseCachedAudio()}). Without that, the cache keeps every
+	 * note a destroyed scene ever rendered reachable, and with each note the source graph
+	 * its cache entries captured, so heap grows with every scene a long-lived driver
+	 * builds and destroys. The release is scene-scoped rather than a global
+	 * {@link org.almostrealism.audio.notes.NoteAudioProvider#clearCache() clearCache()}:
+	 * scenes share notes (a {@link AudioScene#clone() clone} shares its original's
+	 * choices), so only notes that no other live scene reaches are released. Notes are
+	 * compared by identity at the level that holds the cache entries
+	 * ({@link NoteAudio#getCachedAudioOwners()}), so a note one scene reaches directly
+	 * and another only as a member of a group is kept.</p>
+	 *
 	 * @param scene the scene to deregister
 	 */
 	synchronized void deregister(AudioScene<?> scene) {
@@ -82,6 +97,12 @@ class AudioSceneRegistry {
 			AudioScene<?> registered = ref.get();
 			return registered == null || registered == scene;
 		});
+
+		Set<NoteAudio> released = scene.getPatternManager().getLoadedNotes();
+		for (AudioScene<?> live : liveScenes()) {
+			released.removeAll(live.getPatternManager().getLoadedNotes());
+		}
+		released.forEach(NoteAudio::releaseCachedAudio);
 
 		if (scenes.isEmpty()) {
 			BatchedPatternLayerRenderer.clearCompiledRenderers();

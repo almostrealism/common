@@ -244,6 +244,11 @@ public class FeatureProvenanceTest extends TestSuiteBase {
 		Assert.assertEquals("all items carry other-model data", itemCount, report.itemCount());
 		Assert.assertEquals("byte total is legacy + other-model feature data",
 				expectedBytes, report.totalBytes());
+		Assert.assertTrue("a feature report with stale bytes is present", report.isPresent());
+		Assert.assertEquals("feature report describes its items as sound analysis",
+				itemCount + " items carry sound analysis", report.description().split(" from ")[0]);
+		Assert.assertFalse("description names no downstream application",
+				report.description().contains("Rings"));
 
 		int removed = report.remove();
 		Assert.assertEquals("every reported item is cleaned", itemCount, removed);
@@ -259,6 +264,7 @@ public class FeatureProvenanceTest extends TestSuiteBase {
 		WaveFeatureCleanup after = library.otherModelFeatures();
 		Assert.assertEquals("no other-model items remain", 0, after.itemCount());
 		Assert.assertEquals("no other-model bytes remain", 0L, after.totalBytes());
+		Assert.assertFalse("an empty feature report is not present", after.isPresent());
 
 		library.stop();
 	}

@@ -16,6 +16,7 @@
 
 package org.almostrealism.music.pattern;
 
+import org.almostrealism.audio.data.FileWaveDataProviderNode;
 import org.almostrealism.audio.line.OutputLine;
 import org.almostrealism.audio.tone.DefaultKeyboardTuning;
 import org.almostrealism.audio.tone.Scale;
@@ -28,12 +29,16 @@ import org.almostrealism.music.notes.FileNoteSource;
 import org.almostrealism.music.notes.NoteAudioChoice;
 import org.almostrealism.music.notes.NoteAudioSource;
 import org.almostrealism.music.notes.PatternNote;
+import org.almostrealism.music.notes.TreeNoteSource;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.mem.Heap;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -144,6 +149,72 @@ public class PatternSystemManagerTest extends TestSuiteBase {
 		Assert.assertTrue(psm.getPatterns().isEmpty());
 		Assert.assertEquals("the replaced manager's cache is emptied", 0, original.getNoteAudioCache().size());
 		Assert.assertTrue("the replaced manager's cached audio is released", originalAudio.isDestroyed());
+	}
+
+	/**
+	 * {@link PatternSystemManager#setNoteCachePersistent(boolean)} reaches the patterns
+	 * present when it is called and every pattern added afterwards, including the ones
+	 * {@link PatternSystemManager#setSettings(PatternSystemManager.Settings)} recreates,
+	 * and turning it off again reaches them all too.
+	 */
+	@Test(timeout = 30000)
+	public void noteCachePersistenceReachesEveryPattern() {
+		PatternSystemManager psm = new PatternSystemManager(chromosomes(3));
+		PatternLayerManager existing = psm.addPattern(0, 2.0, false);
+		boolean defaultPersistent = existing.isCachePersistent();
+
+		psm.setNoteCachePersistent(!defaultPersistent);
+		Assert.assertEquals("an existing pattern follows the setting", !defaultPersistent,
+				existing.isCachePersistent());
+
+		PatternLayerManager added = psm.addPattern(1, 2.0, false);
+		Assert.assertEquals("a pattern added later follows the setting", !defaultPersistent,
+				added.isCachePersistent());
+
+		psm.setSettings(psm.getSettings());
+		Assert.assertEquals(2, psm.getPatterns().size());
+		psm.getPatterns().forEach(p -> Assert.assertEquals("a recreated pattern follows the setting",
+				!defaultPersistent, p.isCachePersistent()));
+
+		psm.setNoteCachePersistent(defaultPersistent);
+		psm.getPatterns().forEach(p -> Assert.assertEquals("turning the setting back reaches every pattern",
+				defaultPersistent, p.isCachePersistent()));
+		psm.destroy();
+	}
+
+	/**
+	 * {@link PatternSystemManager#setTree(org.almostrealism.audio.data.FileWaveDataProviderTree,
+	 * java.util.function.DoubleConsumer)} offers the library to every source through
+	 * {@link NoteAudioSource#setTree}: a {@link TreeNoteSource} binds to it (and to
+	 * {@code null} when the library is cleared), a fixed-origin {@link FileNoteSource}
+	 * keeps its own origin, and progress is reported once up front and once per source.
+	 */
+	@Test(timeout = 30000)
+	public void setTreeReachesEverySourceThroughTheInterface() throws IOException {
+		TreeNoteSource tree = new TreeNoteSource();
+		FileNoteSource file = new FileNoteSource("kick.wav");
+		NoteAudioChoice choice = new NoteAudioChoice("kick");
+		choice.getSources().add(tree);
+		choice.getSources().add(file);
+		PatternSystemManager psm = new PatternSystemManager(List.of(choice), chromosomes(1));
+
+		Path dir = Files.createTempDirectory("library");
+		try {
+			FileWaveDataProviderNode library = new FileWaveDataProviderNode(dir.toFile());
+			List<Double> progress = new ArrayList<>();
+			psm.setTree(library, progress::add);
+
+			Assert.assertSame("the tree source binds to the library", library, tree.getTree());
+			Assert.assertEquals("a fixed-origin source keeps its origin", "kick.wav", file.getOrigin());
+			Assert.assertEquals(List.of(0.0, 0.5, 1.0), progress);
+
+			psm.setTree(null);
+			Assert.assertNull("clearing the library unbinds the tree source", tree.getTree());
+			Assert.assertEquals("kick.wav", file.getOrigin());
+		} finally {
+			Files.delete(dir);
+			psm.destroy();
+		}
 	}
 
 	/**

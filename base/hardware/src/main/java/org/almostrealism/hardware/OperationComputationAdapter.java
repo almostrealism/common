@@ -170,15 +170,11 @@ import java.util.stream.Stream;
  *
  * <h2>Compilation and Execution</h2>
  *
- * <p>The {@link #get()} method compiles the operation to a {@link Runnable}:</p>
+ * <p>The {@link #get()} method compiles the operation to a {@link Runnable} whose kernel
+ * is already loaded:</p>
  * <pre>{@code
  * OperationComputation<Void> operation = ...;
- * Runnable runnable = operation.get();  // Compiles
- *
- * // If compiled to AcceleratedOperation, loads kernel
- * if (runnable instanceof AcceleratedOperation<?>) {
- *     ((AcceleratedOperation<?>) runnable).load();  // Kernel loaded
- * }
+ * Runnable runnable = operation.get();  // Compiles and loads the kernel
  *
  * runnable.run();  // Executes operation
  * }</pre>
@@ -188,12 +184,8 @@ import java.util.stream.Stream;
  * <p>Via {@link ComputerFeatures}, operations compile to hardware-accelerated runnables:</p>
  * <pre>{@code
  * // Compilation uses Hardware.getLocalHardware().getComputer()
- * Runnable runnable = compileRunnable(this);
- *
- * // May produce:
- * // - AcceleratedOperation (GPU kernel)
- * // - OperationList (sequence of operations)
- * // - Plain Runnable (CPU execution)
+ * AcceleratedComputationOperation<Void> operation = compileRunnable(this);
+ * operation.load();  // Compiles the kernel now rather than on the first run
  * }</pre>
  *
  * <h2>Subclassing Guidelines</h2>
@@ -296,24 +288,16 @@ public abstract class OperationComputationAdapter<T>
 	 * Compiles this operation to a {@link Runnable} for execution.
 	 *
 	 * <p>Delegates to {@link ComputerFeatures#compileRunnable(Computation)} to compile
-	 * the operation. If the result is an {@link AcceleratedOperation}, calls {@link AcceleratedOperation#load()}
-	 * to prepare the compiled kernel for execution.</p>
-	 *
-	 * <p>The returned runnable may be:</p>
-	 * <ul>
-	 *   <li>{@link AcceleratedOperation} - Hardware-accelerated kernel</li>
-	 *   <li>{@link OperationList} - Sequence of operations</li>
-	 *   <li>Plain {@link Runnable} - CPU-based execution</li>
-	 * </ul>
+	 * the operation into an {@link AcceleratedComputationOperation}, and calls its
+	 * {@link AcceleratedComputationOperation#load()} so that the kernel is compiled now
+	 * rather than on the first run.</p>
 	 *
 	 * @return A compiled runnable that executes this operation
 	 */
 	@Override
 	public Runnable get() {
-		Runnable r = compileRunnable(this);
-		if (r instanceof AcceleratedOperation<?>) {
-			((AcceleratedOperation<?>) r).load();
-		}
-		return r;
+		AcceleratedComputationOperation<Void> operation = compileRunnable(this);
+		operation.load();
+		return operation;
 	}
 }

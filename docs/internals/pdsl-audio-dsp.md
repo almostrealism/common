@@ -232,9 +232,17 @@ consequences of block-parallel evaluation.
 - **The reverb is deterministic.** It uses 32 taps with golden-ratio spacing over a
   seconds-denominated ring. The legacy reverb used 128 randomly sized lines, re-randomized every
   run.
+- **True stereo with per-channel pan.** The master is stereo: each side is rendered by its own
+  forward over that side's voicing rows, with its own ring state, and streamed to its own writer —
+  a complete mixdown graph per side, as in the legacy `CellList` path. Each channel carries a pan
+  value in `[-1, 1]` on `MixdownManager` (0 = centre), persisted with the scene. Pan is a **balance
+  law with unity at centre**: the side gains are `gL(p) = min(1, 1 − p)` and `gR(p) = min(1, 1 + p)`,
+  so at `p = 0` both are exactly 1 (a centred mix is identical to the legacy per-side processing, and
+  to the mono layer), at `p = −1` the right gain is 0, and at `p = +1` the left gain is 0. The gain is
+  folded into the channel's dry volume and its sends, so the sends are post-pan: a hard-panned channel
+  reaches only its side's dry bus, efx bus and reverb. Pan is stepped once per buffer (the gain is a
+  per-channel scalar re-read each buffer), not ramped within it.
 - **Known remaining differences:**
-  - The master is dual-mono: one rendered master streams to both stereo writers, and there is no
-    pan.
   - Floating-point reduction order can drift across recompiles, by about 1–3% RMS late in
     feedback-heavy renders.
   - Some filter coefficients are sampled when the arguments are built rather than refreshed
@@ -246,11 +254,19 @@ consequences of block-parallel evaluation.
   DSP loop and Metal for the parallel pattern kernels. Forcing `AR_HARDWARE_DRIVER=mtl` fails to
   compile the per-frame loop, which exceeds Metal's 31-buffer kernel argument limit. Forcing
   `native` is many times slower. Leave the driver unset.
-- **Sustained rendering needs `-DAR_PATTERN_CACHE_PERSIST=true`.** Without it, note-audio
-  deallocation churn leaks native memory on every buffer. `PatternLayerManager` reads the flag
-  once, at class load, so it must be a JVM `-D` argument (for tests, in the surefire `argLine`),
-  not something set at runtime. Callers that switch arrangements at runtime must leave it off or
-  call `invalidateCaches()`.
+- **A driver must run `setup()` after every `reset()`.** Resetting the real-time runner stops
+  its render-ahead producer and rewinds its cursors; only `setup()` restarts the producer.
+  A driver that loops an arrangement (resetting at each loop boundary) and keeps ticking
+  without setup fails on the first buffer of the next pass, because the stopped render-ahead
+  stream rejects the wait for its slot.
+- **Persistent note caching is an optional optimization for a fixed arrangement.** Without it,
+  every looped pass re-evaluates the note audio; sustained rendering works either way. A
+  renderer that loops a fixed arrangement can avoid that re-evaluation by enabling
+  persistence on its own scene with `PatternSystemManager.setNoteCachePersistent(true)` (as
+  `RealtimeContinuousRenderer` does); it applies to every pattern of that manager, including
+  ones added later. `-DAR_PATTERN_CACHE_PERSIST=true` only sets the default for new
+  `PatternLayerManager`s, read once at class load. A caller that switches arrangements while
+  persistence is on must call `PatternLayerManager.invalidateCaches()`.
 - **Block-outward integration.** To connect a compiled PDSL `Block` to a `Cell`/`CellList`
   consumer, make the consumer accept the `Block`; never wrap the `Block` to masquerade as a
   `CellList`. The real-time contract is `TemporalCellular` (`setup()`/`tick()`/`reset()`), which

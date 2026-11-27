@@ -18,6 +18,7 @@ package io.flowtree.slack;
 
 import fi.iki.elonen.NanoHTTPD;
 import io.flowtree.JsonFieldExtractor;
+import io.flowtree.jobs.BlockReport;
 import io.flowtree.jobs.CodingAgentJob;
 import io.flowtree.jobs.CodingAgentJobEvent;
 import io.flowtree.jobs.JobCompletionEvent;
@@ -177,6 +178,71 @@ public class SlackIntegrationTest extends TestSuiteBase {
         String failMsg = messages.get(0);
         assertTrue(failMsg.contains("Work failed"));
         assertTrue(failMsg.contains("Compilation failed"));
+    }
+
+    /**
+     * A {@link JobCompletionEvent.Status#BLOCKED} completion renders as a
+     * distinct "Work blocked" summary that names the block category and detail,
+     * rather than falling through to the generic unknown-status branch.
+     */
+    @Test(timeout = 10000)
+    public void testBlockedCompletionNotification() {
+        List<String> messages = new ArrayList<>();
+        SlackNotifier notifier = new SlackNotifier(null);
+        notifier.setMessageCallback(json -> {
+            int start = json.indexOf("\"text\":\"") + 8;
+            int end = json.indexOf("\"", start);
+            if (start > 7 && end > start) {
+                messages.add(json.substring(start, end).replace("\\n", "\n"));
+            }
+        });
+
+        Workstream workstream = new Workstream("C_BLOCK_1", "#block-test");
+        notifier.registerWorkstream(workstream);
+
+        CodingAgentJobEvent blockedEvent = CodingAgentJobEvent.blocked(
+            "job-blocked-1", "Create a new Maven module",
+            new BlockReport(BlockReport.OUT_OF_SCOPE, "Task requires a new module", true));
+        notifier.onJobCompleted(workstream.getWorkstreamId(), blockedEvent);
+
+        assertTrue(messages.size() > 0);
+        String blockedMsg = messages.get(messages.size() - 1);
+        assertTrue(blockedMsg.contains("Work blocked"));
+        assertTrue(blockedMsg.contains(BlockReport.OUT_OF_SCOPE));
+        assertTrue(blockedMsg.contains("Task requires a new module"));
+        assertFalse(blockedMsg.contains(":grey_question:"));
+        assertFalse(blockedMsg.contains("(unverified)"));
+    }
+
+    /**
+     * A guardrail block whose claim the harness could not corroborate is marked
+     * {@code (unverified)} in the blocked-completion summary.
+     */
+    @Test(timeout = 10000)
+    public void testUnverifiedBlockedCompletionNotification() {
+        List<String> messages = new ArrayList<>();
+        SlackNotifier notifier = new SlackNotifier(null);
+        notifier.setMessageCallback(json -> {
+            int start = json.indexOf("\"text\":\"") + 8;
+            int end = json.indexOf("\"", start);
+            if (start > 7 && end > start) {
+                messages.add(json.substring(start, end).replace("\\n", "\n"));
+            }
+        });
+
+        Workstream workstream = new Workstream("C_BLOCK_2", "#block-test");
+        notifier.registerWorkstream(workstream);
+
+        CodingAgentJobEvent blockedEvent = CodingAgentJobEvent.blocked(
+            "job-blocked-2", "Edit a protected file",
+            new BlockReport(BlockReport.GUARDRAIL, "A hook denied the edit", false));
+        notifier.onJobCompleted(workstream.getWorkstreamId(), blockedEvent);
+
+        assertTrue(messages.size() > 0);
+        String blockedMsg = messages.get(messages.size() - 1);
+        assertTrue(blockedMsg.contains("Work blocked"));
+        assertTrue(blockedMsg.contains(BlockReport.GUARDRAIL));
+        assertTrue(blockedMsg.contains("(unverified)"));
     }
 
     // TODO(review): duplicate of SlackCostNotifierTest.testSlackCompletionWithCostBlock — remove this copy once the split is confirmed complete
