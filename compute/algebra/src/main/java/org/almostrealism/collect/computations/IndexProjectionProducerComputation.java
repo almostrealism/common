@@ -31,6 +31,7 @@ import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Supplier;
 import java.util.function.UnaryOperator;
@@ -400,7 +401,8 @@ public class IndexProjectionProducerComputation
 	@Override
 	protected CollectionProducer deltaDependent(Producer<?> target, ReduceAxis axis, Producer<PackedCollection> weight) {
 		if (axis != ReduceAxis.NONE) {
-			return super.deltaDependent(target, axis, weight);
+			CollectionProducer reduced = deltaProjected(target, axis, weight);
+			return reduced == null ? super.deltaDependent(target, axis, weight) : reduced;
 		}
 
 		Producer<PackedCollection> in = getInputs().get(1);
@@ -447,5 +449,72 @@ public class IndexProjectionProducerComputation
 		}
 
 		return super.deltaDependent(target, axis, weight);
+	}
+
+	/**
+	 * Returns a reduced delta of this projection that is never larger than its operands,
+	 * or {@code null} when this projection has none and the Jacobian must be contracted.
+	 *
+	 * <p>Each output element is one input element, {@code out[j] = in[p(j)]}, so the
+	 * derivative passes straight through the projection:</p>
+	 * <ul>
+	 *   <li>{@link ReduceAxis#IN}: the tangent of the output is the same projection of the
+	 *       input's tangent, which holds for every index projection.</li>
+	 *   <li>{@link ReduceAxis#OUT}: the weight is carried back to the input by the transpose
+	 *       of the projection, which for a projection that is a permutation is its inverse
+	 *       ({@link #inverseProjection}), and the input's own reduced delta takes it from
+	 *       there.</li>
+	 * </ul>
+	 *
+	 * @param target the producer with respect to which to differentiate
+	 * @param axis   {@link ReduceAxis#OUT} or {@link ReduceAxis#IN}
+	 * @param weight the weight of each entry along that axis, or null for ones
+	 * @return the reduced delta, or {@code null} when this projection cannot produce it
+	 */
+	protected CollectionProducer deltaProjected(Producer<?> target, ReduceAxis axis,
+												Producer<PackedCollection> weight) {
+		Producer<PackedCollection> in = getInputs().get(1);
+		if (in.cannotMatch(target)) return null;
+
+		TraversalPolicy inShape = shape(in);
+
+		if (axis == ReduceAxis.IN) {
+			CollectionProducer tangent = c(in).delta(target, ReduceAxis.IN, weight).reshape(inShape);
+			return projectionOf(tangent);
+		}
+
+		CollectionProducer back = inverseProjection(weight == null
+				? constant(getShape(), 1.0) : c(weight).reshape(getShape()));
+		if (back == null) return null;
+
+		return c(in).delta(target, ReduceAxis.OUT, back.reshape(inShape));
+	}
+
+	/**
+	 * Returns this projection applied to {@code input} in place of its own input: a copy
+	 * of this computation, built by {@link #generate(List)}, that reads {@code input}.
+	 *
+	 * @param input a producer with the shape of this projection's input
+	 * @return the projection of {@code input}
+	 */
+	protected CollectionProducer projectionOf(Producer<PackedCollection> input) {
+		List<Process<?, ?>> children = new ArrayList<>(getChildren());
+		children.set(1, (Process<?, ?>) input);
+		return generate(children);
+	}
+
+	/**
+	 * Returns the inverse of this projection applied to {@code values}, which have the
+	 * shape of this projection's output: the collection, in the shape of its input, that
+	 * this projection maps to {@code values}. Only a projection that is a permutation of
+	 * its input has an inverse, and only one that knows its inverse returns it; any other
+	 * returns {@code null}, and its {@link ReduceAxis#OUT} delta contracts the Jacobian.
+	 *
+	 * @param values a producer with the shape of this projection's output
+	 * @return the inverse projection of {@code values}, or {@code null} when this
+	 *         projection has no inverse it can express
+	 */
+	protected CollectionProducer inverseProjection(Producer<PackedCollection> values) {
+		return null;
 	}
 }

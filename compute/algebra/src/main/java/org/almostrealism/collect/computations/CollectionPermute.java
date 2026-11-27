@@ -22,6 +22,8 @@ import io.almostrealism.compute.Process;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Producer;
+import org.almostrealism.collect.CollectionProducer;
+import org.almostrealism.collect.PackedCollection;
 
 import java.util.List;
 
@@ -219,6 +221,23 @@ public class CollectionPermute
 	 * 
 	 * @see IndexProjectionProducerComputation#generate(List)
 	 */
+	/**
+	 * Returns the permutation by the inverse order applied to {@code values}, which
+	 * restores the dimension order of this permutation's input.
+	 *
+	 * @param values a producer in the shape of this permutation's output
+	 * @return {@code values} in the shape and dimension order of the input
+	 */
+	@Override
+	protected CollectionProducer inverseProjection(Producer<PackedCollection> values) {
+		int[] inverse = new int[order.length];
+		for (int i = 0; i < order.length; i++) {
+			inverse[order[i]] = i;
+		}
+
+		return new CollectionPermute(values, inverse);
+	}
+
 	@Override
 	public CollectionPermute generate(List<Process<?, ?>> children) {
 		if (getChildren().size() != 2) {
