@@ -209,7 +209,10 @@ public final class NodeStatusReport {
 	 * {@value #LABEL_ASSIGNMENT} — makes the whole field unreliable, so the labels decode to
 	 * {@code null} ("unknown") rather than to a partial or empty set that would read as
 	 * authoritative; this mirrors the strict {@link #parseBusy} contract. Empty pairs, including a
-	 * trailing one left by a dangling {@value #LABEL_SEPARATOR}, are malformed too.
+	 * trailing one left by a dangling {@value #LABEL_SEPARATOR}, are malformed too, as is a pair
+	 * whose key or value carries a {@link #RESERVED structural delimiter} (for example
+	 * {@code platform=linux:gpu} or {@code os=mac=arm}): {@link #encodeLabels} never emits such a
+	 * label, so decode accepts exactly what encode can produce.
 	 *
 	 * @param value  the encoded labels, e.g. {@code "platform=linux,hostname=halo"}.
 	 * @return  the decoded labels; an empty map when the field was blank, or {@code null} when a
@@ -225,6 +228,7 @@ public final class NodeStatusReport {
 
 			String key = pair.substring(0, eq);
 			String val = pair.substring(eq + LABEL_ASSIGNMENT.length());
+			if (!isEncodable(key) || !isEncodable(val)) return null;
 			labels.put(key, val);
 		}
 		return labels;

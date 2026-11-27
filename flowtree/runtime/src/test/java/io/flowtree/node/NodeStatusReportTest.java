@@ -265,6 +265,28 @@ public class NodeStatusReportTest extends TestSuiteBase {
 	}
 
 	/**
+	 * A decoded label key or value carrying a reserved delimiter is one the encoder would never
+	 * emit, so the whole labels field decodes to unknown rather than exposing a label that differs
+	 * from any the peer could have reported. The busy field alongside it still decodes normally.
+	 */
+	@Test(timeout = 10000)
+	public void parseOfLabelCarryingReservedDelimiterReportsUnknown() {
+		NodeStatusReport colonInValue = NodeStatusReport.parse("busy:true;labels:platform=linux:gpu");
+		Assert.assertEquals(Boolean.TRUE, colonInValue.busy());
+		Assert.assertNull("a ':' in a value is not encodable", colonInValue.labels());
+
+		NodeStatusReport colonInKey = NodeStatusReport.parse("busy:false;labels:gpu:kind=cuda");
+		Assert.assertNull("a ':' in a key is not encodable", colonInKey.labels());
+
+		NodeStatusReport assignmentInValue =
+				NodeStatusReport.parse("busy:false;labels:platform=linux,os=mac=arm");
+		Assert.assertNull("a second '=' in a pair is not encodable", assignmentInValue.labels());
+
+		Map<String, String> valid = NodeStatusReport.parse("busy:false;labels:platform=linux").labels();
+		Assert.assertEquals(Map.of("platform", "linux"), valid);
+	}
+
+	/**
 	 * Drives a full {@code ServerStatus} payload through {@link NodeGroupMessageHandler} and
 	 * asserts the parsed busy flag and labels land on the sending {@link NodeProxy}, so
 	 * {@link NodeProxy#getStatus()} reflects what the peer reported. The handler's status branch
