@@ -38,6 +38,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.BiFunction;
 import java.util.stream.Collectors;
 
 /**
@@ -102,7 +103,7 @@ public abstract class ComputationBase<I, O, T>
 	 * Cached optimized version of this computation.
 	 * Once optimization is performed, the result is stored here to avoid redundant processing.
 	 */
-	protected ComputationBase<I, O, T> optimized;
+	private ComputationBase<I, O, T> optimized;
 
 	/**
 	 * Weak reference to the {@link ArgumentProvider} that last drove
@@ -381,17 +382,60 @@ public abstract class ComputationBase<I, O, T>
 	 */
 	@Override
 	public Scope<O> getScope(KernelStructureContext context) {
-		if (optimized != null && optimized != this) {
+		return createScope(Scope::new);
+	}
+
+	/**
+	 * Creates the kernel scope of this computation as a scope of the kind
+	 * {@code kind} constructs, configured the way every kernel scope must be: named
+	 * by {@link #getFunctionName()} with this computation's {@link #getMetadata()},
+	 * carrying its {@link #getComputeRequirements() compute requirements} (which
+	 * {@link Scope#convertArgumentsToRequiredScopes} consults when deciding whether
+	 * one kernel may absorb another) and its intermediate {@link #getVariables()
+	 * variables}. A subclass whose kernel is not a plain {@link Scope} (a
+	 * {@code Repeated} loop, for example) builds it here rather than by hand, so it
+	 * cannot drop any of that configuration.
+	 *
+	 * @param kind constructs an unconfigured scope from a name and metadata, such
+	 *             as {@code Scope::new} or {@code Repeated::new}
+	 * @param <S>  the kind of scope
+	 * @return the configured scope
+	 * @throws IllegalArgumentException if an optimized version has superseded this
+	 *         computation, which must then not be compiled itself
+	 */
+	protected <S extends Scope<O>> S createScope(BiFunction<String, OperationMetadata, S> kind) {
+		if (isSupersededByOptimizedVersion()) {
 			throw new IllegalArgumentException("This Computation should not be used, as an optimized version already exists");
 		}
 
-		Scope<O> scope = new Scope<>(getFunctionName(), getMetadata());
+		S scope = kind.apply(getFunctionName(), getMetadata());
 		if (getComputeRequirements() != null) {
 			scope.setComputeRequirements(getComputeRequirements());
 		}
 
 		scope.getVariables().addAll(getVariables());
 		return scope;
+	}
+
+	/**
+	 * Returns the optimized version of this computation produced by
+	 * {@link #optimize(ProcessContext)}, or {@code null} when it has not been
+	 * optimized. It may be this computation itself.
+	 *
+	 * @return the cached optimized version, or {@code null}
+	 */
+	protected ComputationBase<I, O, T> getOptimizedVersion() {
+		return optimized;
+	}
+
+	/**
+	 * Returns whether optimization produced a different computation that should be
+	 * used in place of this one.
+	 *
+	 * @return {@code true} when an optimized version other than this one exists
+	 */
+	protected boolean isSupersededByOptimizedVersion() {
+		return optimized != null && optimized != this;
 	}
 
 	/**
