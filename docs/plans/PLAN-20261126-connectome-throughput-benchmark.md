@@ -154,7 +154,7 @@ Machine: Mac Studio, Apple M1 Ultra, 128 GB, macOS, aarch64.
 | Backend | Machine | Precision | Sim s / wall s | perStepMicros | Sparse product | Neuron update | Ring r/w | Dispatch / outside kernels | Memory | Notes |
 |---|---|---|---|---|---|---|---|---|---|---|
 | Metal | M1 Ultra 128 GB (Mac Studio) | FP32 | 0.0121 | 8,244 | 7,812 µs (95%) | ← 432 µs for all of these together → | | | 321 MB | 22 dispatches, 0.087 commits per step |
-| native | M1 Ultra 128 GB (Mac Studio) | FP64 | 0.0049 | 20,373 | 11,684 µs (57%) | 3,412 µs (17%) | 4,251 µs (21%) | ~1,010 µs (5%) | 641 MB | 18 kernels per step |
+| native | M1 Ultra 128 GB (Mac Studio) | FP64 | 0.0049 | 20,373 | 11,684 µs (57%) | 3,412 µs (17%) | 4,251 µs (21%) | ~1,010 µs (5%) | 643 MB | 18 kernels per step |
 | OpenCL (Apple) | M1 Ultra 128 GB (Mac Studio) | FP32 | 0.0059 | 17,016 | 9,239 µs (54%) | ← 7,777 µs for all of these together → | | | 321 MB | not a task target; extra row |
 | Metal | M4 Max | FP32 | not run | | | | | | | follow-up `b419fa7a` |
 | Metal | Mac mini | FP32 | not run | | | | | | | follow-up `b419fa7a` |
@@ -187,8 +187,9 @@ dispatch overhead at under 5% of the step.
 **Memory footprint** (from the network's tensors, logged by the benchmark): the CSR connectome
 75,900,368 elements (row offsets, presynaptic columns, weights, signs); the delay-line ring
 `[19, 164506]` = 3,125,614; the neuron state (membrane, synapse, refractory, spikes, spike
-counts) 822,530; the Poisson targets and external drive 329,012 — 80,177,524 elements in all,
-320.7 MB in FP32 and 641.4 MB in FP64. The connectome is 95% of it. Device high-water was not
+counts) 822,530; the Poisson targets and silent drive 329,012; the spike totals 164,506; the step
+counter and Poisson seed 2 — 80,342,032 elements in all, 321.4 MB in FP32 and 642.7 MB in FP64.
+The connectome is 94% of it. Device high-water was not
 recorded: the memory providers' allocated-bytes counters are not exposed through a
 backend-neutral interface, so reading them would mean branching on the Metal/OpenCL classes.
 
@@ -292,8 +293,8 @@ A reviewer confirms the task is done when:
 
 1. Staged collection. This branch carries the benchmark and the rows the macOS node could reach
    (Metal, native and, additionally, Apple OpenCL on the Mac Studio). The other machines are
-   recorded as "not run" in the table and tracked by `b419fa7a`, which also carries the table to
-   `docs/internals/simulation-loop-examples.md` once this plan is swept.
+   recorded as "not run" in the table and tracked by `b419fa7a`, which adds their rows to the table this
+   branch already put in `docs/internals/simulation-loop-examples.md` ("Measured Overhead").
 2. Not established here: no CUDA node was reachable. The CUDA row is part of `b419fa7a`.
 3. One replica, 150 Hz to the 77 `LB3a`–`LB3d` neurons, a 200-step warm-up and 2,000 timed steps
    (`ConnectomeThroughputBenchmarkTest.WARMUP`/`STEPS`), the fixed protocol for every row.

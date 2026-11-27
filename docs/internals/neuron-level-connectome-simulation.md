@@ -369,7 +369,7 @@ percentile of at most 4.3% over every neuron above 10 Hz.
   dominates: alone it takes 7.8 ms of the Metal step and 11.4 ms of the native one, because it
   reads every edge each step while only about 90 neurons spike. On native the delay-line write is
   next, at 4.0 ms, because `cacheWrite` sweeps every row of the ring. The network's tensors hold
-  80.2M elements (321 MB in FP32), 95% of them the compressed connectome. See
+  80.3M elements (321 MB in FP32), 94% of them the compressed connectome. See
   [simulation-loop-examples.md](simulation-loop-examples.md#measured-overhead) for the full
   breakdown.
 

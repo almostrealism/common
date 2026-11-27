@@ -174,24 +174,23 @@ public class ConnectomeThroughputBenchmarkTest extends NeuronConnectomeChecks {
 	/**
 	 * Logs the number of elements and bytes held by the tensors of a network: the compressed
 	 * connectome (one stored value per edge, not the {@code N * N} of the weight matrix's
-	 * logical shape), the delay line, the neuron state and the Poisson targets.
+	 * logical shape) and every tensor of the network's own state
+	 * ({@link ConnectomeNetwork#getStateMemLength()}), of which the delay line is the largest.
 	 *
 	 * @param network the network
 	 */
 	protected void logFootprint(ConnectomeNetwork network) {
 		NeuronConnectome connectome = network.getConnectome();
-		ExponentialSynapseNeurons neurons = network.getNeurons();
 		long connectomeElements = connectome.getEdgeCount() + elements(connectome.getOrdering().getRowOffsets(),
 				connectome.getOrdering().getColumns(), connectome.getSigns());
 		long ringElements = elements(network.getRing());
-		long neuronElements = elements(neurons.getMembrane(), neurons.getSynapse(), neurons.getRefractory(),
-				neurons.getSpikes(), neurons.getSpikeCounts());
-		long total = connectomeElements + ringElements + neuronElements + 2L * connectome.getNeuronCount();
+		long stateElements = network.getStateMemLength();
+		long total = connectomeElements + stateElements;
 		int bytes = Hardware.getLocalHardware().getPrecision().bytes();
 
 		log("connectomeElements=" + connectomeElements + " ringElements=" + ringElements
 				+ " ringShape=" + network.getRing().getShape()
-				+ " neuronElements=" + neuronElements + " totalElements=" + total
+				+ " stateElements=" + stateElements + " totalElements=" + total
 				+ " totalMegabytes=" + total * bytes / 1e6);
 	}
 
