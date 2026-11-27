@@ -24,6 +24,7 @@ import org.junit.Test;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
 /**
  * Tests that the resource limits a submission asks for are held to the
@@ -114,6 +115,19 @@ public class ResourceLimitOverridesTest extends TestSuiteBase {
 
         apply(200, 20.0, "{\"inactivityTimeoutSeconds\":36000}");
         assertEquals(Integer.valueOf(36000), factory.getInactivityTimeoutSeconds());
+    }
+
+    /** The clamped report cannot be altered by a caller, so the response always reflects what applyTo did. */
+    @Test(timeout = 30000)
+    public void clampedReportIsReadOnly() {
+        ResourceLimitOverrides overrides = apply(200, 20.0, "{\"maxTurns\":5000}");
+        try {
+            overrides.getClamped().put("maxBudgetUsd", "1.0");
+            fail("the clamped report must be unmodifiable");
+        } catch (UnsupportedOperationException expected) {
+            assertEquals(1, overrides.getClamped().size());
+            assertEquals("200", overrides.getClamped().get("maxTurns"));
+        }
     }
 
     /** A silence budget that is not positive is a validation error. */

@@ -20,6 +20,7 @@ import io.flowtree.JsonFieldExtractor;
 import io.flowtree.jobs.CodingAgentJobFactory;
 import io.flowtree.workstream.Workstream;
 
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -111,10 +112,10 @@ public final class ResourceLimitOverrides {
      * Returns the overrides {@link #applyTo} clamped, by request field name, to
      * the value the job received.
      *
-     * @return the clamped overrides; empty when none were
+     * @return an unmodifiable view of the clamped overrides; empty when none were
      */
     public Map<String, String> getClamped() {
-        return clamped;
+        return Collections.unmodifiableMap(clamped);
     }
 
     /**
