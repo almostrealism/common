@@ -200,6 +200,24 @@ public class FrequencyLayoutUpgradeTest extends TestSuiteBase {
 		future.close();
 	}
 
+	/**
+	 * A marker whose layout line is not a number vouches for nothing: the store degrades
+	 * to a rescan rather than letting the unreadable value abort the library open.
+	 *
+	 * @throws IOException if the marker cannot be written
+	 */
+	@Test(timeout = 60000)
+	public void aMarkerWithAnUnreadableLayoutVouchesForNothing() throws IOException {
+		Files.createDirectories(storeDir);
+
+		Files.writeString(storeDir.resolve("complete.model"),
+				MODEL + "\nfrequency-layout=not-a-number");
+		ProtobufWaveDetailsStore store = new ProtobufWaveDetailsStore(storeDir.toFile());
+		Assert.assertNull("a marker with an unreadable layout is rejected",
+				store.getValidatedModel());
+		store.close();
+	}
+
 	/** The layout version survives encoding a record and decoding it again. */
 	@Test(timeout = 60000)
 	public void layoutVersionRoundTrips() {
