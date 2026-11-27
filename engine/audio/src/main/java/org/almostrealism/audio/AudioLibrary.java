@@ -1016,13 +1016,15 @@ public class AudioLibrary implements ConsoleFeatures {
 	 * <p>With a feature provider configured, completeness requires that
 	 * provider's model specifically, so an item whose only features belong to a
 	 * different model is incomplete and recomputed beside them. With no provider,
-	 * this falls back to testing for any feature data at all.</p>
+	 * this falls back to testing for any feature data at all. Frequency data in an
+	 * older {@link WaveDetails#isFrequencyLayoutCurrent() layout} is incomplete too, so
+	 * it is recomputed (from the file, without re-encoding) rather than trusted.</p>
 	 *
 	 * @param details the WaveDetails to check
 	 * @return true if complete
 	 */
 	public boolean isComplete(WaveDetails details) {
-		if (details == null || details.getFreqData() == null) return false;
+		if (details == null || details.getFreqData() == null || !details.isFrequencyLayoutCurrent()) return false;
 
 		String modelId = currentModelId();
 		return modelId == null ? details.getFeatureData() != null

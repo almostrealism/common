@@ -72,4 +72,32 @@ public final class SineWaveFiles {
 
 		return files;
 	}
+
+	/**
+	 * Generates one stereo WAV file with a sine tone in the left channel and silence
+	 * in the right, so an analysis that mixes up the channels is visible.
+	 *
+	 * @param directory  the directory to write the file into
+	 * @param name       the file name
+	 * @param sampleRate the sample rate in Hz
+	 * @param duration   the duration in seconds
+	 * @param frequency  the tone's frequency in Hz
+	 * @return the file written
+	 * @throws IOException if the file cannot be written
+	 */
+	public static File generateLeftToneStereo(Path directory, String name, int sampleRate,
+											  double duration, double frequency) throws IOException {
+		int frames = (int) (sampleRate * duration);
+		File wavFile = directory.resolve(name).toFile();
+
+		try (WavFile wav = WavFile.newWavFile(wavFile, 2, frames, 16, sampleRate)) {
+			double[][] buffer = new double[2][frames];
+			for (int i = 0; i < frames; i++) {
+				buffer[0][i] = 0.8 * Math.sin(2.0 * Math.PI * frequency * i / sampleRate);
+			}
+			wav.writeFrames(buffer, frames);
+		}
+
+		return wavFile;
+	}
 }
