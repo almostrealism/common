@@ -284,11 +284,8 @@ public class MetalMemoryProvider extends HardwareMemoryProvider<MetalMemory> {
 	@Override
 	public void setMem(MetalMemory mem, int offset, float[] source, int srcOffset, int length) {
 		if (getNumberSize() == 8) {
-			double d[] = new double[length];
-			for (int i = 0; i < length; i++) d[i] = source[srcOffset + i];
-
 			DoubleBuffer buf = doubleBuffer(length);
-			buf.put(d);
+			for (int i = 0; i < length; i++) buf.put(i, source[srcOffset + i]);
 			mem.getMem().setContents(buf, offset, length);
 		} else {
 			FloatBuffer buf = floatBuffer(length);
@@ -300,7 +297,11 @@ public class MetalMemoryProvider extends HardwareMemoryProvider<MetalMemory> {
 	/**
 	 * Copies double array data into Metal memory.
 	 *
-	 * <p>Copies as-is for FP64, converts to float for FP32/FP16.</p>
+	 * <p>Copies as-is for FP64, converts to float for FP32/FP16. The conversion writes
+	 * directly into the off-heap transfer buffer, so no heap array of {@code length}
+	 * elements is allocated; every chunk of a host copy (see
+	 * {@link #setMemInChunks(Memory, int, Memory, int, int)}) passes through here, and a
+	 * per-call {@code float[]} at that chunk size is a G1 humongous object.</p>
 	 *
 	 * @param mem The destination {@link MetalMemory}
 	 * @param offset Starting offset in destination (in elements)
@@ -315,11 +316,8 @@ public class MetalMemoryProvider extends HardwareMemoryProvider<MetalMemory> {
 			buf.put(source, srcOffset, length);
 			mem.getMem().setContents(buf, offset, length);
 		} else {
-			float f[] = new float[length];
-			for (int i = 0; i < f.length; i++) f[i] = (float) source[srcOffset + i];
-
 			FloatBuffer buf = floatBuffer(length);
-			buf.put(f);
+			for (int i = 0; i < length; i++) buf.put(i, (float) source[srcOffset + i]);
 			mem.getMem().setContents(buf, offset, length);
 		}
 	}
@@ -377,11 +375,9 @@ public class MetalMemoryProvider extends HardwareMemoryProvider<MetalMemory> {
 	@Override
 	public void getMem(MetalMemory mem, int sOffset, float out[], int oOffset, int length) {
 		if (getNumberSize() == 8) {
-			double d[] = new double[length];
 			DoubleBuffer buf = doubleBuffer(length);
 			mem.getMem().getContents(buf, sOffset, length);
-			buf.get(d);
-			for (int i = 0; i < length; i++) out[oOffset + i] = (float) d[i];
+			for (int i = 0; i < length; i++) out[oOffset + i] = (float) buf.get(i);
 		} else {
 			FloatBuffer buf = floatBuffer(length);
 			mem.getMem().getContents(buf, sOffset, length);
@@ -407,11 +403,9 @@ public class MetalMemoryProvider extends HardwareMemoryProvider<MetalMemory> {
 			mem.getMem().getContents(buf, sOffset, length);
 			buf.get(out, oOffset, length);
 		} else {
-			float f[] = new float[length];
 			FloatBuffer buf = floatBuffer(length);
 			mem.getMem().getContents(buf, sOffset, length);
-			buf.get(f);
-			for (int i = 0; i < length; i++) out[oOffset + i] = f[i];
+			for (int i = 0; i < length; i++) out[oOffset + i] = buf.get(i);
 		}
 	}
 
