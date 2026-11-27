@@ -94,6 +94,8 @@ public class JobLookupEndpointTest extends TestSuiteBase {
         assertEquals("SUBMITTED", job.get("state").asText());
         assertEquals(submitted.toEpochMilli(), Instant.parse(job.get("submittedAt").asText()).toEpochMilli());
         assertEquals("ws-1", job.get("workstreamId").asText());
+        assertFalse("a submitted job has not started, so its placeholder started_at must not surface",
+                job.has("startedAt"));
     }
 
     /** A job that has waited past the lost threshold without starting has state {@code LOST}. */

@@ -48,6 +48,7 @@ import io.flowtree.api.FlowTreeApiEndpoint;
  * @see SlackNotifier
  * @see FlowTreeApiEndpoint
  */
+// TODO(review): past the 1500-line recommendation; extract the job-record readers into a collaborator.
 public class JobStatsStore extends ControllerDatabase {
 
     /** DDL statement that creates the {@code job_timing} table if it does not yet exist. */
@@ -888,21 +889,26 @@ public class JobStatsStore extends ControllerDatabase {
             if (workstreamId != null) ps.setString(1, workstreamId);
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
-                    Timestamp started = rs.getTimestamp("started_at");
-                    Timestamp beat = rs.getTimestamp("heartbeat_at");
-                    result.add(new ActiveJob(
-                            rs.getString("job_id"),
-                            rs.getString("workstream_id"),
-                            started == null ? null : started.toInstant(),
-                            beat == null ? null : beat.toInstant(),
-                            rs.getString("description"),
-                            rs.getString("node")));
+                    result.add(rowToActiveJob(rs));
                 }
             }
         } catch (SQLException e) {
             warn("Failed to query active jobs: " + e.getMessage());
         }
         return result;
+    }
+
+    /** Constructs an {@link ActiveJob} from the current row of a result set. */
+    private static ActiveJob rowToActiveJob(ResultSet rs) throws SQLException {
+        Timestamp started = rs.getTimestamp("started_at");
+        Timestamp beat = rs.getTimestamp("heartbeat_at");
+        return new ActiveJob(
+                rs.getString("job_id"),
+                rs.getString("workstream_id"),
+                started == null ? null : started.toInstant(),
+                beat == null ? null : beat.toInstant(),
+                rs.getString("description"),
+                rs.getString("node"));
     }
 
     /**
@@ -970,14 +976,7 @@ public class JobStatsStore extends ControllerDatabase {
             if (workstreamId != null) ps.setString(1, workstreamId);
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
-                    Timestamp submitted = rs.getTimestamp("submitted_at");
-                    result.add(new PendingJob(
-                            rs.getString("job_id"),
-                            rs.getString("workstream_id"),
-                            submitted == null ? null : submitted.toInstant(),
-                            rs.getString("submitted_by"),
-                            rs.getString("required_labels"),
-                            rs.getString("description")));
+                    result.add(rowToPendingJob(rs));
                 }
             }
         } catch (SQLException e) {
@@ -986,30 +985,69 @@ public class JobStatsStore extends ControllerDatabase {
         return result;
     }
 
+    /** Constructs a {@link PendingJob} from the current row of a result set. */
+    private static PendingJob rowToPendingJob(ResultSet rs) throws SQLException {
+        Timestamp submitted = rs.getTimestamp("submitted_at");
+        return new PendingJob(
+                rs.getString("job_id"),
+                rs.getString("workstream_id"),
+                submitted == null ? null : submitted.toInstant(),
+                rs.getString("submitted_by"),
+                rs.getString("required_labels"),
+                rs.getString("description"));
+    }
+
     /**
      * Returns the pending record of one job, as {@link #getPendingJobs} lists it.
+     *
+     * <p>Keyed on the {@code job_id} primary key, so the cost is bounded rather
+     * than growing with the pending queue.</p>
      *
      * @param jobId the job identifier
      * @return the job, or {@code null} when it is not pending or the store is
      *         unavailable
      */
     public synchronized PendingJob getPendingJob(String jobId) {
-        if (jobId == null) return null;
-        return getPendingJobs(null).stream()
-                .filter(job -> jobId.equals(job.jobId())).findFirst().orElse(null);
+        if (!isOpen() || jobId == null) return null;
+
+        String sql = "SELECT job_id, workstream_id, submitted_at, submitted_by, "
+            + "required_labels, description "
+            + "FROM job_timing WHERE job_id = ? AND status = 'SUBMITTED' AND completed_at IS NULL";
+        try (PreparedStatement ps = connection().prepareStatement(sql)) {
+            ps.setString(1, jobId);
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next() ? rowToPendingJob(rs) : null;
+            }
+        } catch (SQLException e) {
+            warn("Failed to query pending job: " + e.getMessage());
+            return null;
+        }
     }
 
     /**
      * Returns the active record of one job, as {@link #getActiveJobs} lists it.
+     *
+     * <p>Keyed on the {@code job_id} primary key, so the cost is bounded rather
+     * than growing with the number of running jobs.</p>
      *
      * @param jobId the job identifier
      * @return the job, or {@code null} when it is not running or the store is
      *         unavailable
      */
     public synchronized ActiveJob getActiveJob(String jobId) {
-        if (jobId == null) return null;
-        return getActiveJobs(null).stream()
-                .filter(job -> jobId.equals(job.jobId())).findFirst().orElse(null);
+        if (!isOpen() || jobId == null) return null;
+
+        String sql = "SELECT job_id, workstream_id, started_at, heartbeat_at, description, node "
+            + "FROM job_timing WHERE job_id = ? AND status = 'STARTED' AND completed_at IS NULL";
+        try (PreparedStatement ps = connection().prepareStatement(sql)) {
+            ps.setString(1, jobId);
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next() ? rowToActiveJob(rs) : null;
+            }
+        } catch (SQLException e) {
+            warn("Failed to query active job: " + e.getMessage());
+            return null;
+        }
     }
 
     /**
@@ -1137,6 +1175,11 @@ public class JobStatsStore extends ControllerDatabase {
      * has not been completed yet, e.g. a {@code STARTED} status). The plain
      * constructor stamps {@code Instant.now()}, which would make every read return the
      * read-time instant rather than when the job actually happened.</p>
+     *
+     * <p>The event's {@code startedAt} is left {@code null} for a {@code SUBMITTED}
+     * row: that row's {@code started_at} column is only a {@code NOT NULL} placeholder
+     * seeded to the submission time (see {@link #recordJobSubmitted}), not a real
+     * start, so presenting it as one would make a pending job look started.</p>
      */
     private JobCompletionEvent rowToEvent(ResultSet rs) throws SQLException {
         String jobId = rs.getString("job_id");
@@ -1173,9 +1216,7 @@ public class JobStatsStore extends ControllerDatabase {
         }
 
         // Source the event time from the persisted row: completed_at when present,
-        // started_at otherwise. The constructor's Instant.now() stamp is overwritten
-        // so readers see when the job actually happened rather than when this row was
-        // read. setTimestamp updates both timestamp and eventTime.
+        // started_at otherwise.
         Timestamp completedTs = rs.getTimestamp("completed_at");
         Timestamp startedTs = rs.getTimestamp("started_at");
         Instant rowInstant = completedTs != null ? completedTs.toInstant()
@@ -1183,7 +1224,9 @@ public class JobStatsStore extends ControllerDatabase {
         if (rowInstant != null) {
             event.setTimestamp(rowInstant);
         }
-        if (startedTs != null) {
+        // started_at is seeded to submitted_at for a SUBMITTED row, so it is a
+        // real start time only once the job has started.
+        if (startedTs != null && status != JobCompletionEvent.Status.SUBMITTED) {
             event.setStartedAt(startedTs.toInstant());
         }
         if (completedTs != null) {
