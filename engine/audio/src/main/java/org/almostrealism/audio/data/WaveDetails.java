@@ -57,6 +57,15 @@ public class WaveDetails implements CodeFeatures, Node {
 	/** When true, similarity scores are normalized to [0,1] range by the maximum possible difference. */
 	public static boolean enableNormalizeSimilarity = false;
 
+	/**
+	 * The current layout of {@link #getFreqData() frequency data}: each channel analysed
+	 * into its own {@code [frames][bins]} block. Data written before this version may have
+	 * every channel after the first written over the first channel's block. A change to how
+	 * frequency data is laid out increments it, so stored data in an older layout is
+	 * recognised and recomputed.
+	 */
+	public static final int FREQUENCY_LAYOUT_VERSION = 1;
+
 	/** Cache of compiled difference-magnitude evaluables, keyed by bin count. */
 	private static final Map<Integer, Evaluable<PackedCollection>> differenceCalc = new HashMap<>();
 
@@ -86,6 +95,11 @@ public class WaveDetails implements CodeFeatures, Node {
 	private int freqFrameCount;
 	/** FFT frequency data, shaped [channels][frames][bins]. */
 	private PackedCollection freqData;
+	/**
+	 * The layout the frequency data was written in; {@code 0} for data written before
+	 * the layout was recorded. See {@link #FREQUENCY_LAYOUT_VERSION}.
+	 */
+	private int freqLayoutVersion;
 
 	/**
 	 * Sample rate used during feature extraction, for the legacy unkeyed slot.
@@ -397,6 +411,40 @@ public class WaveDetails implements CodeFeatures, Node {
 	 */
 	public void setFreqFrameCount(int freqFrameCount) {
 		this.freqFrameCount = freqFrameCount;
+	}
+
+	/**
+	 * Returns the layout the frequency data was written in: {@code 0} when it was written
+	 * before the layout was recorded, otherwise the {@link #FREQUENCY_LAYOUT_VERSION} that
+	 * was current when it was computed.
+	 *
+	 * @return the frequency layout version
+	 */
+	public int getFreqLayoutVersion() {
+		return freqLayoutVersion;
+	}
+
+	/**
+	 * Sets the layout the frequency data was written in.
+	 *
+	 * @param freqLayoutVersion the frequency layout version
+	 */
+	public void setFreqLayoutVersion(int freqLayoutVersion) {
+		this.freqLayoutVersion = freqLayoutVersion;
+	}
+
+	/**
+	 * Returns whether the frequency data is in the current layout, so it can be trusted.
+	 * Data with a single channel has only ever had one layout. Multi-channel data is
+	 * current only when its layout version equals the {@link #FREQUENCY_LAYOUT_VERSION}
+	 * this build understands: data in an older layout may have every channel after the
+	 * first written over the first channel's block, and data in an unknown newer layout
+	 * cannot be read by this build either, so both are recomputed rather than trusted.
+	 *
+	 * @return {@code true} when the frequency data can be trusted as laid out
+	 */
+	public boolean isFrequencyLayoutCurrent() {
+		return freqChannelCount <= 1 || freqLayoutVersion == FREQUENCY_LAYOUT_VERSION;
 	}
 
 	/**

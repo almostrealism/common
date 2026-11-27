@@ -1,0 +1,11 @@
+[
+  {
+    "id": "e17-note",
+    "content": "tools/ci/agent-protection/validate-agent-commit.sh exits 3 when it blocks a change set that only edits existing tests.",
+    "created_at": "2026-10-10T00:00:00+00:00",
+    "branch": "master",
+    "namespace": "decisions",
+    "repo_url": "https://github.com/almostrealism/common",
+    "score": 0.2
+  }
+]

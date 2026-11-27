@@ -175,6 +175,14 @@ public class PoissonInput implements Block {
 	public Cell<PackedCollection> getBackward() { return backward; }
 
 	/**
+	 * Returns the single-value seed of the draws, the only memory this input allocates; the
+	 * targets and the step counter belong to the caller.
+	 *
+	 * @return the seed of the draws
+	 */
+	public PackedCollection getSeed() { return seed; }
+
+	/**
 	 * Returns no setup: the draws depend only on the seed and the step counter.
 	 *
 	 * @return no setup: the draws depend only on the seed and the step counter

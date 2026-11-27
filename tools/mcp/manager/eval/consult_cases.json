@@ -527,6 +527,54 @@
           "(?i)unclear"
         ]
       }
+    },
+    {
+      "id": "E17",
+      "question": "What does validate-agent-commit.sh block and what exit code does it use?",
+      "keywords": [
+        "validate-agent-commit.sh",
+        "agent-commit-validation"
+      ],
+      "answerable": true,
+      "memories": "fixtures/memories/E17.json",
+      "scripted": "fixtures/scripted/E17.txt",
+      "path_dates": {
+        "tools/ci/agent-protection/validate-agent-commit.sh": "2026-10-15T09:00:00+00:00"
+      },
+      "expect": {
+        "note_tiers": {
+          "e17-note": "C"
+        },
+        "must_mark_unsupported": [
+          "exits 3"
+        ]
+      }
+    },
+    {
+      "id": "E18",
+      "question": "What does validate-agent-commit.sh block and what exit code does it use?",
+      "keywords": [
+        "validate-agent-commit.sh",
+        "agent-commit-validation"
+      ],
+      "answerable": true,
+      "memories": "fixtures/memories/E18.json",
+      "scripted": "fixtures/scripted/E18.txt",
+      "path_dates": {
+        "tools/ci/agent-protection/validate-agent-commit.sh": "2026-10-01T09:00:00+00:00"
+      },
+      "expect": {
+        "outcome": "answer",
+        "note_tiers": {
+          "e18-note": "B"
+        },
+        "must_include": [
+          "exits 3"
+        ],
+        "basis_in": [
+          "notes"
+        ]
+      }
     }
   ]
 }
