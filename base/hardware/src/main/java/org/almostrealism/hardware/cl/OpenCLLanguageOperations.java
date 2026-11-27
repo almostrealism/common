@@ -107,7 +107,9 @@ public class OpenCLLanguageOperations extends CLanguageOperations {
 	 * compare-and-swap loop over the bits of the element: {@code atomic_cmpxchg} on a
 	 * {@code uint} view for 32-bit elements, and {@code atom_cmpxchg} on a {@code ulong} view
 	 * for 64-bit elements, which requires a device supporting
-	 * {@code cl_khr_int64_base_atomics}.</p>
+	 * {@code cl_khr_int64_base_atomics}. {@link CLComputeContext} enables that extension in every
+	 * FP64 program ({@link CLComputeContext#FP64_PRAGMAS}); a device without it rejects the kernel
+	 * when it is compiled.</p>
 	 *
 	 * <p>The element is read without an atomic operation only once, before the loop. Each retry
 	 * starts from the value the failed compare-and-swap returned, which the swap read atomically,

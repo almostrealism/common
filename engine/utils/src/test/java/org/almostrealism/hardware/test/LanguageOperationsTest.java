@@ -16,15 +16,21 @@
 
 package org.almostrealism.hardware.test;
 
+import io.almostrealism.code.AtomicAccumulation;
 import io.almostrealism.code.Precision;
 import io.almostrealism.expression.BooleanConstant;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.Greater;
+import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.expression.Less;
+import io.almostrealism.expression.Mask;
 import io.almostrealism.expression.StaticReference;
 import io.almostrealism.lang.LanguageOperations;
+import io.almostrealism.scope.ArrayVariable;
+import io.almostrealism.scope.ScopeSettings;
 import org.almostrealism.c.CJNILanguageOperations;
 import org.almostrealism.c.CLanguageOperations;
+import org.almostrealism.hardware.cl.CLComputeContext;
 import org.almostrealism.hardware.cl.OpenCLLanguageOperations;
 import org.almostrealism.hardware.cuda.CudaLanguageOperations;
 import org.almostrealism.hardware.js.JavaScriptLanguageOperations;
@@ -233,6 +239,59 @@ public class LanguageOperationsTest extends TestSuiteBase {
 			Assert.assertTrue(cl, loop.contains("ar_atomic_r = "));
 			Assert.assertTrue(cl, loop.endsWith("while (ar_atomic_r != ar_atomic_o); }"));
 		}
+	}
+
+	/**
+	 * An atomic accumulation into a {@link Mask masked} element reference, the form an array
+	 * reference takes when {@link ScopeSettings#enableInstanceReferenceMasking} is set,
+	 * accumulates into the masked element itself rather than rendering the conditional; a mask of
+	 * something that is not an element reference is still refused.
+	 */
+	@Test(timeout = 30000)
+	public void atomicAccumulationIntoMaskedReference() {
+		ArrayVariable<Double> out = new ArrayVariable<>(Double.class, "out", new IntegerConstant(16));
+		Expression<Integer> i = new StaticReference<>(Integer.class, "i");
+		Expression<Double> v = new StaticReference<>(Double.class, "v");
+
+		boolean masking = ScopeSettings.enableInstanceReferenceMasking;
+		ScopeSettings.enableInstanceReferenceMasking = true;
+		Expression<Double> masked;
+
+		try {
+			masked = out.reference(i);
+		} finally {
+			ScopeSettings.enableInstanceReferenceMasking = masking;
+		}
+
+		Assert.assertTrue(masked.getClass().getSimpleName(), masked instanceof Mask);
+
+		AtomicAccumulation<Double> accumulation = new AtomicAccumulation<>(masked, v);
+		Assert.assertTrue(accumulation.getDestination().isVariableReference());
+		Assert.assertSame(((Mask) masked).getMaskedValue(), accumulation.getDestination());
+
+		String rendered = accumulation.getStatement(new CudaLanguageOperations(Precision.FP32));
+		Assert.assertTrue(rendered, rendered.startsWith("atomicAdd(&(out["));
+		Assert.assertFalse(rendered, rendered.contains("?"));
+
+		Expression<Boolean> positive = i.greaterThanOrEqual(new IntegerConstant(0));
+		try {
+			new AtomicAccumulation<>(Mask.of(positive, v), v);
+			Assert.fail("A mask of a non-reference should not be an accumulation destination");
+		} catch (IllegalArgumentException expected) {
+			Assert.assertNotNull(expected.getMessage());
+		}
+	}
+
+	/**
+	 * Every FP64 OpenCL program enables {@code cl_khr_int64_base_atomics}, which the 64-bit
+	 * {@code atom_cmpxchg} of the FP64 atomic accumulation requires, alongside {@code cl_khr_fp64}.
+	 */
+	@Test(timeout = 30000)
+	public void openCLFp64ProgramsEnableInt64Atomics() {
+		Assert.assertTrue(CLComputeContext.FP64_PRAGMAS,
+				CLComputeContext.FP64_PRAGMAS.contains("#pragma OPENCL EXTENSION cl_khr_fp64 : enable\n"));
+		Assert.assertTrue(CLComputeContext.FP64_PRAGMAS,
+				CLComputeContext.FP64_PRAGMAS.contains("#pragma OPENCL EXTENSION cl_khr_int64_base_atomics : enable\n"));
 	}
 
 	/**

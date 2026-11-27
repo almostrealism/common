@@ -17,6 +17,7 @@
 package io.almostrealism.code;
 
 import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.Mask;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.scope.ArrayVariable;
@@ -71,8 +72,14 @@ public class AtomicAccumulation<T> implements Statement<AtomicAccumulation<T>> {
 	/**
 	 * Creates an atomic accumulation of the given value into the given element.
 	 *
+	 * <p>A destination wrapped in a {@link Mask}, which is how
+	 * {@link ArrayVariable#reference(Expression)} returns an element when
+	 * {@link ScopeSettings#enableInstanceReferenceMasking} is set, accumulates into the masked
+	 * element, exactly as {@link Mask#assign(Expression)} assigns to it.</p>
+	 *
 	 * @param destination the array element to accumulate into, which must be a
-	 *                    {@link Expression#isVariableReference() variable reference}
+	 *                    {@link Expression#isVariableReference() variable reference}, or a
+	 *                    {@link Mask} of one
 	 * @param value       the value to add
 	 * @throws IllegalArgumentException if either expression is {@code null}, or the destination is
 	 *         not a reference to an element of an array
@@ -80,6 +87,11 @@ public class AtomicAccumulation<T> implements Statement<AtomicAccumulation<T>> {
 	public AtomicAccumulation(Expression<T> destination, Expression<T> value) {
 		if (destination == null || value == null) {
 			throw new IllegalArgumentException("An atomic accumulation needs a destination and a value");
+		}
+
+		// TODO(review): replace this instanceof Mask with a polymorphic Expression query (e.g. an accumulation target) that Mask overrides.
+		if (destination instanceof Mask) {
+			destination = ((Mask) destination).getMaskedValue();
 		}
 
 		if (!destination.isVariableReference()) {

@@ -20,6 +20,7 @@ import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.compute.ParallelProcess;
 import io.almostrealism.compute.ProcessContext;
 import io.almostrealism.relation.Evaluable;
+import io.almostrealism.scope.ScopeSettings;
 import org.almostrealism.algebra.MatrixFeatures;
 import org.almostrealism.algebra.computations.SegmentedScatterAddComputation;
 import org.almostrealism.collect.CompressedRowTraversalOrdering;
@@ -414,6 +415,24 @@ public class SegmentedScatterAddComputationTests extends TestSuiteBase implement
 	public void parityDenseFullActivity() {
 		Random random = new Random(15);
 		assertParity(random, Structure.random(random, 41, 97, 0.9), 1.0);
+	}
+
+	/**
+	 * With {@link ScopeSettings#enableInstanceReferenceMasking} set, every array element reference
+	 * is wrapped in a {@link io.almostrealism.expression.Mask}; the scatter still builds, and still
+	 * agrees exactly with the reference product, accumulating into the masked element.
+	 */
+	@Test(timeout = 120000)
+	public void parityWithMaskedReferences() {
+		boolean masking = ScopeSettings.enableInstanceReferenceMasking;
+		ScopeSettings.enableInstanceReferenceMasking = true;
+
+		try {
+			Random random = new Random(17);
+			assertParity(random, Structure.random(random, 37, 53, 0.2), 0.5);
+		} finally {
+			ScopeSettings.enableInstanceReferenceMasking = masking;
+		}
 	}
 
 	/**

@@ -217,8 +217,14 @@ public class CLComputeContext extends AbstractComputeContext implements ConsoleF
 	 */
 	public static boolean enableFastQueue = false;
 
-	/** OpenCL pragma to enable FP64 (double precision) extension. */
-	private static final String fp64 = "#pragma OPENCL EXTENSION cl_khr_fp64 : enable\n";
+	/**
+	 * OpenCL pragmas enabling the extensions double precision programs need: {@code cl_khr_fp64}
+	 * for the arithmetic, and {@code cl_khr_int64_base_atomics} for the 64-bit compare-and-swap
+	 * that {@link OpenCLLanguageOperations#atomicAccumulation(String, String)} renders at FP64.
+	 * A device without the atomics extension rejects only the kernels that use them.
+	 */
+	public static final String FP64_PRAGMAS = "#pragma OPENCL EXTENSION cl_khr_fp64 : enable\n" +
+			"#pragma OPENCL EXTENSION cl_khr_int64_base_atomics : enable\n";
 
 	/** Whether FP64 double precision is enabled for this context. */
 	private boolean enableFp64;
@@ -315,7 +321,7 @@ public class CLComputeContext extends AbstractComputeContext implements ConsoleF
 
 	/**
 	 * Compiles a scope to OpenCL C code and creates an instruction set for execution.
-	 * Adds the FP64 pragma if double precision is enabled.
+	 * Adds the {@link #FP64_PRAGMAS FP64 pragmas} if double precision is enabled.
 	 *
 	 * @param scope  the scope containing the computation graph to compile
 	 * @return an instruction set containing the compiled OpenCL kernels
@@ -326,7 +332,7 @@ public class CLComputeContext extends AbstractComputeContext implements ConsoleF
 		StringBuilder buf = new StringBuilder();
 
 		try {
-			if (enableFp64) buf.append(fp64);
+			if (enableFp64) buf.append(FP64_PRAGMAS);
 
 			ScopeEncoder enc = new ScopeEncoder(
 					p -> new OpenCLPrintWriter(p, getDataContext().getPrecision()),
