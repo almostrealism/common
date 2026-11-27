@@ -28,6 +28,7 @@ import org.almostrealism.graph.SummationCell;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.time.Frequency;
 
+import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.lifecycle.Setup;
 
 import java.util.ArrayList;
@@ -73,7 +74,7 @@ import java.util.function.Supplier;
  * @see VoiceAllocator
  * @see SummationCell
  */
-public class PolyphonicSynthesizer extends SummationCell implements Setup {
+public class PolyphonicSynthesizer extends SummationCell implements Setup, Destroyable {
 
 	/** Voice allocator that manages voice assignment and stealing across the voice pool. */
 	private final VoiceAllocator allocator;
@@ -118,6 +119,14 @@ public class PolyphonicSynthesizer extends SummationCell implements Setup {
 
 	/** Tremolo modulation depth as a fraction of amplitude (0–1). */
 	private double tremoloDepth;  // 0-1 amplitude modulation
+
+	/**
+	 * LFOs detached by {@link #clearVibrato()} / {@link #clearTremolo()} that this synthesizer still
+	 * owns and destroys in {@link #destroy()}. An LFO's device buffers are captured by reference into
+	 * any {@link #tick()} already compiled while it was active, so destruction is deferred to the end
+	 * of this synthesizer's own lifecycle rather than performed from the user-facing clear controls.
+	 */
+	private final List<LFO> retiredModulators = new ArrayList<>();
 
 	/**
 	 * Creates a polyphonic synthesizer with the specified number of voices.
@@ -348,12 +357,13 @@ public class PolyphonicSynthesizer extends SummationCell implements Setup {
 
 	/**
 	 * Disables vibrato.
+	 * <p>
+	 * The LFO's device buffers may already be referenced by a previously compiled {@link #tick()},
+	 * so the LFO is retained for destruction in {@link #destroy()} rather than freed here; see
+	 * {@link #retiredModulators}.
 	 */
 	public void clearVibrato() {
-		// TODO(review): destroy() frees buffers an already-compiled tick() captured via vibratoLFO.tick(); running that tick after clearing reads freed memory.
-		if (vibratoLFO != null) {
-			vibratoLFO.destroy();
-		}
+		retireModulator(vibratoLFO);
 		this.vibratoLFO = null;
 		this.vibratoDepth = 0;
 	}
@@ -375,14 +385,29 @@ public class PolyphonicSynthesizer extends SummationCell implements Setup {
 
 	/**
 	 * Disables tremolo.
+	 * <p>
+	 * The LFO's device buffers may already be referenced by a previously compiled {@link #tick()},
+	 * so the LFO is retained for destruction in {@link #destroy()} rather than freed here; see
+	 * {@link #retiredModulators}.
 	 */
 	public void clearTremolo() {
-		// TODO(review): destroy() frees buffers an already-compiled tick() captured via tremoloLFO.tick(); running that tick after clearing reads freed memory.
-		if (tremoloLFO != null) {
-			tremoloLFO.destroy();
-		}
+		retireModulator(tremoloLFO);
 		this.tremoloLFO = null;
 		this.tremoloDepth = 0;
+	}
+
+	/**
+	 * Retains {@code lfo} for destruction in {@link #destroy()}, if it is non-null. A detached LFO is
+	 * not destroyed immediately because a {@link #tick()} compiled while it was active still
+	 * references its device buffers by reference; destroying it would leave that tick reading freed
+	 * native memory.
+	 *
+	 * @param lfo the LFO being detached from active modulation, or null
+	 */
+	private void retireModulator(LFO lfo) {
+		if (lfo != null) {
+			retiredModulators.add(lfo);
+		}
 	}
 
 	/**
@@ -397,6 +422,30 @@ public class PolyphonicSynthesizer extends SummationCell implements Setup {
 	 */
 	public LFO getTremoloLFO() {
 		return tremoloLFO;
+	}
+
+	/**
+	 * Releases the device resources of every LFO this synthesizer created &mdash; the active vibrato
+	 * and tremolo LFOs together with any {@link #retiredModulators retired} by {@link #clearVibrato()}
+	 * or {@link #clearTremolo()}. Because an LFO's buffers are captured by reference into any
+	 * {@link #tick()} compiled while it was active, destruction is owned by this lifecycle method
+	 * rather than the clear controls: callers must stop running ticks built from this synthesizer
+	 * before destroying it. Every release is attempted even if an earlier one fails.
+	 */
+	@Override
+	public void destroy() {
+		retireModulator(vibratoLFO);
+		retireModulator(tremoloLFO);
+		vibratoLFO = null;
+		tremoloLFO = null;
+		vibratoDepth = 0;
+		tremoloDepth = 0;
+
+		List<Runnable> releases = new ArrayList<>();
+		retiredModulators.forEach(lfo -> releases.add(lfo::destroy));
+		retiredModulators.clear();
+
+		Destroyable.releaseAll(releases);
 	}
 
 	// ========== Note Control Methods ==========

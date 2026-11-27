@@ -24,9 +24,10 @@ import org.junit.Test;
 /**
  * Verifies that {@link PolyphonicSynthesizer} manages the lifecycle of the device-backed
  * {@link LFO}s it creates for vibrato and tremolo: enabling modulation creates an LFO, and
- * clearing it releases that LFO's device resources and drops the reference, so repeatedly
- * enabling and disabling modulation does not leak native buffers. Clearing when nothing is
- * enabled is a no-op.
+ * clearing it drops the reference while retaining the LFO for destruction in
+ * {@link PolyphonicSynthesizer#destroy()}, so the native buffers an already-compiled tick
+ * captured are not freed from under it, yet no LFO is leaked once the synthesizer is destroyed.
+ * Clearing when nothing is enabled is a no-op.
  */
 public class PolyphonicSynthesizerModulationTest extends TestSuiteBase {
 
@@ -47,7 +48,7 @@ public class PolyphonicSynthesizerModulationTest extends TestSuiteBase {
 
 	/**
 	 * Enabling vibrato creates an LFO, and clearing it after the LFO has compiled and run its
-	 * tick releases that LFO and drops the reference. Re-enabling creates a fresh LFO.
+	 * tick drops the reference. Re-enabling creates a fresh LFO.
 	 */
 	@Test(timeout = 60000)
 	public void clearingVibratoReleasesTheLFO() {
@@ -65,6 +66,37 @@ public class PolyphonicSynthesizerModulationTest extends TestSuiteBase {
 		assertTrue(synth.getVibratoLFO() != null);
 		assertTrue(synth.getVibratoLFO() != vibrato);
 		synth.clearVibrato();
+	}
+
+	/**
+	 * Destroying the synthesizer releases the LFOs it still owns &mdash; both those retired by
+	 * {@link PolyphonicSynthesizer#clearVibrato()}/{@link PolyphonicSynthesizer#clearTremolo()} and
+	 * the ones still active &mdash; and is idempotent. This exercises the deferred-destruction path
+	 * that replaces freeing an LFO from the clear controls, which would free device buffers an
+	 * already-compiled tick still references.
+	 */
+	@Test(timeout = 60000)
+	public void destroyReleasesOwnedLFOs() {
+		PolyphonicSynthesizer synth = new PolyphonicSynthesizer(4);
+
+		synth.setVibrato(5.0, 2.0);
+		LFO firstVibrato = synth.getVibratoLFO();
+		synth.clearVibrato();
+		assertTrue(synth.getVibratoLFO() == null);
+
+		synth.setVibrato(6.0, 1.0);
+		synth.setTremolo(5.0, 0.5);
+		LFO secondVibrato = synth.getVibratoLFO();
+		LFO tremolo = synth.getTremoloLFO();
+		assertTrue(firstVibrato != secondVibrato);
+		assertTrue(tremolo != null);
+
+		synth.destroy();
+
+		assertTrue(synth.getVibratoLFO() == null);
+		assertTrue(synth.getTremoloLFO() == null);
+
+		synth.destroy();
 	}
 
 	/**
