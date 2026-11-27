@@ -10,8 +10,8 @@ tracker: [1cd4083d-8c9f-468f-b378-536474ca865e]
 **Tracker task:** `1cd4083d-8c9f-468f-b378-536474ca865e` — *Throughput benchmark of the
 neuron-level connectome simulation on every backend* (its description widens this to every
 backend and machine).
-**Release:** Common 0.78 (the release under development, whose name matches the version in the
-root `pom.xml`).
+**Release:** the release under development, whose name matches the version in the root
+`pom.xml`.
 
 This is the last Phase 1 task (item 12) of the connectome model organism design
 (`docs/plans/CONNECTOME_MODEL_ORGANISM.md`): once the neuron-level MaleCNS model runs and

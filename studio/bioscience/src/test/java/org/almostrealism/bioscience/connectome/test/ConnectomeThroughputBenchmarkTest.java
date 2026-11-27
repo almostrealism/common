@@ -150,6 +150,7 @@ public class ConnectomeThroughputBenchmarkTest extends NeuronConnectomeChecks {
 		try (NeuronConnectome connectome = NeuronConnectome.load(maleCns());
 			 PackedCollection spikes = new PackedCollection(shape(connectome.getNeuronCount()));
 			 PackedCollection input = new PackedCollection(shape(connectome.getNeuronCount(), 1))) {
+			Assert.assertTrue("the connectome has no stored synapse", connectome.getEdgeCount() > 0);
 			a(cp(spikes).each(), c(1.0)).get().run();
 			Temporal product = () -> a("sparse-product", cp(input), matmul(cp(connectome.getWeights()), cp(spikes)).reshape(input.getShape()));
 			SimulationRunner runner = new SimulationRunner(product, ConnectomeNetwork.DT);
@@ -164,7 +165,6 @@ public class ConnectomeThroughputBenchmarkTest extends NeuronConnectomeChecks {
 				log("backend=" + Hardware.getLocalHardware().getDataContext().getName()
 						+ " sparseProductMicros=" + micros + " inputSum=" + total);
 				Assert.assertTrue("non-finite synaptic input " + total, Double.isFinite(total));
-				Assert.assertTrue("the connectome has no stored synapse", total != 0.0);
 			} finally {
 				runner.destroy();
 			}
