@@ -606,6 +606,41 @@ class TestCitationRetry(_Pipeline):
         self.assertTrue(result["citation_retry"]["revision_trailer_missing"])
         self.assertEqual(len(result["citation_warnings"]), 1)
 
+    def test_a_revision_that_invents_a_conflict_is_not_kept(self):
+        # The revision fixes the citation but rewrites the draft's
+        # "CONFLICTS: none" into a conflict it invented. The retry repairs
+        # citations only, so the draft is kept and its (empty) conflict
+        # metadata is published unchanged rather than the invented one.
+        invented = ("It rejects edits to base-branch tests [D1]. It exits 3 [I1].\n"
+                    "BASIS: documentation\nCONFLICTS: D1 vs I1 — exit code 3 vs other")
+        result, _ = self.run_with(self.BAD, Synthesis(invented, "fake"))
+        self.assertEqual(result["citation_retry"]["kept"], "draft")
+        self.assertEqual(result["citation_retry"]["warnings_after"], 0)
+        self.assertTrue(result["citation_retry"]["revision_conflicts_changed"])
+        self.assertEqual(result["conflicts"], [])
+        self.assertEqual(len(result["citation_warnings"]), 1)
+
+    def test_a_revision_that_drops_a_conflict_is_not_kept(self):
+        # The draft reports a real conflict; the revision fixes the citation
+        # but rewrites "CONFLICTS: D1 vs I1 ..." to "none". Dropping the
+        # conflict is outside the citation retry's mandate, so the draft and
+        # its conflict are kept.
+        draft = ("It rejects edits to base-branch tests [D1]. It exits 3 [D1].\n"
+                 "BASIS: documentation\nCONFLICTS: D1 vs I1 — exit code 3 vs other")
+        revision = ("It rejects edits to base-branch tests [D1]. It exits 3 [I1].\n"
+                    "BASIS: documentation\nCONFLICTS: none")
+        result, _ = self.run_with(draft, Synthesis(revision, "fake"))
+        self.assertEqual(result["citation_retry"]["kept"], "draft")
+        self.assertEqual(result["citation_retry"]["warnings_after"], 0)
+        self.assertTrue(result["citation_retry"]["revision_conflicts_changed"])
+        self.assertEqual([c["items"] for c in result["conflicts"]], [["D1", "I1"]])
+        self.assertEqual(len(result["citation_warnings"]), 1)
+
+    def test_a_kept_revision_records_no_conflict_change(self):
+        result, _ = self.run_with(self.BAD, Synthesis(self.GOOD, "fake"))
+        self.assertEqual(result["citation_retry"]["kept"], "revision")
+        self.assertNotIn("revision_conflicts_changed", result["citation_retry"])
+
     def verify_calls(self, draft, revision=None):
         """Run a consult and return how many times the verifier ran."""
         with patch.object(consult_engine, "verify",

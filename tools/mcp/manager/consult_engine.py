@@ -565,17 +565,22 @@ class ConsultTurn:
 
         The revision is kept only when it has fewer warnings than the draft,
         does not abstain where the draft answered, leaves a non-empty answer
-        body, and keeps every ``BASIS:`` / ``CONFLICTS:`` trailer line the
-        draft had, so a retry cannot turn an answer into a refusal or a
-        malformed response. A revision with nothing left once
+        body, keeps every ``BASIS:`` / ``CONFLICTS:`` trailer line the draft
+        had, and leaves the draft's reported conflicts unchanged, so a retry
+        can repair citations but cannot turn an answer into a refusal, a
+        malformed response, or a response whose published conflict metadata
+        differs from the draft's. A revision with nothing left once
         :meth:`_post_process` moves its history-only sentences aside counts as
         a refusal too, since that method abstains on an empty answer, so the
         emptiness is measured after the same history removal rather than on the
         raw body. Each trailer line is checked on its own so dropping one while
-        keeping the other is rejected. There is at most one retry; a backend
-        without ``revise``,
-        or a revision that fails, keeps the draft. When a retry runs,
-        ``citation_retry`` in *result* says what it found.
+        keeping the other is rejected. The ``CONFLICTS:`` entries are compared
+        in full because :meth:`_post_process` publishes them through
+        ``reported_conflicts``: a revision that drops, adds or rewrites a
+        conflict would otherwise alter that metadata, which the citation retry
+        has no mandate to touch. There is at most one retry; a backend without
+        ``revise``, or a revision that fails, keeps the draft. When a retry
+        runs, ``citation_retry`` in *result* says what it found.
 
         Args:
             llm: The inference backend the draft came from.
@@ -611,8 +616,11 @@ class ConsultTurn:
             and not _without_history(revision["report"])[0]
         if empty_body:
             record["revision_empty"] = True
+        conflicts_changed = revision["conflict_lines"] != draft["conflict_lines"]
+        if conflicts_changed:
+            record["revision_conflicts_changed"] = True
         if revision["abstained"] or lost_trailer or empty_body \
-                or record["warnings_after"] >= len(warnings):
+                or conflicts_changed or record["warnings_after"] >= len(warnings):
             return draft
         record["kept"] = "revision"
         return revision

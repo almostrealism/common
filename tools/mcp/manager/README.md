@@ -748,8 +748,11 @@ flagged `polarity`. When any sentence fails, the model is asked once to revise
 its answer, from the same evidence, with each failing sentence and its reason in
 front of it (`InferenceBackend.revise`). The revision is kept only if it has
 fewer warnings, does not answer "Not documented." where the draft answered,
-leaves a non-empty answer body, and keeps every `BASIS:`/`CONFLICTS:` trailer
-line the draft had (dropping just one is rejected);
+leaves a non-empty answer body, keeps every `BASIS:`/`CONFLICTS:` trailer
+line the draft had (dropping just one is rejected), and leaves the draft's
+reported conflicts unchanged (the retry repairs citations, so it may not drop,
+add or rewrite a `CONFLICTS:` entry that would otherwise alter the published
+conflict metadata);
 `citation_retry` in the response records the warning counts before and after
 and which answer was `kept`. Sentences that still fail are marked
 `[unsupported]` in the answer and listed in `citation_warnings`. A question naming a file the snapshot does not contain is
