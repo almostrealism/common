@@ -42,7 +42,6 @@ def workstream_submit_task(
     falsification_enabled: bool = False,
     use_tmux: Optional[bool] = None,
     max_wall_clock_hours: Optional[int] = None,
-    inactivity_timeout_seconds: Optional[int] = None,
     sensitive_file_protection_enabled: bool = True,
     accepted_merge_resolutions: str = "",
     skip_agent_permission_prompts: bool = False,
@@ -59,6 +58,7 @@ def workstream_submit_task(
     allow_commit_language: bool = False,
     collaborative: bool = False,
     self_notify: bool = False,
+    inactivity_timeout_seconds: Optional[int] = None,
     # Removed legacy config parameters (model / effort / default_runner /
     # runners). Declared without type hints so they stay out of the tool's
     # declared parameter schema while still being captured here for a clear
@@ -244,12 +244,6 @@ def workstream_submit_task(
             only forwarded when explicitly set, an explicit ``False`` reaches
             the controller and overrides the workstream default. Falls back to a
             direct launch with a warning if ``tmux`` is not on the node's PATH.
-        inactivity_timeout_seconds: Per-job silence budget, in seconds: how
-            long an agent session may produce no output before the inactivity
-            watchdog destroys it. It can only shorten the runner's own budget
-            (about 35 minutes for Claude Code); a longer value is held to the
-            runner's when the job launches. Leave unset (``None``) to use the
-            runner's. Must be positive.
         max_wall_clock_hours: Per-job ceiling on total elapsed wall-clock time,
             in hours, after which the controller stops launching further agent
             sessions for this job. Overrides the workstream's
@@ -462,6 +456,12 @@ def workstream_submit_task(
             so it cannot create the standing self-listener loop that
             registering a workstream as its own listener would. Defaults to
             False.
+        inactivity_timeout_seconds: Per-job silence budget, in seconds: how
+            long an agent session may produce no output before the inactivity
+            watchdog destroys it. It can only shorten the runner's own budget
+            (about 35 minutes for Claude Code); a longer value is held to the
+            runner's when the job launches. Leave unset (``None``) to use the
+            runner's. Must be positive.
 
     Returns:
         Dictionary with job_id and workstream_id on success.

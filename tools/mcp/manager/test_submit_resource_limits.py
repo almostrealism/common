@@ -7,6 +7,7 @@ refuse an inactivity budget that is not positive before it reaches the
 controller.
 """
 
+import inspect
 import os
 import sys
 import unittest
@@ -61,6 +62,15 @@ class TestSubmitResourceLimits(unittest.TestCase):
             prompt="Task", workstream_id="ws-test", max_turns=5000)
         self.assertEqual(5000, mock_post.call_args[0][1]["maxTurns"])
         self.assertEqual({"maxTurns": "200"}, result["clampedLimits"])
+
+    def test_inactivity_timeout_does_not_shift_positional_parameters(self):
+        """The new parameter follows every pre-existing one, so positional calls keep their meaning."""
+        names = list(inspect.signature(server.workstream_submit_task).parameters)
+        wall_clock = names.index("max_wall_clock_hours")
+        self.assertEqual("sensitive_file_protection_enabled", names[wall_clock + 1])
+        self.assertEqual(names.index("self_notify") + 1,
+                         names.index("inactivity_timeout_seconds"))
+        self.assertLess(names.index("inactivity_timeout_seconds"), names.index("model"))
 
 
 if __name__ == "__main__":
