@@ -16,6 +16,8 @@
 
 package io.flowtree.controller;
 
+import io.flowtree.github.ReviewActivity;
+
 /**
  * The controller's one per-PR remediation record, keyed by workstream (one
  * workstream is one branch is one pull request). It is the single piece of
@@ -31,8 +33,13 @@ package io.flowtree.controller;
  * produce (a person's push, or a manually submitted job) resets the count
  * ({@link #afterForeignCommitReset}): the next pass is triggered by that commit,
  * and because it is not the last commit a remediation pass produced
- * ({@link #wasProducedByRemediationPass}), the budget starts over. The record is
- * immutable; {@link RemediationStateStore} returns a fresh one on each change.</p>
+ * ({@link #wasProducedByRemediationPass}), the budget starts over.</p>
+ *
+ * <p>It also records what the last dispatched pass ran against: the commit that
+ * triggered it and the {@link ReviewActivity} on the pull request at that
+ * moment. A pass of the same kind re-triggered on that commit, with no review
+ * thread opened since, has nothing new to look at ({@link #isRepeatOf}). The record is immutable; {@link RemediationStateStore}
+ * returns a fresh one on each change.</p>
  *
  * @author Michael Murray
  * @see RemediationStateStore
@@ -51,6 +58,12 @@ public final class RemediationState {
     /** Whether a person has already been notified that the cap is reached. */
     private final boolean notified;
 
+    /** The commit that triggered the last dispatched pass, or {@code null}. */
+    private final String lastDispatchedCommit;
+
+    /** The review activity the last dispatched pass ran against, or {@code null}. */
+    private final ReviewActivity lastReviewed;
+
     /**
      * Creates a remediation record.
      *
@@ -61,10 +74,28 @@ public final class RemediationState {
      */
     public RemediationState(String workstreamId, int passCount,
                             String lastProducedCommit, boolean notified) {
+        this(workstreamId, passCount, lastProducedCommit, notified, null, null);
+    }
+
+    /**
+     * Creates a remediation record that also knows what the last dispatched pass
+     * ran against.
+     *
+     * @param workstreamId         the workstream (branch / PR) key
+     * @param passCount            dispatched passes since the last reset, never negative
+     * @param lastProducedCommit   the last remediation pass's SHA, or {@code null}
+     * @param notified             whether the cap-reached ping was already sent
+     * @param lastDispatchedCommit the commit that triggered the last dispatched pass, or {@code null}
+     * @param lastReviewed         the review activity it ran against, or {@code null}
+     */
+    public RemediationState(String workstreamId, int passCount, String lastProducedCommit,
+                            boolean notified, String lastDispatchedCommit, ReviewActivity lastReviewed) {
         this.workstreamId = workstreamId;
         this.passCount = Math.max(0, passCount);
         this.lastProducedCommit = lastProducedCommit;
         this.notified = notified;
+        this.lastDispatchedCommit = lastDispatchedCommit;
+        this.lastReviewed = lastReviewed;
     }
 
     /**
@@ -88,6 +119,27 @@ public final class RemediationState {
 
     /** Returns whether the cap-reached notification has already been sent. */
     public boolean isNotified() { return notified; }
+
+    /** Returns the commit that triggered the last dispatched pass, or {@code null}. */
+    public String getLastDispatchedCommit() { return lastDispatchedCommit; }
+
+    /** Returns the review activity the last dispatched pass ran against, or {@code null}. */
+    public ReviewActivity getLastReviewed() { return lastReviewed; }
+
+    /**
+     * Returns whether a pass triggered on {@code commit} against {@code activity}
+     * would repeat the last dispatched pass: the same commit, and the same kind of
+     * pass with no review thread opened since ({@link ReviewActivity#hasNothingNewSince}).
+     * An unknown commit or activity, on either side, is never a repeat.
+     *
+     * @param commit   the commit that triggered the new submission, or {@code null}
+     * @param activity the review activity it would run against, or {@code null}
+     * @return {@code true} when the new pass would find nothing new
+     */
+    public boolean isRepeatOf(String commit, ReviewActivity activity) {
+        return commit != null && !commit.isEmpty() && activity != null
+                && commit.equals(lastDispatchedCommit) && activity.hasNothingNewSince(lastReviewed);
+    }
 
     /**
      * Returns whether the dispatched-pass count has reached the cap.
@@ -124,7 +176,22 @@ public final class RemediationState {
      * @return the updated record
      */
     public RemediationState afterDispatch() {
-        return new RemediationState(workstreamId, passCount + 1, lastProducedCommit, notified);
+        return afterDispatch(lastDispatchedCommit, lastReviewed);
+    }
+
+    /**
+     * Returns the record left by dispatching one remediation pass triggered on
+     * {@code commit} against {@code activity}: the count increments and the pass
+     * is recorded as the last one dispatched, so a re-trigger with nothing new can
+     * be recognised ({@link #isRepeatOf}).
+     *
+     * @param commit   the commit that triggered the pass, or {@code null}
+     * @param activity the review activity it ran against, or {@code null}
+     * @return the updated record
+     */
+    public RemediationState afterDispatch(String commit, ReviewActivity activity) {
+        return new RemediationState(workstreamId, passCount + 1, lastProducedCommit, notified,
+                commit, activity);
     }
 
     /**
@@ -138,7 +205,8 @@ public final class RemediationState {
      * @return the updated record
      */
     public RemediationState afterForeignCommitReset() {
-        return new RemediationState(workstreamId, 0, lastProducedCommit, false);
+        return new RemediationState(workstreamId, 0, lastProducedCommit, false,
+                lastDispatchedCommit, lastReviewed);
     }
 
     /**
@@ -151,7 +219,8 @@ public final class RemediationState {
      * @return the updated record
      */
     public RemediationState withProducedCommit(String commit) {
-        return new RemediationState(workstreamId, passCount, commit, notified);
+        return new RemediationState(workstreamId, passCount, commit, notified,
+                lastDispatchedCommit, lastReviewed);
     }
 
     /**
@@ -162,7 +231,8 @@ public final class RemediationState {
      * @return the updated record
      */
     public RemediationState afterNotified() {
-        return new RemediationState(workstreamId, passCount, lastProducedCommit, true);
+        return new RemediationState(workstreamId, passCount, lastProducedCommit, true,
+                lastDispatchedCommit, lastReviewed);
     }
 
     /**
@@ -174,6 +244,7 @@ public final class RemediationState {
      * @return the updated record
      */
     public RemediationState afterNotificationUndelivered() {
-        return new RemediationState(workstreamId, passCount, lastProducedCommit, false);
+        return new RemediationState(workstreamId, passCount, lastProducedCommit, false,
+                lastDispatchedCommit, lastReviewed);
     }
 }
