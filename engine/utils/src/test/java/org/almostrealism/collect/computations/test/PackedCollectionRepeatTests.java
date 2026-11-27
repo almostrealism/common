@@ -19,6 +19,7 @@ package org.almostrealism.collect.computations.test;
 import io.almostrealism.collect.RepeatTraversalOrdering;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Tensor;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
@@ -328,12 +329,13 @@ public class PackedCollectionRepeatTests extends TestSuiteBase {
 		int total = SHORT_LENGTH * MANY_REPETITIONS;
 		Assert.assertTrue(total > (1 << 24));
 
-		PackedCollection vector = integers(0, SHORT_LENGTH).evaluate();
-		assertRepeatsWhole(cp(vector).repeat(MANY_REPETITIONS).reshape(shape(total, 1)).evaluate());
-		assertRepeatsWhole(cp(vector).multiply(1.0).repeat(MANY_REPETITIONS)
-				.reshape(shape(total, 1)).evaluate());
-		assertRepeatsWhole(integers(0, SHORT_LENGTH).traverse(0).repeat(MANY_REPETITIONS)
-				.reshape(shape(total, 1)).evaluate());
+		try (PackedCollection vector = integers(0, SHORT_LENGTH).evaluate()) {
+			assertRepeatsWhole(cp(vector).repeat(MANY_REPETITIONS).reshape(shape(total, 1)));
+			assertRepeatsWhole(cp(vector).multiply(1.0).repeat(MANY_REPETITIONS)
+					.reshape(shape(total, 1)));
+			assertRepeatsWhole(integers(0, SHORT_LENGTH).traverse(0).repeat(MANY_REPETITIONS)
+					.reshape(shape(total, 1)));
+		}
 	}
 
 	/**
@@ -345,14 +347,15 @@ public class PackedCollectionRepeatTests extends TestSuiteBase {
 	public void repeatOfAnElementTraversalRepeatsEachElement() {
 		int total = SHORT_LENGTH * MANY_REPETITIONS;
 
-		PackedCollection out = integers(0, SHORT_LENGTH).repeat(MANY_REPETITIONS).evaluate();
-		Assert.assertEquals(total, out.getShape().getTotalSize());
-		Assert.assertEquals(SHORT_LENGTH, out.getShape().length(0));
+		try (PackedCollection out = integers(0, SHORT_LENGTH).repeat(MANY_REPETITIONS).evaluate()) {
+			Assert.assertEquals(total, out.getShape().getTotalSize());
+			Assert.assertEquals(SHORT_LENGTH, out.getShape().length(0));
 
-		double[] values = out.toArray();
-		for (int i = 0; i < total; i++) {
-			if (values[i] != i / MANY_REPETITIONS) {
-				Assert.fail("Index " + i + " read " + values[i] + ", expected " + (i / MANY_REPETITIONS));
+			double[] values = out.toArray();
+			for (int i = 0; i < total; i++) {
+				if (values[i] != i / MANY_REPETITIONS) {
+					Assert.fail("Index " + i + " read " + values[i] + ", expected " + (i / MANY_REPETITIONS));
+				}
 			}
 		}
 	}
@@ -361,14 +364,16 @@ public class PackedCollectionRepeatTests extends TestSuiteBase {
 	 * Asserts that every flat index {@code i} of a repeat of the {@link #SHORT_LENGTH}-element
 	 * vector {@code 0, 1, ...} holds {@code i % SHORT_LENGTH}.
 	 *
-	 * @param repeated the evaluated repeat
+	 * @param repeat the repeat producer to evaluate and release
 	 */
-	private static void assertRepeatsWhole(PackedCollection repeated) {
-		double[] values = repeated.toArray();
-		Assert.assertEquals((long) SHORT_LENGTH * MANY_REPETITIONS, values.length);
-		for (int i = 0; i < values.length; i++) {
-			if (values[i] != i % SHORT_LENGTH) {
-				Assert.fail("Index " + i + " read " + values[i] + ", expected " + (i % SHORT_LENGTH));
+	private static void assertRepeatsWhole(CollectionProducer repeat) {
+		try (PackedCollection repeated = repeat.evaluate()) {
+			double[] values = repeated.toArray();
+			Assert.assertEquals((long) SHORT_LENGTH * MANY_REPETITIONS, values.length);
+			for (int i = 0; i < values.length; i++) {
+				if (values[i] != i % SHORT_LENGTH) {
+					Assert.fail("Index " + i + " read " + values[i] + ", expected " + (i % SHORT_LENGTH));
+				}
 			}
 		}
 	}
