@@ -431,6 +431,9 @@ public class PolyphonicSynthesizer extends SummationCell implements Setup, Destr
 	 * {@link #tick()} compiled while it was active, destruction is owned by this lifecycle method
 	 * rather than the clear controls: callers must stop running ticks built from this synthesizer
 	 * before destroying it. Every release is attempted even if an earlier one fails.
+	 * <p>
+	 * Only the LFOs are released here; the voices and the inherited cell state are not yet
+	 * destroyable and are reclaimed with the synthesizer itself.
 	 */
 	@Override
 	public void destroy() {
@@ -560,18 +563,27 @@ public class PolyphonicSynthesizer extends SummationCell implements Setup, Destr
 	 *   <li>Forwards the accumulated audio to the receptor (via super.tick())</li>
 	 * </ol>
 	 *
+	 * <p>
+	 * The vibrato and tremolo LFOs active when this method is called are captured by the returned
+	 * operation, while the modulation depths are read each time it runs. A tick compiled before
+	 * {@link #clearVibrato()} or {@link #clearTremolo()} therefore keeps using the retired LFO
+	 * (which stays alive until {@link #destroy()}) with a depth of zero, so it applies no
+	 * modulation rather than dereferencing the cleared field.
+	 *
 	 * @return operation that processes one sample frame
 	 */
 	@Override
 	public Supplier<Runnable> tick() {
 		OperationList tick = new OperationList("PolyphonicSynthesizer Tick");
+		final LFO vibrato = vibratoLFO;
+		final LFO tremolo = tremoloLFO;
 
 		// Tick LFOs
-		if (vibratoLFO != null) {
-			tick.add(vibratoLFO.tick());
+		if (vibrato != null) {
+			tick.add(vibrato.tick());
 		}
-		if (tremoloLFO != null) {
-			tick.add(tremoloLFO.tick());
+		if (tremolo != null) {
+			tick.add(tremolo.tick());
 		}
 
 		// Process all voices
@@ -580,11 +592,11 @@ public class PolyphonicSynthesizer extends SummationCell implements Setup, Destr
 			final AudioSynthesizer voice = voices.get(i);
 
 			// Apply modulation at runtime (only if voice is active)
-			if (vibratoLFO != null && vibratoDepth > 0) {
+			if (vibrato != null && vibratoDepth > 0) {
 				tick.add(() -> () -> {
 					VoiceState state = allocator.getVoice(voiceIndex);
 					if (state.isActive()) {
-						double lfoValue = vibratoLFO.getValue();
+						double lfoValue = vibrato.getValue();
 						double semitoneOffset = lfoValue * vibratoDepth;
 						double pitchMultiplier = Math.pow(2.0, semitoneOffset / 12.0);
 						Frequency baseFreq = tuning.getTone(state.getMidiNote(),
@@ -594,11 +606,11 @@ public class PolyphonicSynthesizer extends SummationCell implements Setup, Destr
 				});
 			}
 
-			if (tremoloLFO != null && tremoloDepth > 0) {
+			if (tremolo != null && tremoloDepth > 0) {
 				tick.add(() -> () -> {
 					VoiceState state = allocator.getVoice(voiceIndex);
 					if (state.isActive()) {
-						double lfoValue = tremoloLFO.getValue();
+						double lfoValue = tremolo.getValue();
 						double modulation = 1.0 - (tremoloDepth * (1.0 - (lfoValue + 1.0) / 2.0));
 						voice.setVelocity(state.getVelocity() * modulation);
 					}

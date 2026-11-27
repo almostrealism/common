@@ -356,15 +356,16 @@ public class LFO implements ModulationSource, Lifecycle, Destroyable, CodeFeatur
 	 * Releases the device collections that hold this LFO's running state and parameters, its
 	 * random source, and the compiled redraw operation. An owner that drops an LFO &mdash; for
 	 * example when modulation is disabled &mdash; calls this so the native buffers are not
-	 * leaked; every release is attempted even if an earlier one fails. The LFO is not usable
+	 * leaked; every release is attempted even if an earlier one fails. The compiled redraw
+	 * operation is released before the collections it reads. The LFO is not usable
 	 * after it is destroyed.
 	 */
 	@Override
 	public void destroy() {
 		Destroyable.releaseAll(List.of(
+				() -> Destroyable.destroy(redraw),
 				phase::destroy, hold::destroy, previousPhase::destroy, previousHold::destroy,
-				increment::destroy, shapeIndex::destroy, output::destroy, noise::destroy),
-				() -> Destroyable.destroy(redraw));
+				increment::destroy, shapeIndex::destroy, output::destroy, noise::destroy));
 		redraw = null;
 	}
 

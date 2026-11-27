@@ -100,8 +100,41 @@ public class PolyphonicSynthesizerModulationTest extends TestSuiteBase {
 	}
 
 	/**
+	 * A synthesizer tick compiled while vibrato and tremolo are enabled keeps running after both
+	 * are cleared: the tick captured the LFOs it was built with (retired, not destroyed), and the
+	 * cleared depths of zero leave the voice frequency and velocity unmodulated. Before the LFOs
+	 * were captured, the compiled modulation dereferenced the cleared field and threw.
+	 */
+	@Test(timeout = 120000)
+	public void compiledTickSurvivesClearingModulation() {
+		PolyphonicSynthesizer synth = new PolyphonicSynthesizer(2);
+		synth.setVibrato(5.0, 2.0);
+		synth.setTremolo(5.0, 0.5);
+
+		Runnable setup = synth.setup().get();
+		Runnable tick = synth.tick().get();
+		setup.run();
+
+		assertTrue(synth.noteOn(60, 0.8));
+		tick.run();
+
+		synth.clearVibrato();
+		synth.clearTremolo();
+		assertTrue(synth.getVibratoLFO() == null);
+		assertTrue(synth.getTremoloLFO() == null);
+
+		for (int i = 0; i < 4; i++) {
+			tick.run();
+		}
+
+		assertEquals(1, synth.getActiveVoiceCount());
+		synth.destroy();
+	}
+
+	/**
 	 * Enabling tremolo creates an LFO, and clearing it after the LFO has compiled and run its
-	 * tick releases that LFO and drops the reference.
+	 * tick drops the reference, retaining that LFO for destruction in
+	 * {@link PolyphonicSynthesizer#destroy()}.
 	 */
 	@Test(timeout = 60000)
 	public void clearingTremoloReleasesTheLFO() {
