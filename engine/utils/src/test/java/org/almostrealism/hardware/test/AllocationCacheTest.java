@@ -109,7 +109,9 @@ public class AllocationCacheTest extends TestSuiteBase {
 
 		Assert.assertFalse(cache.offer(1, "a"));
 		Assert.assertFalse(cache.offer(64, "b"));
+		Assert.assertFalse(cache.offer(0, "zero"));
 		Assert.assertEquals(0, cache.getHeldBytes());
+		Assert.assertEquals(0, cache.getHeldHandles());
 		Assert.assertNull(cache.take(1));
 		Assert.assertNull(cache.take(64));
 	}

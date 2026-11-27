@@ -76,8 +76,10 @@ public class AllocationCache<H> {
 	private final long maxEntry;
 
 	/**
-	 * The most handles the cache holds at once: {@code capacity / maxEntry}, and at least one,
-	 * so that a capacity smaller than the largest entry still lets the byte bound decide.
+	 * The most handles the cache holds at once: {@code capacity / maxEntry}, and at least one
+	 * when the cache holds anything, so that a capacity smaller than the largest entry still
+	 * lets the byte bound decide. It is zero for a zero-capacity (disabled) cache, which holds
+	 * nothing and declines every offer, zero-byte offers included.
 	 */
 	private final long maxHandles;
 
@@ -103,7 +105,7 @@ public class AllocationCache<H> {
 	public AllocationCache(long capacity, long maxEntry) {
 		this.capacity = capacity;
 		this.maxEntry = maxEntry;
-		this.maxHandles = maxEntry > 0 ? Math.max(1, capacity / maxEntry) : 0;
+		this.maxHandles = (capacity > 0 && maxEntry > 0) ? Math.max(1, capacity / maxEntry) : 0;
 	}
 
 	/**
