@@ -23,7 +23,7 @@ except ImportError:
 try:
     from .health import HealthCache
 except ImportError:
-    # Loaded by path rather than as a package (see consultant/inference.py).
+    # Imported as a flat module (tools/mcp/common on sys.path), not as a package.
     from health import HealthCache
 
 log = logging.getLogger(__name__)

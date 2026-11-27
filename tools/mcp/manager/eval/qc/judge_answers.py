@@ -19,14 +19,14 @@ so you can review exactly what the judge will see and what it will cost.
 
 Usage:
     # Free smoke test against the local llama.cpp backend:
-    python3 judge_answers.py --backend local --sample 5
+    python3 judge_answers.py --db history.db --backend local --sample 5
 
     # Real judging with a strong model (needs ANTHROPIC_API_KEY):
-    ANTHROPIC_API_KEY=... python3 judge_answers.py --backend anthropic \
+    ANTHROPIC_API_KEY=... python3 judge_answers.py --db history.db --backend anthropic \
         --model claude-sonnet-5 --sample 100 --out /tmp/judge.json
 
     # Inspect prompts / estimate scope without calling anything:
-    python3 judge_answers.py --sample 20 --dry-run
+    python3 judge_answers.py --db history.db --sample 20 --dry-run
 
 Environment:
     ANTHROPIC_API_KEY          required for --backend anthropic
@@ -44,14 +44,6 @@ import urllib.error
 # a fixed seed makes runs reproducible so re-grading the same sample compares
 # like-for-like.
 import random
-
-_DEFAULT_DB = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)), "..", "data", "history.db"
-)
-_DEFAULT_LOCAL_URL = os.environ.get(
-    "AR_CONSULTANT_LLAMACPP_URL", "http://host.docker.internal:8084"
-)
-_ANTHROPIC_URL = "https://api.anthropic.com/v1/messages"
 
 JUDGE_SYSTEM = (
     "You are a strict evaluator of a documentation assistant for a large "
@@ -232,7 +224,8 @@ def aggregate(verdicts):
 
 def main():
     parser = argparse.ArgumentParser(description="LLM-as-judge for consultant answers")
-    parser.add_argument("--db", default=_DEFAULT_DB, help="Path to history.db")
+    parser.add_argument("--db", required=True,
+                        help="Path to a deployed ar-consultant's history.db")
     parser.add_argument("--backend", choices=("anthropic", "local"),
                         default="anthropic", help="Judge backend")
     parser.add_argument("--model", default="claude-sonnet-5",

@@ -284,7 +284,7 @@ NOT_CONFIGURED_DETAIL = "no inference backend could be constructed"
 NOT_CONFIGURED_HINT = (
     "Confirm the inference dependencies are importable in this image, then set "
     "AR_CONSULTANT_BACKEND or start a local model "
-    "(see tools/mcp/consultant/README.md).")
+    "(see tools/mcp/manager/README.md#inference-backends).")
 
 
 def not_configured_cause(detail: str = NOT_CONFIGURED_DETAIL) -> dict:

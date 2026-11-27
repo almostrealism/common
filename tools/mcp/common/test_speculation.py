@@ -1,7 +1,7 @@
-"""Tests for speculation detection in the consultant QC scripts.
+"""Tests for speculation detection in the consult QC scripts.
 
-``scripts/evaluate_dataset.py``, ``scripts/validate_responses.py`` and
-``qc/analyze_history.py`` each used to carry their own copy of the phrase
+``evaluate_dataset.py``, ``validate_responses.py`` and ``analyze_history.py``
+(in ``tools/mcp/manager/eval/qc``) each used to carry their own copy of the phrase
 list and the check. The copies drifted: the two ``scripts/`` copies listed
 "I can infer" with a capital letter while matching against lower-cased text,
 so that phrase could never match; they lacked the "might be" / "could be"
@@ -10,8 +10,8 @@ three now use ``has_speculation`` from ``tools/mcp/common/inference.py``, and
 these tests pin that every script reports what the shared check reports.
 
 This suite lives beside ``test_inference.py`` in ``tools/mcp/common`` because
-that is the directory CI's ``python-tests`` job discovers; it reaches up into
-``tools/mcp/consultant`` to load the scripts it checks.
+that is the directory CI's ``python-tests`` job discovers; it reaches across
+into ``tools/mcp/manager/eval/qc`` to load the scripts it checks.
 """
 
 import importlib.util
@@ -22,12 +22,12 @@ import unittest
 from unittest.mock import patch
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
-_CONSULTANT = os.path.join(_HERE, "..", "consultant")
-# The consultant scripts each self-configure sys.path at import time, but put
-# the consultant and common directories on the path first so the plain
+_QC = os.path.join(_HERE, "..", "manager", "eval", "qc")
+# The QC scripts each self-configure sys.path at import time, but put the QC
+# and common directories on the path first so the plain
 # ``from inference import ...`` / ``from docs_retriever import ...`` imports
 # they perform resolve regardless of load order.
-sys.path.insert(0, _CONSULTANT)
+sys.path.insert(0, _QC)
 sys.path.insert(1, _HERE)
 
 
@@ -43,10 +43,9 @@ def _load_validate_responses():
     """Load ``validate_responses`` with the ``server`` import stubbed.
 
     ``validate_responses`` does ``from server import consult`` at import
-    time. Importing the retired consultant ``server`` module runs live side
-    effects at load: it instantiates ``DocsRetriever``/``HistoryStore``
-    (opening the configured history database) and ``create_backend`` (which,
-    under the default ``auto`` backend, probes the LLM endpoints over HTTP).
+    time. Importing ar-manager's ``server`` module runs live side effects at
+    load: it builds the documentation retriever and the inference backend
+    (which, under the ``auto`` backend, probes the LLM endpoints over HTTP).
     The import there is guarded only against ``ImportError``, so if it gets
     far enough to run those constructors, an unwritable history directory or
     an unreachable endpoint raises an uncaught error that would abort
@@ -66,12 +65,12 @@ def _load_validate_responses():
     stub = types.ModuleType("server")
     stub.consult = lambda *args, **kwargs: {}
     with patch.dict(sys.modules, {"server": stub}):
-        return _load("../consultant/scripts/validate_responses.py", "validate_responses")
+        return _load("../manager/eval/qc/validate_responses.py", "validate_responses")
 
 
-evaluate_dataset = _load("../consultant/scripts/evaluate_dataset.py", "evaluate_dataset")
+evaluate_dataset = _load("../manager/eval/qc/evaluate_dataset.py", "evaluate_dataset")
 validate_responses = _load_validate_responses()
-analyze_history = _load("../consultant/qc/analyze_history.py", "analyze_history")
+analyze_history = _load("../manager/eval/qc/analyze_history.py", "analyze_history")
 common_inference = _load("inference.py", "common_inference_under_test")
 
 SCRIPTS = {

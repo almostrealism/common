@@ -50,7 +50,7 @@ from datetime import datetime, timezone
 # store_dual; tools/mcp/common/memory_text.py owns that format and the
 # retrieval code reads entries through the same definition.
 _COMMON_DIR = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)), "..", "..", "common")
+    os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "common")
 if _COMMON_DIR not in sys.path:
     sys.path.insert(0, _COMMON_DIR)
 

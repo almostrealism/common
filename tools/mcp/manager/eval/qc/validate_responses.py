@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
 """
-Validate consultant response quality by re-running questions.
+Validate consult response quality by re-running questions through ar-manager.
 
 Usage:
     python3 validate_responses.py <evaluation.json> [--sample N] [--output file.json]
 
 This script:
 1. Loads an evaluation JSON (from evaluate_dataset.py)
-2. Re-runs questions through the consultant with curated keywords
+2. Re-runs questions through ar-manager's ``consult`` with curated keywords
 3. Compares old vs new response metrics
 4. Outputs a validation report
 
-Requires the consultant backend to be running.
+Requires the inference backend ar-manager is configured with to be reachable.
 """
 
 import argparse
@@ -21,10 +21,9 @@ import sys
 import time
 from pathlib import Path
 
-# Add the consultant directory and the shared tools/mcp/common directory to
-# the path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent))
-sys.path.insert(1, str(Path(__file__).parent.parent.parent / "common"))
+# ar-manager (for consult) and the shared tools/mcp/common directory.
+sys.path.insert(0, str(Path(__file__).parents[2]))
+sys.path.insert(1, str(Path(__file__).parents[3] / "common"))
 from inference import has_speculation
 
 try:
@@ -32,12 +31,12 @@ try:
     from inference import SYSTEM_PROMPT
     CONSULTANT_AVAILABLE = True
 except ImportError as e:
-    print(f"Warning: Could not import consultant modules: {e}")
+    print(f"Warning: Could not import ar-manager's consult: {e}")
     CONSULTANT_AVAILABLE = False
 
 
 def run_question(question: str, keywords: list[str]) -> dict:
-    """Run a question through the consultant and return metrics."""
+    """Run a question through ar-manager's consult and return metrics."""
     if not CONSULTANT_AVAILABLE:
         return {
             'error': 'Consultant not available',
@@ -140,7 +139,7 @@ def main():
 
     if not CONSULTANT_AVAILABLE:
         print("\nERROR: Consultant modules not available.")
-        print("Make sure you're running from the consultant directory or the backend is configured.")
+        print("Make sure ar-manager's dependencies are installed and its inference backend is configured.")
         sys.exit(1)
 
     # Validate each record
