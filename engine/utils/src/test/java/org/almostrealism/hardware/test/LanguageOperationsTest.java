@@ -17,6 +17,7 @@
 package org.almostrealism.hardware.test;
 
 import io.almostrealism.code.AtomicAccumulation;
+import io.almostrealism.code.NumberSystem;
 import io.almostrealism.code.Precision;
 import io.almostrealism.expression.BooleanConstant;
 import io.almostrealism.expression.Expression;
@@ -27,6 +28,7 @@ import io.almostrealism.expression.Mask;
 import io.almostrealism.expression.StaticReference;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.scope.ArrayVariable;
+import io.almostrealism.scope.Scope;
 import io.almostrealism.scope.ScopeSettings;
 import org.almostrealism.c.CJNILanguageOperations;
 import org.almostrealism.c.CLanguageOperations;
@@ -283,15 +285,82 @@ public class LanguageOperationsTest extends TestSuiteBase {
 	}
 
 	/**
-	 * Every FP64 OpenCL program enables {@code cl_khr_int64_base_atomics}, which the 64-bit
-	 * {@code atom_cmpxchg} of the FP64 atomic accumulation requires, alongside {@code cl_khr_fp64}.
+	 * An FP64 OpenCL program enables {@code cl_khr_int64_base_atomics}, which the 64-bit
+	 * {@code atom_cmpxchg} of the FP64 atomic accumulation requires, only when its scope contains
+	 * an atomic update, wherever in the scope tree that update is: a device without the extension
+	 * must still compile every other FP64 program. An FP32 program needs no pragma at all.
 	 */
 	@Test(timeout = 30000)
-	public void openCLFp64ProgramsEnableInt64Atomics() {
-		Assert.assertTrue(CLComputeContext.FP64_PRAGMAS,
-				CLComputeContext.FP64_PRAGMAS.contains("#pragma OPENCL EXTENSION cl_khr_fp64 : enable\n"));
-		Assert.assertTrue(CLComputeContext.FP64_PRAGMAS,
-				CLComputeContext.FP64_PRAGMAS.contains("#pragma OPENCL EXTENSION cl_khr_int64_base_atomics : enable\n"));
+	public void openCLInt64AtomicsPragmaOnlyForAtomicFp64Programs() {
+		String fp64 = "#pragma OPENCL EXTENSION cl_khr_fp64 : enable\n";
+		String atomics = "#pragma OPENCL EXTENSION cl_khr_int64_base_atomics : enable\n";
+		Assert.assertEquals(fp64, CLComputeContext.FP64_PRAGMA);
+		Assert.assertEquals(atomics, CLComputeContext.INT64_ATOMICS_PRAGMA);
+
+		ArrayVariable<Double> out = new ArrayVariable<>(Double.class, "out", new IntegerConstant(16));
+		Expression<Integer> i = new StaticReference<>(Integer.class, "i");
+		Expression<Double> v = new StaticReference<>(Double.class, "v");
+
+		Scope<Void> plain = new Scope<>("plain");
+		plain.getStatements().add(out.reference(i).assign(v));
+		Assert.assertFalse(plain.containsAtomicUpdate());
+		Assert.assertEquals(fp64, CLComputeContext.programPragmas(plain, true));
+		Assert.assertEquals("", CLComputeContext.programPragmas(plain, false));
+
+		Scope<Void> body = new Scope<>("body");
+		body.getStatements().add(new AtomicAccumulation<>(out.reference(i), v));
+		Assert.assertTrue(body.containsAtomicUpdate());
+
+		Scope<Void> nested = new Scope<>("nested");
+		Scope<Void> active = new Scope<>();
+		active.add(body);
+		nested.addCase(i.greaterThanOrEqual(new IntegerConstant(0)), active);
+		Assert.assertTrue(nested.containsAtomicUpdate());
+		Assert.assertEquals(fp64 + atomics, CLComputeContext.programPragmas(nested, true));
+		Assert.assertEquals("", CLComputeContext.programPragmas(nested, false));
+
+		Scope<Void> caller = new Scope<>("caller");
+		caller.getRequiredScopes().add(body);
+		Assert.assertTrue(caller.containsAtomicUpdate());
+		Assert.assertEquals(fp64 + atomics, CLComputeContext.programPragmas(caller, true));
+	}
+
+	/**
+	 * An atomic accumulation adds floating-point values, so every backend refuses an integer
+	 * precision even where its width matches a floating-point one it supports.
+	 */
+	@Test(timeout = 30000)
+	public void atomicAccumulationIsRefusedAtIntegerPrecisions() {
+		for (Precision precision : List.of(NumberSystem.I32, NumberSystem.I64)) {
+			assertRefusesAtomic(new CJNILanguageOperations(precision));
+			assertRefusesAtomic(new CLanguageOperations(precision, false, false));
+			assertRefusesAtomic(new OpenCLLanguageOperations(precision));
+			assertRefusesAtomic(new CudaLanguageOperations(precision));
+			assertRefusesAtomic(new MetalLanguageOperations(precision));
+		}
+	}
+
+	/**
+	 * The assignment target of an ordinary expression is the expression itself, and that of a
+	 * {@link Mask}, including a mask of a mask, is the element it guards: the same element its
+	 * assignment writes.
+	 */
+	@Test(timeout = 30000)
+	public void assignmentTargetUnwrapsMasks() {
+		ArrayVariable<Double> out = new ArrayVariable<>(Double.class, "out", new IntegerConstant(16));
+		Expression<Integer> i = new StaticReference<>(Integer.class, "i");
+		Expression<Double> element = out.reference(i);
+		Assert.assertSame(element, element.getAssignmentTarget());
+
+		Expression<Boolean> inside = i.lessThan(new IntegerConstant(16));
+		Expression<Boolean> positive = i.greaterThanOrEqual(new IntegerConstant(0));
+		Expression<Double> masked = Mask.of(inside, element);
+		Expression<Double> twice = Mask.of(positive, masked);
+		Assert.assertTrue(twice.getClass().getSimpleName(), twice.isMasked());
+		Assert.assertTrue(twice.getChildren().get(1).isMasked());
+		Assert.assertSame(element, masked.getAssignmentTarget());
+		Assert.assertSame(element, twice.getAssignmentTarget());
+		Assert.assertSame(element, new AtomicAccumulation<>(twice, element).getDestination());
 	}
 
 	/**

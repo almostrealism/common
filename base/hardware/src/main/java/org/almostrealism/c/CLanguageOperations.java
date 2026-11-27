@@ -222,7 +222,8 @@ public class CLanguageOperations extends DefaultLanguageOperations {
 	 * builtins that both clang and gcc provide: the sum is retried until no other thread has
 	 * changed the element between its read and the swap.</p>
 	 *
-	 * @throws UnsupportedOperationException if the precision is neither 32 nor 64 bits wide
+	 * @throws UnsupportedOperationException if the precision is not a 32 or 64-bit floating-point
+	 *         precision
 	 */
 	@Override
 	public String atomicAccumulation(String destination, String value) {
@@ -242,12 +243,31 @@ public class CLanguageOperations extends DefaultLanguageOperations {
 	 * precision of this language, through which a compare-and-swap of the element is performed.
 	 *
 	 * @return {@code unsigned int} for 32-bit elements, {@code unsigned long long} for 64-bit
-	 * @throws UnsupportedOperationException if the precision is neither 32 nor 64 bits wide
+	 * @throws UnsupportedOperationException if the precision is not a 32 or 64-bit floating-point
+	 *         precision
 	 */
 	protected String atomicBitsType() {
-		if (getPrecision().bytes() == 4) return "unsigned int";
-		if (getPrecision().bytes() == 8) return "unsigned long long";
-		throw new UnsupportedOperationException("No atomic accumulation at " + getPrecision());
+		return atomicElementBytes() == 4 ? "unsigned int" : "unsigned long long";
+	}
+
+	/**
+	 * Returns the width of the floating-point element an atomic accumulation at the precision of
+	 * this language updates, refusing any precision the accumulation is not defined for: an
+	 * {@link #atomicAccumulation(String, String) atomic accumulation} adds
+	 * floating-point values, so an integer precision is refused even when its width matches.
+	 *
+	 * @return 4 for a 32-bit floating-point precision, 8 for a 64-bit one
+	 * @throws UnsupportedOperationException if the precision is not a 32 or 64-bit floating-point
+	 *         precision
+	 */
+	protected int atomicElementBytes() {
+		int bytes = getPrecision().bytes();
+		if (!getPrecision().isFloatingPoint() || (bytes != 4 && bytes != 8)) {
+			throw new UnsupportedOperationException(getClass().getSimpleName() +
+					" has no atomic accumulation at " + getPrecision());
+		}
+
+		return bytes;
 	}
 
 	/**

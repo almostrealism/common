@@ -217,14 +217,17 @@ public class CLComputeContext extends AbstractComputeContext implements ConsoleF
 	 */
 	public static boolean enableFastQueue = false;
 
+	/** OpenCL pragma enabling the {@code cl_khr_fp64} extension every FP64 program needs. */
+	public static final String FP64_PRAGMA = "#pragma OPENCL EXTENSION cl_khr_fp64 : enable\n";
+
 	/**
-	 * OpenCL pragmas enabling the extensions double precision programs need: {@code cl_khr_fp64}
-	 * for the arithmetic, and {@code cl_khr_int64_base_atomics} for the 64-bit compare-and-swap
+	 * OpenCL pragma enabling {@code cl_khr_int64_base_atomics}, for the 64-bit compare-and-swap
 	 * that {@link OpenCLLanguageOperations#atomicAccumulation(String, String)} renders at FP64.
-	 * A device without the atomics extension rejects only the kernels that use them.
+	 * It is added only to an FP64 program whose scope {@link Scope#containsAtomicUpdate()
+	 * contains an atomic update}, so a device without the extension still compiles every other
+	 * FP64 program and rejects only the kernels that need it.
 	 */
-	public static final String FP64_PRAGMAS = "#pragma OPENCL EXTENSION cl_khr_fp64 : enable\n" +
-			"#pragma OPENCL EXTENSION cl_khr_int64_base_atomics : enable\n";
+	public static final String INT64_ATOMICS_PRAGMA = "#pragma OPENCL EXTENSION cl_khr_int64_base_atomics : enable\n";
 
 	/** Whether FP64 double precision is enabled for this context. */
 	private boolean enableFp64;
@@ -321,7 +324,7 @@ public class CLComputeContext extends AbstractComputeContext implements ConsoleF
 
 	/**
 	 * Compiles a scope to OpenCL C code and creates an instruction set for execution.
-	 * Adds the {@link #FP64_PRAGMAS FP64 pragmas} if double precision is enabled.
+	 * Adds the {@link #programPragmas(Scope, boolean) pragmas} the program needs.
 	 *
 	 * @param scope  the scope containing the computation graph to compile
 	 * @return an instruction set containing the compiled OpenCL kernels
@@ -332,7 +335,7 @@ public class CLComputeContext extends AbstractComputeContext implements ConsoleF
 		StringBuilder buf = new StringBuilder();
 
 		try {
-			if (enableFp64) buf.append(FP64_PRAGMAS);
+			buf.append(programPragmas(scope, enableFp64));
 
 			ScopeEncoder enc = new ScopeEncoder(
 					p -> new OpenCLPrintWriter(p, getDataContext().getPrecision()),
@@ -345,6 +348,21 @@ public class CLComputeContext extends AbstractComputeContext implements ConsoleF
 		} finally {
 			recordCompilation(scope, buf::toString, System.nanoTime() - start);
 		}
+	}
+
+	/**
+	 * Returns the extension pragmas an OpenCL program compiled from the given scope needs: none
+	 * at single precision; at double precision the {@link #FP64_PRAGMA FP64 pragma}, followed by
+	 * the {@link #INT64_ATOMICS_PRAGMA 64-bit atomics pragma} when the scope
+	 * {@link Scope#containsAtomicUpdate() contains an atomic update}.
+	 *
+	 * @param scope the scope the program is compiled from
+	 * @param fp64  whether the program computes in double precision
+	 * @return the pragmas to place at the start of the program, possibly empty
+	 */
+	public static String programPragmas(Scope<?> scope, boolean fp64) {
+		if (!fp64) return "";
+		return scope.containsAtomicUpdate() ? FP64_PRAGMA + INT64_ATOMICS_PRAGMA : FP64_PRAGMA;
 	}
 
 	/** Returns true if the underlying OpenCL device is a CPU. */

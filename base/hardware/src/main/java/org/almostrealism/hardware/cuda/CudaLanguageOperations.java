@@ -57,14 +57,12 @@ public class CudaLanguageOperations extends CLanguageOperations {
 	 * declare the {@code double} overload only for 6.0 and later, so an older device rejects an
 	 * FP64 accumulation when the kernel is compiled rather than producing a lossy update.</p>
 	 *
-	 * @throws UnsupportedOperationException if the precision is neither 32 nor 64 bits wide
+	 * @throws UnsupportedOperationException if the precision is not a 32 or 64-bit floating-point
+	 *         precision
 	 */
 	@Override
 	public String atomicAccumulation(String destination, String value) {
-		if (getPrecision().bytes() != 4 && getPrecision().bytes() != 8) {
-			throw new UnsupportedOperationException("CUDA has no atomic accumulation at " + getPrecision());
-		}
-
+		atomicElementBytes();
 		return "atomicAdd(&(" + destination + "), " + value + ")";
 	}
 

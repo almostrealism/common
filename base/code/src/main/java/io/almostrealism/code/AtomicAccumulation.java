@@ -72,14 +72,14 @@ public class AtomicAccumulation<T> implements Statement<AtomicAccumulation<T>> {
 	/**
 	 * Creates an atomic accumulation of the given value into the given element.
 	 *
-	 * <p>A destination wrapped in a {@link Mask}, which is how
+	 * <p>The accumulation writes to the {@link Expression#getAssignmentTarget() assignment target}
+	 * of the destination. For a destination wrapped in a {@link Mask}, which is how
 	 * {@link ArrayVariable#reference(Expression)} returns an element when
-	 * {@link ScopeSettings#enableInstanceReferenceMasking} is set, accumulates into the masked
-	 * element, exactly as {@link Mask#assign(Expression)} assigns to it.</p>
+	 * {@link ScopeSettings#enableInstanceReferenceMasking} is set, that is the masked element,
+	 * exactly as {@link Mask#assign(Expression)} assigns to it.</p>
 	 *
-	 * @param destination the array element to accumulate into, which must be a
-	 *                    {@link Expression#isVariableReference() variable reference}, or a
-	 *                    {@link Mask} of one
+	 * @param destination the array element to accumulate into, whose assignment target must be a
+	 *                    {@link Expression#isVariableReference() variable reference}
 	 * @param value       the value to add
 	 * @throws IllegalArgumentException if either expression is {@code null}, or the destination is
 	 *         not a reference to an element of an array
@@ -89,10 +89,7 @@ public class AtomicAccumulation<T> implements Statement<AtomicAccumulation<T>> {
 			throw new IllegalArgumentException("An atomic accumulation needs a destination and a value");
 		}
 
-		// TODO(review): replace this instanceof Mask with a polymorphic Expression query (e.g. an accumulation target) that Mask overrides.
-		if (destination instanceof Mask) {
-			destination = ((Mask) destination).getMaskedValue();
-		}
+		destination = destination.getAssignmentTarget();
 
 		if (!destination.isVariableReference()) {
 			throw new IllegalArgumentException("Cannot atomically accumulate into " + destination);
@@ -115,6 +112,14 @@ public class AtomicAccumulation<T> implements Statement<AtomicAccumulation<T>> {
 	 * @return the added value
 	 */
 	public Expression<T> getValue() { return value; }
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>An atomic accumulation is, by definition, an atomic update.</p>
+	 */
+	@Override
+	public boolean isAtomicUpdate() { return true; }
 
 	/**
 	 * {@inheritDoc}

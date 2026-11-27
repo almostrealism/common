@@ -137,6 +137,19 @@ public interface Statement<T extends KernelStructure> extends Fragment, KernelSt
 	default void appendDeclaredArrays(List<ArrayVariable<?>> arrays) { }
 
 	/**
+	 * Returns whether this statement updates memory with an atomic operation, so that a
+	 * compute context can learn whether a program needs the language extensions atomics require
+	 * by asking its statements rather than by inspecting their kind.
+	 *
+	 * <p>This default answers {@code false}: a statement that does not say otherwise performs no
+	 * atomic update.</p>
+	 *
+	 * @return {@code true} if this statement performs an atomic update
+	 * @see io.almostrealism.scope.Scope#containsAtomicUpdate()
+	 */
+	default boolean isAtomicUpdate() { return false; }
+
+	/**
 	 * Returns a copy of this statement with every occurrence of {@code target} within its
 	 * expressions replaced by {@code replacement}, mirroring
 	 * {@link Expression#replace(Expression, Expression)} at the statement level.

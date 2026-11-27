@@ -107,23 +107,20 @@ public class OpenCLLanguageOperations extends CLanguageOperations {
 	 * compare-and-swap loop over the bits of the element: {@code atomic_cmpxchg} on a
 	 * {@code uint} view for 32-bit elements, and {@code atom_cmpxchg} on a {@code ulong} view
 	 * for 64-bit elements, which requires a device supporting
-	 * {@code cl_khr_int64_base_atomics}. {@link CLComputeContext} enables that extension in every
-	 * FP64 program ({@link CLComputeContext#FP64_PRAGMAS}); a device without it rejects the kernel
-	 * when it is compiled.</p>
+	 * {@code cl_khr_int64_base_atomics}. {@link CLComputeContext} enables that extension in an
+	 * FP64 program that contains an atomic update ({@link CLComputeContext#INT64_ATOMICS_PRAGMA});
+	 * a device without it rejects that kernel when it is compiled.</p>
 	 *
 	 * <p>The element is read without an atomic operation only once, before the loop. Each retry
 	 * starts from the value the failed compare-and-swap returned, which the swap read atomically,
 	 * so a stale or torn first read only costs one more iteration.</p>
 	 *
-	 * @throws UnsupportedOperationException if the precision is neither 32 nor 64 bits wide
+	 * @throws UnsupportedOperationException if the precision is not a 32 or 64-bit floating-point
+	 *         precision
 	 */
 	@Override
 	public String atomicAccumulation(String destination, String value) {
-		boolean wide = getPrecision().bytes() == 8;
-		if (!wide && getPrecision().bytes() != 4) {
-			throw new UnsupportedOperationException("No atomic accumulation at " + getPrecision());
-		}
-
+		boolean wide = atomicElementBytes() == 8;
 		String bits = wide ? "ulong" : "uint";
 		String type = getPrecision().typeName();
 		String swap = wide ? "atom_cmpxchg" : "atomic_cmpxchg";

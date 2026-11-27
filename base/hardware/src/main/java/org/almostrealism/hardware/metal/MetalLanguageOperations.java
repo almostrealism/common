@@ -197,12 +197,12 @@ public class MetalLanguageOperations extends CLanguageOperations {
 	 * atomics were introduced in Metal Shading Language 3.0, so a device whose compiler predates
 	 * it rejects the kernel when it is compiled rather than producing a lossy update.</p>
 	 *
-	 * @throws UnsupportedOperationException if the precision is not 32-bit, the only
-	 *         floating-point width Metal has atomics for
+	 * @throws UnsupportedOperationException if the precision is not 32-bit floating point, the
+	 *         only floating-point width Metal has atomics for
 	 */
 	@Override
 	public String atomicAccumulation(String destination, String value) {
-		if (getPrecision().bytes() != 4) {
+		if (atomicElementBytes() != 4) {
 			throw new UnsupportedOperationException("Metal has no atomic accumulation at " + getPrecision());
 		}
 
