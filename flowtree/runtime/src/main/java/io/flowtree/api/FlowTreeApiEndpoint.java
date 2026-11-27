@@ -997,11 +997,12 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
                 log("Invalid startedAfter value: " + startedAfterStr);
             }
         }
-        // Per-PR remediation cap for remediation passes (auto-review/auto-resolve),
-        // which CI marks explicitly — not every automated job. The triggering
-        // commit lets the cap reset when the branch gains a commit no pass produced.
+        // Remediation passes (CI marks them explicitly) are gated per PR: the commit
+        // resets the cap or identifies a repeat, and the description tells passes apart.
         boolean remediationPass = JsonFieldExtractor.getBoolean(body, "remediationPass", false);
-        String remediationSkip = remediationGuard.skipReason(workstreamId, remediationPass, JsonFieldExtractor.extractString(body, "triggerCommit"));
+        String remediationSkip = remediationGuard.skipReason(workstreamId, remediationPass,
+                JsonFieldExtractor.extractString(body, "triggerCommit"),
+                JsonFieldExtractor.extractString(body, "description"));
         if (remediationSkip != null) {
             return newFixedLengthResponse(Response.Status.OK, "application/json", "{\"ok\":true,"
                 + "\"skipped\":true,\"reason\":\"" + JsonFieldExtractor.escapeJson(remediationSkip) + "\"}");

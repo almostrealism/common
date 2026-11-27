@@ -18,6 +18,8 @@ package io.flowtree.github;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
+import java.util.TreeSet;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -40,6 +42,25 @@ public record PullRequestEscalation(String prUrl, List<Finding> unresolvedThread
     /** An empty escalation: no PR was found, so nothing is listed. */
     public static final PullRequestEscalation NONE =
             new PullRequestEscalation(null, List.of(), List.of());
+
+    /**
+     * Returns the review activity a remediation pass labelled {@code label} runs
+     * against on this pull request: its unresolved review threads, each
+     * identified by its first comment's link. Returns {@code null} when no pull
+     * request was found, so "nothing could be looked up" is never mistaken for
+     * "no open threads".
+     *
+     * @param label the submitter's label for the pass, or {@code null}
+     * @return the activity, or {@code null} when it is unknown
+     */
+    public ReviewActivity reviewActivity(String label) {
+        if (prUrl == null) return null;
+        Set<String> threads = new TreeSet<>();
+        for (Finding thread : unresolvedThreads) {
+            threads.add(thread.url() != null ? thread.url() : thread.path() + ":" + thread.line());
+        }
+        return new ReviewActivity(label, threads);
+    }
 
     /**
      * Appends these facts to {@code message} as Markdown: the PR's page (when
