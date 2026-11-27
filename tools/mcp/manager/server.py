@@ -837,7 +837,21 @@ def _resolve_scope_context(
         return ("", "", err)
 
     if scope == "all" and not repo_url and not workstream_id:
-        # Explicitly requested: search everything, no filtering.
+        if _get_workspace_scopes():
+            # A scoped token (a job token) must not read across workspaces;
+            # an unfiltered scope='all' would do exactly that. Memory entries
+            # carry no workspace, so there is nothing to filter on — refuse.
+            return ("", "", {
+                "ok": False,
+                "error": "A workspace-scoped token cannot search every repository "
+                         "(scope='all' with no repository or workstream). Name a "
+                         "repository or workstream in your own workspace, or use "
+                         "scope='repo'.",
+                "next_steps": [
+                    "Set scope to 'repo', or name a workstream in your own workspace",
+                ],
+            })
+        # Unscoped caller explicitly requested everything: no filtering.
         return ("", "", None)
 
     if scope == "branch":

@@ -265,12 +265,20 @@ def _require_repo_in_scope(repo_url: str, branch: str = "") -> None:
     A tool that accepts an explicit ``repo_url`` reads memories, commits and
     narrative keyed by repository and branch, not by workstream, so the
     workstream-level checks never see it. This resolves the address to the
-    workstreams that own it, archived ones included: the workstream on
-    *branch* when one exists, which must be in scope; otherwise any
-    workstream naming the repository, at least one of which must be in
-    scope. A repository no in-scope workstream names is refused, so a scoped
-    caller (a job token) cannot read another workspace's repository by
-    naming it. Unscoped callers always pass.
+    workstreams that own it, archived ones included. When a workstream names
+    *repo_url* on *branch*, that workstream must be in scope; otherwise some
+    workstream naming the repository on any branch must be in scope. If no
+    in-scope workstream names the repository, the caller is refused, so a
+    scoped caller (a job token) cannot read another workspace's repository by
+    naming it.
+
+    The branch match is drawn from a repository-filtered listing, which
+    excludes a workstream that names no repository. The repo-less fallback in
+    :func:`_find_workstream_by_branch` (a branch-only workstream standing in
+    for an unnamed repository) is deliberately *not* used here: it would let a
+    scoped workspace that owns a repo-less workstream on *branch* authorize an
+    unrelated repository that merely shares the branch name. Unscoped callers
+    always pass.
 
     Args:
         repo_url: The repository the caller named; empty passes.
@@ -283,8 +291,10 @@ def _require_repo_in_scope(repo_url: str, branch: str = "") -> None:
     if not _get_workspace_scopes() or not repo_url:
         return
     if branch:
-        owner = _find_workstream_by_branch(repo_url, branch, enforce_scope=False)
-        if owner is not None:
+        owners = _list_workstreams_on_branch(repo_url, branch, enforce_scope=False)
+        if owners:
+            # (repo_url, branch) is unique, so the first match is the owner.
+            owner = owners[0]
             _require_workspace(owner.get("workspaceId") or owner.get("slackWorkspaceId"))
             return
     if _list_workstreams_on_branch(repo_url, "", enforce_scope=True):

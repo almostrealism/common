@@ -33,6 +33,10 @@ _WORKSTREAMS = [
      "defaultBranch": "feature/other", "baseBranch": "master"},
     {"workstreamId": "w-shared", "workspaceId": "TOTHER", "repoUrl": OWN_REPO,
      "defaultBranch": "feature/theirs", "baseBranch": "master"},
+    # A repo-less workstream in TOWN sharing a branch name with no repository.
+    # It must not authorize an unrelated repository on that branch.
+    {"workstreamId": "w-own-bare", "workspaceId": "TOWN", "repoUrl": "",
+     "defaultBranch": "feature/bare", "baseBranch": "master"},
 ]
 
 
@@ -133,6 +137,112 @@ class RepoScopeTests(unittest.TestCase):
                     category="missing_resource", detail="x",
                     workstream_id="w-other", job_id="j-1")
             post.assert_not_called()
+
+    def test_repo_less_branch_owner_does_not_authorize_an_unrelated_repo(
+            self, mock_client_fn, *_):
+        """A scoped workspace owning a repo-less workstream on ``feature/bare``
+        must not thereby read an unrelated repository addressed on that branch.
+        The branch match is drawn from a repository-filtered listing, so the
+        repo-less fallback cannot stand in for OTHER_REPO."""
+        client = self._client(mock_client_fn)
+        _set_workspaces("TOWN")
+        result = server.workstream_context(
+            repo_url=OTHER_REPO, branch="feature/bare")
+        self.assertFalse(result["ok"], result)
+        self.assertIn("not scoped", result["error"])
+        client.search_by_branch.assert_not_called()
+
+    def test_scope_all_without_a_repo_is_refused_for_scoped_callers(
+            self, mock_client_fn, *_):
+        """``scope='all'`` with no repository or workstream would read across
+        every workspace; a scoped token is refused since memories carry no
+        workspace to filter on."""
+        client = self._client(mock_client_fn)
+        _set_workspaces("TOWN")
+        result = server.memory_recall(query="anything", scope="all")
+        self.assertFalse(result["ok"], result)
+        self.assertIn("scope='all'", result["error"])
+        client.search.assert_not_called()
+
+    def test_scope_all_without_a_repo_is_allowed_for_unscoped_callers(
+            self, mock_client_fn, *_):
+        client = self._client(mock_client_fn)
+        _clear_workspaces()
+        result = server.memory_recall(query="anything", scope="all")
+        self.assertTrue(result["ok"], result)
+        client.search.assert_called()
+
+    def test_memory_namespaces_of_another_workspaces_repo_is_refused(
+            self, mock_client_fn, *_):
+        client = self._client(mock_client_fn)
+        _set_workspaces("TOWN")
+        result = server.memory_namespaces(repo_url=OTHER_REPO)
+        self.assertFalse(result["ok"], result)
+        self.assertIn("not scoped", result["error"])
+        client.namespace_stats.assert_not_called()
+
+    def test_memory_namespaces_scope_all_is_refused_for_scoped_callers(
+            self, mock_client_fn, *_):
+        client = self._client(mock_client_fn)
+        _set_workspaces("TOWN")
+        result = server.memory_namespaces(scope="all")
+        self.assertFalse(result["ok"], result)
+        self.assertIn("scope='all'", result["error"])
+        client.namespace_stats.assert_not_called()
+
+    def test_memory_namespaces_of_own_repo_is_allowed(self, mock_client_fn, *_):
+        client = self._client(mock_client_fn)
+        client.namespace_stats.return_value = []
+        _set_workspaces("TOWN")
+        result = server.memory_namespaces(repo_url=OWN_REPO)
+        self.assertTrue(result["ok"], result)
+        client.namespace_stats.assert_called()
+
+    def test_memory_namespaces_unscoped_reads_any_repo(self, mock_client_fn, *_):
+        client = self._client(mock_client_fn)
+        client.namespace_stats.return_value = []
+        _clear_workspaces()
+        result = server.memory_namespaces(repo_url=OTHER_REPO)
+        self.assertTrue(result["ok"], result)
+        client.namespace_stats.assert_called()
+
+    def _docs(self):
+        """A documentation corpus stub sufficient for consult to run."""
+        docs = MagicMock()
+        ctx = {"context": "DOC", "html_refs": [],
+               "markdown_results": [{"file": "docs/a.md", "context": "DOC"}]}
+        docs.get_context_for_query.return_value = ctx
+        docs.get_context_for_keywords.return_value = ctx
+        return docs
+
+    @patch.object(server, "_get_llm", return_value=None)
+    @patch.object(server, "_get_docs")
+    def test_consult_does_not_read_another_workspaces_notes(
+            self, mock_docs, _mock_llm, mock_client_fn, *_):
+        """consult degrades rather than hard-refuses, but the security property
+        holds: a scoped caller naming another workspace's repository does not
+        reach that repository's notes."""
+        mock_docs.return_value = self._docs()
+        client = self._client(mock_client_fn)
+        _set_workspaces("TOWN")
+        result = server.consult(question="how does the scope check behave",
+                                repo_url=OTHER_REPO)
+        self.assertTrue(result["ok"], result)
+        client.search.assert_not_called()
+        self.assertIn("memory_scope", result.get("degraded_reasons", []))
+
+    @patch.object(server, "_get_llm", return_value=None)
+    @patch.object(server, "_get_docs")
+    def test_consult_reads_notes_for_an_unscoped_caller(
+            self, mock_docs, _mock_llm, mock_client_fn, *_):
+        mock_docs.return_value = self._docs()
+        client = self._client(mock_client_fn)
+        _clear_workspaces()
+        result = server.consult(question="how does the scope check behave",
+                                repo_url=OTHER_REPO)
+        self.assertTrue(result["ok"], result)
+        client.search.assert_called()
+        self.assertNotIn("memory_scope", result.get("degraded_reasons", []))
 
 
 if __name__ == "__main__":

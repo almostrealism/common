@@ -1732,9 +1732,12 @@ workspace half of that for every job: a job's token is scoped to its
 workstream's workspace, and a read tool given a `repo_url` (`workstream_context`,
 `memory_recall`, `memory_namespaces`, `consult`, and `memory_store` for writes)
 refuses a repository, or a branch of one, that no workstream in that workspace
-owns (`_require_repo_in_scope` in `tools/mcp/manager/workspace_map.py`). Within
-the workspace the repository rule is still the prompt's. Static and interactive
-tokens are unscoped and unaffected. Its output is
+owns (`_require_repo_in_scope` in `tools/mcp/manager/workspace_map.py`); a
+scoped `memory_recall` or `memory_namespaces` call that names neither a
+repository nor a workstream and asks for `scope="all"` is refused for the same
+reason, since memories carry no workspace to filter on. Within the workspace
+the repository rule is still the prompt's. Static and interactive tokens are
+unscoped and unaffected. Its output is
 docs-only (a report under `docs/qa/retrospectives/` and a row in that
 directory's ledger), so `PROTECT_TEST_FILES` costs nothing. That scope is the
 prompt's contract, not a harness restriction — no submission setting confines a
