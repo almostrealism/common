@@ -79,6 +79,9 @@ public class ProtobufWaveDetailsStore implements WaveDetailsStore, ConsoleFeatur
 	/** Name of the sidecar file recording the model the store was last validated against. */
 	private static final String VALIDATED_MODEL_FILE_NAME = "complete.model";
 
+	/** Prefix of the marker's second line, which records the frequency layout it was validated under. */
+	private static final String LAYOUT_PREFIX = "frequency-layout=";
+
 	/** The underlying disk store that handles batched serialization and index management. */
 	private final ProtobufDiskStore<Audio.WaveDetailData> diskStore;
 
@@ -278,14 +281,29 @@ public class ProtobufWaveDetailsStore implements WaveDetailsStore, ConsoleFeatur
 		return diskStore.indexedEmbeddingCount();
 	}
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>The marker also records the {@link WaveDetails#FREQUENCY_LAYOUT_VERSION frequency
+	 * layout} the store was validated under, on its second line. A marker written under a
+	 * layout other than the one this build understands, or before the layout was recorded,
+	 * vouches for nothing: the model is not reported, so the next refresh rereads every
+	 * record and recomputes frequency data not in the current layout.</p>
+	 */
 	@Override
 	public String getValidatedModel() {
 		Path marker = markerPath();
 		if (!Files.exists(marker)) return null;
 
 		try {
-			String model = Files.readString(marker).trim();
-			return model.isEmpty() ? null : model;
+			String[] lines = Files.readString(marker).trim().split("\n");
+			String model = lines[0].trim();
+			int layout = lines.length > 1 && lines[1].startsWith(LAYOUT_PREFIX)
+					? Integer.parseInt(lines[1].substring(LAYOUT_PREFIX.length()).trim()) : 0;
+			return model.isEmpty() || layout != WaveDetails.FREQUENCY_LAYOUT_VERSION ? null : model;
+		} catch (NumberFormatException e) {
+			warn("Unreadable frequency layout in validated-model marker at " + marker, e);
+			return null;
 		} catch (IOException e) {
 			// Degrade to a rescan rather than aborting the library open that reads this.
 			warn("Unable to read validated-model marker at " + marker, e);
@@ -307,7 +325,8 @@ public class ProtobufWaveDetailsStore implements WaveDetailsStore, ConsoleFeatur
 			Path marker = markerPath();
 			Path pending = marker.resolveSibling(VALIDATED_MODEL_FILE_NAME + ".tmp");
 			try {
-				Files.writeString(pending, modelIdentifier);
+				Files.writeString(pending, modelIdentifier + "\n" + LAYOUT_PREFIX
+						+ WaveDetails.FREQUENCY_LAYOUT_VERSION);
 				Files.move(pending, marker, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
 			} catch (IOException e) {
 				// A marker that is not written only costs a rescan next launch.

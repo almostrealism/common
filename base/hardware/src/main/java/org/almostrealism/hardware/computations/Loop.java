@@ -212,7 +212,7 @@ public class Loop extends OperationComputationAdapter<Void> implements Expressio
 
 	@Override
 	public Scope<Void> getScope(KernelStructureContext context) {
-		Repeated<Void> scope = new Repeated<>(getFunctionName(), getMetadata());
+		Repeated<Void> scope = createScope(Repeated::new);
 		Variable<Integer, ?> i = Variable.integer(getVariablePrefix() + "_i");
 		scope.setInterval(e(1));
 		scope.setIndex(i);

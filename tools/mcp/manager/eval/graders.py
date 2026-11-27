@@ -29,6 +29,8 @@ The grader vocabulary (see ``validate_case``):
 - ``retry_kept``         — ``revision`` | ``draft`` | ``none``: which answer the
                            one citation retry kept, or ``none`` when the draft
                            drew no warnings and no retry ran
+- ``note_tiers``         — ``{memory id: tier}``: the tier each of those notes
+                           was presented with
 - ``must_mark_unsupported`` — list of case-insensitive regexes; each must match
                            a sentence the citation verifier flagged (one marked
                            ``[unsupported]`` in the prose, or listed in
@@ -47,7 +49,7 @@ EXPECT_KEYS = frozenset({
     "must_cite_any", "must_not_cite", "must_flag_stale", "basis_in",
     "max_citation_warnings", "min_citation_warnings", "must_mark_unsupported",
     "must_not_mark_unsupported", "history_must_include", "min_conflicts",
-    "retry_kept",
+    "retry_kept", "note_tiers",
 })
 
 # Values of ``retry_kept``: the answer the citation retry kept, or no retry.
@@ -354,6 +356,14 @@ def grade(response: dict, expect: dict) -> GradeResult:
         result.record("retry_kept", kept == expect["retry_kept"],
                       f"citation retry kept {kept!r}, expected {expect['retry_kept']!r}")
 
+    if "note_tiers" in expect:
+        presented = {e.get("memory_id"): e.get("tier")
+                     for e in response.get("evidence", []) or [] if e.get("kind") == "note"}
+        for memory_id, wanted in expect["note_tiers"].items():
+            got = presented.get(memory_id)
+            result.record("note_tiers", got == wanted,
+                          f"note {memory_id} presented as {got!r}, expected {wanted!r}")
+
     history = response.get("history") if isinstance(response.get("history"), str) else ""
     for pat in expect.get("history_must_include", []):
         ok = re.search(pat, history, re.IGNORECASE) is not None
@@ -467,6 +477,10 @@ def validate_case(case: dict) -> list[str]:
         if "retry_kept" in expect and expect["retry_kept"] not in RETRY_OUTCOMES:
             errors.append(
                 f"{cid}: {label} retry_kept {expect['retry_kept']!r} not in {RETRY_OUTCOMES}")
+        if "note_tiers" in expect and not (
+                isinstance(expect["note_tiers"], dict)
+                and all(isinstance(v, str) for v in expect["note_tiers"].values())):
+            errors.append(f"{cid}: {label} note_tiers must map memory ids to tiers")
         outcome = expect.get("outcome")
         if outcome is not None and outcome not in KNOWN_OUTCOMES:
             errors.append(

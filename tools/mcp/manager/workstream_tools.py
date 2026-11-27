@@ -314,13 +314,21 @@ def workstream_get_job(job_id: str) -> dict:
     agent reported, what other jobs ran on the same branch) call
     ``workstream_context``.
 
+    A job is found from the moment the controller accepts it, before any
+    worker starts it. ``state`` is its derived lifecycle state:
+    ``SUBMITTED`` (accepted, not started), ``LOST`` (waited past the lost
+    threshold without starting), ``RUNNING``, ``UNRESPONSIVE`` (running but
+    silent past the threshold), or the terminal status. ``LOST`` and
+    ``UNRESPONSIVE`` are labels, not final outcomes: such a job may still
+    start or report.
+
     Args:
         job_id: The job identifier returned by workstream_submit_task.
 
     Returns:
-        Dictionary with jobId, status, description, timestamp, and optional
-        fields such as targetBranch, commitHash, pullRequestUrl, errorMessage,
-        and costUsd.
+        Dictionary with jobId, status, state, description, timestamp, and
+        optional fields such as submittedAt, workstreamId, targetBranch,
+        commitHash, pullRequestUrl, errorMessage, phase and costUsd.
     """
     server._require_scope("read")
     err = server._check_short_strings(job_id=job_id)

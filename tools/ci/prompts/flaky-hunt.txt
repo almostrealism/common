@@ -129,7 +129,7 @@ wildcard, or a CI shard selector (that is CI-shard partitioning, not yours to
 use):
 
     mcp__ar-test-runner__start_test_run module:"<module>" test_classes:["FooTest","BarTest"]
-    mcp__ar-test-runner__start_test_run module:"<module>" test_methods:["FooTest#a","FooTest#b"]
+    mcp__ar-test-runner__start_test_run module:"<module>" test_classes:["FooTest#a","FooTest#b"]
 
 Give every run an explicit timeout of at most 2400 seconds. Repeat the SAME
 small selection several times (begin with five to ten runs) rather than
@@ -153,6 +153,50 @@ real, deterministic reason on this commit is a different finding — a broken
 test, worth reporting — not a flaky one. For a flake you take from the observed
 list but cannot run here, the disagreeing CI attempts are already that evidence.
 
+**4. Surface seed-dependent flakes with `AR_TEST_SEED=random`.** Before every
+test method, `TestSuiteBase` seeds one process-wide random source with a fixed
+default seed, so `rand`/`randn` inputs and unseeded layer weights are identical
+from run to run. That stabilizes CI, but it also means a flake that depends on
+which random draw a test gets no longer flips between the plain reruns of
+step 2 — it now passes, or fails, the same way every time, and the repetition
+above cannot surface it. To hunt that kind of flake, run the same narrow
+selection under a fresh per-test seed. `AR_TEST_SEED=random` makes
+`TestSuiteBase` draw and log a new seed for every test method; pass it as a JVM
+argument, as the ONLY `jvm_args` entry on a dedicated run so it reaches the
+forked test JVM reliably (the runner concatenates every `jvm_args` entry into
+one Maven `argLine`):
+
+    mcp__ar-test-runner__start_test_run module:"<module>" test_classes:["FooTest#bar"] jvm_args:["-DAR_TEST_SEED=random"]
+
+`AR_TEST_SEED` is a per-test seed, not a CI-shard variable, and is accepted
+here. Keep the selection just as narrow, give it the same bounded timeout (at
+most 2400 seconds), and repeat it the same bounded number of times (begin with
+five to ten) — do not widen it. Every test that extends `TestSuiteBase` logs
+its seed as a `randomSeed=<seed>` line, so when a run fails, read the
+`randomSeed=<seed>` value that was logged for the method that failed in that
+run's output. A test class that does not extend `TestSuiteBase` logs no such
+line and is outside this mechanism — its randomness is not governed by
+`AR_TEST_SEED`, so hunt it by plain repetition (step 2) instead. The seed also
+governs only the draws a test makes once its method is running, because
+`resetRandomSeed()` is an `@Before`: any random value drawn before that runs is
+not reproduced by replaying the logged seed. That covers a draw in a
+test-instance field initializer (run when the instance is constructed), a
+static field initializer (run once when the class is loaded), and a
+`@BeforeClass` method (run once before any test method) — all of which execute
+before the per-method seeding. If a replay does not reproduce the failure,
+suspect one of these earlier draws and move it into the test body or an
+`@Before`.
+
+**5. Replay the failing seed to make it deterministic.** Re-run only the single
+failing `Class#method`, pinning the seed you recorded, so the failure
+reproduces every time rather than one run in ten:
+
+    mcp__ar-test-runner__start_test_run module:"<module>" test_classes:["FooTest#bar"] jvm_args:["-DAR_TEST_SEED=<seed>"]
+
+A failure that reproduces under that one seed but passes under the default seed
+is a real, now-deterministic, seed-sensitive defect — not noise — and you
+diagnose and fix it as below.
+
 ## When you find (or confirm) a flaky test
 
 Diagnose the source of the nondeterminism and decide where it lives:
@@ -165,6 +209,22 @@ Diagnose the source of the nondeterminism and decide where it lives:
   the shared state, close the race) is the best outcome. Prove it by running
   the same named selection again, repeatedly, and showing the outcome is now
   stable.
+
+- **A seed-only failure is a tolerance-model or computation defect — fix it as
+  one.** When a test fails only under certain seeds (steps 4–5), the cause is
+  almost always a comparison that an unlucky but perfectly valid random draw
+  trips: an absolute tolerance too tight for the magnitudes involved, or a
+  computation that is genuinely wrong for some inputs. Fix the cause — give the
+  assertion a relative tolerance that scales with the values compared, or
+  correct the computation — and prove it by replaying the failing seed and then
+  re-running under `AR_TEST_SEED=random`. Never pin the test to a seed that
+  happens to pass, never widen a tolerance just far enough to swallow the error
+  you observed, and never raise the limit that reported it: those conceal the
+  defect instead of fixing it (see "Fix the cause, not the place the failure
+  surfaced" above). If the only correct change would mean editing a locked
+  existing test method — the tolerance lives in the test itself — do not edit
+  it; file the follow-up below carrying the seed, the recorded values and your
+  diagnosis.
 
 - **You must NOT edit the existing test methods.** The test that revealed the
   flakiness is the specification, and this round runs with the test lock on.

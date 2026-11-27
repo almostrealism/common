@@ -42,7 +42,9 @@ from consult_evidence import (
     HISTORY_ONLY_TIERS, KIND_DOC, KIND_INDEX, KIND_NOTE, NOTE_FACT_TIERS,
     TIER_CURRENT, TIER_ORDER, TIER_STALE, EvidenceList, marker_ids,
 )
-from consult_tiers import Caller, classify_mentions, extract_mentions, tier
+from consult_tiers import (
+    Caller, classify_mentions, extract_mentions, parse_time, tier,
+)
 from inference_diagnosis import not_configured_cause
 from snapshot_index import SnapshotIndex
 
@@ -698,9 +700,13 @@ class ConsultTurn:
                 memory.get("repo_url") or self.repo,
                 str(memory.get("branch") or ""), self.caller)
             branch_degraded = branch_degraded or degraded
+            changed = (self.index.changed_after(symbols["present"],
+                                                parse_time(memory.get("created_at")))
+                       if self.index is not None else [])
             item_tier, why = tier(memory, state, self.caller,
                                   self.corpus.get("built_at", ""),
-                                  symbols["absent"], now=clock())
+                                  symbols["absent"], now=clock(),
+                                  changed_names=changed)
             tiered.append((memory, item_tier, state, symbols, why))
         if branch_degraded:
             self.degraded_reasons.append(BRANCH_STATE_REASON)
