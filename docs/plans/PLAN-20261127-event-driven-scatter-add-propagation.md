@@ -167,6 +167,23 @@ for the active neurons (stream compaction / prefix sum) is a further
 optimisation left as a follow-up, so the first version does not depend on a
 compaction primitive existing.
 
+Two properties of this shape differ from every computation the framework emits
+today, and the implementation must handle both explicitly:
+
+- **The output must be zeroed before the scatter.** Atomic accumulation adds
+  into whatever the output buffer already holds, and a destination reused
+  across simulation steps holds the previous step's input. The forward product
+  never has this problem because each thread assigns its element exactly once.
+  The event-driven step therefore needs a defined reset of the output to zero,
+  ordered before the scatter kernel, every time it is evaluated (Open
+  question 6).
+- **The kernel range is the source count, not the output count.** The kernel
+  launches one thread per presynaptic neuron (`cols` of `W`, the rows of `Wᵀ`)
+  while its output has one element per postsynaptic neuron (`rows` of `W`).
+  For the square connectome these happen to be equal, which can hide a range
+  bug; the parity test must include non-square matrices so a computation that
+  silently sizes its kernel by its output shape fails.
+
 ## Success criteria
 
 A reviewer can confirm the task is done when:
@@ -182,8 +199,9 @@ A reviewer can confirm the task is done when:
    `engine/utils/.../org/almostrealism/collect/computations/test`, beside
    `CompressedRowOrderedComputationTests`): on a binary activity vector, the
    event-driven result equals the segmented-sum product **exactly** over random
-   sparse matrices of several shapes and densities, including rows/columns with
-   zero entries and very long columns, on Metal (and native where the native
+   sparse matrices of several shapes (including non-square) and densities,
+   including rows/columns with zero entries and very long columns, on Metal
+   (and native where the native
    path supports the write). The parity is exact because the connectome's
    weights are integer-valued (`sign * count`) and the activity is binary, so
    every partial sum is integer and FP32-exact up to `2^24` regardless of the
@@ -247,6 +265,16 @@ A reviewer can confirm the task is done when:
 5. **Public surface.** Expose the computation through a `MatrixFeatures` method
    (e.g. an explicitly-named event-driven product) or as a directly-constructed
    computation? Either way it must not be auto-selected by `matmul`.
+6. **Where the output reset lives.** The scatter needs its output zeroed before
+   every evaluation (see "First viable version"). The choices are a separate
+   zeroing computation composed before the scatter, so the optimizer sees two
+   kernels with an explicit ordering, or zeroing built into the scatter
+   computation itself. Zeroing inside one kernel does not work, because
+   threads cannot be ordered across the whole range without a global
+   barrier. The primitive sub-task (A) should decide this, because every
+   future consumer of the atomic accumulate faces the same requirement.
+   <!-- TODO(review): clarify how "zeroing built into the scatter computation" differs from the rejected single-kernel zeroing, and reconcile with "only Process.optimize decides kernel boundaries". -->
+
 
 ### Recommended split
 
