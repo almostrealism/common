@@ -123,13 +123,14 @@ first resets `input` to zero in place and then scatters, as two separately dispa
 because a kernel cannot order one thread's reset before another thread's addition. The scatter is
 an isolation target, so a compiling list the product is flattened into keeps the two in separate
 kernels once optimized; such a list must be optimized before it is run. `scatterAdd` is the
-scatter alone, which adds into what the destination holds. The order of concurrent additions is undefined, so the result equals `W s`
-exactly when every partial sum is exactly representable — as it is for the integer weights and a
-binary spike vector while sums stay below `2^24` at FP32 — and to within rounding otherwise.
-Neither path is selected automatically: `matmul` always takes the forward product, and a caller
-that knows its activity is sparse chooses `scatterProduct`. On Metal, with 50,000 neurons and
-400 synapses each, the event-driven step is about five times faster at 0.1–1% activity and loses
-to the forward product once between a quarter and a half of the neurons fire.
+scatter alone, which adds into what the destination holds. The order of concurrent additions is
+undefined, so the result equals `W s` exactly when every partial sum is exactly representable —
+as it is for the integer weights and a binary spike vector while sums stay below `2^24` at
+FP32 — and to within rounding otherwise. Neither path is selected automatically: `matmul` always
+takes the forward product, and a caller that knows its activity is sparse chooses
+`scatterProduct`. On Metal, with 50,000 neurons and 400 synapses each, the event-driven step is
+about five times faster at 0.1–1% activity and loses to the forward product once between a
+quarter and a half of the neurons fire.
 
 `NeuronConnectome` knows the file layout and nothing about dynamics. It owns the loaded tensors and
 the index collections of the ordering, exposes the body id and annotations of every neuron
