@@ -364,8 +364,8 @@ Every `Computation<Void>` compiled via `DefaultComputer.compileRunnable()` is re
 
 ```java
 // From DefaultComputer:
-public Runnable compileRunnable(Computation<Void> c) {
-    return Heap.addCompiled(new AcceleratedComputationOperation<>(getContext(c), c, true));
+public AcceleratedComputationOperation<Void> compileRunnable(Computation<Void> c) {
+    return Heap.addCompiled(new AcceleratedComputationOperation<>(getContext(c), c));
 }
 ```
 

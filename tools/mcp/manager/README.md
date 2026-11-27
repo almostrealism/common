@@ -158,7 +158,7 @@ always has the full history.
 |------|-------|-------------|
 | `memory_recall` | memory-read | Semantic search with optional LLM synthesis |
 | `memory_namespaces` | memory-read | List namespaces with entry counts and latest-write times, newest first |
-| `workstream_context` | memory-read | Get memories, commits, PR, and jobs for a branch (a workstream is optional — `repo_url` + `branch` is enough; only the jobs stream needs one) |
+| `workstream_context` | memory-read | Get memories, commits, PR, jobs, and detected enforcement loops for a branch (a workstream is optional — `repo_url` + `branch` is enough; only the jobs stream needs one) |
 | `memory_store` | memory-write | Store a memory, optionally reformulated |
 | `consult` | consult | Documentation-grounded Q&A: retrieves the project docs and the relevant memories, then synthesises an answer (or returns retrieval-only when no model is reachable, marked `degraded: true`). Replaces the retired `ar-consultant` `consult` tool |
 | `inference_health` | read | Diagnose the inference backend behind `consult`/`memory_recall` on demand: the selected backend and why, a classified availability probe, and when synthesis last succeeded |
@@ -179,6 +179,47 @@ Pass `reformulated=true` to see the rewrite instead — the response then also
 carries the original for comparison plus a `notice` about the feature's state.
 See [the Consultant README](../consultant/README.md#memory-text-original-vs-reformulated)
 for the full contract.
+
+### Enforcement loops in `workstream_context`
+
+When a branch goes round an enforcement loop — an agent edits, a rule rejects, a
+remediation job runs, repeat — the raw streams show it as a long run of
+near-identical jobs and memories that buries the substantive notes. `workstream_context`
+detects two shapes and collapses each into a single `loop` entry carrying a
+`count` and a time `span` (`from`/`to`):
+
+- **job loops** — consecutive jobs where the same enforcement phase
+  (`description`) produced the same verdict (`status`);
+- **memory loops** — runs of near-identical memories written within one job
+  (bounded by the jobs timeline so a run never spans two jobs).
+
+The response always includes a `loops` array (empty when none are found). By
+default the runs are also collapsed in the `memories` and `jobs` streams to one
+representative entry each, annotated with a `loop` field. Pass
+`collapse_loops=false` to keep every individual entry listed while still
+receiving the `loops` summary. Memory near-identity here is judged textually
+(`difflib`), because the manager has no embedder; the minimum run length (3) and
+similarity floor live as named constants in `loop_summary.py`.
+
+### Near-duplicate memory merging (ar-memory, store time)
+
+The ar-memory server merges near-duplicate memories **at store time** rather
+than through a periodic compaction pass. A looping branch writes the same note
+serially (each new "rule X failed again…" near-identical to the last), so
+collapsing on arrival keeps the index free of duplicates with bounded per-store
+work — one extra nearest-neighbour search, reusing the embedding already
+computed for indexing — and no scheduler or scan window during which duplicates
+pollute recall. The trade-off is that only already-stored notes are considered
+(two truly simultaneous writes cannot merge), which is exactly the serial loop
+this targets.
+
+A new memory whose cosine similarity to an existing note on the **same
+repository and branch** meets `NEAR_DUPLICATE_SIMILARITY_THRESHOLD` (a named
+constant in `store.py`, default `0.97`, override with
+`AR_MEMORY_NEAR_DUPLICATE_THRESHOLD`) replaces that note: the newest entry is
+kept and its `merged_count` records how many source notes it now stands for.
+Distinct memories, and identical text on another branch or repository, are never
+merged. Set `AR_MEMORY_MERGE_NEAR_DUPLICATES=0` to disable the behaviour.
 
 ## Optional Enforcement Phases
 
