@@ -16,7 +16,9 @@
 
 package org.almostrealism.studio.pattern.test;
 
+import io.almostrealism.profile.OperationProfileNode;
 import org.almostrealism.audio.WaveOutput;
+import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.heredity.TemporalCellular;
 import org.almostrealism.music.pattern.BatchedPatternLayerRenderer;
@@ -51,6 +53,12 @@ import java.util.function.Supplier;
  * each first-buffer render into note preparation ({@code getNoteDestinations}), input
  * marshalling, and kernel evaluation.</p>
  *
+ * <p>The runner construction that precedes setup ({@code runnerBuildMs}) is attributed too:
+ * {@link #buildAttributedRunner} logs each construction step and the Metal and native C compile
+ * counts and times, and the build runs under a hardware-assigned {@link OperationProfileNode} saved to
+ * {@link #BUILD_PROFILE} for {@code ar-profile-analyzer}. The profile is unassigned before
+ * setup so the capture covers the build alone.</p>
+ *
  * <p>A short run of steady-state ticks follows for contrast, and the streamed output is
  * asserted non-silent so the measured setup is the one that actually produces audio.</p>
  */
@@ -70,6 +78,9 @@ public class PdslSetupBreakdownTest extends AudioSceneTestBase {
 
 	/** Steady-state ticks run after setup to contrast with the setup stage costs. */
 	private static final int CONTRAST_TICKS = 8;
+
+	/** Where the {@link OperationProfileNode} capture of the runner build is saved. */
+	private static final String BUILD_PROFILE = "results/pdsl-runner-build-profile.xml";
 
 	/**
 	 * Times every stage of the PDSL runner's setup individually on the pinned dense scene
@@ -103,10 +114,19 @@ public class PdslSetupBreakdownTest extends AudioSceneTestBase {
 		scratch.getParentFile().mkdirs();
 		WaveOutput out = new WaveOutput(() -> scratch, 24, true);
 
-		long buildStart = System.nanoTime();
-		TemporalCellular runner = scene.runnerRealTime(
-				new MultiChannelAudioOutput(out), null, BUFFER_SIZE);
-		log("runnerBuildMs=" + fmt((System.nanoTime() - buildStart) / 1e6));
+		OperationProfileNode buildProfile = new OperationProfileNode("pdsl_runner_build");
+		Hardware.getLocalHardware().assignProfile(buildProfile);
+		TemporalCellular runner;
+		try {
+			runner = buildAttributedRunner("0", scene, new MultiChannelAudioOutput(out), BUFFER_SIZE);
+		} finally {
+			Hardware.getLocalHardware().assignProfile(null);
+		}
+
+		File profileFile = new File(BUILD_PROFILE);
+		profileFile.getParentFile().mkdirs();
+		buildProfile.save(profileFile.getPath());
+		log("runner build profile written to " + profileFile.getAbsolutePath());
 
 		try {
 			Supplier<Runnable> setupSupplier = runner.setup();

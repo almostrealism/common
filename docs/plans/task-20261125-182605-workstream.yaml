@@ -1,0 +1,8 @@
+# Reproducing and reducing runnerBuildMs requires the real runner path: the
+# Metal backend and the curated audio library (requireCuratedLibrary), which
+# only macOS FlowTree nodes provide. The runnerBuildMs harness
+# (PdslSetupBreakdownTest) and the cross-scene probe
+# (KernelCacheReuseAcrossScenesTest) are excludeProfiles = PIPELINE for this
+# reason.
+requiredLabels:
+  platform: macos
