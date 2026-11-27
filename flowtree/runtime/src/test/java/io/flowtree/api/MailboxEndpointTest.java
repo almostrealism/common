@@ -250,6 +250,26 @@ public class MailboxEndpointTest extends TestSuiteBase {
         assertEquals(last, getMailbox("since=" + (last + 50)).get("head").asLong());
     }
 
+    /** {@code tail=true} returns the most recent {@code limit} messages and ignores {@code since}. */
+    @Test(timeout = 10000)
+    public void testTailReturnsTheMostRecentMessages() throws Exception {
+        postMessage("{\"text\":\"first\",\"sender\":\"job:a\"}");
+        postMessage("{\"text\":\"second\",\"sender\":\"job:b\"}");
+        long last = postMessage("{\"text\":\"third\",\"sender\":\"job:a\"}").get("seq").asLong();
+
+        JsonNode tail = getMailbox("tail=true&limit=2&since=" + last);
+        assertEquals(2, tail.get("messages").size());
+        assertEquals("second", tail.get("messages").get(0).get("text").asText());
+        assertEquals("third", tail.get("messages").get(1).get("text").asText());
+        assertEquals(last, tail.get("head").asLong());
+        assertEquals(last, tail.get("nextSince").asLong());
+
+        assertEquals(3, getMailbox("tail=true").get("messages").size());
+        assertEquals("second", getMailbox("tail=true&limit=1&exclude=job:a")
+                .get("messages").get(0).get("text").asText());
+        assertEquals(0, getMailbox("tail=false&since=" + last).get("messages").size());
+    }
+
     /** A read that already has something to deliver returns promptly rather than waiting out {@code wait}. */
     @Test(timeout = 10000)
     public void testReadWithAvailableMessageDoesNotWaitOutTheTimeout() throws Exception {

@@ -260,6 +260,43 @@ public class WorkstreamMailbox implements ConsoleFeatures {
     }
 
     /**
+     * Returns the most recent {@code limit} retained messages, without waiting.
+     *
+     * <p>The head and the messages are taken under one lock, so a message
+     * appended while the tail is being read cannot leave the delivery showing
+     * an older window than the head it reports. The delivery's
+     * {@link Delivery#nextSince()} is the head, so a reader that names it next
+     * hears only what is sent afterwards.</p>
+     *
+     * <p>A reader that wants to know whether older messages are still
+     * retained asks for one more than it will show: it holds older messages
+     * back exactly when the extra one is delivered. Retention pruning and
+     * gaps in {@code seq} cannot mislead that test, since it counts messages
+     * actually held rather than inferring them from the head.</p>
+     *
+     * @param excludeSender sender whose messages to skip, or {@code null} to
+     *                      receive every message
+     * @param limit         most messages to deliver, or {@link #UNLIMITED}
+     *                      (any value below one) for every retained message
+     * @return the delivery, oldest first; empty when nothing is retained
+     */
+    public synchronized Delivery tail(String excludeSender, int limit) {
+        List<Message> found = new ArrayList<>();
+
+        for (int i = messages.size() - 1; i >= 0; i--) {
+            if (limit > 0 && found.size() >= limit) break;
+
+            Message message = messages.get(i);
+            if (excludeSender != null && excludeSender.equals(message.sender())) continue;
+
+            found.add(message);
+        }
+
+        Collections.reverse(found);
+        return new Delivery(Collections.unmodifiableList(found), head(), head());
+    }
+
+    /**
      * Atomically checks {@code messageId} against recent duplicates and
      * appends only when none is found, under a single lock acquisition.
      *

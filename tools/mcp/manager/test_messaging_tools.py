@@ -191,7 +191,8 @@ class FakeMailbox:
     """Stands in for the controller's mailbox endpoint.
 
     Answers ``GET .../mailbox?since=&wait=&exclude=&limit=`` the way
-    ``WorkstreamMailbox.read`` does: a negative ``since`` starts at the head,
+    ``WorkstreamMailbox.read`` does, and ``tail=true`` the way
+    ``WorkstreamMailbox.tail`` does: a negative ``since`` starts at the head,
     excluded senders are skipped but still advance ``nextSince``, a positive
     ``limit`` stops collection with ``nextSince`` at the last message
     delivered, ``head`` is the highest ``seq`` ever assigned, and nothing the
@@ -214,6 +215,11 @@ class FakeMailbox:
         limit = int(query.get("limit", "0"))
         cursor = head if since < 0 else since
         exclude = query.get("exclude", "").replace("%3A", ":")
+        if query.get("tail") == "true":
+            kept = [m for m in self.messages if m["sender"] != exclude]
+            shown = kept[-limit:] if limit > 0 else kept
+            self.served += len(shown)
+            return {"ok": True, "messages": shown, "head": head, "nextSince": head}
         shown, next_since = [], cursor
         for m in self.messages:
             if 0 < limit <= len(shown):
@@ -259,6 +265,9 @@ class TestMailboxPeek(unittest.TestCase):
         result = server.mailbox_peek(limit=4)
         self.assertEqual({m["sender"] for m in result["messages"]},
                          {"job:job-1", "job:other"})
+        self.assertIn("tail=true", self.mailbox.paths[-1])
+        self.assertNotIn("exclude=", self.mailbox.paths[-1])
+        server.mailbox_peek(since=3, limit=4)
         self.assertIn("wait=0", self.mailbox.paths[-1])
         self.assertNotIn("exclude=", self.mailbox.paths[-1])
 
@@ -294,9 +303,9 @@ class TestMailboxPeek(unittest.TestCase):
         """Only the messages shown are fetched: ``limit`` reaches the controller."""
         result = server.mailbox_peek()
         self.assertEqual(len(result["messages"]), 20)
-        self.assertEqual(self.mailbox.served, 20)
-        self.assertTrue(all("limit=" in path for path in self.mailbox.paths))
-        self.assertIn("since=10&wait=0&limit=20", self.mailbox.paths[-1])
+        self.assertEqual(self.mailbox.served, 21)
+        self.assertEqual(len(self.mailbox.paths), 1)
+        self.assertIn("tail=true&limit=21", self.mailbox.paths[-1])
 
         self.mailbox.served = 0
         server.mailbox_peek(since=0, limit=5)
@@ -318,6 +327,30 @@ class TestMailboxPeek(unittest.TestCase):
         self.assertTrue(result["ok"])
         self.assertEqual(result["messages"], [])
         self.assertEqual(result["latest_seq"], 7)
+
+    def test_tail_after_retention_pruning_is_not_truncated(self):
+        """A tail that shows every retained message is not truncated, however high the head."""
+        self.mailbox.messages = self.mailbox.messages[20:]
+        result = server.mailbox_peek(limit=20)
+        self.assertEqual([m["seq"] for m in result["messages"]], list(range(21, 31)))
+        self.assertEqual(result["latest_seq"], 30)
+        self.assertFalse(result["truncated"])
+
+        self.assertTrue(server.mailbox_peek(limit=9)["truncated"])
+        self.assertFalse(server.mailbox_peek(limit=10)["truncated"])
+
+    def test_tail_with_seq_gaps_still_shows_limit_messages(self):
+        """Gaps in ``seq`` do not shrink the tail below ``limit``."""
+        self.mailbox.messages = [m for m in self.mailbox.messages if m["seq"] % 3]
+        result = server.mailbox_peek(limit=5)
+        self.assertEqual([m["seq"] for m in result["messages"]], [23, 25, 26, 28, 29])
+        self.assertTrue(result["truncated"])
+
+    def test_tail_is_one_controller_read(self):
+        """The tail and its head come from one read, so an append between reads cannot skew them."""
+        result = server.mailbox_peek(limit=3)
+        self.assertEqual(len(self.mailbox.paths), 1)
+        self.assertEqual(result["latest_seq"], result["messages"][-1]["seq"])
 
     def test_controller_without_head_is_refused(self):
         """A controller that ignores ``limit`` is reported, not shown as a bounded read."""

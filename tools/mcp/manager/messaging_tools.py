@@ -738,7 +738,12 @@ def mailbox_peek(
         or ``ok=false`` with error details.
 
         Only the messages shown cross the wire: ``limit`` is applied by the
-        controller, not after the whole conversation has been fetched.
+        controller, not after the whole conversation has been fetched. The
+        tail view is a single controller read taken under one mailbox lock,
+        so its messages and ``latest_seq`` describe the same moment, and its
+        ``truncated`` counts the messages still retained rather than
+        inferring them from the head, so it stays right after old messages
+        expire.
     """
     server._require_scope("read")
 
@@ -751,26 +756,27 @@ def mailbox_peek(
                   job_id=effective_job, since=since, limit=count)
 
     mailbox = f"/api/workstreams/{quote(effective_ws, safe='')}/mailbox"
-    tail = int(since) < 0
-    after = max(int(since), 0)
-    if tail:
-        # Seqs are assigned contiguously and only the oldest are pruned, so
-        # the last ``count`` messages are the ones after ``head - count``.
-        head = _mailbox_read(f"{mailbox}?since=-1&wait=0&limit=1")
-        if not head.get("ok"):
-            return head
-        after = max(head["head"] - count, 0)
+    if int(since) < 0:
+        # One more than is shown: older messages are held back exactly when
+        # the controller still retains that extra one.
+        result = _mailbox_read(f"{mailbox}?tail=true&limit={count + 1}")
+        if not result.get("ok"):
+            return result
+        messages = result.get("messages", [])
+        truncated = len(messages) > count
+        messages = messages[-count:]
+    else:
+        result = _mailbox_read(f"{mailbox}?since={int(since)}&wait=0&limit={count}")
+        if not result.get("ok"):
+            return result
+        messages = result.get("messages", [])
+        truncated = result.get("nextSince", 0) < result["head"]
 
-    result = _mailbox_read(f"{mailbox}?since={after}&wait=0&limit={count}")
-    if not result.get("ok"):
-        return result
-
-    # TODO(review): tail truncated is true when after > 0 even if retention already pruned every seq <= after.
     return {
         "ok": True,
-        "messages": result.get("messages", []),
+        "messages": messages,
         "latest_seq": result["head"],
-        "truncated": (tail and after > 0) or result.get("nextSince", 0) < result["head"],
+        "truncated": truncated,
     }
 
 

@@ -245,6 +245,49 @@ public class WorkstreamMailboxTest extends TestSuiteBase {
         assertTrue(delivery.toJson().endsWith("\"head\":1,\"nextSince\":100}"));
     }
 
+    /** The tail is the most recent {@code limit} messages, oldest first, with the cursor at the head. */
+    @Test(timeout = 10000)
+    public void tailReturnsTheMostRecentMessages() {
+        WorkstreamMailbox mailbox = new WorkstreamMailbox(WORKSTREAM, null);
+        for (int i = 1; i <= 5; i++) mailbox.append("m" + i, "job:a", "a", null);
+
+        WorkstreamMailbox.Delivery delivery = mailbox.tail(null, 2);
+        assertEquals(2, delivery.messages().size());
+        assertEquals("m4", delivery.messages().get(0).text());
+        assertEquals("m5", delivery.messages().get(1).text());
+        assertEquals(5, delivery.head());
+        assertEquals(5, delivery.nextSince());
+
+        assertEquals(5, mailbox.tail(null, WorkstreamMailbox.UNLIMITED).messages().size());
+        assertEquals(5, mailbox.tail(null, 50).messages().size());
+        assertEquals(5, mailbox.size());
+    }
+
+    /** Excluded senders do not count toward the tail's {@code limit}. */
+    @Test(timeout = 10000)
+    public void tailSkipsExcludedSendersWithoutShrinking() {
+        WorkstreamMailbox mailbox = new WorkstreamMailbox(WORKSTREAM, null);
+        mailbox.append("theirs-1", "job:b", "b", null);
+        mailbox.append("mine-1", "job:a", "a", null);
+        mailbox.append("theirs-2", "job:b", "b", null);
+        mailbox.append("mine-2", "job:a", "a", null);
+
+        WorkstreamMailbox.Delivery delivery = mailbox.tail("job:a", 2);
+        assertEquals(2, delivery.messages().size());
+        assertEquals("theirs-1", delivery.messages().get(0).text());
+        assertEquals("theirs-2", delivery.messages().get(1).text());
+        assertEquals(4, delivery.head());
+    }
+
+    /** An empty mailbox has an empty tail at head zero. */
+    @Test(timeout = 10000)
+    public void tailOfAnEmptyMailboxIsEmpty() {
+        WorkstreamMailbox.Delivery delivery = new WorkstreamMailbox(WORKSTREAM, null).tail(null, 3);
+        assertTrue(delivery.messages().isEmpty());
+        assertEquals(0, delivery.head());
+        assertEquals(0, delivery.nextSince());
+    }
+
     /** A read that nothing arrives for returns empty rather than failing. */
     @Test(timeout = 10000)
     public void waitElapsesToAnEmptyDelivery() {

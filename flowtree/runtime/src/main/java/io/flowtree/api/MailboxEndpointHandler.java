@@ -33,7 +33,7 @@ import java.util.function.Function;
  * {@code POST .../messages} lands in the same log this endpoint reads, so a
  * message is a notification to humans and a turn addressed to peers at once.</p>
  *
- * <p>Four query parameters shape a read:</p>
+ * <p>Five query parameters shape a read:</p>
  * <ul>
  *   <li>{@code since} — the highest {@code seq} the reader has already seen. A
  *       negative value (the default) starts from the current head, so a reader
@@ -48,6 +48,10 @@ import java.util.function.Function;
  *   <li>{@code limit} — the most messages to return. Absent (or below one)
  *       means no bound. A limited read's {@code nextSince} is the last
  *       {@code seq} returned, so naming it next resumes where it stopped.</li>
+ *   <li>{@code tail} — {@code true} returns the most recent {@code limit}
+ *       messages instead of those after {@code since}, at once and taken under
+ *       one mailbox lock (see {@link WorkstreamMailbox#tail}); {@code since}
+ *       and {@code wait} are then ignored.</li>
  * </ul>
  *
  * <p>The response carries {@code head}, the mailbox's highest {@code seq},
@@ -97,12 +101,16 @@ public final class MailboxEndpointHandler {
             return errorResponse.apply("Unknown workstream: " + workstreamId);
         }
 
-        WorkstreamMailbox.Delivery delivery = mailboxes.mailboxFor(workstreamId).read(
-                RequestParameters.number(session, "since", -1),
-                RequestParameters.first(session, "exclude", null),
-                (int) RequestParameters.number(session, "wait", 0),
-                (int) Math.max(Math.min(RequestParameters.number(session, "limit",
-                        WorkstreamMailbox.UNLIMITED), Integer.MAX_VALUE), WorkstreamMailbox.UNLIMITED));
+        WorkstreamMailbox mailbox = mailboxes.mailboxFor(workstreamId);
+        String exclude = RequestParameters.first(session, "exclude", null);
+        int limit = (int) Math.max(Math.min(RequestParameters.number(session, "limit",
+                WorkstreamMailbox.UNLIMITED), Integer.MAX_VALUE), WorkstreamMailbox.UNLIMITED);
+
+        WorkstreamMailbox.Delivery delivery =
+                Boolean.parseBoolean(RequestParameters.first(session, "tail", "false"))
+                        ? mailbox.tail(exclude, limit)
+                        : mailbox.read(RequestParameters.number(session, "since", -1), exclude,
+                                (int) RequestParameters.number(session, "wait", 0), limit);
 
         return NanoHTTPD.newFixedLengthResponse(Response.Status.OK,
                 "application/json", delivery.toJson());
