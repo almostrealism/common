@@ -358,10 +358,20 @@ percentile of at most 4.3% over every neuron above 10 Hz.
   finds it at a few hertz rather than silent, in Brian2 as in the platform. Under that weaker input
   the trial-to-trial variance is large: two Brian2 runs differ by a median of about 24%. The
   criterion for MaleCNS, or its adaptation (a synapse-count threshold or weight), is open tracker
-  work, as is the performance benchmark. The dataset tests
+  work. The dataset tests
   (`NeuronConnectomeDatasetTest`, `ConnectomeNetworkDatasetTest`) require their curated datasets on
   every host — a missing dataset fails the test, it is never gated into a skip — and are excluded
   from the pipeline profile as long-running.
+- **Throughput.** One brain runs far slower than real time. `ConnectomeThroughputBenchmarkTest`
+  (the same dataset rules apply) steps one replica of MaleCNS (164,506 neurons, 25.1M edges) under
+  sugar-GRN Poisson input. On a Mac Studio (M1 Ultra) a step takes 8.2 ms on Metal (FP32), 0.012
+  simulated seconds per wall-clock second, and 20.4 ms on native (FP64). The sparse product
+  dominates: alone it takes 7.8 ms of the Metal step and 11.4 ms of the native one, because it
+  reads every edge each step while only about 90 neurons spike. On native the delay-line write is
+  next, at 4.0 ms, because `cacheWrite` sweeps every row of the ring. The network's tensors hold
+  80.3M elements (321 MB in FP32), 94% of them the compressed connectome. See
+  [simulation-loop-examples.md](simulation-loop-examples.md#measured-overhead) for the full
+  breakdown.
 
 ---
 

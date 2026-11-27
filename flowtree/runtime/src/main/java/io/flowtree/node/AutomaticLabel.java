@@ -21,6 +21,7 @@ import org.almostrealism.io.ConsoleFeatures;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.util.Locale;
+import java.util.function.BiConsumer;
 
 /**
  * A capability label whose value describes the machine a {@link Node} runs on,
@@ -193,6 +194,23 @@ public enum AutomaticLabel implements ConsoleFeatures {
 	 * @param node  The Node to label.
 	 */
 	public void applyTo(Node node) {
+		applyTo(node, node::setLabel);
+	}
+
+	/**
+	 * Assigns this label to the given {@link Node} using the supplied setter
+	 * instead of {@link Node#setLabel(String, String)}, for a caller that must
+	 * set a Node's own label map directly rather than through the broadcasting
+	 * override a {@link NodeGroup} supplies.
+	 *
+	 * <p>The absent-value guard still reads the Node's own labels through
+	 * {@link Node#getLabels()}, so a configured value is left in place exactly as
+	 * it is for {@link #applyTo(Node)}; only the assignment is redirected.</p>
+	 *
+	 * @param node    The Node whose existing labels gate the assignment.
+	 * @param setter  The sink the detected value is assigned through.
+	 */
+	public void applyTo(Node node, BiConsumer<String, String> setter) {
 		if (node.getLabels().get(key) != null) return;
 
 		String value = detect();
@@ -203,7 +221,7 @@ public enum AutomaticLabel implements ConsoleFeatures {
 			return;
 		}
 
-		node.setLabel(key, value);
+		setter.accept(key, value);
 		log("Auto-detected " + key + "=" + value);
 	}
 }

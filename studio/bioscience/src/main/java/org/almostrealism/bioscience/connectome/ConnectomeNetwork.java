@@ -35,7 +35,9 @@ import org.almostrealism.time.Temporal;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Objects;
 import java.util.function.Supplier;
+import java.util.stream.Stream;
 
 /**
  * A spiking network over a {@link NeuronConnectome}: every neuron an
@@ -412,6 +414,22 @@ public class ConnectomeNetwork implements Temporal, Setup, Destroyable, Collecti
 	 * @return the spike delay line
 	 */
 	public PackedCollection getRing() { return ring; }
+
+	/**
+	 * Returns the number of elements of memory this network allocates for its own state: the
+	 * step counter, the Poisson targets and seed, the delay line, the spike totals, the neuron
+	 * state and, when the network has no caller's drive, its silent drive. The connectome and a
+	 * caller's drive belong to the caller and are not counted.
+	 *
+	 * @return the number of elements of the network's own state
+	 */
+	public long getStateMemLength() {
+		return Stream.of(step, targets, ring, totals, poisson.getSeed(), neurons.getMembrane(),
+						neurons.getSynapse(), neurons.getRefractory(), neurons.getSpikes(),
+						neurons.getSpikeCounts(), silence)
+				.filter(Objects::nonNull)
+				.mapToLong(PackedCollection::getMemLength).sum();
+	}
 
 	/** Releases the runner, the neurons, the Poisson input and the network's own state. */
 	@Override

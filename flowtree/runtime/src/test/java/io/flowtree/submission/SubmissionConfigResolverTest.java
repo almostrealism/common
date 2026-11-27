@@ -262,7 +262,11 @@ public class SubmissionConfigResolverTest extends TestSuiteBase {
                 node.get("sensitiveFileProtectionEnabled").asBoolean());
         assertEquals(f.isBypassAgentPermissionPrompts(),
                 node.get("bypassAgentPermissionPrompts").asBoolean());
-        assertEquals("ok plus twelve configuration members", 13, node.size());
+        assertEquals(f.getMaxTurns(), node.get("maxTurns").asInt());
+        assertEquals(f.getMaxBudgetUsd(), node.get("maxBudgetUsd").asDouble(), 0.0);
+        assertFalse("no silence budget is reported when none is set",
+                node.has("inactivityTimeoutSeconds"));
+        assertEquals("ok plus fourteen configuration members", 15, node.size());
     }
 
     /**

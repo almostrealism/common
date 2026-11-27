@@ -47,7 +47,8 @@ import java.io.IOException;
  *   <li>{@link Message#ConnectionConfirmation} — completes the two-phase
  *       connection handshake.</li>
  *   <li>{@link Message#ServerStatus} — updates the sending proxy's activity
- *       rating and average job time from the encoded payload.</li>
+ *       rating, average job time, and {@link NodeStatusReport routing status}
+ *       (labels and busy state) from the encoded payload.</li>
  *   <li>{@link Message#ServerStatusQuery} — responds with the list of known
  *       peer servers, excluding the querying peer itself.</li>
  *   <li>{@link Message#ResourceRequest} — looks up the URI of the requested
@@ -234,10 +235,15 @@ class NodeGroupMessageHandler implements ConsoleFeatures {
 
 	/**
 	 * Handles a {@link Message#ServerStatus} message by parsing the semicolon-delimited
-	 * payload and updating the sending proxy's activity rating and job time.
+	 * payload and updating the sending proxy's activity rating, job time, and
+	 * {@link NodeStatusReport routing status} (labels and busy state).
+	 *
+	 * <p>A payload that carries neither a {@code busy} nor a {@code labels} field — for example
+	 * one from a peer running a build that predates them — leaves the proxy's status unknown
+	 * rather than marking it idle.</p>
 	 *
 	 * @param m  The incoming status message.
-	 * @param p  The {@link NodeProxy} whose metrics are updated.
+	 * @param p  The {@link NodeProxy} whose metrics and status are updated.
 	 * @return {@code true} if at least one recognised status field was parsed.
 	 */
 	private boolean handleServerStatus(Message m, NodeProxy p) {
@@ -259,6 +265,8 @@ class NodeGroupMessageHandler implements ConsoleFeatures {
 				} else if (s[i].startsWith("activity" + JobFactory.ENTRY_SEPARATOR)) {
 					p.setActivityRating(Double.parseDouble(v));
 					h = true;
+				} else if (NodeStatusReport.isReportField(s[i])) {
+					h = true;
 				} else {
 					warn("NodeGroup: Unknown status type '" + s[i] + "'");
 				}
@@ -266,6 +274,11 @@ class NodeGroupMessageHandler implements ConsoleFeatures {
 				warn("NodeGroup: Could not parse status item '" +
 						s[i] + "' (" + nfe.getMessage() + ")");
 			}
+		}
+
+		NodeStatusReport report = NodeStatusReport.parse(m.getData());
+		if (report != null) {
+			p.setStatus(report);
 		}
 
 		return h;

@@ -88,7 +88,11 @@ Registration applies the workstream settings the plan declares for itself, which
 
 Registration:
 - Creates a new `SlackWorkstream` with the branch name, base branch, repo URL, and plan document path
-- Auto-creates a **private** Slack channel named `w-<branch>` (with slashes replaced by hyphens)
+- Auto-creates a **private** Slack channel named after the branch (`WorkstreamChannelName.fromBranch`):
+  `w-` plus the branch's last segment, with earlier segments joined in front while the segments
+  taken so far hold fewer than four characters, so `feature/my-xyz` gives `w-my-xyz`,
+  `feature/my-thing-phases/0` gives `w-my-thing-phases-0` and `ci/abc` gives `w-ci-abc`. A name
+  already in use gets a `-2`, `-3`, ... suffix
 - Invites the configured `channelOwnerUserId` to the new channel
 - Persists the workstream to the YAML config file
 
@@ -120,7 +124,7 @@ The `tools/ci/register-workstream.sh` script handles workstream registration fro
 - `REPO_URL` -- repository clone URL
 
 **Channel name derivation:**
-The channel name is derived from the branch name: `project/plan-20260223-foo` becomes `w-project-plan-20260223-foo`. The `w-` prefix is always added (idempotently) to distinguish workstream channels from other channels.
+The channel name is derived from the branch name by `WorkstreamChannelName.fromBranch`: the `w-` prefix plus the branch's last segment, with earlier segments joined in front while the segments taken so far hold fewer than four characters. So `feature/my-xyz` becomes `w-my-xyz`, `feature/my-thing-phases/0` becomes `w-my-thing-phases-0` and `ci/abc` becomes `w-ci-abc`. The `w-` prefix is always added to distinguish workstream channels from other channels.
 
 **Claiming a tracker task:**
 Agents do not claim tracker tasks themselves. A workflow that hands a tracker task to an agent first registers the workstream, then calls the controller's `POST /api/tracker/claim` with `{"project": "<name>", "release": "<name>", "workstreamId": "<id>"}`. The controller forwards the claim to the tracker, which links the next ready task of the release to the workstream, and answers `{"ok": true, "task": {...}}` (or `"task": null` when nothing is claimable); the workflow puts that task in the agent's prompt. The endpoint answers 400 when a field is missing or blank, 404 when the workstream is not registered, 503 when the controller has no tracker configured, and 502 when the tracker call fails. `GET /api/tracker/claimable?project=<name>&release=<name>` answers how many tasks could be claimed without claiming one.
@@ -382,8 +386,9 @@ Content-Type: application/json
 | `workstreamId` | `string` | No | Explicit workstream ID override. When present, takes priority over URL path and branch resolution |
 | `repoUrl` | `string` | No | Repository the branch belongs to. Disambiguates branch resolution, and identifies a workstream created by `createWorkstreamIfMissing`. Required with that flag |
 | `createWorkstreamIfMissing` | `boolean` | No | Register a workstream for `targetBranch` + `repoUrl` when none matches, instead of rejecting the submission (default: `false`) |
-| `maxTurns` | `integer` | No | Maximum turns for the Claude Code session |
-| `maxBudgetUsd` | `number` | No | Maximum budget in USD for the session |
+| `maxTurns` | `integer` | No | Maximum turns for the Claude Code session. Clamped to the workstream's `maxTurns`; the response reports the value the job got as `maxTurns`, and `clampedLimits` names any field that was clamped. A fractional or non-numeric value is refused with a 400 |
+| `maxBudgetUsd` | `number` | No | Maximum budget in USD for the session. Clamped to the workstream's `maxBudgetUsd` like `maxTurns`. A non-finite (`"Infinity"`, `"NaN"`) or non-numeric value is refused with a 400 |
+| `inactivityTimeoutSeconds` | `integer` | No | This job's silence budget: how long an agent session may produce no output before the inactivity watchdog destroys it. Must be a positive whole number. It can only shorten the runner's own budget; a longer value is held to the runner's when the job launches (`RestartGovernor.inactivityTimeoutMillis`). Echoed in the response when set |
 | `maxWallClockHours` | `integer` | No | Wall-clock ceiling in hours for this job. Overrides the workstream default when present (`0` disables the ceiling); omitted lets the workstream default or `RestartGovernor.DEFAULT_MAX_WALL_CLOCK` apply |
 | `allowedTools` | `string` | No | Comma-separated allowed tools override |
 

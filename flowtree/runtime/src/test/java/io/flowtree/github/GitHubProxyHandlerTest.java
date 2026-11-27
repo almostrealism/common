@@ -16,6 +16,8 @@
 
 package io.flowtree.github;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import fi.iki.elonen.NanoHTTPD;
@@ -750,6 +752,123 @@ public class GitHubProxyHandlerTest extends TestSuiteBase {
         assertFalse(text, text.contains("encoding"));
         assertEquals("{\"status\":204,\"link\":\"\",\"body\":null}",
                 new GitHubProxyEnvelope(204, null, new byte[0], null).toJson());
+    }
+
+    /**
+     * A reliably-read, untruncated listing is complete, lists every unresolved
+     * thread anchored at its first comment, and omits resolved threads.
+     */
+    @Test(timeout = 10000)
+    public void reviewThreadListingIsCompleteWhenFullyRead() throws IOException {
+        JsonNode root = new ObjectMapper().readTree(
+                "{\"data\":{\"repository\":{\"pullRequest\":{\"reviewThreads\":{"
+                + "\"pageInfo\":{\"hasNextPage\":false},\"nodes\":["
+                + "{\"isResolved\":false,\"comments\":{\"nodes\":["
+                + "{\"path\":\"A.java\",\"line\":4,\"url\":\"https://x/c1\",\"body\":\"open one\"}]}},"
+                + "{\"isResolved\":true,\"comments\":{\"nodes\":["
+                + "{\"path\":\"B.java\",\"line\":7,\"url\":\"https://x/c2\",\"body\":\"resolved\"}]}}"
+                + "]}}}}}");
+        GitHubProxyHandler.ReviewThreadListing listing = GitHubProxyHandler.ReviewThreadListing.from(root);
+        assertTrue("a fully read listing is complete", listing.complete());
+        assertEquals("the resolved thread is omitted", 1, listing.findings().size());
+        assertEquals("https://x/c1", listing.findings().get(0).url());
+    }
+
+    /**
+     * A listing truncated at the page limit ({@code hasNextPage}) is incomplete,
+     * so the repeat check cannot mistake a thread beyond the first page for none.
+     */
+    @Test(timeout = 10000)
+    public void reviewThreadListingTruncatedAtThePageLimitIsIncomplete() throws IOException {
+        JsonNode root = new ObjectMapper().readTree(
+                "{\"data\":{\"repository\":{\"pullRequest\":{\"reviewThreads\":{"
+                + "\"pageInfo\":{\"hasNextPage\":true},\"nodes\":["
+                + "{\"isResolved\":false,\"comments\":{\"nodes\":["
+                + "{\"path\":\"A.java\",\"line\":4,\"url\":\"https://x/c1\",\"body\":\"open one\"}]}}"
+                + "]}}}}}");
+        GitHubProxyHandler.ReviewThreadListing listing = GitHubProxyHandler.ReviewThreadListing.from(root);
+        assertFalse("a truncated listing is incomplete", listing.complete());
+    }
+
+    /**
+     * An unresolved thread whose first comment is absent cannot be anchored, so
+     * the thread is dropped from the findings and the whole listing is marked
+     * incomplete — the repeat check must fail open, not treat the remaining
+     * threads as the complete set.
+     */
+    @Test(timeout = 10000)
+    public void reviewThreadListingWithAMissingFirstCommentIsIncomplete() throws IOException {
+        JsonNode root = new ObjectMapper().readTree(
+                "{\"data\":{\"repository\":{\"pullRequest\":{\"reviewThreads\":{"
+                + "\"pageInfo\":{\"hasNextPage\":false},\"nodes\":["
+                + "{\"isResolved\":false,\"comments\":{\"nodes\":["
+                + "{\"path\":\"A.java\",\"line\":4,\"url\":\"https://x/c1\",\"body\":\"open one\"}]}},"
+                + "{\"isResolved\":false,\"comments\":{\"nodes\":[]}}"
+                + "]}}}}}");
+        GitHubProxyHandler.ReviewThreadListing listing = GitHubProxyHandler.ReviewThreadListing.from(root);
+        assertFalse("a thread without a first comment makes the listing incomplete", listing.complete());
+        assertEquals("the unanchored thread is omitted", 1, listing.findings().size());
+    }
+
+    /**
+     * A failed query ({@code null} root) and a malformed response (non-array
+     * {@code nodes}) are both incomplete with no findings, so neither is read as
+     * "no open threads".
+     */
+    @Test(timeout = 10000)
+    public void reviewThreadListingFromAnUnreadableResponseIsIncomplete() throws IOException {
+        GitHubProxyHandler.ReviewThreadListing failed = GitHubProxyHandler.ReviewThreadListing.from(null);
+        assertFalse("a failed query is incomplete", failed.complete());
+        assertTrue(failed.findings().isEmpty());
+
+        JsonNode malformed = new ObjectMapper().readTree(
+                "{\"data\":{\"repository\":{\"pullRequest\":{\"reviewThreads\":{\"nodes\":\"oops\"}}}}}");
+        GitHubProxyHandler.ReviewThreadListing listing = GitHubProxyHandler.ReviewThreadListing.from(malformed);
+        assertFalse("a non-array nodes is incomplete", listing.complete());
+        assertTrue(listing.findings().isEmpty());
+    }
+
+    /**
+     * A GraphQL response served with HTTP 200 but carrying an {@code errors}
+     * array is a partial result, so the listing is incomplete even when its
+     * {@code nodes} array is readable — the repeat check must fail open rather
+     * than treat the partial threads as the complete set.
+     */
+    @Test(timeout = 10000)
+    public void reviewThreadListingWithGraphQlErrorsIsIncomplete() throws IOException {
+        JsonNode root = new ObjectMapper().readTree(
+                "{\"errors\":[{\"message\":\"Something went wrong\"}],"
+                + "\"data\":{\"repository\":{\"pullRequest\":{\"reviewThreads\":{"
+                + "\"pageInfo\":{\"hasNextPage\":false},\"nodes\":["
+                + "{\"isResolved\":false,\"comments\":{\"nodes\":["
+                + "{\"path\":\"A.java\",\"line\":4,\"url\":\"https://x/c1\",\"body\":\"open one\"}]}}"
+                + "]}}}}}");
+        GitHubProxyHandler.ReviewThreadListing listing = GitHubProxyHandler.ReviewThreadListing.from(root);
+        assertFalse("a response with a GraphQL errors array is incomplete", listing.complete());
+    }
+
+    /**
+     * A response whose {@code pageInfo.hasNextPage} is absent or not a boolean
+     * leaves the pagination state unknown, so the listing is incomplete: a
+     * missing or malformed field must not be read as "not truncated" and let a
+     * partial listing suppress a pass.
+     */
+    @Test(timeout = 10000)
+    public void reviewThreadListingWithoutHasNextPageIsIncomplete() throws IOException {
+        JsonNode absent = new ObjectMapper().readTree(
+                "{\"data\":{\"repository\":{\"pullRequest\":{\"reviewThreads\":{"
+                + "\"nodes\":["
+                + "{\"isResolved\":false,\"comments\":{\"nodes\":["
+                + "{\"path\":\"A.java\",\"line\":4,\"url\":\"https://x/c1\",\"body\":\"open one\"}]}}"
+                + "]}}}}}");
+        assertFalse("an absent hasNextPage is incomplete",
+                GitHubProxyHandler.ReviewThreadListing.from(absent).complete());
+
+        JsonNode malformed = new ObjectMapper().readTree(
+                "{\"data\":{\"repository\":{\"pullRequest\":{\"reviewThreads\":{"
+                + "\"pageInfo\":{\"hasNextPage\":\"nope\"},\"nodes\":[]}}}}}");
+        assertFalse("a non-boolean hasNextPage is incomplete",
+                GitHubProxyHandler.ReviewThreadListing.from(malformed).complete());
     }
 
     /** Builds the 400 error envelope the proxy endpoint returns, for the handler's responder. */
