@@ -3,7 +3,8 @@
 Validate consult response quality by re-running questions through ar-manager.
 
 Usage:
-    python3 validate_responses.py <evaluation.json> [--sample N] [--output file.json]
+    python3 validate_responses.py <evaluation.json> --repo-url <url> [--branch b]
+        [--sample N] [--output file.json]
 
 This script:
 1. Loads an evaluation JSON (from evaluate_dataset.py)
@@ -12,6 +13,10 @@ This script:
 4. Outputs a validation report
 
 Requires the inference backend ar-manager is configured with to be reachable.
+Pass ``--repo-url`` (and optionally ``--branch``) so ``consult`` can resolve a
+repository scope and retrieve prior notes; without it a standalone run has no
+request token to infer the repository from and answers from documentation
+alone, which is not the retrieval path a deployed consult exercises.
 """
 
 import argparse
@@ -27,6 +32,7 @@ sys.path.insert(1, str(Path(__file__).parents[3] / "common"))
 from inference import has_speculation
 
 try:
+    import auth
     import server
     from server import consult
     from inference import SYSTEM_PROMPT
@@ -36,8 +42,14 @@ except ImportError as e:
     CONSULTANT_AVAILABLE = False
 
 
-def run_question(question: str, keywords: list[str]) -> dict:
-    """Run a question through ar-manager's consult and return metrics."""
+def run_question(question: str, keywords: list[str],
+                 repo_url: str = "", branch: str = "") -> dict:
+    """Run a question through ar-manager's consult and return metrics.
+
+    ``repo_url``/``branch`` are forwarded to ``consult`` so note retrieval is
+    scoped to the repository under evaluation; omitting them leaves consult
+    unable to resolve a scope and it answers from documentation alone.
+    """
     if not CONSULTANT_AVAILABLE:
         return {
             'error': 'Consultant not available',
@@ -46,13 +58,15 @@ def run_question(question: str, keywords: list[str]) -> dict:
             'speculation': False,
         }
 
+    # consult enforces the memory-read scope the auth middleware would set per
+    # request; seed it for this in-process call and restore the caller's prior
+    # scopes afterward, mirroring tools/mcp/manager/eval/run_consult_eval.py.
+    prior_scopes = auth._snapshot_scopes()
     try:
-        # consult enforces the memory-read scope the auth middleware would
-        # normally establish per request; seed it for this in-process call,
-        # mirroring tools/mcp/manager/eval/run_consult_eval.py.
         server._set_scopes(["memory-read"], label="qc")
         start = time.time()
-        result = consult(question=question, keywords=keywords)
+        result = consult(question=question, keywords=keywords,
+                         repo_url=repo_url, branch=branch)
         elapsed = time.time() - start
 
         response = result.get('answer', '')
@@ -70,9 +84,11 @@ def run_question(question: str, keywords: list[str]) -> dict:
             'length': 0,
             'speculation': False,
         }
+    finally:
+        auth._restore_scopes(prior_scopes)
 
 
-def validate_record(rec: dict) -> dict:
+def validate_record(rec: dict, repo_url: str = "", branch: str = "") -> dict:
     """Validate a single record by re-running the question."""
     question = rec.get('question', '')
     keywords = rec.get('curated_keywords', [])
@@ -83,7 +99,7 @@ def validate_record(rec: dict) -> dict:
     old_speculation = rec.get('goal3_other_failure', {}).get('speculation_detected', False)
 
     # Run new query
-    new_result = run_question(question, keywords)
+    new_result = run_question(question, keywords, repo_url=repo_url, branch=branch)
 
     return {
         'id': rec.get('id'),
@@ -116,6 +132,10 @@ def validate_record(rec: dict) -> dict:
 def main():
     parser = argparse.ArgumentParser(description='Validate consultant response quality')
     parser.add_argument('evaluation_file', help='Path to evaluation JSON from evaluate_dataset.py')
+    parser.add_argument('--repo-url', default='',
+                        help='Repository URL to scope consult note retrieval to')
+    parser.add_argument('--branch', default='',
+                        help='Branch to narrow consult note retrieval to (default: whole repo)')
     parser.add_argument('--sample', type=int, help='Number of questions to sample (default: all)')
     parser.add_argument('--output', help='Output file path (default: <input>-validation.json)')
     parser.add_argument('--dry-run', action='store_true', help='Show what would be run without calling consultant')
@@ -152,7 +172,7 @@ def main():
     validations = []
     for i, rec in enumerate(records, 1):
         print(f"  [{i}/{len(records)}] {rec.get('question', '')[:60]}...")
-        result = validate_record(rec)
+        result = validate_record(rec, repo_url=args.repo_url, branch=args.branch)
         validations.append(result)
 
         # Brief pause to avoid overwhelming the backend

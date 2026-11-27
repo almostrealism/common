@@ -599,7 +599,7 @@ Native inference on Apple Silicon using MLX-LM. No separate server needed, but t
 #### Installation
 
 ```bash
-pip install 'mlx>=0.4.0' 'mlx-lm>=0.4.0'
+pip install mlx mlx-lm
 ```
 
 #### Configuration
@@ -635,7 +635,7 @@ backend that is unreachable degrades rather than falling back to another one.
 | `AR_MANAGER_TOKEN_FILE` | `~/.config/ar/manager-tokens.json` | Bearer token config file |
 | `AR_MANAGER_TOKENS` | (none) | JSON string of token config (overrides file) |
 | `AR_MANAGER_REPO_CONFIG_FILE` | `/config/repo-config.json` | Per-repository settings (see below) |
-| `AR_CONSULTANT_BACKEND` | `llamacpp` | LLM backend for memory synthesis: `llamacpp`, `ollama`, `mlx`, `openrouter`, `passthrough`, or `auto` |
+| `AR_CONSULTANT_BACKEND` | `auto` (library); the controller compose deployment pins `llamacpp` | LLM backend for memory synthesis: `llamacpp`, `ollama`, `mlx`, `openrouter`, `passthrough`, or `auto` |
 | `AR_CONSULTANT_LLAMACPP_URL` | (auto-discovered) | llama.cpp server URL |
 | `AR_CONSULTANT_OPENROUTER_API_KEY_FILE` | `/secrets/consultant__openrouter-api-key.json` (compose) | ar-manager's OpenRouter secret file; other `AR_CONSULTANT_OPENROUTER_*` settings are in [OpenRouter (hosted)](#openrouter-hosted) |
 | `AR_CONSULTANT_OLLAMA_URL` | `http://localhost:11434` | Ollama server URL |

@@ -147,32 +147,45 @@ class EvaluateDatasetNullResponseTest(unittest.TestCase):
 
 
 class ValidateResponsesScopeTest(unittest.TestCase):
-    """``run_question`` seeds the memory-read scope ``consult`` requires.
+    """``run_question`` seeds, then restores, the memory-read scope.
 
     ar-manager's ``consult`` begins with ``_require_scope("memory-read")``,
     so a standalone QC process — which carries no request token — must
     establish that scope before each call, or every question fails with a
-    ``PermissionError`` caught as a validation error. This pins that
-    ``run_question`` seeds the scope first and does so before invoking
-    ``consult``.
+    ``PermissionError`` caught as a validation error. It must also restore
+    the caller's prior scope context afterward so a later tool call in the
+    same process does not inherit the synthetic ``qc`` label. This pins the
+    snapshot → seed → consult → restore order and that the repository
+    context is forwarded to ``consult``.
     """
 
-    def test_run_question_seeds_scope_before_consult(self):
+    def test_run_question_scopes_and_forwards_repo(self):
         calls = []
         validate_responses.server._set_scopes = (
-            lambda scopes, label="": calls.append(("scope", list(scopes), label))
+            lambda scopes, label="": calls.append(("set", list(scopes), label))
         )
 
-        def recording_consult(question, keywords):
-            calls.append(("consult", question, keywords))
+        def recording_consult(question, keywords, repo_url="", branch=""):
+            calls.append(("consult", question, keywords, repo_url, branch))
             return {"answer": "grounded answer", "sources": ["a", "b"]}
 
-        with patch.object(validate_responses, "consult", recording_consult):
-            result = validate_responses.run_question("how does X work?", ["X"])
+        with patch.object(validate_responses.auth, "_snapshot_scopes",
+                          lambda: calls.append(("snapshot",)) or "snap"), \
+             patch.object(validate_responses.auth, "_restore_scopes",
+                          lambda snap: calls.append(("restore", snap))), \
+             patch.object(validate_responses, "consult", recording_consult):
+            result = validate_responses.run_question(
+                "how does X work?", ["X"],
+                repo_url="git@github.com:almostrealism/common.git", branch="master")
 
-        self.assertEqual(2, len(calls))
-        self.assertEqual(("scope", ["memory-read"], "qc"), calls[0])
-        self.assertEqual("consult", calls[1][0])
+        self.assertEqual(["snapshot", "set", "consult", "restore"],
+                         [c[0] for c in calls])
+        self.assertEqual(("set", ["memory-read"], "qc"), calls[1])
+        self.assertEqual(
+            ("consult", "how does X work?", ["X"],
+             "git@github.com:almostrealism/common.git", "master"),
+            calls[2])
+        self.assertEqual(("restore", "snap"), calls[3])
         self.assertEqual("grounded answer", result["response"])
         self.assertEqual(2, result["doc_chunks_found"])
         self.assertNotIn("error", result)
