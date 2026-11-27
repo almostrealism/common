@@ -531,6 +531,33 @@ public class CompressedRowDeltaTests extends TestSuiteBase implements MatrixFeat
 	}
 
 	/**
+	 * The entry gradient of a matrix that stores no entries is its single unused element, which is
+	 * zero: the kernel reads no entry, rather than reading the upstream gradient of row 0 and the
+	 * input at the padding column and returning their product. The input gradient is zero too.
+	 */
+	@Test(timeout = 60000)
+	public void gradientsEmpty() {
+		CompressedRowTraversalOrdering order = CompressedRowTraversalOrdering.of(2, new int[] { 0, 0, 0, 0 }, new int[0]);
+		PackedCollection matrix = new PackedCollection(shape(3, 2), 0, pack(0.0), 0, order);
+		CollectionProducer entries = cp(matrix);
+		CollectionProducer input = cp(pack(3.0, 5.0));
+		CollectionProducer upstream = cp(pack(2.0, 4.0, 6.0));
+
+		CollectionProducer entryGradient = matmul(entries, cp(pack(3.0, 5.0))).delta(entries, ReduceAxis.OUT, upstream);
+		CollectionProducer inputGradient = matmul(cp(matrix), input).delta(input, ReduceAxis.OUT, upstream);
+		assertReduced(entryGradient, 3, SegmentedOuterProductComputation.class);
+		assertReduced(inputGradient, 3, SegmentedWeightedSumComputation.class);
+
+		for (ComputeRequirement backend : backends()) {
+			PackedCollection actualEntries = evaluate(entryGradient, backend);
+			assertEquals(1, actualEntries.getShape().getTotalSize());
+			assertValues("empty entry gradient on " + backend, new double[] { 0.0 }, actualEntries.toArray(0, 1));
+			assertValues("empty input gradient on " + backend, new double[] { 0.0, 0.0 },
+					evaluate(inputGradient, backend).toArray(0, 2));
+		}
+	}
+
+	/**
 	 * Both gradients of the product of a matrix with more than {@code 2^24} rows and entries, whose
 	 * logical size exceeds the range of an {@code int}, with a vector are exact: the gradient of
 	 * the entries near the end reads the upstream gradient at rows above {@code 2^24}, where a

@@ -306,7 +306,8 @@ public class SegmentedWeightedSumComputation extends RepeatedProducerComputation
 	 *       {@link SegmentedOuterProductComputation outer product} of {@code g} and the input
 	 *       restricted to the stored entries. It has one element per stored entry, in their
 	 *       physical order, rather than the logical shape of the matrix: a sparse matrix is
-	 *       parameterised by its entries alone.</li>
+	 *       parameterised by its entries alone (see {@link ReduceAxis} on targets that store
+	 *       fewer members than their logical size).</li>
 	 *   <li>{@link ReduceAxis#IN}, input: the product of the matrix with the input's own
 	 *       input-reduced delta of the tangent.</li>
 	 *   <li>{@link ReduceAxis#IN}, matrix: the product with the input of a matrix whose stored
@@ -328,7 +329,6 @@ public class SegmentedWeightedSumComputation extends RepeatedProducerComputation
 			CollectionProducer delta = axis == ReduceAxis.OUT ? inputGradient(target, weight) : inputTangent(target, weight);
 			if (delta != null) return delta;
 		} else if (matrix.refersTo(target) && input.cannotMatch(target)) {
-			// TODO(review): entry deltas use shape (entries), not ReduceAxis.resultShape/weightShape of the (rows, cols) target
 			CollectionProducer delta = axis == ReduceAxis.OUT ? entryGradient(weight) : entryTangent(weight);
 			if (delta != null) return delta;
 		}

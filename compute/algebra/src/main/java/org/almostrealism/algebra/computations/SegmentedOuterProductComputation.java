@@ -88,6 +88,12 @@ public class SegmentedOuterProductComputation extends RepeatedProducerComputatio
 	/** The number of columns of the matrix, which is the length of each segment. */
 	private final int segmentLength;
 
+	/**
+	 * The number of stored entries of the matrix. With none, the output is a single unused
+	 * element that the kernel leaves at zero rather than reading an entry that does not exist.
+	 */
+	private final int entries;
+
 	/** The shape of the matrix, carrying its ordering. */
 	private final TraversalPolicy matrixShape;
 
@@ -126,6 +132,7 @@ public class SegmentedOuterProductComputation extends RepeatedProducerComputatio
 		this.matrixShape = matrixShape;
 		this.order = matrixShape.getOrder();
 		this.rows = order.memberSegments(segmentLength).orElseThrow();
+		this.entries = order.getLength().orElseThrow();
 	}
 
 	/**
@@ -201,15 +208,16 @@ public class SegmentedOuterProductComputation extends RepeatedProducerComputatio
 	}
 
 	/**
-	 * Continues while the loop index is within the columns of the operands.
+	 * Continues while the loop index is within the columns of the operands. For a matrix with no
+	 * stored entries the loop performs no iterations, so the unused output element stays zero.
 	 *
 	 * @param args  the traversable arguments
 	 * @param index the column
-	 * @return {@code index < width}
+	 * @return {@code index < width}, or {@code index < 0} for a matrix with no stored entries
 	 */
 	@Override
 	protected Expression<Boolean> getCondition(TraversableExpression[] args, Expression index) {
-		return index.lessThan(width);
+		return index.lessThan(entries == 0 ? 0 : width);
 	}
 
 	/**
