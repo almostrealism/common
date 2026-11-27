@@ -19,6 +19,7 @@ package org.almostrealism.collect;
 import io.almostrealism.code.MemoryProvider;
 import io.almostrealism.collect.Algebraic;
 import io.almostrealism.collect.CollectionProducerBase;
+import io.almostrealism.collect.TraversalOrdering;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Evaluable;
@@ -27,6 +28,7 @@ import io.almostrealism.scope.ScopeSettings;
 import org.almostrealism.algebra.MatrixFeatures;
 import org.almostrealism.calculus.ReduceAxis;
 
+import java.util.Optional;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
@@ -218,10 +220,23 @@ public interface CollectionProducer extends
 	 * Returns the transpose of this collection by enumerating along the traversal axis.
 	 * For square diagonal 2D matrices, returns {@code this} directly as they are symmetric.
 	 *
+	 * <p>A 2D collection whose {@link TraversalOrdering} can
+	 * {@link TraversalOrdering#transpose(int, int) describe its transpose} (such as a sparse
+	 * matrix in compressed-sparse-row form) is transposed without moving any element: the result
+	 * reads the same memory through the ordering of the transpose, so it stays sparse and a
+	 * product of it visits only the stored entries.</p>
+	 *
 	 * @return a producer for the transposed collection
 	 */
 	default CollectionProducer transpose() {
 		TraversalPolicy shape = shape(this);
+
+		Optional<TraversalOrdering> transposed = shape.getDimensions() == 2 && shape.getOrder() != null ?
+				shape.getOrder().transpose(shape.length(0), shape.length(1)) : Optional.empty();
+		if (transposed.isPresent()) {
+			// TODO(review): assumes this producer's memory holds only the entries; test transpose of a computed CSR producer (e.g. multiply)
+			return reshape(new TraversalPolicy(transposed.get(), shape.length(1), shape.length(0)));
+		}
 
 		if (shape.getTraversalAxis() == 0 && shape.getDimensions() == 2 &&
 				shape.length(0) == shape.length(1) &&

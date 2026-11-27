@@ -160,20 +160,28 @@ atomics. It never forms a logical index of the matrix, so the matrix's logical s
 the range of an `int` (only its memory, the entries, is bounded by `int`); because its iteration
 count is data-dependent, it is always compiled into a kernel of its own.
 
-The transposed product `Aᵀ · g` (the input gradient of `A · x`) uses the same kernel.
-`order.transpose(entries)` returns the `(cols, rows)` transpose as a sparse collection whose
-ordering is the compressed-sparse-row structure of `Aᵀ`, which is the compressed-sparse-column
-structure of `A`. The ordering is derived on the host by a counting sort of the index arrays, and
-the entries are reordered into column-major order by one gather kernel through a
-`SplitIndexTraversalOrdering`, so it is exact above `2^24`. `matmul(cp(transposed), g)` then
-enumerates each column of `A` without densifying it. This structural transpose is different from
-`CollectionProducer.transpose()`, which reads every logical element and gives the dense transpose
-(see `CompressedRowTransposeTests`).
+The transposed product `Aᵀ · g` (the input gradient of `A · x`) uses the same kernel, and needs
+nothing from the caller beyond the ordinary transpose:
 
 ```java
-PackedCollection transposed = order.transpose(values);
-CollectionProducer gradient = matmul(cp(transposed), cp(g));
+CollectionProducer gradient = matmul(cp(matrix).transpose(), cp(g));
 ```
+
+`CollectionProducer.transpose()` asks the ordering of a 2D collection for the ordering of its
+transpose (`TraversalOrdering.transpose(rows, cols)`, empty by default). A
+`CompressedRowTraversalOrdering` answers with `transpose()`: a compressed-sparse-row ordering of
+`Aᵀ` (the compressed-sparse-column structure of `A`) over the **same physical positions**. Its
+rows are the columns of `A`, and since a column's entries are not contiguous in memory, it also
+carries `positions`, the physical position of each member, so the entries are never copied or
+reordered. The transpose is a view of the same memory read through that ordering, so it stays
+lazy and composes with any producer. Its index structure is derived once, from the host copy of
+the row offsets and columns, and kept on the ordering. The enumeration exposes the indirection
+through `OrderingSegments.position(member)`, which is the member itself unless the ordering says
+otherwise, and `SegmentedWeightedSumComputation` reads each entry there. Every index array is in
+the split layout, so the transpose is exact above `2^24`. Reading the transpose element by
+element (any dense consumer) remains correct through `indexOf`, which searches a column of `A`
+and returns the position of the entry. Transposing twice gives an ordering of `A` again (see
+`CompressedRowTransposeTests`).
 
 ### Scatter (Writing with Dynamic Indices)
 
