@@ -828,6 +828,49 @@ public class GitHubProxyHandlerTest extends TestSuiteBase {
         assertTrue(listing.findings().isEmpty());
     }
 
+    /**
+     * A GraphQL response served with HTTP 200 but carrying an {@code errors}
+     * array is a partial result, so the listing is incomplete even when its
+     * {@code nodes} array is readable — the repeat check must fail open rather
+     * than treat the partial threads as the complete set.
+     */
+    @Test(timeout = 10000)
+    public void reviewThreadListingWithGraphQlErrorsIsIncomplete() throws IOException {
+        JsonNode root = new ObjectMapper().readTree(
+                "{\"errors\":[{\"message\":\"Something went wrong\"}],"
+                + "\"data\":{\"repository\":{\"pullRequest\":{\"reviewThreads\":{"
+                + "\"pageInfo\":{\"hasNextPage\":false},\"nodes\":["
+                + "{\"isResolved\":false,\"comments\":{\"nodes\":["
+                + "{\"path\":\"A.java\",\"line\":4,\"url\":\"https://x/c1\",\"body\":\"open one\"}]}}"
+                + "]}}}}}");
+        GitHubProxyHandler.ReviewThreadListing listing = GitHubProxyHandler.ReviewThreadListing.from(root);
+        assertFalse("a response with a GraphQL errors array is incomplete", listing.complete());
+    }
+
+    /**
+     * A response whose {@code pageInfo.hasNextPage} is absent or not a boolean
+     * leaves the pagination state unknown, so the listing is incomplete: a
+     * missing or malformed field must not be read as "not truncated" and let a
+     * partial listing suppress a pass.
+     */
+    @Test(timeout = 10000)
+    public void reviewThreadListingWithoutHasNextPageIsIncomplete() throws IOException {
+        JsonNode absent = new ObjectMapper().readTree(
+                "{\"data\":{\"repository\":{\"pullRequest\":{\"reviewThreads\":{"
+                + "\"nodes\":["
+                + "{\"isResolved\":false,\"comments\":{\"nodes\":["
+                + "{\"path\":\"A.java\",\"line\":4,\"url\":\"https://x/c1\",\"body\":\"open one\"}]}}"
+                + "]}}}}}");
+        assertFalse("an absent hasNextPage is incomplete",
+                GitHubProxyHandler.ReviewThreadListing.from(absent).complete());
+
+        JsonNode malformed = new ObjectMapper().readTree(
+                "{\"data\":{\"repository\":{\"pullRequest\":{\"reviewThreads\":{"
+                + "\"pageInfo\":{\"hasNextPage\":\"nope\"},\"nodes\":[]}}}}}");
+        assertFalse("a non-boolean hasNextPage is incomplete",
+                GitHubProxyHandler.ReviewThreadListing.from(malformed).complete());
+    }
+
     /** Builds the 400 error envelope the proxy endpoint returns, for the handler's responder. */
     private static Response errorResponse(String message) {
         return NanoHTTPD.newFixedLengthResponse(Response.Status.BAD_REQUEST,

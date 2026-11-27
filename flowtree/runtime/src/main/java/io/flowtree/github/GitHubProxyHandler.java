@@ -993,13 +993,16 @@ public class GitHubProxyHandler implements ConsoleFeatures {
          *
          * <p>Each unresolved thread is anchored to its first comment's file, line
          * and URL. The listing is complete only when the response could be read,
-         * was not truncated at the page limit, and every unresolved thread carried
-         * a first comment: a {@code null} root (a failed query), a non-array
-         * {@code nodes}, a {@code hasNextPage} truncation, or an unresolved thread
-         * whose first comment is missing each marks it incomplete, so an unknown or
-         * partial listing cannot be mistaken for "no open threads" by the repeat
-         * check. A thread dropped for a missing first comment is omitted from
-         * {@code findings} but still forces {@code complete} to {@code false}.</p>
+         * carried no GraphQL {@code errors}, reported its pagination state, was not
+         * truncated at the page limit, and every unresolved thread carried a first
+         * comment: a {@code null} root (a failed query), a response carrying a
+         * GraphQL {@code errors} array (a partial result served with HTTP 200), a
+         * non-array {@code nodes}, an absent or non-boolean {@code hasNextPage}
+         * (unknown pagination), a {@code hasNextPage} truncation, or an unresolved
+         * thread whose first comment is missing each marks it incomplete, so an
+         * unknown or partial listing cannot be mistaken for "no open threads" by
+         * the repeat check. A thread dropped for a missing first comment is omitted
+         * from {@code findings} but still forces {@code complete} to {@code false}.</p>
          *
          * @param root the GraphQL response root, or {@code null} on a failed query
          * @return the listing, {@code complete} only when reliably whole
@@ -1007,11 +1010,17 @@ public class GitHubProxyHandler implements ConsoleFeatures {
         static ReviewThreadListing from(JsonNode root) {
             List<PullRequestEscalation.Finding> findings = new ArrayList<>();
             if (root == null) return new ReviewThreadListing(findings, false);
+            JsonNode errors = root.path("errors");
+            if (errors.isArray() && !errors.isEmpty()) {
+                return new ReviewThreadListing(findings, false);
+            }
             JsonNode reviewThreads = root.path("data").path("repository").path("pullRequest")
                     .path("reviewThreads");
             JsonNode nodes = reviewThreads.path("nodes");
             if (!nodes.isArray()) return new ReviewThreadListing(findings, false);
-            boolean complete = !reviewThreads.path("pageInfo").path("hasNextPage").asBoolean(false);
+            JsonNode hasNextPage = reviewThreads.path("pageInfo").path("hasNextPage");
+            if (!hasNextPage.isBoolean()) return new ReviewThreadListing(findings, false);
+            boolean complete = !hasNextPage.booleanValue();
             for (JsonNode thread : nodes) {
                 if (thread.path("isResolved").asBoolean(false)) continue;
                 JsonNode comment = thread.path("comments").path("nodes").path(0);
