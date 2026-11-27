@@ -90,10 +90,17 @@ rates: no drive, the sugar GRNs `LB3a`–`LB3d`, and the matched control.
 
 The control follows the rule `CellTypeRateModelTest.matchedControl` states: for each GRN type, one
 sensory, non-gustatory type whose outgoing synapse count is within 20% of the GRN type's, drawn with
-a fixed seed. The Java test draws with `java.util.Random(CONTROL_SEED)` and the script cannot
-reproduce that stream. The script therefore draws its own set and records it **by name** in the
-manifest, and every consumer reads it from there. The existing `sugarDrivesMn9` keeps its own draw
-and is not changed.
+a fixed seed. The Java test draws with `java.util.Random(CONTROL_SEED)`. That stream is reproducible
+outside the JVM: `java.util.Random` is a fully specified 48-bit LCG (the seed is scrambled with
+`0x5DEECE66D`, and `nextInt(bound)` uses the documented power-of-two shortcut and rejection loop), so
+a short Python port draws the identical sequence, and the candidate list it indexes into is already
+deterministic (`IntStream.range` over type indices, filtered by superclass containing `sensory`, type
+class not `gustatory`, within 20% of out-synapses, and not already chosen) given the same
+`cell-types.txt` and annotations. The script can therefore draw the same control set the Java test
+uses, or draw its own; either way it records the chosen types **by name** in the manifest, and every
+consumer reads them from there. Whether to port the LCG so the fixture's control is identical to the
+full-matrix test's, or to let the script draw its own set, is left to the approver (see open question
+2). Recording by name means the existing `sugarDrivesMn9` need not change in either case.
 
 The mode writes `rates.safetensors` and `manifest.json` to
 `<models-derived>/male-cns/cell-type-rate-reference/`. The safetensors file holds, per run, every
@@ -247,11 +254,19 @@ written down.
    MN9's GRN-over-control margin, a shorter experiment (fewer steps, so the activity reaches fewer
    types) or a higher size budget would be needed. Both change what the task specifies, so either
    needs the owner's decision.
-2. **Should the control set be the one the full-matrix Java test draws?** This plan records a
-   script-drawn set by name, because `java.util.Random` cannot be reproduced in NumPy. The
-   alternative is to make `sugarDrivesMn9` read its control from the reference manifest too, which
-   changes an existing test's inputs.
-   <!-- TODO(review): java.util.Random is a documented 48-bit LCG whose nextInt(bound) is reproducible in Python; the premise of this question (and of the matched-control paragraph in Approach 1) needs re-checking. -->
+2. **Should the control set be the one the full-matrix Java test draws?** `java.util.Random` is a
+   documented 48-bit LCG and its `nextInt(bound)` stream is reproducible from Python (see the
+   matched-control paragraph in Approach 1), and the candidate list it indexes is deterministic, so
+   the script *can* reproduce the exact set `CellTypeRateModelTest.matchedControl` draws. There are
+   three viable choices, and this is a decision for the approver, not a constraint:
+   - The script ports the LCG and candidate order and draws the same set. The fixture's control is
+     then identical to the full-matrix test's, and `matchesRateReference` compares like with like, at
+     the cost of maintaining the port in lockstep with the Java selection rule.
+   - The script draws its own set with its own RNG and records it by name. Simpler, but the fixture's
+     control differs from the full-matrix test's.
+   - `sugarDrivesMn9` reads its control from the reference manifest too, which changes an existing
+     test's inputs (and so is the most invasive).
+   Recording the chosen types by name keeps `sugarDrivesMn9` unchanged under either of the first two.
 
 3. **The machine label.** `platform: macos` is the closest label that exists, but it does not
    guarantee that the derived data and source tables are present on a given macOS node. A data label
