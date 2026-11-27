@@ -379,7 +379,7 @@ public abstract class AggregatedProducerComputation extends TraversableRepeatedP
 	public Scope<PackedCollection> getScope(KernelStructureContext context) {
 		if (uniqueIndex == null) return super.getScope(context);
 
-		Scope<PackedCollection> scope = new Scope<>(getFunctionName(), getMetadata());
+		Scope<PackedCollection> scope = createScope(Scope::new);
 
 		Expression<?> out = getDestination(new KernelIndex(context), ref, e(0));
 		Expression<?> val = inputArg.getValueAt(uniqueIndex.withIndex(row, new KernelIndex(context)));

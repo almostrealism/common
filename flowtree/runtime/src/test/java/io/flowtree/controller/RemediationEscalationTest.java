@@ -39,7 +39,7 @@ public class RemediationEscalationTest extends TestSuiteBase {
                 List.of(new PullRequestEscalation.Finding("src/Foo.java", 10,
                         "https://github.com/o/r/pull/42#discussion_r1", "data race on lane sum")),
                 List.of(new PullRequestEscalation.Finding("src/Bar.java", 7,
-                        "https://github.com/o/r/blob/abc/src/Bar.java#L7", null)));
+                        "https://github.com/o/r/blob/abc/src/Bar.java#L7", null)), true);
         RemediationEscalation escalation = new RemediationEscalation((repoUrl, branch) -> facts);
 
         String message = escalation.compose("git@github.com:o/r.git", "feature", 10);

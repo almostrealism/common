@@ -159,23 +159,40 @@ public class CollectionAddComputation extends TransitiveDeltaExpressionComputati
 	}
 
 	/**
-	 * Generates a new addition computation with the specified child processes.
-	 * This method is used for computation graph optimization and parallel processing,
-	 * creating a new instance with different input sources while maintaining the
-	 * same addition semantics.
+	 * Generates a new addition computation of the given child processes, keeping this
+	 * computation's shape and configuration, as {@link CollectionProductComputation} and
+	 * {@link CollectionQuotientComputation} do.
 	 *
-	 * <p>The method extracts producer arguments from the child processes (skipping
-	 * the destination at index 0) and creates a new addition computation using the
-	 * factory method {@link #add(List)}.</p>
+	 * <p>The shape is not recomputed by passing the children back through
+	 * {@link #add(List)}. The children of a sum built with a broadcast operand already
+	 * include that operand repeated up to the sum's size, with the flat shape of the
+	 * repetition; aligning them again treats every child as the same size and takes the
+	 * shape of whichever comes first. A single value on the left, as in
+	 * {@code c(1.0).subtract(x)} for a two-dimensional {@code x}, then turned the sum flat
+	 * when it was optimized, and anything combining it with a producer of {@code x}'s shape
+	 * failed to compile.</p>
 	 *
-	 * @param children List of child {@link Process} instances to use as inputs
-	 * @return A new {@link CollectionProducerParallelProcess} that performs addition
-	 *         on the child processes
-	 * @see org.almostrealism.collect.CollectionFeatures#add(List)
+	 * @param children the destination followed by the operands
+	 * @return the regenerated sum
 	 */
 	@Override
 	public CollectionProducerParallelProcess generate(List<Process<?, ?>> children) {
-		List<Producer<?>> args = children.stream().skip(1)
+		return copyConfigurationTo(new CollectionAddComputation(getName(), getShape(),
+				children.stream().skip(1).toArray(Producer[]::new)));
+	}
+
+	/**
+	 * Sums operands derived from this computation's inputs (their derivatives, tangents or
+	 * diagonal scalars), whose shapes generally differ from the inputs', so the output shape
+	 * is derived from the operands by {@link #add(List)} rather than kept from this
+	 * computation as {@link #generate(List)} keeps it.
+	 *
+	 * @param operands the destination placeholder followed by the derived operands
+	 * @return the sum of the derived operands
+	 */
+	@Override
+	protected CollectionProducerParallelProcess generateDerived(List<Process<?, ?>> operands) {
+		List<Producer<?>> args = operands.stream().skip(1)
 				.map(p -> (Producer<?>) p).collect(Collectors.toList());
 		return (CollectionProducerParallelProcess) add(args);
 	}

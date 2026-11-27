@@ -33,6 +33,7 @@ import io.flowtree.workstream.ListenerCycleChecker;
 import io.flowtree.workstream.Workstream;
 import io.flowtree.slack.SlackListener;
 import io.flowtree.slack.SlackNotifier;
+import io.flowtree.slack.WorkstreamChannelName;
 import io.flowtree.slack.NotifierRegistry;
 import io.flowtree.github.GitHubOrgs;
 import io.flowtree.github.GitHubProxyHandler;
@@ -128,10 +129,15 @@ final class WorkstreamRegistrationHandler {
      * Handles {@code POST /api/workstreams} to register a new workstream.
      *
      * <p>All fields are optional except {@code defaultBranch}. When
-     * {@code channelName} is absent the controller derives one from the
-     * last path component of {@code defaultBranch} (e.g. {@code "feature/foo"}
-     * → {@code "w-foo"}) and appends a numeric suffix if the name collides
-     * with an existing workstream. Supply {@code channelName} to override.</p>
+     * {@code channelName} is absent the controller derives one from
+     * {@code defaultBranch} with {@link WorkstreamChannelName#fromBranch}:
+     * {@code "w-"} plus the branch's last segment, with earlier segments
+     * joined in front while the segments taken hold fewer than
+     * {@link WorkstreamChannelName#MIN_SEGMENT_CHARACTERS} characters (e.g.
+     * {@code "feature/my-xyz"} → {@code "w-my-xyz"}, {@code "feature/foo"} →
+     * {@code "w-feature-foo"}), and appends a numeric suffix if the name
+     * collides with an existing workstream. Supply {@code channelName} to
+     * override.</p>
      *
      * <p>Runner / model / effort defaults are configured through
      * {@code defaultPhaseConfig} / {@code phaseConfigs}; the legacy
@@ -532,11 +538,14 @@ final class WorkstreamRegistrationHandler {
             if (defaultBranch.endsWith("/")) {
                 return Registration.failed(errorResponse.apply("defaultBranch is malformed: ends with '/'"));
             }
-            channelName = SlackNotifier.autoChannelName(defaultBranch, notifiers.allWorkstreams().values());
-            if (channelName == null) {
+            WorkstreamChannelName derived = WorkstreamChannelName.fromBranch(defaultBranch);
+            WorkstreamChannelName unique = derived == null ? null
+                : derived.uniqueAmong(notifiers.allWorkstreams().values());
+            if (unique == null) {
                 return Registration.failed(errorResponse.apply(
                     "Could not derive a valid channel name from defaultBranch: " + defaultBranch));
             }
+            channelName = unique.toString();
         }
         String explicitWorkspaceId = JsonFieldExtractor.extractString(body, "workspaceId");
         if (explicitWorkspaceId == null || explicitWorkspaceId.isEmpty()) {

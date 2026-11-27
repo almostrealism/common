@@ -19,11 +19,11 @@ _MANAGER_DIR = os.path.dirname(os.path.abspath(__file__))
 if _MANAGER_DIR not in sys.path:
     sys.path.insert(0, _MANAGER_DIR)
 
-from inference import Synthesis  # noqa: E402
 from manager_test_support import (  # noqa: E402
     server, _grant_all_scopes, _grant_scopes, _clear_scopes,
     _set_workspaces, _clear_workspaces, _reset_workspace_cache,
 )
+from inference import Synthesis  # noqa: E402
 
 
 class TestControllerHealth(unittest.TestCase):
@@ -1229,6 +1229,7 @@ class TestToolRegistration(unittest.TestCase):
             "workstream_submit_task",
             "workstream_register",
             "workstream_update_config",
+            "phase_config_explain",
             "workspace_update_config",
             "workstream_archive",
             "workstream_archive_many",
@@ -1248,6 +1249,7 @@ class TestToolRegistration(unittest.TestCase):
             "memory_store",
             "send_message",
             "await_message",
+            "mailbox_peek",
             "job_report_blocked",
             "send_alert",
             "github_pr_find",

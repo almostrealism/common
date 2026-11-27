@@ -211,7 +211,7 @@ public abstract class RepeatedProducerComputation extends CollectionProducerComp
 	 */
 	@Override
 	public Scope<PackedCollection> getScope(KernelStructureContext context) {
-		Repeated<PackedCollection> scope = new Repeated<>(getFunctionName(), getMetadata());
+		Repeated<PackedCollection> scope = createScope(Repeated::new);
 		scope.setInterval(e(getMemLength()));
 
 		String i = getVariablePrefix() + "_i";

@@ -691,6 +691,58 @@ class PromptBuilderTests(unittest.TestCase):
         self.assertIn('"qa/concept-20261115-000000" (created from master)', text)
         self.assertIn("test method that exists on master", text)
 
+    def test_generalization_renders_through_the_qa_round_builder(self):
+        """The generalization round passes its template by path to the generic
+        qa-round builder, so it is not among the fixed-shape builders above.
+        Rendered exactly as qa-round.yaml renders a caller template — this
+        checkout as the caller root — it must come out with the round's branch
+        and base substituted and no placeholder left in it."""
+        env = dict(os.environ)
+        env.update({
+            "BRANCH": "qa/generalize-20261126-000000",
+            "BASE_BRANCH": "master",
+            "REPO_URL": "git@github.com:example/common.git",
+            "PROMPT": "tools/ci/prompts/generalization.txt",
+        })
+        env.pop("TEMPLATE_VARS", None)
+        env.pop("LEADS_FILE", None)
+        result = subprocess.run(
+            ["bash", os.path.join(_PROMPT_DIR, _GENERIC_QA_BUILDER), _REPO_ROOT, self.output],
+            env=env, capture_output=True, text=True, timeout=60)
+        self.assertEqual(0, result.returncode, result.stderr)
+        text = _read(self.output)
+        self.assertNotRegex(text, _PLACEHOLDER)
+        self.assertIn('"qa/generalize-20261126-000000" (created from master)', text)
+        self.assertIn("test method that exists on master", text)
+
+    def test_generalization_states_its_scope_and_prohibitions(self):
+        """The round's contract lives in its template: free one common-only
+        capability by lifting its coupling to consumer-supplied values with
+        common's defaults and behavior preserved, or — for a locked CI path or a
+        change too large — write a docs/plans plan and file a tracker task. It
+        must name the consumer that would use the freed capability, forbid
+        editing the locked CI paths on this branch, forbid new modules, pom
+        edits and weakened tests, and keep private product names out of what it
+        commits."""
+        text = _read(os.path.join(_PROMPT_DIR, "generalization.txt"))
+        for phrase in ("usable by other repositories",
+                       "Do not change any file under `.github/workflows/`",
+                       "dropped at staging",
+                       "write a plan",
+                       "docs/plans/",
+                       "tracker_create_task", "tracker_search_tasks",
+                       "behavior preserved", "consumer-supplied",
+                       "Do not create a Maven module, modify any `pom.xml`",
+                       "Do not weaken, disable, or narrow an existing test",
+                       "test-file protection",
+                       "This repository is public"):
+            with self.subTest(phrase=phrase):
+                self.assertIn(phrase, text)
+        self.assertLess(text.index("Pin down exactly what couples"),
+                        text.index("Free the capability"),
+                        "the coupling must be identified before anything is changed")
+        self.assertNotRegex(text, r"PR #\d+")
+
     def test_concept_alignment_states_its_scope_and_prohibitions(self):
         """The round's contract lives in its template: survey and choose one
         candidate, map the hierarchy, check the "is-a" claim and the poms in

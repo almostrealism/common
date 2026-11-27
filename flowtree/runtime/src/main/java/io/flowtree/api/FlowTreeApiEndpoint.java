@@ -56,6 +56,7 @@ import io.flowtree.controller.RemediationBudgetGuard;
 import io.flowtree.controller.RemediationEscalation;
 import io.flowtree.controller.RemediationStateStore;
 import io.flowtree.controller.PendingJob;
+import io.flowtree.submission.ResourceLimitOverrides;
 import io.flowtree.submission.SubmissionConfigResolver;
 import io.flowtree.workstream.MailboxRegistry;
 import io.flowtree.workstream.Workstream;
@@ -82,8 +83,9 @@ import io.flowtree.submission.PhaseConfigResolver;
  *   <tr><th>Method</th><th>Path</th><th>Body</th><th>Description</th></tr>
  *   <tr><td>POST</td><td>/api/workstreams/{id}/messages</td><td>{@code {"text":"..."}}</td><td>Post a message to the workstream's channel</td></tr>
  *   <tr><td>POST</td><td>/api/workstreams/{id}/jobs/{jobId}/messages</td><td>{@code {"text":"..."}}</td><td>Post a message to the job's thread</td></tr>
- *   <tr><td>GET</td><td>/api/workstreams/{id}/mailbox?since=&amp;wait=&amp;exclude=</td><td>--</td><td>Read the workstream's conversation, blocking until a peer posts — see {@link MailboxEndpointHandler}</td></tr>
+ *   <tr><td>GET</td><td>/api/workstreams/{id}/mailbox?since=&amp;wait=&amp;exclude=&amp;limit=&amp;tail=</td><td>--</td><td>Read the workstream's conversation, blocking until a peer posts — see {@link MailboxEndpointHandler}</td></tr>
  *   <tr><td>POST</td><td>/api/workstreams/{id}/submit</td><td>{@code {"prompt":"..."}}</td><td>Submit a new job to connected agents</td></tr>
+ *   <tr><td>POST</td><td>/api/workstreams/{id}/phase-config</td><td>{@code {"defaultPhaseConfig":{...}}} (optional)</td><td>Explain per-phase runner/model/effort/provider resolution and sources; dry-run validator — see {@link PhaseConfigQueryHandler}</td></tr>
  *   <tr><td>POST</td><td>/api/submit</td><td>{@code {"prompt":"...","targetBranch":"...","repoUrl":"...","createWorkstreamIfMissing":true}}</td><td>Submit a job, resolving the workstream from the request body and optionally creating it</td></tr>
  *   <tr><td>POST</td><td>/api/workstreams</td><td>{@code {"defaultBranch":"...","baseBranch":"...","planningDocument":"..."}}</td><td>Register a new workstream (auto-creates Slack channel)</td></tr>
  *   <tr><td>POST</td><td>/api/workstreams/{id}/update</td><td>{@code {"channelId":"...","channelName":"..."}}</td><td>Update an existing workstream</td></tr>
@@ -806,6 +808,11 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
             if ("/api/workstreams".equals(uri)) {
                 return workstreamRegistrationHandler().handleRegister(session);
             }
+            if (uri.startsWith("/api/workstreams/") && uri.endsWith("/phase-config")) {
+                String workstreamId = uri.substring("/api/workstreams/".length(),
+                        uri.length() - "/phase-config".length());
+                return phaseConfigQueryHandler().handle(workstreamId, readBody(session));
+            }
             Response workspaceConfigResp = workspaceConfigHandler().handleIfMatches(uri, session);
             if (workspaceConfigResp != null) return workspaceConfigResp;
             Matcher m = WORKSTREAM_PATTERN.matcher(uri);
@@ -918,6 +925,13 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
             return errorResponse("selfNotify is only supported for shell-command jobs (jobType=shell)");
         }
 
+        // Validate the request's own resource limits before the automated-job
+        // gate, resolution, and the skip/accept paths below, so an invalid limit
+        // is always a 400 rather than masked by an earlier path. See applyTo below.
+        ResourceLimitOverrides limits = new ResourceLimitOverrides(body);
+        String limitsError = limits.validationError();
+        if (limitsError != null) return errorResponse(limitsError);
+
         // Reject automated jobs when the gate is closed
         boolean automated = JsonFieldExtractor.extractBoolean(body, "automated");
         if (automated && !acceptAutomatedJobs) {
@@ -991,16 +1005,6 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
                 log("Invalid startedAfter value: " + startedAfterStr);
             }
         }
-        // Per-PR remediation cap for remediation passes (auto-review/auto-resolve),
-        // which CI marks explicitly — not every automated job. The triggering
-        // commit lets the cap reset when the branch gains a commit no pass produced.
-        boolean remediationPass = JsonFieldExtractor.getBoolean(body, "remediationPass", false);
-        String remediationSkip = remediationGuard.skipReason(workstreamId, remediationPass, JsonFieldExtractor.extractString(body, "triggerCommit"));
-        if (remediationSkip != null) {
-            return newFixedLengthResponse(Response.Status.OK, "application/json", "{\"ok\":true,"
-                + "\"skipped\":true,\"reason\":\"" + JsonFieldExtractor.escapeJson(remediationSkip) + "\"}");
-        }
-
         if (server == null) {
             return errorResponse("No FlowTree server configured");
         }
@@ -1011,11 +1015,21 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
                     "application/json", json);
         }
 
+        // Remediation passes are gated per PR, after the no-server/no-agents
+        // rejections above: the gate counts the pass and records it as dispatched,
+        // so a pass recorded but never queued would make a retry look like a repeat.
+        boolean remediationPass = JsonFieldExtractor.getBoolean(body, "remediationPass", false);
+        String remediationSkip = remediationGuard.skipReason(workstreamId, remediationPass,
+                JsonFieldExtractor.extractString(body, "triggerCommit"),
+                JsonFieldExtractor.extractString(body, "description"));
+        if (remediationSkip != null) {
+            return newFixedLengthResponse(Response.Status.OK, "application/json", "{\"ok\":true,"
+                + "\"skipped\":true,\"reason\":\"" + JsonFieldExtractor.escapeJson(remediationSkip) + "\"}");
+        }
+
         String repoUrl = bodyRepoUrl;
         String baseBranch = JsonFieldExtractor.extractString(body, "baseBranch");
         String jobDescription = JsonFieldExtractor.extractString(body, "description");
-        int maxTurns = JsonFieldExtractor.extractInt(body, "maxTurns");
-        double maxBudgetUsd = JsonFieldExtractor.extractDouble(body, "maxBudgetUsd");
         boolean protectTestFiles = JsonFieldExtractor.extractBoolean(body, "protectTestFiles");
         boolean enforceChanges = JsonFieldExtractor.extractBoolean(body, "enforceChanges");
         String deduplicationMode = JsonFieldExtractor.extractString(body, "deduplicationMode");
@@ -1054,8 +1068,9 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         }
         factory.setAgentEnv(workstream.agentEnvWith(
                 JsonFieldExtractor.extractStringObject(body, "agentEnv")));
-        if (maxTurns > 0) factory.setMaxTurns(maxTurns);
-        if (maxBudgetUsd > 0) factory.setMaxBudgetUsd(maxBudgetUsd);
+        limits.applyTo(workstream, factory);
+        limits.getClamped().forEach((field, value) -> log("Clamped " + field + " to the workstream limit "
+                + value + " for workstream " + workstreamId));
         if (baseBranch != null) factory.setBaseBranch(baseBranch);
         if (repoUrl != null) factory.setRepoUrl(repoUrl);
 
@@ -1238,6 +1253,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         // Report which optional phases are active so callers can confirm
         // the effective job configuration without inspecting phase bundles.
         SubmissionConfigResolver.appendResolvedJobConfigJson(json, factory);
+        limits.appendClampedJson(json);
         List<String> accepted = factory.operatorGrants().getAcceptedMergeResolutions();
         if (!accepted.isEmpty()) {
             json.append(",\"acceptedMergeResolutions\":").append(JsonFieldExtractor.toJsonArray(accepted));
@@ -1487,6 +1503,15 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
     private WorkstreamLifecycleHandler lifecycleHandler() {
         return new WorkstreamLifecycleHandler(notifiers, listener, this::readBody,
                 this::errorResponse, this::log);
+    }
+
+    /**
+     * Builds the {@code POST /api/workstreams/{id}/phase-config} diagnostic
+     * handler bound to this endpoint's workstream and workspace lookups.
+     * See {@link PhaseConfigQueryHandler}.
+     */
+    private PhaseConfigQueryHandler phaseConfigQueryHandler() {
+        return new PhaseConfigQueryHandler(notifiers::workstreamFor, workspaceLookup);
     }
 
     /** Builds the {@code /api/workspaces/{id}/config} handler bound to this endpoint. */

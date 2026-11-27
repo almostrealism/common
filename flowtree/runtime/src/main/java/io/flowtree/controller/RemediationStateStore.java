@@ -16,6 +16,8 @@
 
 package io.flowtree.controller;
 
+import io.flowtree.github.ReviewActivity;
+
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -62,7 +64,15 @@ public class RemediationStateStore extends ControllerDatabase {
         + "consecutive_no_progress INTEGER DEFAULT 0 NOT NULL, "
         + "last_produced_commit VARCHAR(64), "
         + "notified BOOLEAN DEFAULT FALSE NOT NULL, "
-        + "updated_at TIMESTAMP)";
+        + "updated_at TIMESTAMP, "
+        + "last_dispatched_commit VARCHAR(64), "
+        + "last_review_state VARCHAR(16000))";
+
+    /** Columns added after the table was first deployed, for databases created without them. */
+    private static final String[] ADDED_COLUMNS = {
+        "ALTER TABLE pr_remediation ADD COLUMN last_dispatched_commit VARCHAR(64)",
+        "ALTER TABLE pr_remediation ADD COLUMN last_review_state VARCHAR(16000)"
+    };
 
     /**
      * DDL creating the table of in-flight remediation jobs: the automated
@@ -90,6 +100,7 @@ public class RemediationStateStore extends ControllerDatabase {
             stmt.execute(CREATE_TABLE);
             stmt.execute(CREATE_JOBS_TABLE);
         }
+        addColumns(ADDED_COLUMNS);
     }
 
     /**
@@ -247,14 +258,16 @@ public class RemediationStateStore extends ControllerDatabase {
      * @throws SQLException when the read itself fails (a transient DB error)
      */
     private RemediationState read(String workstreamId) throws SQLException {
-        String sql = "SELECT consecutive_no_progress, last_produced_commit, notified "
+        String sql = "SELECT consecutive_no_progress, last_produced_commit, notified, "
+            + "last_dispatched_commit, last_review_state "
             + "FROM pr_remediation WHERE workstream_id = ?";
         try (PreparedStatement ps = connection().prepareStatement(sql)) {
             ps.setString(1, workstreamId);
             try (ResultSet rs = ps.executeQuery()) {
                 if (rs.next()) {
                     return new RemediationState(workstreamId, rs.getInt(1),
-                            rs.getString(2), rs.getBoolean(3));
+                            rs.getString(2), rs.getBoolean(3), rs.getString(4),
+                            ReviewActivity.decode(rs.getString(5)));
                 }
             }
         }
@@ -272,6 +285,9 @@ public class RemediationStateStore extends ControllerDatabase {
         BUDGET_SPENT_NOTIFY,
         /** Skip: the cap is reached and the ping was already claimed. */
         BUDGET_SPENT_SILENT,
+        /** Skip: the last dispatched pass was of the same kind on the same commit,
+         *  and no review thread has opened since. Not counted. */
+        ALREADY_REVIEWED,
         /** Skip: the record could not be read or the counted pass could not be
          *  persisted, so dispatch fails closed. */
         UNAVAILABLE
@@ -298,6 +314,9 @@ public class RemediationStateStore extends ControllerDatabase {
      * A disabled (closed) store leaves the gate inactive, exactly as a caller with
      * no store does, so it dispatches.</p>
      *
+     * <p>No review activity is supplied, so the submission is never skipped as a
+     * repeat of the last pass.</p>
+     *
      * @param workstreamId  the workstream (branch / PR) key
      * @param budget        the per-PR cap; non-positive disables it
      * @param triggerCommit the commit that triggered the submission, or {@code null}
@@ -305,6 +324,33 @@ public class RemediationStateStore extends ControllerDatabase {
      */
     public synchronized Decision evaluateSubmission(String workstreamId, int budget,
                                                     String triggerCommit) {
+        return evaluateSubmission(workstreamId, budget, triggerCommit, (ReviewActivity) null);
+    }
+
+    /**
+     * Decides, atomically, whether an automated remediation submission should be
+     * dispatched, as {@link #evaluateSubmission(String, int, String)} does, and
+     * also skips one that would repeat the last dispatched pass.
+     *
+     * <p>A submission that would repeat the last dispatched pass — the same
+     * triggering commit, the same kind of pass, and no review thread opened since
+     * ({@link RemediationState#isRepeatOf}) — is skipped as
+     * {@link Decision#ALREADY_REVIEWED}, without counting or writing anything.
+     * Without known review activity a submission is never skipped this way. The
+     * cap takes precedence over the repeat skip: once the budget is exhausted a
+     * repeat still surfaces the one-time cap-reached ping rather than being
+     * silently skipped, so a loop stuck repeating the same no-op pass still pages
+     * a person.</p>
+     *
+     * @param workstreamId  the workstream (branch / PR) key
+     * @param budget        the per-PR cap; non-positive disables it
+     * @param triggerCommit the commit that triggered the submission, or {@code null}
+     * @param activity      the review activity the pass would run against, or
+     *                      {@code null} when it is unknown
+     * @return the submit-time decision; never {@code null}
+     */
+    public synchronized Decision evaluateSubmission(String workstreamId, int budget,
+                                                    String triggerCommit, ReviewActivity activity) {
         if (!isOpen() || workstreamId == null || workstreamId.isEmpty()) {
             return Decision.DISPATCH;
         }
@@ -324,7 +370,10 @@ public class RemediationStateStore extends ControllerDatabase {
             return claimNotification(state) ? Decision.BUDGET_SPENT_NOTIFY
                     : Decision.BUDGET_SPENT_SILENT;
         }
-        if (!write(state.afterDispatch(), null, null)) {
+        if (state.isRepeatOf(triggerCommit, activity)) {
+            return Decision.ALREADY_REVIEWED;
+        }
+        if (!write(state.afterDispatch(triggerCommit, activity), null, null)) {
             // The counted pass could not be persisted. Fail closed rather than
             // dispatching an uncounted pass: a later submission would read the
             // old count and could dispatch past the cap.
@@ -426,15 +475,17 @@ public class RemediationStateStore extends ControllerDatabase {
      *         failed (a transient DB error, already logged)
      */
     private boolean write(RemediationState state, String repoUrl, String branch) {
-        String sql = "MERGE INTO pr_remediation USING (VALUES(?, ?, ?, ?, ?, ?, ?)) "
-            + "AS vals(wid, ru, br, cnp, lpc, nt, ua) ON pr_remediation.workstream_id = vals.wid "
+        String sql = "MERGE INTO pr_remediation USING (VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)) "
+            + "AS vals(wid, ru, br, cnp, lpc, nt, ua, ldc, lrs) ON pr_remediation.workstream_id = vals.wid "
             + "WHEN MATCHED THEN UPDATE SET consecutive_no_progress = vals.cnp, "
             + "last_produced_commit = vals.lpc, notified = vals.nt, updated_at = vals.ua, "
+            + "last_dispatched_commit = vals.ldc, last_review_state = vals.lrs, "
             + "repo_url = COALESCE(vals.ru, pr_remediation.repo_url), "
             + "branch = COALESCE(vals.br, pr_remediation.branch) "
             + "WHEN NOT MATCHED THEN INSERT (workstream_id, repo_url, branch, "
-            + "consecutive_no_progress, last_produced_commit, notified, updated_at) "
-            + "VALUES (vals.wid, vals.ru, vals.br, vals.cnp, vals.lpc, vals.nt, vals.ua)";
+            + "consecutive_no_progress, last_produced_commit, notified, updated_at, "
+            + "last_dispatched_commit, last_review_state) "
+            + "VALUES (vals.wid, vals.ru, vals.br, vals.cnp, vals.lpc, vals.nt, vals.ua, vals.ldc, vals.lrs)";
         try (PreparedStatement ps = connection().prepareStatement(sql)) {
             ps.setString(1, state.getWorkstreamId());
             ps.setString(2, repoUrl);
@@ -443,6 +494,8 @@ public class RemediationStateStore extends ControllerDatabase {
             ps.setString(5, state.getLastProducedCommit());
             ps.setBoolean(6, state.isNotified());
             ps.setTimestamp(7, Timestamp.from(Instant.now()));
+            ps.setString(8, state.getLastDispatchedCommit());
+            ps.setString(9, state.getLastReviewed() == null ? null : state.getLastReviewed().encode());
             ps.executeUpdate();
             return true;
         } catch (SQLException e) {

@@ -16,6 +16,8 @@
 
 package io.flowtree.controller;
 
+import io.flowtree.github.PullRequestEscalation;
+import io.flowtree.github.ReviewActivity;
 import io.flowtree.slack.NotifierRegistry;
 import io.flowtree.slack.SlackNotifier;
 import io.flowtree.workstream.Workstream;
@@ -39,7 +41,15 @@ import java.util.function.Function;
  * stale-submission guard returns, so a skip is a successful, non-dispatching
  * outcome.</p>
  *
- * <p>There is one skip: the <em>cap</em>. Every dispatched remediation pass
+ * <p>There are two skips. The first is a <em>repeat</em>: a pass re-triggered
+ * on the commit the last dispatched pass ran on, of the same kind (the
+ * submitter's label), when no review thread has opened on the pull request since
+ * ({@link RemediationState#isRepeatOf}). That pass would look at exactly what the
+ * last one looked at, so it is skipped without being counted. A new commit, a
+ * different kind of pass, or a new review thread dispatches as before; so does
+ * any pass whose pull request cannot be looked up.</p>
+ *
+ * <p>The second is the <em>cap</em>. Every dispatched remediation pass
  * counts, whether or not it commits and whatever review comments are open;
  * after {@code budget} of them, auto-dispatch stops and a person is pinged once.
  * A commit the loop did not produce — a person's push, or a manually submitted
@@ -78,6 +88,9 @@ public final class RemediationBudgetGuard implements ConsoleFeatures {
     /** Builds the cap-reached ping text for a workstream. */
     private final Function<String, String> escalationMessage;
 
+    /** Looks up a workstream's pull request; {@link PullRequestEscalation#NONE} when there is none. */
+    private final Function<String, PullRequestEscalation> pullRequest;
+
     /**
      * Creates a gate over {@code store} whose cap-reached ping is the plain
      * message of {@link #capReachedMessage(int)}. Used where no PR context is
@@ -107,10 +120,29 @@ public final class RemediationBudgetGuard implements ConsoleFeatures {
     public RemediationBudgetGuard(RemediationStateStore store, int budget,
                                   BiPredicate<String, String> notifier,
                                   Function<String, String> escalationMessage) {
+        this(store, budget, notifier, escalationMessage, workstreamId -> PullRequestEscalation.NONE);
+    }
+
+    /**
+     * Creates a gate over {@code store} that also looks up each workstream's pull
+     * request, so a pass re-triggered with nothing new to look at is skipped.
+     *
+     * @param store             the remediation record store, or {@code null} to disable
+     * @param budget            the per-PR cap; non-positive disables the cap skip
+     * @param notifier          posts (workstreamId, message), returning delivery
+     * @param escalationMessage builds the ping text for a workstream
+     * @param pullRequest       looks up a workstream's pull request, returning
+     *                          {@link PullRequestEscalation#NONE} when there is none
+     */
+    public RemediationBudgetGuard(RemediationStateStore store, int budget,
+                                  BiPredicate<String, String> notifier,
+                                  Function<String, String> escalationMessage,
+                                  Function<String, PullRequestEscalation> pullRequest) {
         this.store = store;
         this.budget = budget;
         this.notifier = notifier;
         this.escalationMessage = escalationMessage;
+        this.pullRequest = pullRequest;
     }
 
     /**
@@ -142,7 +174,12 @@ public final class RemediationBudgetGuard implements ConsoleFeatures {
             return escalation.compose(ws == null ? null : ws.getRepoUrl(),
                     ws == null ? null : ws.getDefaultBranch(), budget);
         };
-        return new RemediationBudgetGuard(store, budget, notifier, message);
+        Function<String, PullRequestEscalation> pullRequest = workstreamId -> {
+            Workstream ws = notifiers.workstreamFor(workstreamId);
+            return ws == null ? PullRequestEscalation.NONE
+                    : escalation.pullRequest(ws.getRepoUrl(), ws.getDefaultBranch());
+        };
+        return new RemediationBudgetGuard(store, budget, notifier, message, pullRequest);
     }
 
     /**
@@ -189,10 +226,28 @@ public final class RemediationBudgetGuard implements ConsoleFeatures {
      * @return a skip reason, or {@code null} to dispatch
      */
     public String skipReason(String workstreamId, boolean remediationPass, String triggerCommit) {
+        return skipReason(workstreamId, remediationPass, triggerCommit, null);
+    }
+
+    /**
+     * Returns why a remediation-pass submission should be skipped, or
+     * {@code null} to dispatch it, as {@link #skipReason(String, boolean, String)}
+     * does, telling passes of different kinds apart by {@code passLabel} when
+     * deciding whether one repeats the last.
+     *
+     * @param workstreamId    the workstream (branch / PR) key
+     * @param remediationPass whether this is a remediation-pass submission
+     * @param triggerCommit   the commit that triggered the submission, or {@code null}
+     * @param passLabel       the submitter's label for the pass (its description),
+     *                        or {@code null}
+     * @return a skip reason, or {@code null} to dispatch
+     */
+    public String skipReason(String workstreamId, boolean remediationPass, String triggerCommit,
+                             String passLabel) {
         if (store == null || !remediationPass || workstreamId == null || workstreamId.isEmpty()) {
             return null;
         }
-        String reason = evaluate(workstreamId, triggerCommit);
+        String reason = evaluate(workstreamId, triggerCommit, passLabel);
         if (reason != null) {
             log("Skipping job submission for workstream " + workstreamId + ": " + reason);
         }
@@ -206,11 +261,14 @@ public final class RemediationBudgetGuard implements ConsoleFeatures {
      *
      * @param workstreamId  the workstream (branch / PR) key
      * @param triggerCommit the commit that triggered the submission, or {@code null}
+     * @param passLabel     the submitter's label for the pass, or {@code null}
      * @return a skip reason, or {@code null} to dispatch
      */
-    private String evaluate(String workstreamId, String triggerCommit) {
+    private String evaluate(String workstreamId, String triggerCommit, String passLabel) {
+        PullRequestEscalation pr = pullRequest.apply(workstreamId);
+        ReviewActivity activity = pr == null ? null : pr.reviewActivity(passLabel);
         RemediationStateStore.Decision decision =
-                store.evaluateSubmission(workstreamId, budget, triggerCommit);
+                store.evaluateSubmission(workstreamId, budget, triggerCommit, activity);
         if (decision == RemediationStateStore.Decision.BUDGET_SPENT_NOTIFY
                 && !notifyCapReached(workstreamId)) {
             warn("Cap-reached ping for workstream " + workstreamId
@@ -222,6 +280,9 @@ public final class RemediationBudgetGuard implements ConsoleFeatures {
             case BUDGET_SPENT_SILENT:
                 return "Per-PR remediation cap of " + budget
                     + " passes reached; auto-dispatch paused pending a person";
+            case ALREADY_REVIEWED:
+                return "The last remediation pass of this kind already ran on commit "
+                    + triggerCommit + " and no review thread has opened since";
             case UNAVAILABLE:
                 return "Remediation state could not be read; refusing automated submission "
                     + "until it can be read again";

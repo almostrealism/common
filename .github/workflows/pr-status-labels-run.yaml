@@ -23,6 +23,7 @@ name: "PR Status Labels (reusable)"
 #         contents: read
 #         issues: write
 #         pull-requests: write
+#         statuses: read
 #       with:
 #         branch: ${{ github.event.workflow_run.head_branch || '' }}
 #         workflow-file: ci.yml           # its CI workflow's file name
@@ -163,6 +164,7 @@ jobs:
       contents: read
       issues: write
       # The remediation-cap commit status (ci: review limit), when configured.
+      # TODO(review): requested unconditionally, so every caller must grant it; the script reads it only with cap-status set.
       statuses: read
       pull-requests: write
     steps:
