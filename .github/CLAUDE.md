@@ -1727,7 +1727,14 @@ visibility fragment, the consumer finding-landing fragment, and
 can land rather than edits it cannot); the adoption example is in the header of
 `.github/workflows/qa-round.yaml`. The privacy rule is unchanged for every
 caller: a retrospective never reads, quotes or counts another repository, so
-each repository's history stays private to it. Its output is
+each repository's history stays private to it. ar-manager enforces the
+workspace half of that for every job: a job's token is scoped to its
+workstream's workspace, and a read tool given a `repo_url` (`workstream_context`,
+`memory_recall`, `memory_namespaces`, `consult`, and `memory_store` for writes)
+refuses a repository, or a branch of one, that no workstream in that workspace
+owns (`_require_repo_in_scope` in `tools/mcp/manager/workspace_map.py`). Within
+the workspace the repository rule is still the prompt's. Static and interactive
+tokens are unscoped and unaffected. Its output is
 docs-only (a report under `docs/qa/retrospectives/` and a row in that
 directory's ledger), so `PROTECT_TEST_FILES` costs nothing. That scope is the
 prompt's contract, not a harness restriction — no submission setting confines a

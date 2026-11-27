@@ -258,6 +258,42 @@ def _require_org_in_scope(org: str) -> None:
     _require_workspace(only_workspace)
 
 
+def _require_repo_in_scope(repo_url: str, branch: str = "") -> None:
+    """Raise :class:`PermissionError` unless the current request's workspace
+    scope covers the repository (and branch) a caller addressed directly.
+
+    A tool that accepts an explicit ``repo_url`` reads memories, commits and
+    narrative keyed by repository and branch, not by workstream, so the
+    workstream-level checks never see it. This resolves the address to the
+    workstreams that own it, archived ones included: the workstream on
+    *branch* when one exists, which must be in scope; otherwise any
+    workstream naming the repository, at least one of which must be in
+    scope. A repository no in-scope workstream names is refused, so a scoped
+    caller (a job token) cannot read another workspace's repository by
+    naming it. Unscoped callers always pass.
+
+    Args:
+        repo_url: The repository the caller named; empty passes.
+        branch: The branch the caller named, or empty for the whole repository.
+
+    Raises:
+        PermissionError: When the caller is scoped and the address belongs to
+            no workspace in its scope.
+    """
+    if not _get_workspace_scopes() or not repo_url:
+        return
+    if branch:
+        owner = _find_workstream_by_branch(repo_url, branch, enforce_scope=False)
+        if owner is not None:
+            _require_workspace(owner.get("workspaceId") or owner.get("slackWorkspaceId"))
+            return
+    if _list_workstreams_on_branch(repo_url, "", enforce_scope=True):
+        return
+    raise PermissionError(
+        f"Token is not scoped to any workspace with a workstream on repository '{repo_url}'. "
+        "A job token reads only the repositories its own workspace's workstreams name.")
+
+
 def _require_workstream_in_scope(workstream_id: str) -> None:
     """Resolve the workspace owning *workstream_id* and raise
     :class:`PermissionError` if the current request's token does not permit
@@ -631,7 +667,8 @@ def _find_workstream_by_branch(
 def _list_workstreams_on_branch(
         repo_url: str, branch: str, enforce_scope: bool) -> Optional[list]:
     """List the workstreams (archived included) whose default branch is
-    *branch*, filtered by the controller to *repo_url* when one is given.
+    *branch* — every branch when *branch* is empty — filtered by the
+    controller to *repo_url* when one is given.
 
     The repository filter is applied by the controller's listing, which
     matches on repository identity (SSH and HTTPS forms of one repository
@@ -640,7 +677,7 @@ def _list_workstreams_on_branch(
 
     Args:
         repo_url: The repository to filter to; empty for every repository.
-        branch: The ``defaultBranch`` to match.
+        branch: The ``defaultBranch`` to match, or empty for every branch.
         enforce_scope: When True a workstream owned by an out-of-scope
             workspace is skipped.
 
@@ -663,7 +700,7 @@ def _list_workstreams_on_branch(
         return None
     matches = []
     for ws in entries:
-        if not isinstance(ws, dict) or ws.get("defaultBranch") != branch:
+        if not isinstance(ws, dict) or (branch and ws.get("defaultBranch") != branch):
             continue
         if enforce_scope and _get_workspace_scopes() and not _is_workspace_allowed(
                 ws.get("workspaceId") or ws.get("slackWorkspaceId")):
