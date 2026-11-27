@@ -19,6 +19,7 @@ package org.almostrealism.collect.computations.test;
 import io.almostrealism.code.ComputeContext;
 import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.expression.test.BitwiseExpressionTests;
+import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.profile.OperationProfileNode;
 import io.almostrealism.profile.OperationSource;
 import io.almostrealism.relation.Evaluable;
@@ -457,6 +458,8 @@ public class CounterRandomTests extends TestSuiteBase {
 		step.run();
 		Assert.assertEquals(3.0, counter.toDouble(0), 0.0);
 
+		Destroyable.destroy(hold);
+		Destroyable.destroy(step);
 		seed.destroy();
 		counter.destroy();
 	}

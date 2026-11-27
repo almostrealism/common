@@ -464,8 +464,9 @@ public class PolyphonicSynthesizer extends SummationCell implements Setup, Destr
 	 * and tremolo LFOs together with any {@link #retiredModulators retired} by {@link #clearVibrato()}
 	 * or {@link #clearTremolo()}. Because an LFO's buffers are captured by reference into any
 	 * {@link #tick()} compiled while it was active, destruction is owned by this lifecycle method
-	 * rather than the clear controls: callers must stop running ticks built from this synthesizer
-	 * before destroying it. Every release is attempted even if an earlier one fails.
+	 * rather than the clear controls: callers must release (destroy) any ticks built from this
+	 * synthesizer before destroying it, so no compiled operation is left bound to the freed
+	 * buffers. Every release is attempted even if an earlier one fails.
 	 * <p>
 	 * Only the LFOs are released here; the voices and the inherited cell state are not yet
 	 * destroyable and are reclaimed with the synthesizer itself.

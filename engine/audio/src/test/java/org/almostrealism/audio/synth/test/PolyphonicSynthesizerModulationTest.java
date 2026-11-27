@@ -16,6 +16,7 @@
 
 package org.almostrealism.audio.synth.test;
 
+import io.almostrealism.lifecycle.Destroyable;
 import org.almostrealism.audio.synth.LFO;
 import org.almostrealism.audio.synth.PolyphonicSynthesizer;
 import org.almostrealism.util.TestSuiteBase;
@@ -115,9 +116,12 @@ public class PolyphonicSynthesizerModulationTest extends TestSuiteBase {
 		synth.setVibrato(5.0, 2.0);
 		synth.setTremolo(5.0, 0.5);
 
+		Runnable setup = null;
+		Runnable tick = null;
+
 		try {
-			Runnable setup = synth.setup().get();
-			Runnable tick = synth.tick().get();
+			setup = synth.setup().get();
+			tick = synth.tick().get();
 			setup.run();
 
 			assertTrue(synth.noteOn(60, 0.8));
@@ -134,6 +138,8 @@ public class PolyphonicSynthesizerModulationTest extends TestSuiteBase {
 
 			assertEquals(1, synth.getActiveVoiceCount());
 		} finally {
+			Destroyable.destroy(tick);
+			Destroyable.destroy(setup);
 			synth.destroy();
 		}
 	}
@@ -150,9 +156,12 @@ public class PolyphonicSynthesizerModulationTest extends TestSuiteBase {
 		PolyphonicSynthesizer synth = new PolyphonicSynthesizer(1);
 		synth.setTremolo(5.0, 0.5);
 
+		Runnable setup = null;
+		Runnable tick = null;
+
 		try {
-			Runnable setup = synth.setup().get();
-			Runnable tick = synth.tick().get();
+			setup = synth.setup().get();
+			tick = synth.tick().get();
 			setup.run();
 
 			assertTrue(synth.noteOn(60, 0.8));
@@ -170,6 +179,8 @@ public class PolyphonicSynthesizerModulationTest extends TestSuiteBase {
 				assertEquals(0.8, synth.getVoice(0).getVelocity());
 			}
 		} finally {
+			Destroyable.destroy(tick);
+			Destroyable.destroy(setup);
 			synth.destroy();
 		}
 	}

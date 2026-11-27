@@ -192,6 +192,7 @@ public class LFOParityTest extends TestSuiteBase {
 		double value = lfo.getValue();
 		assertTrue("value " + value + " in [-1, 1]", value >= -1.0 && value <= 1.0);
 
+		Destroyable.destroy(tick);
 		lfo.destroy();
 		lfo.destroy();
 	}
