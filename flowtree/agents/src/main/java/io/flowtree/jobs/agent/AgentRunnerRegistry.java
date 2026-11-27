@@ -86,6 +86,28 @@ public final class AgentRunnerRegistry {
     }
 
     /**
+     * Returns the runner registered under {@code name}, or {@code null} when it
+     * cannot be obtained: the name is {@code null}, empty or unregistered, its
+     * supplier throws (for example an opencode runner without a configured
+     * binary), or its supplier yields {@code null}. Callers that only want to
+     * ask a runner about its capabilities, and treat an unavailable runner as
+     * unconstrained, use this instead of guarding {@link #get(String)}.
+     *
+     * @param name the runner identifier; may be {@code null}
+     * @return a fresh runner instance, or {@code null} when none is available
+     */
+    public static AgentRunner find(String name) {
+        if (name == null || name.isEmpty()) return null;
+        Supplier<AgentRunner> factory = FACTORIES.get(name);
+        if (factory == null) return null;
+        try {
+            return factory.get();
+        } catch (RuntimeException e) {
+            return null;
+        }
+    }
+
+    /**
      * Returns the set of registered runner names.
      *
      * @return an unmodifiable snapshot of the registered names
