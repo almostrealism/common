@@ -568,7 +568,8 @@ class ConsultTurn:
         body, keeps every ``BASIS:`` / ``CONFLICTS:`` trailer line the draft
         had, leaves the draft's reported conflicts unchanged, does not raise
         the count of uncited claims, and leaves every draft sentence the
-        verifier did not flag unchanged, so a retry can repair citations but
+        verifier did not flag unchanged without adding any sentence beyond
+        one per flagged sentence, so a retry can repair citations but
         cannot turn an answer into a refusal, a malformed response, a response
         whose published conflict metadata differs from the draft's, a response
         that trades a flagged cited sentence for a grounded but uncited one, or
@@ -926,6 +927,13 @@ def _unflagged_sentences_survive(draft: dict, revision: dict, warnings: list) ->
     sentence, so a revision that reorders them (``C, fixed-B, A`` for a draft
     ``A, bad-B, C``) or drops one of a repeated pair is rejected, while the
     repaired flagged sentences, which no draft target matches, are passed over.
+    The revision may not add sentences either: the prompt lets the model cite,
+    restate or remove each flagged sentence, so every revision sentence that
+    matches no unflagged draft sentence must stand in for a flagged sentence in
+    the same gap between surviving neighbours. A gap may hold at most as many
+    such sentences as the draft had flagged sentences there, so a new claim
+    appended after the answer, or inserted between two unflagged sentences, is
+    rejected while a removed flagged sentence is accepted.
     The comparison errs towards keeping the draft: a merely reworded survivor is
     treated as altered, which only rejects the revision — the safe direction.
 
@@ -937,22 +945,27 @@ def _unflagged_sentences_survive(draft: dict, revision: dict, warnings: list) ->
 
     Returns:
         ``True`` when every unflagged draft sentence survives, in order and
-        count, among the revision's sentences.
+        count, among the revision's sentences, and the revision adds no
+        sentence beyond one per flagged draft sentence in each gap.
     """
     flagged = {w.get("sentence", "") for w in warnings}
     revised = [_collapse_space(s.text) for s in revision["report"].sentences]
     cursor = 0
+    replaceable = 0
     for sentence in draft["report"].sentences:
         text = sentence.text.strip()
         if text in flagged:
+            replaceable += 1
             continue
         target = _collapse_space(text)
+        start = cursor
         while cursor < len(revised) and revised[cursor] != target:
             cursor += 1
-        if cursor >= len(revised):
+        if cursor >= len(revised) or cursor - start > replaceable:
             return False
         cursor += 1
-    return True
+        replaceable = 0
+    return len(revised) - cursor <= replaceable
 
 
 def _collapse_space(text: str) -> str:

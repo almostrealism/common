@@ -699,6 +699,42 @@ class TestCitationRetry(_Pipeline):
         self.assertTrue(result["citation_retry"]["revision_altered_unflagged"])
         self.assertEqual(len(result["citation_warnings"]), 1)
 
+    def test_a_revision_that_appends_a_new_claim_is_not_kept(self):
+        # The revision repairs the flagged sentence and keeps the unflagged one,
+        # but also appends a supported claim the draft never made. The prompt
+        # says not to add claims, so the extra sentence keeps the draft.
+        revision = ("It rejects edits to base-branch tests [D1]. It exits 3 [I1]. "
+                    "It blocks commits to protected files [D1].\n"
+                    "BASIS: documentation\nCONFLICTS: none")
+        result, _ = self.run_with(self.BAD, Synthesis(revision, "fake"))
+        self.assertEqual(result["citation_retry"]["kept"], "draft")
+        self.assertEqual(result["citation_retry"]["warnings_after"], 0)
+        self.assertTrue(result["citation_retry"]["revision_altered_unflagged"])
+        self.assertEqual(len(result["citation_warnings"]), 1)
+
+    def test_a_revision_that_inserts_a_claim_before_an_unflagged_one_is_not_kept(self):
+        # The new sentence sits ahead of the unflagged first sentence, in a gap
+        # where the draft had no flagged sentence to stand in for, so it counts
+        # as an addition even though the flagged sentence is repaired in place.
+        revision = ("It blocks commits to protected files [D1]. "
+                    "It rejects edits to base-branch tests [D1]. It exits 3 [I1].\n"
+                    "BASIS: documentation\nCONFLICTS: none")
+        result, _ = self.run_with(self.BAD, Synthesis(revision, "fake"))
+        self.assertEqual(result["citation_retry"]["kept"], "draft")
+        self.assertEqual(result["citation_retry"]["warnings_after"], 0)
+        self.assertTrue(result["citation_retry"]["revision_altered_unflagged"])
+
+    def test_a_revision_that_removes_the_flagged_sentence_is_kept(self):
+        # Removing a flagged sentence is one of the repairs the prompt allows,
+        # so a revision that keeps only the unflagged sentence is published.
+        revision = ("It rejects edits to base-branch tests [D1].\n"
+                    "BASIS: documentation\nCONFLICTS: none")
+        result, _ = self.run_with(self.BAD, Synthesis(revision, "fake"))
+        self.assertEqual(result["citation_retry"]["kept"], "revision")
+        self.assertEqual(result["citation_retry"]["warnings_after"], 0)
+        self.assertNotIn("revision_altered_unflagged", result["citation_retry"])
+        self.assertEqual(result["citation_warnings"], [])
+
     def verify_calls(self, draft, revision=None):
         """Run a consult and return how many times the verifier ran."""
         with patch.object(consult_engine, "verify",

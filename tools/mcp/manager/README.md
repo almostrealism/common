@@ -760,7 +760,9 @@ warning count), and leaves every sentence the verifier did not flag unchanged
 (the model is shown only the flagged sentences and told to keep the rest as
 they are, so a revision may not rewrite, drop, reorder or duplicate an
 unflagged, correctly cited sentence — those must survive in the draft's order
-and count);
+and count — nor add a sentence beyond one in place of each flagged sentence,
+so a new claim appended or inserted between unflagged sentences keeps the
+draft, while removing a flagged sentence is accepted);
 `citation_retry` in the response records the warning counts before and after
 and which answer was `kept`. Sentences that still fail are marked
 `[unsupported]` in the answer and listed in `citation_warnings`. A question naming a file the snapshot does not contain is
