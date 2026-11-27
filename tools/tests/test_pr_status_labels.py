@@ -1,9 +1,13 @@
 """Tests for tools/ci/pr-status-labels.py and the workflow that runs it."""
 
+import contextlib
 import datetime
 import importlib.util
+import io
 import os
+import tempfile
 import unittest
+from unittest import mock
 
 import yaml
 
@@ -292,6 +296,50 @@ class LabelChangesTest(unittest.TestCase):
                                                ready=True)
             self.assertNotIn(labels.READY_TO_LAUNCH, add, state)
 
+    def test_ready_to_launch_replaces_ready_for_review(self):
+        # On the settled ready-for-review stage the marker takes that label's
+        # place: the wanted set is {READY_TO_LAUNCH}, never both green labels.
+        add, remove = labels.label_changes([], labels.READY, False, ready=True)
+        self.assertEqual((add, remove), ([labels.READY_TO_LAUNCH], []))
+
+    def test_ready_for_review_stays_when_not_ready_to_launch(self):
+        # A settled PR that is not a ready-to-launch draft plan keeps
+        # ci: ready for review exactly as before.
+        self.assertEqual(
+            labels.label_changes([], labels.READY, False, ready=False),
+            ([labels.READY], []))
+        self.assertEqual(
+            labels.label_changes([labels.READY], labels.READY, False,
+                                 ready=False), ([], []))
+
+    def test_a_pr_carrying_both_green_labels_loses_ready_for_review(self):
+        # A pull request that already shows both gets ci: ready for review
+        # removed so only ci: ready to launch remains.
+        add, remove = labels.label_changes(
+            [labels.READY, labels.READY_TO_LAUNCH], labels.READY, False,
+            ready=True)
+        self.assertEqual((add, remove), ([], [labels.READY]))
+
+    def test_the_marker_sits_beside_review_limit(self):
+        # ci: review limit is a settled stage the marker joins, as before.
+        add, remove = labels.label_changes([labels.REVIEW_LIMIT],
+                                           labels.REVIEW_LIMIT, False,
+                                           ready=True)
+        self.assertEqual((add, remove), ([labels.READY_TO_LAUNCH], []))
+
+    def test_the_two_green_labels_are_never_both_wanted(self):
+        # The owner's rule, across every stage and both markers: a pull request
+        # is never wanted to carry ci: ready for review and ci: ready to launch
+        # at once.
+        for stage in labels.LABELS:
+            for stalled in (False, True):
+                for ready in (False, True):
+                    wanted = labels.wanted_labels(stage, stalled, ready)
+                    self.assertFalse(
+                        labels.READY in wanted
+                        and labels.READY_TO_LAUNCH in wanted,
+                        (stage, stalled, ready))
+
 
 class ReadyToLaunchTest(unittest.TestCase):
     """Each condition of the ready-to-launch marker, on and off. It mirrors the
@@ -577,6 +625,90 @@ class GatherTest(unittest.TestCase):
         self.assertEqual([body["name"] for _, _, body in client.sent],
                          [labels.STALLED])
         self.assertEqual(client.requested[0], "labels?per_page=100&page=1")
+
+
+class MainTest(unittest.TestCase):
+    """``main`` end to end against a ``FakeClient``: the reporting path that
+    derives the stage shown and the launch marker from the wanted set, so a
+    regression in that computation is caught, not only in ``wanted_labels`` and
+    ``summary_row`` in isolation. Run with ``--dry-run`` so no label is written;
+    the reporting still runs."""
+
+    def run_main(self, client):
+        """Run ``main --dry-run`` against ``client``, returning its stdout and
+        the step-summary text it wrote."""
+        handle = tempfile.NamedTemporaryFile("w+", suffix=".md", delete=False)
+        handle.close()
+        env = {"REPO": "owner/repo", "GH_TOKEN": "",
+               "GITHUB_STEP_SUMMARY": handle.name}
+        out = io.StringIO()
+        try:
+            with mock.patch.object(labels, "StatusClient",
+                                   lambda *a, **k: client), \
+                    mock.patch.dict(os.environ, env), \
+                    contextlib.redirect_stdout(out):
+                labels.main(["--dry-run"])
+            with open(handle.name) as summary:
+                written = summary.read()
+        finally:
+            os.unlink(handle.name)
+        return out.getvalue(), written
+
+    def test_a_ready_to_launch_draft_plan_reports_the_marker_as_the_stage(self):
+        # A settled draft plan both ready for review and ready to launch,
+        # already carrying ci: ready for review. Both the stdout line and the
+        # step-summary row show ci: ready to launch as the stage, never beside
+        # ci: ready for review and never with the separate marker suffix.
+        item = {"number": 7,
+                "head": {"sha": "abc", "ref": "project/plan-x",
+                         "repo": {"full_name": "owner/repo"}},
+                "labels": [{"name": labels.READY}]}
+        client = FakeClient([
+            ("pulls?state=open", [item]),
+            ("pulls/7/files", [changed("docs/plans/PLAN-x.md")]),
+            ("pulls/7", plan_pr()),
+            ("actions/workflows/", {"workflow_runs": [
+                dict(run("deployment"), head_branch="project/plan-x")]}),
+            ("commits/abc/check-runs", {"check_runs": [
+                check("All Checks", "success"),
+                check("Test Checks", "success")]}),
+        ])
+        stdout, summary = self.run_main(client)
+        self.assertIn("#7 " + labels.READY_TO_LAUNCH + ":", stdout)
+        self.assertNotIn(" ready-to-launch", stdout)
+        row = [line for line in summary.splitlines()
+               if line.startswith("| #7")][0]
+        self.assertIn("| %s |" % labels.READY_TO_LAUNCH, row)
+        self.assertNotIn("(ready to launch)", row)
+        self.assertNotIn(labels.READY, summary)
+
+    def test_a_plain_ready_pull_request_keeps_ready_for_review_as_the_stage(self):
+        # A settled pull request ready for review that is not a draft plan: the
+        # marker does not apply, so ci: ready for review stays the stage and
+        # ci: ready to launch appears nowhere.
+        item = {"number": 9,
+                "head": {"sha": "abc", "ref": "feature/x",
+                         "repo": {"full_name": "owner/repo"}},
+                "labels": []}
+        client = FakeClient([
+            ("pulls?state=open", [item]),
+            ("pulls/9", {"number": 9, "draft": False,
+                         "base": {"ref": "master",
+                                  "repo": {"default_branch": "master"}},
+                         "head": {"ref": "feature/x", "sha": "abc",
+                                  "repo": {"full_name": "owner/repo"}},
+                         "mergeable_state": "clean"}),
+            ("actions/workflows/", {"workflow_runs": [
+                dict(run("deployment"), head_branch="feature/x")]}),
+            ("commits/abc/check-runs", {"check_runs": [
+                check("All Checks", "success"),
+                check("Test Checks", "success")]}),
+        ])
+        stdout, summary = self.run_main(client)
+        self.assertIn("#9 " + labels.READY + ":", stdout)
+        self.assertNotIn(labels.READY_TO_LAUNCH, stdout)
+        self.assertIn(labels.READY, summary)
+        self.assertNotIn(labels.READY_TO_LAUNCH, summary)
 
 
 class CapStatusTest(unittest.TestCase):
