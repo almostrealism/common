@@ -12,8 +12,8 @@ import java.util.stream.IntStream;
 
 public class JavaFileGenerator {
 	// TODO(review): growing the slot pool per branch is a stopgap; slots are never recycled by NativeCompiler.reserveLibraryTarget
-	public static final int start = 7000;
-	public static final int count = 1000;
+	public static final int start = 8000;
+	public static final int count = 2000;
 
 	public static void main(String[] args) {
 		StringBuilder template = new StringBuilder();
