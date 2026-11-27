@@ -280,6 +280,12 @@ def _require_repo_in_scope(repo_url: str, branch: str = "") -> None:
     unrelated repository that merely shares the branch name. Unscoped callers
     always pass.
 
+    When the branch-owner listing cannot be read (the controller errors and
+    :func:`_list_workstreams_on_branch` returns ``None``), the check fails
+    closed: it refuses rather than falling through to the repository-wide
+    check, which would otherwise authorize the branch whenever any in-scope
+    workstream names the repository on another branch.
+
     Args:
         repo_url: The repository the caller named; empty passes.
         branch: The branch the caller named, or empty for the whole repository.
@@ -292,6 +298,15 @@ def _require_repo_in_scope(repo_url: str, branch: str = "") -> None:
         return
     if branch:
         owners = _list_workstreams_on_branch(repo_url, branch, enforce_scope=False)
+        if owners is None:
+            # The branch-owner listing could not be read (a controller error),
+            # so whether another workspace owns this branch is unknown. Fail
+            # closed rather than fall through to the repository-wide check,
+            # which would authorize the branch whenever any in-scope
+            # workstream names the repository on some other branch.
+            raise PermissionError(
+                f"Could not determine the owner of branch '{branch}' on repository "
+                f"'{repo_url}' to verify workspace scope; refusing to authorize it.")
         if owners:
             # (repo_url, branch) is unique, so the first match is the owner.
             owner = owners[0]

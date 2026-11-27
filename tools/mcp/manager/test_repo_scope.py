@@ -181,6 +181,32 @@ class RepoScopeTests(unittest.TestCase):
         self.assertIn("not scoped", result["error"])
         client.search_by_branch.assert_not_called()
 
+    def test_branch_listing_failure_fails_closed_before_repo_wide_fallback(
+            self, mock_client_fn, *_):
+        """A controller error on the branch-owner listing must not let the
+        repository-wide fallback authorize a branch owned by another workspace.
+        The branch query for (OWN_REPO, feature/theirs) fails (``None``), while
+        the repository-wide query would succeed because TOWN owns OWN_REPO on
+        another branch — so the old fall-through would have authorized TOTHER's
+        branch. The caller must be refused instead."""
+        client = self._client(mock_client_fn)
+        _set_workspaces("TOWN")
+        calls = {"n": 0}
+
+        def flaky_controller(path, timeout=10):
+            if path.startswith("/api/workstreams"):
+                calls["n"] += 1
+                if calls["n"] == 1:
+                    # The branch-owner listing is unreadable this time.
+                    return None
+            return _controller_get(path, timeout)
+
+        with patch.object(server, "_controller_get", side_effect=flaky_controller):
+            result = server.workstream_context(
+                repo_url=OWN_REPO, branch="feature/theirs")
+        self.assertFalse(result["ok"], result)
+        client.search_by_branch.assert_not_called()
+
     def test_scope_all_without_a_repo_is_refused_for_scoped_callers(
             self, mock_client_fn, *_):
         """``scope='all'`` with no repository or workstream would read across
