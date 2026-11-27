@@ -167,8 +167,8 @@ for the active neurons (stream compaction / prefix sum) is a further
 optimisation left as a follow-up, so the first version does not depend on a
 compaction primitive existing.
 
-Two properties of this shape differ from every computation the framework emits
-today, and the implementation must handle both explicitly:
+Two properties of this shape set it apart from the deterministic forward
+product, and the implementation must handle both explicitly:
 
 - **The output must be zeroed before the scatter.** Atomic accumulation adds
   into whatever the output buffer already holds, and a destination reused
@@ -266,14 +266,31 @@ A reviewer can confirm the task is done when:
    (e.g. an explicitly-named event-driven product) or as a directly-constructed
    computation? Either way it must not be auto-selected by `matmul`.
 6. **Where the output reset lives.** The scatter needs its output zeroed before
-   every evaluation (see "First viable version"). The choices are a separate
-   zeroing computation composed before the scatter, so the optimizer sees two
-   kernels with an explicit ordering, or zeroing built into the scatter
-   computation itself. Zeroing inside one kernel does not work, because
-   threads cannot be ordered across the whole range without a global
-   barrier. The primitive sub-task (A) should decide this, because every
-   future consumer of the atomic accumulate faces the same requirement.
-   <!-- TODO(review): clarify how "zeroing built into the scatter computation" differs from the rejected single-kernel zeroing, and reconcile with "only Process.optimize decides kernel boundaries". -->
+   every evaluation (see "First viable version"). The reset and the scatter are
+   necessarily two distinct operations: the reset writes every output position
+   exactly once, the scatter then atomic-accumulates into those positions, and
+   the second must observe the first as complete. What cannot work is *fusing*
+   them into a single kernel pass over the source range — a reset interleaved
+   with the scatter in one thread grid, where one thread zeroes an output
+   position while another is already accumulating into it, because threads
+   cannot be ordered across the whole range without a global barrier. That
+   fused form is the one this plan rejects. The two viable choices both keep
+   reset and scatter as separate operations; they differ only in who assembles
+   them:
+   - A separate zeroing computation that the caller composes before the scatter.
+   - The scatter computation is itself a composite operation (an
+     `OperationList`) of a reset sub-operation followed by the scatter
+     sub-operation, so a caller gets the reset for free.
+
+   Either way the two operations stay separate and the kernel boundary between
+   them is still the optimizer's to choose — each sub-operation is an isolation
+   target in its own right (`isIsolationTarget`), and neither the caller nor the
+   composite calls `isolate()` or otherwise splits the graph into kernels by
+   hand. This is consistent with the rule that only `Process.optimize` decides
+   kernel boundaries: composing two operations is not the same as deciding where
+   a kernel begins. The primitive sub-task (A) should decide between the two,
+   because every future consumer of the atomic accumulate faces the same
+   requirement.
 
 
 ### Recommended split
