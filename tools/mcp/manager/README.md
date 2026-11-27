@@ -492,8 +492,9 @@ shape of a confident "it does not do X, only Y" that no evidence says — is
 flagged `polarity`. When any sentence fails, the model is asked once to revise
 its answer, from the same evidence, with each failing sentence and its reason in
 front of it (`InferenceBackend.revise`). The revision is kept only if it has
-fewer warnings, does not answer "Not documented." where the draft answered, and
-keeps the `BASIS:`/`CONFLICTS:` trailer the draft had;
+fewer warnings, does not answer "Not documented." where the draft answered,
+leaves a non-empty answer body, and keeps every `BASIS:`/`CONFLICTS:` trailer
+line the draft had (dropping just one is rejected);
 `citation_retry` in the response records the warning counts before and after
 and which answer was `kept`. Sentences that still fail are marked
 `[unsupported]` in the answer and listed in `citation_warnings`. A question naming a file the snapshot does not contain is

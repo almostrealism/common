@@ -242,12 +242,24 @@ class TestNoteRetrieval(_Pipeline):
 class TestPureHelpers(unittest.TestCase):
 
     def test_parse_trailer(self):
-        body, basis, conflicts, present = consult_engine.parse_trailer(
-            "Answer [D1].\nBASIS: documentation+notes\nCONFLICTS: N1 vs D2 — x; none")
+        body, basis, conflicts, basis_present, conflicts_present = \
+            consult_engine.parse_trailer(
+                "Answer [D1].\nBASIS: documentation+notes\nCONFLICTS: N1 vs D2 — x; none")
         self.assertEqual(body, "Answer [D1].")
         self.assertEqual(basis, "documentation+notes")
         self.assertEqual(conflicts, ["N1 vs D2 — x"])
-        self.assertTrue(present)
+        self.assertTrue(basis_present)
+        self.assertTrue(conflicts_present)
+
+    def test_parse_trailer_tracks_each_line_separately(self):
+        _, _, _, basis_present, conflicts_present = consult_engine.parse_trailer(
+            "Answer [D1].\nBASIS: documentation")
+        self.assertTrue(basis_present)
+        self.assertFalse(conflicts_present)
+        _, _, _, basis_present, conflicts_present = consult_engine.parse_trailer(
+            "Answer [D1].\nCONFLICTS: none")
+        self.assertFalse(basis_present)
+        self.assertTrue(conflicts_present)
 
     def test_compute_basis_counts_only_fact_tiers(self):
         ev = EvidenceList()
@@ -551,6 +563,28 @@ class TestCitationRetry(_Pipeline):
     def test_a_kept_revision_records_no_trailer_loss(self):
         result, _ = self.run_with(self.BAD, Synthesis(self.GOOD, "fake"))
         self.assertNotIn("revision_trailer_missing", result["citation_retry"])
+
+    def test_a_revision_that_empties_the_body_is_not_kept(self):
+        # A revision that keeps only the trailer has no warnings, but
+        # _post_process would abstain on its empty body, so the retry must
+        # not replace the answered draft with it.
+        result, _ = self.run_with(self.BAD, Synthesis(
+            "BASIS: documentation\nCONFLICTS: none", "fake"))
+        self.assertEqual(result["citation_retry"]["kept"], "draft")
+        self.assertTrue(result["citation_retry"]["revision_empty"])
+        self.assertFalse(result["abstained"])
+        self.assertEqual(len(result["citation_warnings"]), 1)
+
+    def test_a_revision_that_drops_one_trailer_line_is_not_kept(self):
+        # The revision fixes the citation but keeps only BASIS:, dropping the
+        # CONFLICTS: line the draft had. A partial trailer is malformed, so
+        # the draft is kept.
+        partial = "It rejects edits to base-branch tests [D1]. It exits 3 [I1].\nBASIS: documentation"
+        result, _ = self.run_with(self.BAD, Synthesis(partial, "fake"))
+        self.assertEqual(result["citation_retry"]["kept"], "draft")
+        self.assertEqual(result["citation_retry"]["warnings_after"], 0)
+        self.assertTrue(result["citation_retry"]["revision_trailer_missing"])
+        self.assertEqual(len(result["citation_warnings"]), 1)
 
     def verify_calls(self, draft, revision=None):
         """Run a consult and return how many times the verifier ran."""

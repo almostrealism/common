@@ -260,12 +260,15 @@ def nonexistent_mentions(question: str, keywords, index) -> list[str]:
     return missing
 
 
-def parse_trailer(text: str) -> tuple[str, Optional[str], list, bool]:
+def parse_trailer(text: str) -> tuple[str, Optional[str], list, bool, bool]:
     """Split the model's output into body and trailer.
 
-    Returns ``(body, stated_basis, reported_conflicts, trailer_present)``;
-    ``stated_basis`` is ``None`` when the line is missing or names no known
-    basis.
+    Returns ``(body, stated_basis, reported_conflicts, basis_present,
+    conflicts_present)``; ``stated_basis`` is ``None`` when the line is
+    missing or names no known basis. The two presence flags are reported
+    separately so a caller can tell a complete two-line trailer from one
+    that keeps only ``BASIS:`` or only ``CONFLICTS:``; ``basis_present or
+    conflicts_present`` is the aggregate "a trailer is present at all".
     """
     basis_match = _BASIS_LINE.search(text)
     conflicts_match = _CONFLICTS_LINE.search(text)
@@ -280,7 +283,7 @@ def parse_trailer(text: str) -> tuple[str, Optional[str], list, bool]:
                 continue
             conflicts.append(part.strip())
     body = _CONFLICTS_LINE.sub("", _BASIS_LINE.sub("", text)).strip()
-    return body, stated, conflicts, bool(basis_match or conflicts_match)
+    return body, stated, conflicts, bool(basis_match), bool(conflicts_match)
 
 
 def compute_basis(ids: list, evidence: EvidenceList) -> str:
@@ -561,11 +564,15 @@ class ConsultTurn:
         flagged sentences and reasons in front of it.
 
         The revision is kept only when it has fewer warnings than the draft,
-        does not abstain where the draft answered, and keeps the ``BASIS:`` /
-        ``CONFLICTS:`` trailer the draft had, so a retry cannot turn an answer
-        into a refusal or a malformed response. There is at most one retry; a backend
-        without ``revise``, or a revision that fails, keeps the draft. When
-        a retry runs, ``citation_retry`` in *result* says what it found.
+        does not abstain where the draft answered, leaves a non-empty answer
+        body, and keeps every ``BASIS:`` / ``CONFLICTS:`` trailer line the
+        draft had, so a retry cannot turn an answer into a refusal or a
+        malformed response. An empty body counts as a refusal here because
+        :meth:`_post_process` abstains on it, and each trailer line is
+        checked on its own so dropping one while keeping the other is
+        rejected. There is at most one retry; a backend without ``revise``,
+        or a revision that fails, keeps the draft. When a retry runs,
+        ``citation_retry`` in *result* says what it found.
 
         Args:
             llm: The inference backend the draft came from.
@@ -593,10 +600,14 @@ class ConsultTurn:
         revision = self._verify(synthesis.text)
         record["warnings_after"] = len(revision["report"].warnings)
         record["revision_abstained"] = revision["abstained"]
-        lost_trailer = draft["trailer_present"] and not revision["trailer_present"]
+        lost_trailer = (draft["basis_present"] and not revision["basis_present"]) \
+            or (draft["conflicts_present"] and not revision["conflicts_present"])
         if lost_trailer:
             record["revision_trailer_missing"] = True
-        if revision["abstained"] or lost_trailer \
+        empty_body = not revision["abstained"] and not revision["body"]
+        if empty_body:
+            record["revision_empty"] = True
+        if revision["abstained"] or lost_trailer or empty_body \
                 or record["warnings_after"] >= len(warnings):
             return draft
         record["kept"] = "revision"
@@ -610,17 +621,22 @@ class ConsultTurn:
 
         Returns:
             ``body`` (the answer without its trailer and abstention lead),
-            ``conflict_lines``, ``trailer_present``, ``abstained`` (the model
-            said "Not documented."), ``report`` (the verifier's
+            ``conflict_lines``, ``basis_present`` and ``conflicts_present``
+            (each required trailer line, tracked separately),
+            ``trailer_present`` (either line present), ``abstained`` (the
+            model said "Not documented."), ``report`` (the verifier's
             :class:`VerificationReport`) and ``value_conflicts``.
         """
-        body, _, conflict_lines, trailer_present = parse_trailer(text)
+        body, _, conflict_lines, basis_present, conflicts_present = parse_trailer(text)
         abstained = bool(_NOT_DOCUMENTED.match(body))
         if abstained:
             body = _NOT_DOCUMENTED.sub("", body, count=1).strip()
         found_value_conflicts, contradicted = value_conflicts(self.evidence)
         return {"body": body, "conflict_lines": conflict_lines,
-                "trailer_present": trailer_present, "abstained": abstained,
+                "basis_present": basis_present,
+                "conflicts_present": conflicts_present,
+                "trailer_present": basis_present or conflicts_present,
+                "abstained": abstained,
                 "report": verify(body, self.evidence, contradicted),
                 "value_conflicts": found_value_conflicts}
 
