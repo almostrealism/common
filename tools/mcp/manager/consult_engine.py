@@ -566,12 +566,19 @@ class ConsultTurn:
         The revision is kept only when it has fewer warnings than the draft,
         does not abstain where the draft answered, leaves a non-empty answer
         body, keeps every ``BASIS:`` / ``CONFLICTS:`` trailer line the draft
-        had, leaves the draft's reported conflicts unchanged, and does not
-        raise the count of uncited claims, so a retry can repair citations but
+        had, leaves the draft's reported conflicts unchanged, does not raise
+        the count of uncited claims, and leaves every draft sentence the
+        verifier did not flag unchanged, so a retry can repair citations but
         cannot turn an answer into a refusal, a malformed response, a response
-        whose published conflict metadata differs from the draft's, or a
-        response that trades a flagged cited sentence for a grounded but
-        uncited one. The uncited-claim guard is needed because
+        whose published conflict metadata differs from the draft's, a response
+        that trades a flagged cited sentence for a grounded but uncited one, or
+        a response that rewrites or drops a sentence the check never faulted.
+        The unflagged-sentence guard enforces the revision prompt's "keep every
+        other sentence as it is": the model is shown only the flagged sentences,
+        so a revision that replaced an unrelated, correctly cited sentence with
+        another supported one would otherwise satisfy every aggregate guard and
+        be published, altering the answer beyond citation repair
+        (:func:`_unflagged_sentences_survive`). The uncited-claim guard is needed because
         ``VerificationReport.warnings`` excludes grounded-but-uncited sentences
         (:data:`REASON_UNCITED`) while :attr:`VerificationReport.uncited_claims`
         counts them: without it a revision could lower the warning count by
@@ -629,8 +636,12 @@ class ConsultTurn:
             > draft["report"].uncited_claims
         if uncited_increased:
             record["revision_uncited_increased"] = True
+        unflagged_altered = not revision["abstained"] and not empty_body \
+            and not _unflagged_sentences_survive(draft, revision, warnings)
+        if unflagged_altered:
+            record["revision_altered_unflagged"] = True
         if revision["abstained"] or lost_trailer or empty_body \
-                or conflicts_changed or uncited_increased \
+                or conflicts_changed or uncited_increased or unflagged_altered \
                 or record["warnings_after"] >= len(warnings):
             return draft
         record["kept"] = "revision"
@@ -894,4 +905,46 @@ def _remove_span(answer: str, sentence) -> str:
     if left.endswith(" ") and right.startswith(" "):
         right = right.lstrip(" ")
     return left + right
+
+
+def _unflagged_sentences_survive(draft: dict, revision: dict, warnings: list) -> bool:
+    """Whether every draft sentence the retry did not flag survives in the revision.
+
+    The citation retry's mandate is to repair the flagged sentences and nothing
+    else: :func:`inference_prompts.revision_instructions` shows the model only
+    those sentences and tells it to "keep every other sentence as it is". A
+    revision that drops or rewrites an *unflagged* sentence — trading a valid,
+    correctly cited claim for an unrelated one — would still pass the
+    warning-count, trailer, conflict and uncited-claim guards, so without this
+    check it could be published and alter the answer beyond citation repair. A
+    draft sentence counts as unflagged when its text is not among the flagged
+    sentences the model was shown; each such sentence must reappear, whitespace
+    aside, among the revision's sentences. The comparison errs towards keeping
+    the draft: a merely reworded survivor is treated as altered, which only
+    rejects the revision — the safe direction.
+
+    Args:
+        draft: The :meth:`ConsultTurn._verify` result for the draft.
+        revision: The :meth:`ConsultTurn._verify` result for the revision.
+        warnings: The draft's ``citation_warnings`` — the flagged sentences
+            shown to the model, each carrying the ``sentence`` text.
+
+    Returns:
+        ``True`` when no unflagged draft sentence was altered or dropped.
+    """
+    flagged = {w.get("sentence", "") for w in warnings}
+    kept = {_collapse_space(s.text) for s in revision["report"].sentences}
+    for sentence in draft["report"].sentences:
+        text = sentence.text.strip()
+        if text in flagged:
+            continue
+        if _collapse_space(text) not in kept:
+            return False
+    return True
+
+
+def _collapse_space(text: str) -> str:
+    """``text`` with leading, trailing and internal whitespace runs collapsed
+    to single spaces, so two sentences are compared on content not spacing."""
+    return " ".join(text.split())
 

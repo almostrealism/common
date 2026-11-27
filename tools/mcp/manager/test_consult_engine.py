@@ -661,6 +661,26 @@ class TestCitationRetry(_Pipeline):
         self.assertEqual(result["citation_retry"]["kept"], "revision")
         self.assertNotIn("revision_uncited_increased", result["citation_retry"])
 
+    def test_a_revision_that_rewrites_an_unflagged_sentence_is_not_kept(self):
+        # The revision repairs the flagged "It exits 3" sentence but also
+        # replaces the unflagged, correctly cited first sentence with an
+        # unrelated supported one. That is beyond the citation retry's mandate
+        # (the prompt tells the model to keep every other sentence as it is),
+        # and the replacement carries no warning, so only the unflagged guard
+        # catches it; the draft is kept.
+        revision = ("It blocks commits to protected files [D1]. It exits 3 [I1].\n"
+                    "BASIS: documentation\nCONFLICTS: none")
+        result, _ = self.run_with(self.BAD, Synthesis(revision, "fake"))
+        self.assertEqual(result["citation_retry"]["kept"], "draft")
+        self.assertEqual(result["citation_retry"]["warnings_after"], 0)
+        self.assertTrue(result["citation_retry"]["revision_altered_unflagged"])
+        self.assertEqual(len(result["citation_warnings"]), 1)
+
+    def test_a_kept_revision_records_no_unflagged_change(self):
+        result, _ = self.run_with(self.BAD, Synthesis(self.GOOD, "fake"))
+        self.assertEqual(result["citation_retry"]["kept"], "revision")
+        self.assertNotIn("revision_altered_unflagged", result["citation_retry"])
+
     def verify_calls(self, draft, revision=None):
         """Run a consult and return how many times the verifier ran."""
         with patch.object(consult_engine, "verify",
