@@ -61,11 +61,14 @@ def workstream_submit_task(
     # Removed legacy config parameters (model / effort / default_runner /
     # runners). Declared without type hints so they stay out of the tool's
     # declared parameter schema while still being captured here for a clear
-    # rejection error — see _reject_removed_config_params.
+    # rejection error — see _reject_removed_config_params. They keep their
+    # original positions so an existing positional call still binds to them,
+    # which is why any genuinely new parameter is appended after them.
     model="",
     effort="",
     default_runner="",
     runners="",
+    inactivity_timeout_seconds: Optional[int] = None,
 ) -> dict:
     """Submit a coding task to a FlowTree agent.
 
@@ -138,7 +141,10 @@ def workstream_submit_task(
         description: Short human-readable description of the task (shown
             in Slack notifications).
         max_turns: Maximum Claude Code turns (0 = use workstream default).
+            A value above the workstream's own limit is clamped to it; the
+            response's ``clampedLimits`` names what was clamped.
         max_budget_usd: Maximum cost in USD (0 = use workstream default).
+            Clamped to the workstream's limit like ``max_turns``.
         protect_test_files: If true, the harness keeps every test method that
             exists on the base branch exactly as it is (new tests and
             helpers are still allowed). Use it for a job sent to make failing
@@ -452,6 +458,12 @@ def workstream_submit_task(
             so it cannot create the standing self-listener loop that
             registering a workstream as its own listener would. Defaults to
             False.
+        inactivity_timeout_seconds: Per-job silence budget, in seconds: how
+            long an agent session may produce no output before the inactivity
+            watchdog destroys it. It can only shorten the runner's own budget
+            (about 35 minutes for Claude Code); a longer value is held to the
+            runner's when the job launches. Leave unset (``None``) to use the
+            runner's. Must be positive.
 
     Returns:
         Dictionary with job_id and workstream_id on success.
@@ -625,6 +637,15 @@ def workstream_submit_task(
                 "Pass max_wall_clock_hours=0 to run this job without a ceiling",
                 "Omit max_wall_clock_hours to inherit the workstream setting",
             ],
+        }
+    if inactivity_timeout_seconds is not None and inactivity_timeout_seconds <= 0:
+        return {
+            "ok": False,
+            "error": (
+                "inactivity_timeout_seconds must be positive; got "
+                f"{inactivity_timeout_seconds}. Omit it to use the runner's "
+                "own silence budget."
+            ),
         }
     err = server._check_short_strings(
         workstream_id=workstream_id, target_branch=target_branch,
@@ -847,6 +868,8 @@ def workstream_submit_task(
     # default, apply in turn.
     if max_wall_clock_hours is not None:
         payload["maxWallClockHours"] = int(max_wall_clock_hours)
+    if inactivity_timeout_seconds is not None:
+        payload["inactivityTimeoutSeconds"] = int(inactivity_timeout_seconds)
     # sensitiveFileProtectionEnabled defaults to TRUE; forward only when the
     # operator has explicitly disabled it. Mirrors the inverted semantics of
     # the other activation booleans (which default to false and forward on true).

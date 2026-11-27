@@ -36,6 +36,7 @@ GRANTED_TOOLS = (
     "agent_options",
     "send_message",
     "await_message",
+    "mailbox_peek",
     "job_report_blocked",
     "send_alert",
     "memory_recall",
