@@ -160,6 +160,74 @@ class StatsQueryHandler {
     }
 
     /**
+     * Returns the derived lifecycle state of a job, the same label the pending
+     * and active listings give it: {@link PendingJob#SUBMITTED} or
+     * {@link PendingJob#LOST} for a job no worker has started,
+     * {@link ActiveJob#RUNNING} or {@link ActiveJob#UNRESPONSIVE} for one that
+     * is running, and the recorded status for one that has finished.
+     *
+     * <p>{@code LOST} and {@code UNRESPONSIVE} are labels, not terminal
+     * statuses. A lost job may still be queued for a worker whose labels
+     * match, or be re-dispatched when the controller restarts, and
+     * {@link io.flowtree.controller.LostJobRecovery} already escalates it once
+     * to a person; recording it as finished would cut both off.</p>
+     *
+     * @param jobId  the job identifier
+     * @param status the job's recorded status
+     * @param now    the reference instant for the thresholds
+     * @return the derived state
+     */
+    String jobState(String jobId, JobCompletionEvent.Status status, Instant now) {
+        if (status == JobCompletionEvent.Status.SUBMITTED) {
+            PendingJob pending = pendingJob(jobId);
+            return pending == null ? PendingJob.SUBMITTED : pending.derivedState(lostThreshold, now);
+        } else if (status == JobCompletionEvent.Status.STARTED) {
+            ActiveJob active = activeJob(jobId);
+            return active == null ? ActiveJob.RUNNING : active.derivedState(silentThreshold, now);
+        }
+
+        return status.name();
+    }
+
+    /**
+     * Returns when the controller accepted a job.
+     *
+     * @param jobId the job identifier
+     * @return the submission time, or {@code null} when none is recorded or no
+     *         store is configured
+     */
+    Instant jobSubmittedAt(String jobId) {
+        return statsStore == null ? null : statsStore.getSubmittedAt(jobId);
+    }
+
+    /**
+     * Returns the workstream of a job that has not finished, as the store
+     * records it. A job that is only submitted has no in-memory history on any
+     * notifier, so this is the only place its workstream is known.
+     *
+     * @param jobId the job identifier
+     * @return the workstream identifier, or {@code null} when the job is not
+     *         pending or running, or no store is configured
+     */
+    String unfinishedJobWorkstreamId(String jobId) {
+        PendingJob pending = pendingJob(jobId);
+        if (pending != null) return pending.workstreamId();
+
+        ActiveJob active = activeJob(jobId);
+        return active == null ? null : active.workstreamId();
+    }
+
+    /** Returns the store's pending record for a job, or {@code null} when there is none. */
+    private PendingJob pendingJob(String jobId) {
+        return statsStore == null ? null : statsStore.getPendingJob(jobId);
+    }
+
+    /** Returns the store's active record for a job, or {@code null} when there is none. */
+    private ActiveJob activeJob(String jobId) {
+        return statsStore == null ? null : statsStore.getActiveJob(jobId);
+    }
+
+    /**
      * Handles a {@code GET /api/workstreams/{id}/jobs/active} request.
      *
      * <p>Each entry carries the job's age and how long it has been since its

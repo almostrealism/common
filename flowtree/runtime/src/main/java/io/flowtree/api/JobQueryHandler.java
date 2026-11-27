@@ -19,6 +19,7 @@ package io.flowtree.api;
 import fi.iki.elonen.NanoHTTPD;
 import fi.iki.elonen.NanoHTTPD.Response;
 import io.flowtree.JsonFieldExtractor;
+import io.flowtree.controller.JobStatsStore;
 import io.flowtree.jobs.JobCompletionEvent;
 import io.flowtree.slack.NotifierRegistry;
 import io.flowtree.slack.SlackNotifier;
@@ -98,26 +99,63 @@ public final class JobQueryHandler {
      * Handles {@code GET /api/jobs/{jobId}}.
      * Returns the most recent event for the specified job.
      *
+     * <p>The job is read from the controller's job store first, which records
+     * a job from the moment it is accepted, and from the notifiers' in-memory
+     * history only when the store does not know it (or none is configured). A
+     * job that is submitted but not yet started, or lost, therefore has a
+     * record here, as it does in the pending-job listing.</p>
+     *
+     * <p>Besides the event fields, the response carries the job's derived
+     * {@code state} ({@code SUBMITTED}, {@code LOST}, {@code RUNNING},
+     * {@code UNRESPONSIVE}, or the terminal status; see
+     * {@link StatsQueryHandler#jobState}), its {@code submittedAt} when
+     * recorded, and its {@code phase} when one is recorded. The
+     * {@code workstreamId} of a job that has not finished comes from the store
+     * when no notifier has seen the job yet.</p>
+     *
      * @param jobId the job identifier
      * @return JSON object for the job event, or 404 if not found
      */
     Response getJob(String jobId) {
-        JobCompletionEvent event = notifiers.findJob(jobId);
+        StatsQueryHandler statsHandler = stats != null ? stats.get() : null;
+        JobStatsStore store = statsHandler != null ? statsHandler.store() : null;
+
+        JobCompletionEvent event = store != null ? store.getJob(jobId) : null;
+        if (event == null) event = notifiers.findJob(jobId);
         if (event == null) {
             return NanoHTTPD.newFixedLengthResponse(Response.Status.NOT_FOUND,
                     "application/json", "{\"ok\":false,\"error\":\"Job not found\"}");
         }
+
         String workstreamId = notifiers.findWorkstreamIdForJob(jobId);
+        if (workstreamId == null && statsHandler != null) {
+            workstreamId = statsHandler.unfinishedJobWorkstreamId(jobId);
+        }
         String json = jobEventToJson(event, workstreamId);
 
-        StatsQueryHandler statsHandler = stats != null ? stats.get() : null;
-        String phase = statsHandler != null ? statsHandler.jobPhase(jobId) : null;
-        if (phase != null && !phase.isEmpty()) {
-            json = json.substring(0, json.length() - 1) + ",\"phase\":\""
-                    + JsonFieldExtractor.escapeJson(phase) + "\"}";
+        if (statsHandler != null) {
+            json = withField(json, "state", statsHandler.jobState(jobId, event.getStatus(), Instant.now()));
+            Instant submittedAt = statsHandler.jobSubmittedAt(jobId);
+            json = withField(json, "submittedAt", submittedAt == null ? null : submittedAt.toString());
+            json = withField(json, "phase", statsHandler.jobPhase(jobId));
         }
 
         return NanoHTTPD.newFixedLengthResponse(Response.Status.OK, "application/json", json);
+    }
+
+    /**
+     * Returns a JSON object with one more string field, or the object unchanged
+     * when the value is {@code null} or empty.
+     *
+     * @param json  a JSON object, ending in its closing brace
+     * @param name  the field name
+     * @param value the field value
+     * @return the object with the field added
+     */
+    private static String withField(String json, String name, String value) {
+        if (value == null || value.isEmpty()) return json;
+        return json.substring(0, json.length() - 1) + ",\"" + name + "\":\""
+                + JsonFieldExtractor.escapeJson(value) + "\"}";
     }
 
     /**

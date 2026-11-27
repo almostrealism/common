@@ -987,6 +987,32 @@ public class JobStatsStore extends ControllerDatabase {
     }
 
     /**
+     * Returns the pending record of one job, as {@link #getPendingJobs} lists it.
+     *
+     * @param jobId the job identifier
+     * @return the job, or {@code null} when it is not pending or the store is
+     *         unavailable
+     */
+    public synchronized PendingJob getPendingJob(String jobId) {
+        if (jobId == null) return null;
+        return getPendingJobs(null).stream()
+                .filter(job -> jobId.equals(job.jobId())).findFirst().orElse(null);
+    }
+
+    /**
+     * Returns the active record of one job, as {@link #getActiveJobs} lists it.
+     *
+     * @param jobId the job identifier
+     * @return the job, or {@code null} when it is not running or the store is
+     *         unavailable
+     */
+    public synchronized ActiveJob getActiveJob(String jobId) {
+        if (jobId == null) return null;
+        return getActiveJobs(null).stream()
+                .filter(job -> jobId.equals(job.jobId())).findFirst().orElse(null);
+    }
+
+    /**
      * Returns the moment the controller accepted a job, as recorded by
      * {@link #recordJobSubmitted}.
      *
