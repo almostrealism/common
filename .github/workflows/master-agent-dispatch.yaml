@@ -79,6 +79,7 @@ on:
           - "coverage"
           - "consolidation"
           - "concept"
+          - "generalization"
           - "performance"
           - "pdsl"
           - "retrospective"
@@ -113,6 +114,11 @@ on:
         type: boolean
       ignore_interval_concept:
         description: "Run the concept-alignment QA even if its minimum interval has not passed (a round still in progress blocks it)"
+        required: false
+        default: false
+        type: boolean
+      ignore_interval_generalization:
+        description: "Run the generalization QA even if its minimum interval has not passed (a round still in progress blocks it)"
         required: false
         default: false
         type: boolean
@@ -1035,6 +1041,54 @@ jobs:
     secrets:
       FLOWTREE_CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
 
+  # ── Quality Assurance — Generalization ───────────────────
+  # Takes one development capability that works today only for common — a
+  # FlowTree feature, an ar-manager/consult/memory tool, a build validator —
+  # and makes it usable by another repository that adopts the pipeline, by
+  # lifting its hard-coded common path/name/branch/Maven assumption to a
+  # consumer-supplied input whose default is common's current value, with
+  # common's behavior preserved. A capability that lives under a locked CI path
+  # (.github/workflows, .github/actions, tools/ci — which this qa/generalize-
+  # branch cannot change) is captured as a docs/plans plan plus a tracker task
+  # for a person to land on a ci/ branch instead. A pilot like concept-qa and
+  # flaky-qa: gated by the shared MAX_OPEN_PRS, outside the full cadence. Pins
+  # claude/opus at max effort — spotting coupling and choosing the smallest
+  # freeing change is the synthesis a model under-thinks, as in the
+  # retrospective — and keeps the test lock on, since a behavior-preserving
+  # generalization must not change what existing tests assert. Its template is
+  # this repository's own (generalization.txt), passed by path and read as data.
+  generalization-qa:
+    if: >-
+      github.event_name != 'workflow_dispatch' ||
+      github.event.inputs.agent == 'all' ||
+      github.event.inputs.agent == 'generalization'
+    permissions:
+      contents: write
+      pull-requests: write
+
+    # Serialize so two merges landing together cannot both pass the gate.
+    concurrency:
+      group: generalization-qa
+      cancel-in-progress: false
+
+    uses: ./.github/workflows/qa-round.yaml
+    with:
+      round-name: "generalization-qa"
+      branch-prefix: "qa/generalize-"
+      min-interval-days: 5
+      # The workflow's MAX_OPEN_PRS; see the note above the jobs.
+      max-open-prs: 14
+      force: ${{ github.event.inputs.force || 'false' }}
+      ignore-interval: ${{ github.event.inputs.ignore_interval_generalization || 'false' }}
+      prompt: tools/ci/prompts/generalization.txt
+      protect-test-files: "true"
+      phase-configs: '{"primary": {"runner": "claude", "model": "opus", "effort": "max", "provider": "anthropic"}}'
+      description: "Free a common-only development capability for use by other repositories"
+      controller-url: ${{ vars.FLOWTREE_CONTROLLER_URL }}
+      cf-access-client-id: ${{ vars.FLOWTREE_CF_ACCESS_CLIENT_ID }}
+    secrets:
+      FLOWTREE_CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
+
   # ── Quality Assurance — Performance ──────────────────────
   # Picks an existing slow test, profiles where its time goes, and makes the
   # framework code it exercises measurably faster, with the test untouched. Its
@@ -1150,7 +1204,7 @@ jobs:
       force: ${{ github.event.inputs.force || 'false' }}
       ignore-interval: ${{ github.event.inputs.ignore_interval_retrospective || 'false' }}
       prompt: retrospective
-      template-vars: '{"REVIEW_SINCE": "14 days ago", "QA_PREFIXES": "qa/docs- qa/defect- qa/flaky- qa/coverage- qa/consolidate- qa/concept- qa/performance- qa/pdsl- qa/retro- ci/qa-"}'
+      template-vars: '{"REVIEW_SINCE": "14 days ago", "QA_PREFIXES": "qa/docs- qa/defect- qa/flaky- qa/coverage- qa/consolidate- qa/concept- qa/generalize- qa/performance- qa/pdsl- qa/retro- ci/qa-"}'
       protect-test-files: "true"
       enforce-changes: "true"
       max-enforce-changes-retries: "0"

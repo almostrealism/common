@@ -273,9 +273,11 @@ one of three jobs (see "Remediation Jobs" in `analysis.yaml` and
 `.github/CLAUDE.md`):
 
 - `auto-resolve-python` — python-tests or python-evals failed; submits at once.
-- `auto-review` — attempt 1 only; always submits one of build failure, code
-  policy, quality gates, docs-only review, or the general review, as soon as the
-  gates report. A gate that failed without recording a cause
+- `auto-review` — validate runs only, and hands off at most once across a run's
+  attempts (so an attempt the infra retry gate re-ran still hands off when it
+  passes, without a second review round); always submits one of build failure,
+  code policy, quality gates, docs-only review, or the general review, as soon
+  as the gates report. A gate that failed without recording a cause
   (`check-quality-gates.sh`'s `unattributed`) is never reported as a finding: the
   branch gets the general review, with a note that the gate is not the agent's
   to fix.
@@ -397,6 +399,7 @@ it knowingly does not cover are in
 | `coverage.txt` | Template for the test-coverage round |
 | `earlier-attempts.txt` | Fragment the rounds sent after a failing test include (`master-fix.txt`, `flaky-hunt.txt`). A failure is handed to every round until a fix merges, so the round first reads the open pull requests and their review comments, the tracker and memories for the same failure, treats an approach the owner rejected as unavailable, and fixes what produced the failure rather than the output, limit or timeout that reported it |
 | `defect-hunt.txt` | Template for the defect hunt. Offered to consumers through `qa-round.yaml`'s `defect-hunt` selector; its test-runner / tooling guidance is an `@include ${TEST_RUNNER_FRAGMENT}` so a non-Maven consumer can select a neutral fragment |
+| `generalization.txt` | Template for the pilot generalization round: take one development capability that works today only for `common` (a FlowTree feature, an ar-manager/consult/memory tool, a build validator) and make it usable by another repository by lifting its hard-coded path/name/branch/Maven coupling to a consumer-supplied input whose default is `common`'s value, with `common`'s behavior preserved — or, for a capability under a locked CI path (`.github/workflows/`, `.github/actions/`, `tools/ci/`) that this `qa/generalize-` branch cannot change, write a `docs/plans/` plan and file a tracker task instead |
 | `test-runner-maven.txt` | The default `TEST_RUNNER_FRAGMENT`: this framework's tooling guidance (`ar-profile-analyzer`, the MCP test runner) a built-in template includes |
 | `test-runner-generic.txt` | A neutral `TEST_RUNNER_FRAGMENT` for a non-Maven consumer: run a bounded selection with the repository's own test runner, read its output as evidence |
 | `flaky-hunt.txt` | Template for the pilot flaky-test hunt: one module, a small named slice run repeatedly on one commit, find a test whose outcome varies, fix the production/test-helper cause or file a follow-up, never editing the existing test |
