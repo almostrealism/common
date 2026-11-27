@@ -234,6 +234,13 @@ public class NativeDataContext extends HardwareDataContext {
 	/**
 	 * Creates a native data context with explicit OpenCL-memory and allocation-mode settings.
 	 *
+	 * <p>When {@code direct} is {@code false}, the context's memory provider copies between Java arrays
+	 * and native memory through the per-class, precision-dependent JNI operations
+	 * {@link org.almostrealism.nio.NativeRead}/{@link org.almostrealism.nio.NativeWrite}. Those bind once
+	 * per JVM, so standing up a second calloc context at a different {@link Precision} in the same JVM
+	 * cannot reuse the first precision's native code: the second precision's first array copy fails fast
+	 * with a {@link org.almostrealism.hardware.HardwareException} rather than overrunning its buffers.</p>
+	 *
 	 * @param name Display name for this context
 	 * @param precision Numeric precision for generated kernels
 	 * @param maxReservation Maximum number of elements that may be allocated
