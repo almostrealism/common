@@ -489,8 +489,13 @@ too. A sentence making a polarity or exclusivity claim ("only", "never",
 "does not", "always", "one X per Y") must be echoed by a cited passage that
 makes a claim of the same kind about the same things; one that is not — the
 shape of a confident "it does not do X, only Y" that no evidence says — is
-flagged `polarity`. Failing sentences are marked `[unsupported]` in the answer
-and listed in `citation_warnings`. A question naming a file the snapshot does not contain is
+flagged `polarity`. When any sentence fails, the model is asked once to revise
+its answer, from the same evidence, with each failing sentence and its reason in
+front of it (`InferenceBackend.revise`). The revision is kept only if it has
+fewer warnings and does not answer "Not documented." where the draft answered;
+`citation_retry` in the response records the warning counts before and after
+and which answer was `kept`. Sentences that still fail are marked
+`[unsupported]` in the answer and listed in `citation_warnings`. A question naming a file the snapshot does not contain is
 answered directly with `nonexistent: true`.
 
 The snapshot index is built in the Dockerfile's `docs` stage before the prune

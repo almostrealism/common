@@ -479,3 +479,66 @@ class TestHedgeWhenSupportIsGone(_Pipeline):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestCitationRetry(_Pipeline):
+    """One revision when the verifier flags sentences: kept only when it has
+    fewer warnings and does not abstain where the draft answered."""
+
+    BAD = ("It rejects edits to base-branch tests [D1]. It exits 3 [D1].\n"
+           "BASIS: documentation\nCONFLICTS: none")
+    GOOD = ("It rejects edits to base-branch tests [D1]. It exits 3 [I1].\n"
+            "BASIS: documentation\nCONFLICTS: none")
+
+    def run_with(self, draft, revision=None, has_revise=True):
+        llm = MagicMock(spec=["consult", "revise"] if has_revise else ["consult"])
+        llm.consult.return_value = Synthesis(draft, "fake")
+        if has_revise:
+            llm.revise.return_value = revision
+        with patch.object(server, "_get_docs", return_value=_docs(
+                [_doc(text="rejects edits to base-branch tests")])), \
+                patch.object(server, "_get_llm", return_value=llm), \
+                patch.object(server, "_get_memory_client", return_value=_Memory([])):
+            result = server.consult(question="What does validate-agent-commit.sh do?",
+                                    keywords=["validate-agent-commit.sh"],
+                                    repo_url="git@github.com:org/repo.git")
+        return result, llm
+
+    def test_a_better_revision_is_kept(self):
+        result, llm = self.run_with(self.BAD, Synthesis(self.GOOD, "fake"))
+        self.assertEqual(result["citation_retry"]["kept"], "revision")
+        self.assertEqual(result["citation_retry"]["warnings_before"], 1)
+        self.assertEqual(result["citation_retry"]["warnings_after"], 0)
+        self.assertEqual(result["citation_warnings"], [])
+        kwargs = llm.revise.call_args.kwargs
+        self.assertEqual(kwargs["draft"], self.BAD)
+        self.assertEqual([w["reason"] for w in kwargs["warnings"]], ["value"])
+
+    def test_a_draft_without_warnings_is_not_revised(self):
+        result, llm = self.run_with(self.GOOD)
+        llm.revise.assert_not_called()
+        self.assertNotIn("citation_retry", result)
+
+    def test_a_revision_that_abstains_is_not_kept(self):
+        result, _ = self.run_with(self.BAD, Synthesis(
+            "Not documented.\nBASIS: none\nCONFLICTS: none", "fake"))
+        self.assertEqual(result["citation_retry"]["kept"], "draft")
+        self.assertTrue(result["citation_retry"]["revision_abstained"])
+        self.assertFalse(result["abstained"])
+        self.assertEqual(len(result["citation_warnings"]), 1)
+
+    def test_a_revision_that_is_no_better_is_not_kept(self):
+        result, _ = self.run_with(self.BAD, Synthesis(self.BAD, "fake"))
+        self.assertEqual(result["citation_retry"]["kept"], "draft")
+        self.assertEqual(result["citation_retry"]["warnings_after"], 1)
+
+    def test_a_failed_revision_keeps_the_draft(self):
+        result, _ = self.run_with(self.BAD, Synthesis(None, "fake", "backend down"))
+        self.assertEqual(result["citation_retry"]["kept"], "draft")
+        self.assertEqual(result["citation_retry"]["degraded"], "backend down")
+        self.assertEqual(len(result["citation_warnings"]), 1)
+
+    def test_a_backend_without_revise_keeps_the_draft(self):
+        result, _ = self.run_with(self.BAD, has_revise=False)
+        self.assertNotIn("citation_retry", result)
+        self.assertEqual(len(result["citation_warnings"]), 1)

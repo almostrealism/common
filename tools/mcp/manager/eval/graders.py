@@ -26,6 +26,9 @@ The grader vocabulary (see ``validate_case``):
 - ``history_must_include`` — list of case-insensitive regexes that must match
                            the response's ``history`` field
 - ``min_conflicts``      — floor on ``len(conflicts)``
+- ``retry_kept``         — ``revision`` | ``draft`` | ``none``: which answer the
+                           one citation retry kept, or ``none`` when the draft
+                           drew no warnings and no retry ran
 - ``must_mark_unsupported`` — list of case-insensitive regexes; each must match
                            a sentence the citation verifier flagged (one marked
                            ``[unsupported]`` in the prose, or listed in
@@ -44,7 +47,11 @@ EXPECT_KEYS = frozenset({
     "must_cite_any", "must_not_cite", "must_flag_stale", "basis_in",
     "max_citation_warnings", "min_citation_warnings", "must_mark_unsupported",
     "must_not_mark_unsupported", "history_must_include", "min_conflicts",
+    "retry_kept",
 })
+
+# Values of ``retry_kept``: the answer the citation retry kept, or no retry.
+RETRY_OUTCOMES = ("revision", "draft", "none")
 
 # Expectation keys whose value is a list of case-insensitive regexes.
 _REGEX_LIST_KEYS = ("must_include", "must_not_include", "must_mark_unsupported",
@@ -341,6 +348,12 @@ def grade(response: dict, expect: dict) -> GradeResult:
             f"{n} warnings, fewer than {expect['min_citation_warnings']}",
         )
 
+    if "retry_kept" in expect:
+        retry = response.get("citation_retry")
+        kept = retry.get("kept") if isinstance(retry, dict) else "none"
+        result.record("retry_kept", kept == expect["retry_kept"],
+                      f"citation retry kept {kept!r}, expected {expect['retry_kept']!r}")
+
     history = response.get("history") if isinstance(response.get("history"), str) else ""
     for pat in expect.get("history_must_include", []):
         ok = re.search(pat, history, re.IGNORECASE) is not None
@@ -451,6 +464,9 @@ def validate_case(case: dict) -> list[str]:
         unknown = set(expect) - EXPECT_KEYS
         if unknown:
             errors.append(f"{cid}: {label} has unknown keys {sorted(unknown)}")
+        if "retry_kept" in expect and expect["retry_kept"] not in RETRY_OUTCOMES:
+            errors.append(
+                f"{cid}: {label} retry_kept {expect['retry_kept']!r} not in {RETRY_OUTCOMES}")
         outcome = expect.get("outcome")
         if outcome is not None and outcome not in KNOWN_OUTCOMES:
             errors.append(

@@ -548,9 +548,75 @@ class ConsultTurn:
             self._finish(result, [])
             return result
 
-        cited = self._post_process(synthesis.text, result, keyword_guidance)
+        history = self.conversation.history() if self.conversation else None
+        text = self._revised(llm, synthesis.text, history or None, result)
+        cited = self._post_process(text, result, keyword_guidance)
         self._finish(result, cited)
         return result
+
+    def _revised(self, llm, text: str, history, result: dict) -> str:
+        """Return the answer to present: the model's own, or — when the
+        citation verifier flags any of its sentences — the better of it and
+        one revision, which the model writes from the same evidence with the
+        flagged sentences and reasons in front of it.
+
+        The revision is kept only when it has fewer warnings than the draft
+        and does not abstain where the draft answered, so a retry cannot turn
+        an answer into a refusal. There is at most one retry; a backend
+        without ``revise``, or a revision that fails, keeps the draft. When
+        a retry runs, ``citation_retry`` in *result* says what it found.
+
+        Args:
+            llm: The inference backend the draft came from.
+            text: The draft, trailer included.
+            history: Condensed earlier turns, or ``None``.
+            result: The response being built.
+
+        Returns:
+            The text to post-process.
+        """
+        draft = self._verify(text)
+        warnings = draft["report"].warnings
+        revise = getattr(llm, "revise", None)
+        if not warnings or draft["abstained"] or revise is None:
+            return text
+        record = {"warnings_before": len(warnings), "kept": "draft"}
+        result["citation_retry"] = record
+        synthesis = revise(self.question, evidence=self.evidence, draft=text,
+                           warnings=warnings, extra_context=self.context or None,
+                           history=history)
+        if synthesis is None or synthesis.degraded:
+            record["degraded"] = synthesis.reason if synthesis is not None else "no response"
+            return text
+        revision = self._verify(synthesis.text)
+        record["warnings_after"] = len(revision["report"].warnings)
+        record["revision_abstained"] = revision["abstained"]
+        if revision["abstained"] or record["warnings_after"] >= len(warnings):
+            return text
+        record["kept"] = "revision"
+        return synthesis.text
+
+    def _verify(self, text: str) -> dict:
+        """Parse a model answer and run the citation verifier over it.
+
+        Args:
+            text: The model's answer, trailer included.
+
+        Returns:
+            ``body`` (the answer without its trailer and abstention lead),
+            ``conflict_lines``, ``trailer_present``, ``abstained`` (the model
+            said "Not documented."), ``report`` (the verifier's
+            :class:`VerificationReport`) and ``value_conflicts``.
+        """
+        body, _, conflict_lines, trailer_present = parse_trailer(text)
+        abstained = bool(_NOT_DOCUMENTED.match(body))
+        if abstained:
+            body = _NOT_DOCUMENTED.sub("", body, count=1).strip()
+        found_value_conflicts, contradicted = value_conflicts(self.evidence)
+        return {"body": body, "conflict_lines": conflict_lines,
+                "trailer_present": trailer_present, "abstained": abstained,
+                "report": verify(body, self.evidence, contradicted),
+                "value_conflicts": found_value_conflicts}
 
     def _notes(self, client) -> list:
         """Search, tier and select the notes; add them to the evidence."""
@@ -613,17 +679,14 @@ class ConsultTurn:
         # it rests on note tiers and on which sentences the verifier keeps,
         # so a disagreement is the expected case, not a format fault worth
         # reporting to the caller.
-        body, _, conflict_lines, trailer_present = parse_trailer(text)
+        checked = self._verify(text)
+        body, conflict_lines = checked["body"], checked["conflict_lines"]
+        abstained_by_model, report = checked["abstained"], checked["report"]
+        found_value_conflicts = checked["value_conflicts"]
         warnings = []
-        if not trailer_present:
+        if not checked["trailer_present"]:
             warnings.append("trailer missing")
 
-        abstained_by_model = bool(_NOT_DOCUMENTED.match(body))
-        if abstained_by_model:
-            body = _NOT_DOCUMENTED.sub("", body, count=1).strip()
-
-        found_value_conflicts, contradicted = value_conflicts(self.evidence)
-        report = verify(body, self.evidence, contradicted)
         basis = compute_basis(report.supporting_ids(), self.evidence)
 
         # Sentences resting only on historical or stale notes are history,

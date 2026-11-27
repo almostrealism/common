@@ -39,7 +39,7 @@ try:
     # prompt construction moved to its own module (see inference_prompts.py).
     from .inference_prompts import (  # noqa: F401
         REFORMULATE_SYSTEM_PROMPT, SPECULATION_PHRASES, SYSTEM_PROMPT,
-        build_consult_prompt, has_speculation,
+        build_consult_prompt, has_speculation, revision_instructions,
     )
 except ImportError:
     # Loaded by path (see consultant/inference.py) rather than as a package.
@@ -52,7 +52,7 @@ except ImportError:
     )
     from inference_prompts import (  # noqa: F401
         REFORMULATE_SYSTEM_PROMPT, SPECULATION_PHRASES, SYSTEM_PROMPT,
-        build_consult_prompt, has_speculation,
+        build_consult_prompt, has_speculation, revision_instructions,
     )
 
 log = logging.getLogger(__name__)
@@ -439,6 +439,38 @@ class InferenceBackend(ABC):
         return self.synthesize(
             build_consult_prompt(
                 question, evidence, extra_context, history=history,
+            ),
+            system=SYSTEM_PROMPT,
+        )
+
+    def revise(
+        self,
+        question: str,
+        evidence,
+        draft: str,
+        warnings: list,
+        extra_context: Optional[str] = None,
+        history: Optional[str] = None,
+    ) -> Synthesis:
+        """Revise a consult answer whose sentences the citation verifier
+        flagged, over the same evidence, under the same rules as
+        :meth:`consult`.
+
+        Args:
+            question: What the caller asked.
+            evidence: The evidence list the draft was written from.
+            draft: The model's first answer.
+            warnings: The verifier's ``citation_warnings`` for the draft.
+            extra_context: As for :meth:`consult`.
+            history: As for :meth:`consult`.
+
+        Returns:
+            A :class:`Synthesis`; check :attr:`Synthesis.degraded`.
+        """
+        return self.synthesize(
+            build_consult_prompt(
+                question, evidence, extra_context, history=history,
+                instructions=revision_instructions(draft, warnings),
             ),
             system=SYSTEM_PROMPT,
         )
