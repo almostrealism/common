@@ -1,0 +1,204 @@
+name: "PR Status Labels (reusable)"
+
+# Gives every open pull request one `ci: ...` label for the stage it is in, as
+# a reusable workflow. This repository calls it from pr-status-labels.yaml;
+# another repository gets the same labels with a short caller of its own:
+#
+#   on:
+#     workflow_run:
+#       workflows: ["<its CI workflow's name>"]
+#       types: [requested, completed]
+#     schedule:
+#       - cron: "*/30 * * * *"
+#     workflow_dispatch:
+#   concurrency:
+#     group: pr-status-labels-${{ github.event.workflow_run.head_branch || 'all' }}
+#     cancel-in-progress: false
+#   jobs:
+#     label:
+#       uses: almostrealism/common/.github/workflows/pr-status-labels-run.yaml@master
+#       # The reusable workflow has no permissions of its own, so these are the
+#       # token the labeller runs with. Add `statuses: read` only when you also
+#       # set `cap-status` below.
+#       permissions:
+#         actions: read
+#         checks: read
+#         contents: read
+#         issues: write
+#         pull-requests: write
+#       with:
+#         branch: ${{ github.event.workflow_run.head_branch || '' }}
+#         workflow-file: ci.yml           # its CI workflow's file name
+#         all-checks: ""                  # only if it has an aggregator check
+#         validate-submitters: ""         # only if it has review-dispatch jobs
+#
+# Every value below the trust rule is specific to one repository's CI
+# pipeline: the workflow file its runs belong to, the names of the two run
+# "kinds" (validate and test), the aggregator check-run names, the FlowTree
+# remediation job and artifact names, whether a separate test-run stage
+# exists at all, and the plan-approval directory layout. Every one of them is
+# an input with a default that assumes none of this repository's own FlowTree
+# machinery, so a repository with no equivalent gets labels that fit its own
+# pipeline (``ci: validating``, ``ci: needs attention``, ``ci: ready for
+# review``, ``ci: stalled``) and never a label that assumes a job or artifact
+# it does not have. See ``tools/ci/pr-status-labels.py``'s module docstring
+# and its ``Config`` class for exactly what each input changes, and
+# ``.github/CLAUDE.md``'s "What the `PR Status Labels` workflow does" for the
+# label meanings and this repository's own caller.
+#
+# Trust: a plain `actions/checkout` inside a called workflow fetches the
+# *caller's* repository. The labeller script therefore runs from an explicit
+# checkout of this repository at `framework-ref`, never from the caller's
+# tree, exactly as the other reusable workflows do (see "Reusable workflows"
+# in tools/ci/README.md). It runs from the default branch and executes no
+# pull request code: it only reads the GitHub API and writes labels.
+#
+# Keep this file generic. This repository is public; product-specific values
+# reach the script as inputs, and the defaults here describe no particular
+# repository — this repository's own behaviour is reproduced by the explicit
+# inputs its caller (pr-status-labels.yaml) passes, not by these defaults.
+
+on:
+  workflow_call:
+    inputs:
+      framework-repository:
+        description: "The framework repository, owner/name: where pr-status-labels.py comes from"
+        required: false
+        default: "almostrealism/common"
+        type: string
+      framework-ref:
+        description: "Framework branch the script is run from"
+        required: false
+        default: "master"
+        type: string
+      branch:
+        description: "Only update the pull request of this branch; empty updates every open pull request"
+        required: false
+        default: ""
+        type: string
+      dry-run:
+        description: "Report the states without changing labels"
+        required: false
+        default: false
+        type: boolean
+      workflow-file:
+        description: "The CI workflow file whose runs are read; empty reads every workflow's runs for the head commit"
+        required: false
+        default: ""
+        type: string
+      validate-event:
+        description: "The GitHub Actions event name of a validate run"
+        required: false
+        default: "pull_request"
+        type: string
+      test-event:
+        description: "The GitHub Actions event name of a separate test run; irrelevant when expect-test-run is false"
+        required: false
+        default: "deployment"
+        type: string
+      all-checks:
+        description: "Name of the aggregator check run a validate run reports; empty skips this gate"
+        required: false
+        default: ""
+        type: string
+      test-checks:
+        description: "Name of the aggregator check run a test run reports; empty skips this gate"
+        required: false
+        default: ""
+        type: string
+      validate-submitters:
+        description: "Comma-separated job names whose success means a review agent was sent after a validate run; empty means no such job exists"
+        required: false
+        default: ""
+        type: string
+      test-submitters:
+        description: "Comma-separated job names whose success means a fix agent was sent after a test run; empty means no such job exists"
+        required: false
+        default: ""
+        type: string
+      staged-request:
+        description: "Name of the workflow-run artifact a staged remediation request is uploaded as; empty means none is ever staged"
+        required: false
+        default: ""
+        type: string
+      cap-status:
+        description: "Commit-status context marking a remediation pass refused for a per-PR cap; empty means no such cap exists"
+        required: false
+        default: ""
+        type: string
+      max-attempts:
+        description: "The retry gate's final attempt number for a test run"
+        required: false
+        default: 3
+        type: number
+      retry-decision-minutes:
+        description: "Minutes after a failed, non-final test-run attempt finishes before it is reported as needing attention rather than awaiting a retry"
+        required: false
+        default: 15
+        type: number
+      expect-test-run:
+        description: "Whether the pipeline runs a separate test-run stage after the validate run; false reports a passing validate run itself as ready for review"
+        required: false
+        default: false
+        type: boolean
+      plans-dir:
+        description: "Directory new plan documents are added under, for the ready-to-launch marker; empty disables the marker"
+        required: false
+        default: ""
+        type: string
+      docs-dir:
+        description: "Directory a draft plan pull request's changes must stay under for the ready-to-launch marker"
+        required: false
+        default: "docs/"
+        type: string
+      plan-exclude-pattern:
+        description: "Regular expression excluding paths from counting as a new plan document; empty excludes nothing"
+        required: false
+        default: ""
+        type: string
+
+jobs:
+  label:
+    runs-on: ubuntu-latest
+    # No permissions block: the labeller runs with the caller's grant, so each
+    # caller asks for only what its config needs (statuses: read for cap-status).
+    steps:
+      - name: Checkout the labeller script
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.framework-repository }}
+          ref: ${{ inputs.framework-ref }}
+          path: .pr-status-labels-framework
+          sparse-checkout: tools/ci
+          persist-credentials: false
+
+      - name: Update status labels
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          WORKFLOW_FILE: ${{ inputs.workflow-file }}
+          VALIDATE_EVENT: ${{ inputs.validate-event }}
+          TEST_EVENT: ${{ inputs.test-event }}
+          ALL_CHECKS: ${{ inputs.all-checks }}
+          TEST_CHECKS: ${{ inputs.test-checks }}
+          VALIDATE_SUBMITTERS: ${{ inputs.validate-submitters }}
+          TEST_SUBMITTERS: ${{ inputs.test-submitters }}
+          STAGED_REQUEST: ${{ inputs.staged-request }}
+          CAP_STATUS: ${{ inputs.cap-status }}
+          MAX_ATTEMPTS: ${{ inputs.max-attempts }}
+          RETRY_DECISION_MINUTES: ${{ inputs.retry-decision-minutes }}
+          EXPECT_TEST_RUN: ${{ inputs.expect-test-run }}
+          PLANS_DIR: ${{ inputs.plans-dir }}
+          DOCS_DIR: ${{ inputs.docs-dir }}
+          PLAN_EXCLUDE_PATTERN: ${{ inputs.plan-exclude-pattern }}
+          BRANCH: ${{ inputs.branch }}
+          DRY_RUN: ${{ inputs.dry-run }}
+        run: |
+          ARGS=()
+          if [ -n "$BRANCH" ]; then
+            ARGS+=(--branch "$BRANCH")
+          fi
+          if [ "$DRY_RUN" = "true" ]; then
+            ARGS+=(--dry-run)
+          fi
+          python3 .pr-status-labels-framework/tools/ci/pr-status-labels.py "${ARGS[@]}"
