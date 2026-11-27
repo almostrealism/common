@@ -832,7 +832,8 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
      *
      * @return the output consumer, or null
      */
-    protected Consumer<JobOutput> getOutputConsumer() {
+    @Override
+    public Consumer<JobOutput> getOutputConsumer() {
         return outputConsumer;
     }
 

@@ -50,6 +50,25 @@ public enum NodeKind {
 		Node create(NodeGroup group, int maxJobs, int maxPeers, NodeConfig config) {
 			return new Node(group, config.index(), maxJobs, maxPeers);
 		}
+	},
+
+	/**
+	 * A Node that runs each job in a fresh Docker container, overriding
+	 * {@link Node#launch(io.flowtree.job.Job)} to hand the job to a
+	 * {@link DockerNode} worker. Its platform is a property of the configured
+	 * {@code nodes.<i>.image}, not of the host, so {@link #describesHost()} is
+	 * {@code false} and the host's automatic labels are not copied onto it.
+	 */
+	DOCKER("docker") {
+		@Override
+		boolean describesHost() {
+			return false;
+		}
+
+		@Override
+		Node create(NodeGroup group, int maxJobs, int maxPeers, NodeConfig config) {
+			return new DockerNode(group, config.index(), maxJobs, maxPeers, config);
+		}
 	};
 
 	/** The {@code nodes.<i>.kind} value that selects this constant. */
