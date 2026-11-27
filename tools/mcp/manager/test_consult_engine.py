@@ -498,7 +498,7 @@ class TestCitationRetry(_Pipeline):
     GOOD = ("It rejects edits to base-branch tests [D1]. It exits 3 [I1].\n"
             "BASIS: documentation\nCONFLICTS: none")
 
-    def run_with(self, draft, revision=None, has_revise=True):
+    def run_with(self, draft, revision=None, has_revise=True, memories=()):
         llm = MagicMock(spec=["consult", "revise"] if has_revise else ["consult"])
         llm.consult.return_value = Synthesis(draft, "fake")
         if has_revise:
@@ -506,7 +506,8 @@ class TestCitationRetry(_Pipeline):
         with patch.object(server, "_get_docs", return_value=_docs(
                 [_doc(text="rejects edits to base-branch tests")])), \
                 patch.object(server, "_get_llm", return_value=llm), \
-                patch.object(server, "_get_memory_client", return_value=_Memory([])):
+                patch.object(server, "_get_memory_client",
+                             return_value=_Memory(list(memories))):
             result = server.consult(question="What does validate-agent-commit.sh do?",
                                     keywords=["validate-agent-commit.sh"],
                                     repo_url="git@github.com:org/repo.git")
@@ -570,6 +571,25 @@ class TestCitationRetry(_Pipeline):
         # not replace the answered draft with it.
         result, _ = self.run_with(self.BAD, Synthesis(
             "BASIS: documentation\nCONFLICTS: none", "fake"))
+        self.assertEqual(result["citation_retry"]["kept"], "draft")
+        self.assertTrue(result["citation_retry"]["revision_empty"])
+        self.assertFalse(result["abstained"])
+        self.assertEqual(len(result["citation_warnings"]), 1)
+
+    def test_a_revision_that_is_all_history_is_not_kept(self):
+        # The revision fixes the citation but rests entirely on a stale note
+        # and is framed historically, so the verifier flags nothing while
+        # _post_process strips every sentence into history and would abstain.
+        # Its body is non-empty, so only the post-history check catches it;
+        # the answered draft must be kept.
+        memories = [{"id": "m1", "branch": "feature/gone",
+                     "created_at": "2026-05-01T00:00:00Z",
+                     "content": "validate-agent-commit.sh was renamed from "
+                                "validate-commit.sh."}]
+        revision = ("Historically, validate-agent-commit.sh was renamed from "
+                    "validate-commit.sh [N1].\nBASIS: notes\nCONFLICTS: none")
+        result, _ = self.run_with(self.BAD, Synthesis(revision, "fake"),
+                                  memories=memories)
         self.assertEqual(result["citation_retry"]["kept"], "draft")
         self.assertTrue(result["citation_retry"]["revision_empty"])
         self.assertFalse(result["abstained"])

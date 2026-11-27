@@ -567,10 +567,13 @@ class ConsultTurn:
         does not abstain where the draft answered, leaves a non-empty answer
         body, and keeps every ``BASIS:`` / ``CONFLICTS:`` trailer line the
         draft had, so a retry cannot turn an answer into a refusal or a
-        malformed response. An empty body counts as a refusal here because
-        :meth:`_post_process` abstains on it, and each trailer line is
-        checked on its own so dropping one while keeping the other is
-        rejected. There is at most one retry; a backend without ``revise``,
+        malformed response. A revision with nothing left once
+        :meth:`_post_process` moves its history-only sentences aside counts as
+        a refusal too, since that method abstains on an empty answer, so the
+        emptiness is measured after the same history removal rather than on the
+        raw body. Each trailer line is checked on its own so dropping one while
+        keeping the other is rejected. There is at most one retry; a backend
+        without ``revise``,
         or a revision that fails, keeps the draft. When a retry runs,
         ``citation_retry`` in *result* says what it found.
 
@@ -604,7 +607,8 @@ class ConsultTurn:
             or (draft["conflicts_present"] and not revision["conflicts_present"])
         if lost_trailer:
             record["revision_trailer_missing"] = True
-        empty_body = not revision["abstained"] and not revision["body"]
+        empty_body = not revision["abstained"] \
+            and not _without_history(revision["report"])[0]
         if empty_body:
             record["revision_empty"] = True
         if revision["abstained"] or lost_trailer or empty_body \
@@ -710,15 +714,8 @@ class ConsultTurn:
 
         basis = compute_basis(report.supporting_ids(), self.evidence)
 
-        # Sentences resting only on historical or stale notes are history,
-        # whatever their tense: those notes never supply present fact.
-        history_sentences = [s for s in report.sentences_resting_on(HISTORY_ONLY_TIERS)
-                             if REASON_TIER not in s.reasons]
+        answer, history_sentences = _without_history(report)
         support_gone = _support_gone(basis, report, history_sentences)
-        answer = report.annotated
-        for s in sorted(history_sentences, key=lambda s: s.start, reverse=True):
-            answer = _remove_span(answer, s)
-        answer = answer.strip()
         if history_sentences:
             result["history"] = self.evidence.expand(
                 " ".join(s.text.strip() for s in history_sentences))
@@ -840,6 +837,25 @@ def _hedge_lead(answer: str) -> str:
     if stripped and stripped[0].islower():
         stripped = stripped[0].upper() + stripped[1:]
     return f"{HEDGE_SENTENCE} {stripped}".strip()
+
+
+def _without_history(report) -> tuple[str, list]:
+    """The annotated answer with its history sentences removed, and those
+    sentences.
+
+    A sentence resting only on historical or stale notes is history whatever
+    its tense, unless the verifier flags its tier (then it stays in the answer,
+    marked); those notes never supply present fact. The removed sentences move
+    to the ``history`` field, and what is left is the answer the caller sees —
+    empty when every sentence was history, which :meth:`ConsultTurn._post_process`
+    treats as an abstention.
+    """
+    history_sentences = [s for s in report.sentences_resting_on(HISTORY_ONLY_TIERS)
+                         if REASON_TIER not in s.reasons]
+    answer = report.annotated
+    for s in sorted(history_sentences, key=lambda s: s.start, reverse=True):
+        answer = _remove_span(answer, s)
+    return answer.strip(), history_sentences
 
 
 def _remove_span(answer: str, sentence) -> str:
