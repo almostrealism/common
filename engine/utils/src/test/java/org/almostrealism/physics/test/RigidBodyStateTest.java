@@ -40,6 +40,23 @@ public class RigidBodyStateTest extends TestSuiteBase {
 	private static final double TOL = 1e-6;
 
 	/**
+	 * Builds a diagonal (non-identity) moment of inertia matrix with the given principal
+	 * moments, so that {@code transformAsOffset(w)} yields {@code (ix*wx, iy*wy, iz*wz)}.
+	 *
+	 * @param ix  moment of inertia about the x axis
+	 * @param iy  moment of inertia about the y axis
+	 * @param iz  moment of inertia about the z axis
+	 * @return a diagonal inertia matrix
+	 */
+	private TransformMatrix diagonalInertia(double ix, double iy, double iz) {
+		return new TransformMatrix(new double[][] {
+				{ix, 0.0, 0.0, 0.0},
+				{0.0, iy, 0.0, 0.0},
+				{0.0, 0.0, iz, 0.0},
+				{0.0, 0.0, 0.0, 1.0}});
+	}
+
+	/**
 	 * Builds an initialized {@link RigidBody.State} with the given angular velocity,
 	 * mass and inertia matrix and all other state vectors zeroed.
 	 *
@@ -96,5 +113,35 @@ public class RigidBodyStateTest extends TestSuiteBase {
 		state.setMass(20.0);
 
 		assertVectorEquals(new Vector(1.0, 2.0, 3.0), state.getAngularMomentum());
+	}
+
+	/**
+	 * With a non-identity diagonal inertia tensor, {@link RigidBody.State#setAngularVelocity(Vector)}
+	 * must set angular momentum to {@code L = I w}, i.e. each component of the angular velocity
+	 * scaled by the corresponding principal moment of inertia. This proves the tensor is actually
+	 * applied, not merely copied (an {@code l = w} implementation would fail here).
+	 */
+	@Test(timeout = 120000)
+	public void setAngularVelocityAppliesInertiaTensor() {
+		RigidBody.State state = newState(new Vector(0.0, 0.0, 0.0), 10.0, diagonalInertia(2.0, 3.0, 4.0));
+
+		state.setAngularVelocity(new Vector(5.0, 7.0, 9.0));
+
+		assertVectorEquals(new Vector(10.0, 21.0, 36.0), state.getAngularMomentum());
+	}
+
+	/**
+	 * With a non-identity diagonal inertia tensor, {@link RigidBody.State#setMass(double)} must
+	 * recompute angular momentum as {@code L = I w} from the current inertia tensor and angular
+	 * velocity, independent of the scalar mass. This proves the tensor is actually applied, not
+	 * merely copied, and that the result does not depend on the mass.
+	 */
+	@Test(timeout = 120000)
+	public void setMassAppliesInertiaTensorIndependentOfMass() {
+		RigidBody.State state = newState(new Vector(5.0, 7.0, 9.0), 10.0, diagonalInertia(2.0, 3.0, 4.0));
+
+		state.setMass(20.0);
+
+		assertVectorEquals(new Vector(10.0, 21.0, 36.0), state.getAngularMomentum());
 	}
 }
