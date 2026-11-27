@@ -229,12 +229,14 @@ network tests). CI runs all `test_exfiltration_guard_*.py` modules via
 - **Owner sanction on the implementing job.** This edits files under
   `.claude/hooks`, which are protected: the implementation job must carry the
   owner's explicit `skip_agent_permission_prompts` / sensitive-file bypass, and
-  the agent must not route around the hook that protects these files. The
-  `verify-exfiltration-guard.sh` CI check compares the guard against the base
-  branch off non-`ci/` branches; the reviewer should confirm how that check treats
-  this change (it is a guard-library change, not a workflow-file change, so it is
-  not under the CI-file lock, but the design-doc and verifier interaction should
-  be checked at implementation time — see open questions).
+  the agent must not route around the hook that protects these files. Separately,
+  `verify-exfiltration-guard.sh` CHECK 3 compares the guard's `GUARD_FILES`
+  against the base branch off non-`ci/` branches, and `exfil_bash_network.py` is
+  one of those files, so this change trips that check and the implementing job
+  must run the workflow with `override_integrity_checks` set (see open question #3
+  for the verified detail). This is distinct from the CI-file lock: a guard-library
+  change is not under `check-ci-file-lock.sh` (which covers `.github/workflows/`
+  and `tools/ci/`), so no `ci/...` branch name is required.
 
 ## Open questions
 
@@ -251,12 +253,18 @@ network tests). CI runs all `test_exfiltration_guard_*.py` modules via
    cases. A jump host that is itself defined only via a further ProxyJump chain is
    an edge case; the proposal resolves each hop once and falls back to the literal
    hop token otherwise, which stays fail-closed. Confirm one level is acceptable.
-3. **`verify-exfiltration-guard.sh` base-branch comparison.** Confirm this guard
-   change passes that CI check on a non-`ci/` branch (it checks presence/
-   registration and, off `ci/`, no change against base — the reviewer should
-   verify whether a guard-*library* edit trips it or only workflow-file edits do).
-   If it would block the change, that is a dependency to resolve before
-   implementation, not a reason to weaken the check.
+3. **`verify-exfiltration-guard.sh` base-branch comparison.** Resolved against the
+   code: the verifier's `GUARD_FILES` list includes `exfil_bash_network.py` and
+   `test_exfiltration_guard_check.py`, and its CHECK 3 compares every one of those
+   between the merge base with the base branch and HEAD on a non-`ci/` branch. A
+   guard-*library* edit therefore **does** trip the integrity check — it is not
+   limited to workflow-file edits — so the implementing job must run the workflow
+   with `override_integrity_checks` set, exactly as the design doc's "Adding an
+   allowlisted host" step 4 prescribes for any enforcement-file change. The new
+   sibling test module is not in `GUARD_FILES`, so adding it does not itself trip
+   CHECK 3; the edit to `exfil_bash_network.py` (and any new case added to
+   `test_exfiltration_guard_check.py`) is what requires the override. This is a
+   dependency to satisfy at submission time, not a reason to weaken the check.
 4. **`Match exec` side effects of `ssh -G`.** `ssh -G` does not open a
    connection, but it does evaluate `Match exec "<command>"` config blocks,
    which run a local command during resolution. Because the guard's threat
