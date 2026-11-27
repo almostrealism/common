@@ -387,14 +387,18 @@ public class SegmentedWeightedSumComputation extends RepeatedProducerComputation
 
 	/**
 	 * Returns the Jacobian-vector product with respect to the matrix: the product with the input
-	 * of the matrix whose stored entries are the tangent.
+	 * of the matrix whose stored entries are the tangent. A matrix that stores no entries is
+	 * represented by a single unused element, as its entry gradient is, so its tangent has one
+	 * element, which the product never reads.
 	 *
 	 * @param tangent the tangent of each stored entry, in their physical order
-	 * @return the product, or null if the tangent does not have one element per stored entry
+	 * @return the product, or null if the tangent does not have one element per stored entry (one
+	 *         element for a matrix storing none)
 	 */
 	private CollectionProducer entryTangent(Producer<PackedCollection> tangent) {
 		OptionalInt entries = order.getLength();
-		if (tangent == null || entries.isEmpty() || shape(tangent).getTotalSizeLong() != entries.getAsInt()) {
+		if (tangent == null || entries.isEmpty()
+				|| shape(tangent).getTotalSizeLong() != Math.max(1, entries.getAsInt())) {
 			return null;
 		}
 

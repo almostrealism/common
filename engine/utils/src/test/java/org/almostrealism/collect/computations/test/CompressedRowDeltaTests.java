@@ -558,6 +558,28 @@ public class CompressedRowDeltaTests extends TestSuiteBase implements MatrixFeat
 	}
 
 	/**
+	 * The entry tangent of a matrix that stores no entries is its single unused element, the same
+	 * padding as its entry gradient. The Jacobian-vector product with that tangent is still the
+	 * reduced segmented product, not the general Jacobian, and it is zero in every row because the
+	 * kernel reads no entry.
+	 */
+	@Test(timeout = 60000)
+	public void tangentEmpty() {
+		CompressedRowTraversalOrdering order = CompressedRowTraversalOrdering.of(2, new int[] { 0, 0, 0, 0 }, new int[0]);
+		PackedCollection matrix = new PackedCollection(shape(3, 2), 0, pack(0.0), 0, order);
+		CollectionProducer entries = cp(matrix);
+		CollectionProducer input = cp(pack(3.0, 5.0));
+
+		CollectionProducer entryJvp = matmul(entries, input).delta(entries, ReduceAxis.IN, cp(pack(7.0)));
+		assertReduced(entryJvp, 3, SegmentedWeightedSumComputation.class);
+
+		for (ComputeRequirement backend : backends()) {
+			assertValues("empty entry tangent on " + backend, new double[] { 0.0, 0.0, 0.0 },
+					evaluate(entryJvp, backend).toArray(0, 3));
+		}
+	}
+
+	/**
 	 * Both gradients of the product of a matrix with more than {@code 2^24} rows and entries, whose
 	 * logical size exceeds the range of an {@code int}, with a vector are exact: the gradient of
 	 * the entries near the end reads the upstream gradient at rows above {@code 2^24}, where a
