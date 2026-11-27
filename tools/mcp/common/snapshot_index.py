@@ -211,7 +211,7 @@ def parse_git_log_dates(text: str, since_days: int = PATH_DATES_WINDOW_DAYS) -> 
         line = line.strip()
         if line.startswith("@"):
             try:
-                current = (_parse_iso(line[1:]), line[1:])
+                current = (parse_iso(line[1:]), line[1:])
             except ValueError:
                 current = None
         elif line and current is not None:
@@ -382,7 +382,7 @@ class SnapshotIndex:
         for mention in mentions:
             path = self._unique_file(mention)
             stamp = dates.get(path) if path else None
-            if stamp and _parse_iso(stamp) > when and mention not in changed:
+            if stamp and parse_iso(stamp) > when and mention not in changed:
                 changed.append(mention)
         return changed
 
@@ -494,10 +494,24 @@ def _constant_fact(name: str, entry: dict) -> dict:
                      f"{entry['owner']}.{name} = {shown}"}
 
 
-# TODO(review): near-duplicate of consult_tiers.parse_time; consider sharing one ISO parser.
-def _parse_iso(value: str) -> datetime:
-    """An ISO-8601 timestamp as an aware datetime (UTC when it has no zone)."""
-    parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+def parse_iso(value: str) -> datetime:
+    """An ISO-8601 timestamp as an aware datetime (UTC when it has no zone).
+
+    The one ISO parser of the consult tooling: ``consult_tiers.parse_time``
+    builds on it. It lives here because this module runs standalone in the
+    image's ``docs`` stage and so may import nothing of the project's.
+
+    Args:
+        value: The timestamp; surrounding whitespace and a ``Z`` zone are
+            accepted.
+
+    Returns:
+        The parsed, timezone-aware datetime.
+
+    Raises:
+        ValueError: When ``value`` is not an ISO-8601 timestamp.
+    """
+    parsed = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
     return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
 
 

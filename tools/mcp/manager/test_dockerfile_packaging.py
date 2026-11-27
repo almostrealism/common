@@ -32,6 +32,7 @@ if _COMMON_DIR not in sys.path:
     sys.path.insert(0, _COMMON_DIR)
 
 import docs_retriever  # noqa: E402
+import snapshot_index  # noqa: E402
 
 # COPY sources are relative to the build context, which is the repo root.
 _MANAGER_COPY_PREFIX = "tools/mcp/manager/"
@@ -357,6 +358,14 @@ class SnapshotIndexPackagingTests(unittest.TestCase):
             self.assertIn(f'PATH_DATES_FILE="{match.group(1)}"', handle.read())
         with open(os.path.join(_REPO_ROOT, ".gitignore")) as handle:
             self.assertIn(match.group(1), handle.read())
+
+    def test_rebuild_reads_as_much_history_as_the_index_assumes(self):
+        # A shorter git log than PATH_DATES_WINDOW_DAYS would leave a recent
+        # note's changed files undated, so the note would wrongly stay current.
+        rebuild = os.path.join(_REPO_ROOT, "flowtree", "runtime", "rebuild.sh")
+        with open(rebuild) as handle:
+            windows = re.findall(r"git log --since=(\d+)\.days\.ago", handle.read())
+        self.assertEqual(windows, [str(snapshot_index.PATH_DATES_WINDOW_DAYS)])
 
     def test_compose_passes_the_corpus_commit(self):
         compose = os.path.join(_REPO_ROOT, "flowtree", "runtime", "controller",

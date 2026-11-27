@@ -666,9 +666,9 @@ if [ "${AGENTS_ONLY}" = false ]; then
   fi
   export CORPUS_COMMIT
   # The snapshot index also records when each file last changed, so consult
-  # can treat a note about a since-rewritten file as history. The window
-  # matches PATH_DATES_WINDOW_DAYS in snapshot_index.py; outside a checkout
-  # the file is empty and no dates are recorded.
+  # can treat a note about a since-rewritten file as history. The window must
+  # equal PATH_DATES_WINDOW_DAYS in snapshot_index.py (test_dockerfile_packaging
+  # checks it); outside a checkout the file is empty and no dates are recorded.
   PATH_DATES_FILE="tools/mcp/manager/snapshot-path-dates.txt"
   git log --since=90.days.ago --format=@%aI --name-only --no-renames \
     > "${PATH_DATES_FILE}" 2>/dev/null || : > "${PATH_DATES_FILE}"

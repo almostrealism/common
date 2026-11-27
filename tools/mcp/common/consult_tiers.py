@@ -32,6 +32,7 @@ from typing import Optional
 from consult_evidence import (
     TIER_BRANCH_LOCAL, TIER_CURRENT, TIER_HISTORICAL, TIER_STALE,
 )
+from snapshot_index import parse_iso
 
 # Notes older than this, measured back from the snapshot date, are history.
 RECENCY_WINDOW_DAYS = 45
@@ -112,13 +113,13 @@ def parse_time(value) -> Optional[datetime]:
     if not value or not isinstance(value, str):
         return None
     try:
-        parsed = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
+        return parse_iso(value)
     except ValueError:
         try:
             parsed = datetime.strptime(value.strip()[:10], "%Y-%m-%d")
         except ValueError:
             return None
-    return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+    return parsed.replace(tzinfo=timezone.utc)
 
 
 def extract_mentions(text: str) -> list[str]:

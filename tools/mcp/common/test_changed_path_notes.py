@@ -16,10 +16,10 @@ if _DIR not in sys.path:
 
 from consult_evidence import TIER_CURRENT, TIER_HISTORICAL, TIER_STALE  # noqa: E402
 from consult_tiers import (  # noqa: E402
-    RECENCY_WINDOW_DAYS, STATE_TARGET, BranchState, Caller, tier,
+    RECENCY_WINDOW_DAYS, STATE_TARGET, BranchState, Caller, parse_time, tier,
 )
 from snapshot_index import (  # noqa: E402
-    PATH_DATES_WINDOW_DAYS, SnapshotIndex, main, parse_git_log_dates,
+    PATH_DATES_WINDOW_DAYS, SnapshotIndex, main, parse_git_log_dates, parse_iso,
 )
 
 _LOG = """@2026-10-15T09:00:00+00:00
@@ -42,6 +42,37 @@ def _index(dates=None):
     if dates is not None:
         data["path_dates"] = dates
     return SnapshotIndex(data)
+
+
+class TestIsoParsing(unittest.TestCase):
+    """``parse_iso`` is the shared parser; ``parse_time`` adds leniency."""
+
+    def test_zulu_offset_and_naive_stamps_are_aware_utc(self):
+        expected = datetime(2026, 10, 15, 9, 0, tzinfo=timezone.utc)
+        self.assertEqual(parse_iso("2026-10-15T09:00:00Z"), expected)
+        self.assertEqual(parse_iso(" 2026-10-15T09:00:00 "), expected)
+        self.assertEqual(parse_iso("2026-10-15T11:00:00+02:00"), expected)
+        self.assertEqual(parse_iso("2026-10-15T09:00:00").tzinfo, timezone.utc)
+
+    def test_parse_iso_rejects_what_is_not_a_timestamp(self):
+        for bad in ("", "not-a-date", "2026-13-40"):
+            with self.assertRaises(ValueError):
+                parse_iso(bad)
+
+    def test_parse_time_agrees_with_parse_iso(self):
+        stamp = "2026-10-15T11:00:00+02:00"
+        self.assertEqual(parse_time(stamp), parse_iso(stamp))
+
+    def test_parse_time_falls_back_to_a_leading_date(self):
+        self.assertEqual(parse_time("2026-10-15 at noon"),
+                         datetime(2026, 10, 15, tzinfo=timezone.utc))
+
+    def test_parse_time_returns_none_for_unparseable_and_non_strings(self):
+        for bad in (None, "", "garbage", 12345):
+            self.assertIsNone(parse_time(bad))
+
+    def test_parse_time_makes_a_naive_datetime_utc(self):
+        self.assertEqual(parse_time(datetime(2026, 10, 15)).tzinfo, timezone.utc)
 
 
 class TestGitLogDates(unittest.TestCase):
