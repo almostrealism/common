@@ -981,7 +981,7 @@ public class AudioLibrary implements ConsoleFeatures {
 			}
 
 			String modelId = currentModelId();
-			if (modelId != null && details.getFeatures(modelId) == null) {
+			if ((modelId != null && details.getFeatures(modelId) == null) || !details.isFrequencyLayoutCurrent()) {
 				details = computeDetails(provider, details, persistent);
 				persist(details);
 			}

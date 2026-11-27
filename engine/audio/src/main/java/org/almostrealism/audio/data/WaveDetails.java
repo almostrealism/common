@@ -435,14 +435,16 @@ public class WaveDetails implements CodeFeatures, Node {
 
 	/**
 	 * Returns whether the frequency data is in the current layout, so it can be trusted.
-	 * Data with a single channel has only ever had one layout. Multi-channel data written
-	 * before {@link #FREQUENCY_LAYOUT_VERSION} 1 may have every channel after the first
-	 * written over the first channel's block, and is not current until it is recomputed.
+	 * Data with a single channel has only ever had one layout. Multi-channel data is
+	 * current only when its layout version equals the {@link #FREQUENCY_LAYOUT_VERSION}
+	 * this build understands: data in an older layout may have every channel after the
+	 * first written over the first channel's block, and data in an unknown newer layout
+	 * cannot be read by this build either, so both are recomputed rather than trusted.
 	 *
 	 * @return {@code true} when the frequency data can be trusted as laid out
 	 */
 	public boolean isFrequencyLayoutCurrent() {
-		return freqChannelCount <= 1 || freqLayoutVersion >= FREQUENCY_LAYOUT_VERSION;
+		return freqChannelCount <= 1 || freqLayoutVersion == FREQUENCY_LAYOUT_VERSION;
 	}
 
 	/**

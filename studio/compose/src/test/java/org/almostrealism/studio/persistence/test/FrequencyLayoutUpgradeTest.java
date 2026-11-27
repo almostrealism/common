@@ -173,6 +173,33 @@ public class FrequencyLayoutUpgradeTest extends TestSuiteBase {
 		reopened.close();
 	}
 
+	/**
+	 * A validated-model marker written under a layout other than the one this build
+	 * understands vouches for nothing. An unknown newer layout, which this build cannot
+	 * read, is rejected exactly as an older one is, so the next refresh rereads every
+	 * record rather than trusting a store a future build wrote.
+	 *
+	 * @throws IOException if the marker cannot be written
+	 */
+	@Test(timeout = 60000)
+	public void aMarkerUnderAnUnknownLayoutVouchesForNothing() throws IOException {
+		Files.createDirectories(storeDir);
+
+		Files.writeString(storeDir.resolve("complete.model"),
+				MODEL + "\nfrequency-layout=" + WaveDetails.FREQUENCY_LAYOUT_VERSION);
+		ProtobufWaveDetailsStore current = new ProtobufWaveDetailsStore(storeDir.toFile());
+		Assert.assertEquals("a marker under the current layout is honoured", MODEL,
+				current.getValidatedModel());
+		current.close();
+
+		Files.writeString(storeDir.resolve("complete.model"),
+				MODEL + "\nfrequency-layout=" + (WaveDetails.FREQUENCY_LAYOUT_VERSION + 1));
+		ProtobufWaveDetailsStore future = new ProtobufWaveDetailsStore(storeDir.toFile());
+		Assert.assertNull("a marker under an unknown newer layout is rejected",
+				future.getValidatedModel());
+		future.close();
+	}
+
 	/** The layout version survives encoding a record and decoding it again. */
 	@Test(timeout = 60000)
 	public void layoutVersionRoundTrips() {

@@ -285,10 +285,10 @@ public class ProtobufWaveDetailsStore implements WaveDetailsStore, ConsoleFeatur
 	 * {@inheritDoc}
 	 *
 	 * <p>The marker also records the {@link WaveDetails#FREQUENCY_LAYOUT_VERSION frequency
-	 * layout} the store was validated under, on its second line. A marker written under an
-	 * older layout, or before the layout was recorded, vouches for nothing: the model is not
-	 * reported, so the next refresh rereads every record and recomputes frequency data
-	 * still in the old layout.</p>
+	 * layout} the store was validated under, on its second line. A marker written under a
+	 * layout other than the one this build understands, or before the layout was recorded,
+	 * vouches for nothing: the model is not reported, so the next refresh rereads every
+	 * record and recomputes frequency data not in the current layout.</p>
 	 */
 	@Override
 	public String getValidatedModel() {
@@ -300,7 +300,7 @@ public class ProtobufWaveDetailsStore implements WaveDetailsStore, ConsoleFeatur
 			String model = lines[0].trim();
 			int layout = lines.length > 1 && lines[1].startsWith(LAYOUT_PREFIX)
 					? Integer.parseInt(lines[1].substring(LAYOUT_PREFIX.length()).trim()) : 0;
-			return model.isEmpty() || layout < WaveDetails.FREQUENCY_LAYOUT_VERSION ? null : model;
+			return model.isEmpty() || layout != WaveDetails.FREQUENCY_LAYOUT_VERSION ? null : model;
 		} catch (NumberFormatException e) {
 			warn("Unreadable frequency layout in validated-model marker at " + marker, e);
 			return null;

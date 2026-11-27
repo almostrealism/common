@@ -136,19 +136,25 @@ public class WaveDetailsFactoryTest extends TestSuiteBase {
 	/**
 	 * Only multi-channel frequency data has had more than one layout: single-channel
 	 * data is current whatever version it records, and multi-channel data is current
-	 * from {@link WaveDetails#FREQUENCY_LAYOUT_VERSION} on.
+	 * only when its version equals the {@link WaveDetails#FREQUENCY_LAYOUT_VERSION} this
+	 * build understands. An older version is stale, and an unknown newer one, which this
+	 * build cannot read, is treated as stale too rather than trusted.
 	 */
 	@Test(timeout = 30000)
 	public void onlyMultiChannelDataCanBeInAnOldLayout() {
 		WaveDetails mono = new WaveDetails("mono", SAMPLE_RATE);
 		mono.setFreqChannelCount(1);
 		Assert.assertTrue(mono.isFrequencyLayoutCurrent());
+		mono.setFreqLayoutVersion(WaveDetails.FREQUENCY_LAYOUT_VERSION + 1);
+		Assert.assertTrue("Single-channel data is current at any version", mono.isFrequencyLayoutCurrent());
 
 		WaveDetails stereo = new WaveDetails("stereo", SAMPLE_RATE);
 		stereo.setFreqChannelCount(2);
 		Assert.assertFalse(stereo.isFrequencyLayoutCurrent());
 		stereo.setFreqLayoutVersion(WaveDetails.FREQUENCY_LAYOUT_VERSION);
 		Assert.assertTrue(stereo.isFrequencyLayoutCurrent());
+		stereo.setFreqLayoutVersion(WaveDetails.FREQUENCY_LAYOUT_VERSION + 1);
+		Assert.assertFalse("An unknown newer layout is not trusted", stereo.isFrequencyLayoutCurrent());
 	}
 
 	/**
