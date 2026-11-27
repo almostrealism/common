@@ -79,7 +79,31 @@ public final class SubmissionConfigResolver {
     public static SubmissionConfigResolver resolve(PhaseConfigBundle requestBundle,
                                                    Workstream workstream,
                                                    WorkspaceEntry wsEntry) {
+        return resolve(requestBundle, PhaseConfigBundle.EMPTY, workstream, wsEntry);
+    }
+
+    /**
+     * Resolves runner and Phase configuration for a submission that also
+     * supplies a per-job fallback. The fallback applies only to phases the
+     * workstream leaves unset; see {@link PhaseConfigResolver}. A submission
+     * with an {@linkplain PhaseConfigBundle#EMPTY empty} fallback resolves
+     * exactly as the {@link #resolve(PhaseConfigBundle, Workstream,
+     * WorkspaceEntry)} overload does.
+     *
+     * @param requestBundle  the per-job override bundle; {@code null} treated
+     *                       as {@link PhaseConfigBundle#EMPTY}
+     * @param fallbackBundle the per-job fallback bundle; {@code null} treated
+     *                       as {@link PhaseConfigBundle#EMPTY}
+     * @param workstream     the target workstream; must not be {@code null}
+     * @param wsEntry        the owning workspace entry, or {@code null}
+     * @return a fresh resolver
+     */
+    public static SubmissionConfigResolver resolve(PhaseConfigBundle requestBundle,
+                                                   PhaseConfigBundle fallbackBundle,
+                                                   Workstream workstream,
+                                                   WorkspaceEntry wsEntry) {
         PhaseConfigBundle req = requestBundle != null ? requestBundle : PhaseConfigBundle.EMPTY;
+        PhaseConfigBundle fb = fallbackBundle != null ? fallbackBundle : PhaseConfigBundle.EMPTY;
 
         // Legacy runner ladder. Request-side runners are no longer accepted on
         // the REST API (rejected upfront by PhaseConfigResolver.rejectLegacyRequestFields)
@@ -96,7 +120,7 @@ public final class SubmissionConfigResolver {
                 ? wsEntry.toPhaseConfigBundle()
                 : PhaseConfigBundle.EMPTY;
         PhaseConfigResolver phaseConfig = PhaseConfigResolver.resolve(
-                req, workstream.getPhaseConfigBundle(), workspaceBundle);
+                req, workstream.getPhaseConfigBundle(), fb, workspaceBundle);
 
         return new SubmissionConfigResolver(runner, phaseConfig);
     }
@@ -139,9 +163,10 @@ public final class SubmissionConfigResolver {
      *
      * <p>The read-back counterpart to {@link #applyTo(CodingAgentJobFactory)}:
      * that method writes the resolved runner and phase configuration onto the
-     * factory, and this one reports the resulting optional-phase flags so a
-     * caller can confirm the effective job configuration without inspecting the
-     * phase bundle. Static, mirroring {@link PhaseConfigResolver#appendBundleJson};
+     * factory, and this one reports the resulting optional-phase flags and the
+     * resource limits the job will run with (after any clamping to the
+     * workstream's limits) so a caller can confirm the effective job
+     * configuration without inspecting the phase bundle. Static, mirroring {@link PhaseConfigResolver#appendBundleJson};
      * the caller is expected to have already resolved and applied configuration
      * to {@code factory}. The leading comma on each member means the caller must
      * have written at least one preceding JSON member.</p>
@@ -174,5 +199,10 @@ public final class SubmissionConfigResolver {
                 .append(factory.isSensitiveFileProtectionEnabled());
         json.append(",\"bypassAgentPermissionPrompts\":")
                 .append(factory.isBypassAgentPermissionPrompts());
+        json.append(",\"maxTurns\":").append(factory.getMaxTurns());
+        json.append(",\"maxBudgetUsd\":").append(factory.getMaxBudgetUsd());
+        if (factory.getInactivityTimeoutSeconds() != null) {
+            json.append(",\"inactivityTimeoutSeconds\":").append(factory.getInactivityTimeoutSeconds());
+        }
     }
 }

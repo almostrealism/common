@@ -314,6 +314,7 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 			"workstream_submit_task",
 			"workstream_register",
 			"workstream_update_config",
+			"phase_config_explain",
 			"workspace_update_config",
 			"workstream_archive",
 			"workstream_archive_many",
@@ -332,6 +333,8 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 			"workstream_context",
 			"memory_store",
 			"send_message",
+			"mailbox_peek",
+			"job_report_blocked",
 			"github_pr_find",
 			"github_pr_review_comments",
 			"github_pr_reviews",
@@ -342,12 +345,14 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 			"github_update_pr",
 			"github_set_pr_state",
 			"github_start_test_run",
+			"github_rerun_failed_jobs",
 			"github_request_copilot_review",
 			"github_read_file",
 			"github_pr_check_status",
 			"github_pr_labels",
 			"github_list_workflow_runs",
 			"github_workflow_run_status",
+			"github_run_artifacts",
 			"github_list_runners",
 			"tracker_list_projects",
 			"tracker_create_project",
@@ -450,6 +455,13 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 		assertTrue("github_start_test_run must declare workstream_id in signature",
 			startTestRunParams.contains("workstream_id"));
 
+		List<String> rerunFailedJobsParams =
+			McpToolDiscovery.discoverToolParameters(managerSources, "github_rerun_failed_jobs");
+		assertTrue("github_rerun_failed_jobs must declare run_id in signature",
+			rerunFailedJobsParams.contains("run_id"));
+		assertTrue("github_rerun_failed_jobs must declare workstream_id in signature",
+			rerunFailedJobsParams.contains("workstream_id"));
+
 		List<String> submitParams =
 			McpToolDiscovery.discoverToolParameters(managerSources, "workstream_submit_task");
 		assertTrue("workstream_submit_task must declare prompt in signature",
@@ -492,6 +504,13 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 		assertTrue("workstream_submit_task must declare phase_configs in signature"
 			+ " so per-phase (runner, model, effort) overrides can be passed in",
 			submitParams.contains("phase_configs"));
+		assertTrue("workstream_submit_task must declare fallback_default_phase_config in"
+			+ " signature so a submission can carry a fallback applied only to phases"
+			+ " the workstream leaves unset",
+			submitParams.contains("fallback_default_phase_config"));
+		assertTrue("workstream_submit_task must declare fallback_phase_configs in signature"
+			+ " so per-phase fallback overrides can be passed in",
+			submitParams.contains("fallback_phase_configs"));
 		assertTrue("workstream_submit_task must declare allow_commit_language in signature"
 			+ " so callers can opt out of the commit-language linter when needed",
 			submitParams.contains("allow_commit_language"));
@@ -742,6 +761,17 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 		assertTrue("github_workflow_run_status must declare run_id in signature",
 			runStatusParams.contains("run_id"));
 
+		List<String> artifactParams =
+			McpToolDiscovery.discoverToolParameters(managerSources, "github_run_artifacts");
+		assertTrue("github_run_artifacts must declare run_id in signature",
+			artifactParams.contains("run_id"));
+		assertTrue("github_run_artifacts must declare artifact in signature",
+			artifactParams.contains("artifact"));
+		assertTrue("github_run_artifacts must declare file in signature",
+			artifactParams.contains("file"));
+		assertTrue("github_run_artifacts must declare max_bytes in signature",
+			artifactParams.contains("max_bytes"));
+
 		List<String> trackerCreateParams =
 			McpToolDiscovery.discoverToolParameters(managerSources, "tracker_create_task");
 		assertTrue("tracker_create_task must declare priority in signature",
@@ -835,11 +865,18 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 			"src/main/java/io/flowtree/api/WorkstreamRegistrationHandler.java");
 		assertNotNull("WorkstreamRegistrationHandler.java must be locatable for the"
 			+ " submit parity guard", registration);
+		// The resource limits (maxTurns, maxBudgetUsd, inactivityTimeoutSeconds)
+		// are read off the body here, which clamps them to the workstream's.
+		Path limits = locateModuleSource(
+			"src/main/java/io/flowtree/submission/ResourceLimitOverrides.java");
+		assertNotNull("ResourceLimitOverrides.java must be locatable for the"
+			+ " submit parity guard", limits);
 
 		Set<String> consumed = new HashSet<>();
 		consumed.addAll(controllerConsumedKeys(endpoint));
 		consumed.addAll(controllerConsumedKeys(resolver));
 		consumed.addAll(controllerConsumedKeys(registration));
+		consumed.addAll(controllerConsumedKeys(limits));
 
 		List<String> missing = new ArrayList<>();
 		for (String key : toolKeys) {
@@ -1137,6 +1174,35 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 				+ " resolving the workstream from its bearer",
 			McpToolDiscovery.isOptionalToolParameter(
 				managerSources, "await_message", "workstream_id"));
+	}
+
+	/**
+	 * Verifies that {@code mailbox_peek} is registered with the {@code @mcp.tool()}
+	 * decorator and declares the parameters a read-only view of a conversation needs:
+	 * {@code since} to choose where the view starts and {@code limit} to bound it.
+	 * {@code workstream_id} must be optional so a job-scoped agent can look at its own
+	 * workstream's conversation with no arguments.
+	 */
+	@Test(timeout = 30000)
+	public void managerMailboxPeekToolIsRegisteredWithExpectedParameters() {
+		List<Path> managerSources = McpToolDiscovery.locateManagerSources();
+		assertFalse("manager tool sources must be locatable from the test working"
+			+ " directory; a silent skip here would let MCP tool/schema drift go"
+			+ " undetected", managerSources.isEmpty());
+
+		assertTrue("mailbox_peek must be registered with @mcp.tool() or it is"
+				+ " invisible to MCP clients",
+			McpToolDiscovery.discoverToolNames(managerSources).contains("mailbox_peek"));
+
+		List<String> peekParams =
+			McpToolDiscovery.discoverToolParameters(managerSources, "mailbox_peek");
+		assertTrue("mailbox_peek must declare since in signature",
+			peekParams.contains("since"));
+		assertTrue("mailbox_peek must declare limit in signature",
+			peekParams.contains("limit"));
+		assertTrue("mailbox_peek workstream_id must be optional (default value present)",
+			McpToolDiscovery.isOptionalToolParameter(
+				managerSources, "mailbox_peek", "workstream_id"));
 	}
 
 	/**

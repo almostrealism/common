@@ -73,10 +73,20 @@ public final class RemediationEscalation {
      */
     public String compose(String repoUrl, String branch, int budget) {
         StringBuilder message = new StringBuilder(RemediationBudgetGuard.capReachedMessage(budget));
-
-        PullRequestEscalation pr = lookup.lookup(repoUrl, branch);
-        if (pr == null) pr = PullRequestEscalation.NONE;
-        pr.appendTo(message);
+        pullRequest(repoUrl, branch).appendTo(message);
         return message.toString();
+    }
+
+    /**
+     * Looks up the open pull request on a workstream's branch.
+     *
+     * @param repoUrl the repository URL the workstream names; may be {@code null}
+     * @param branch  the workstream's branch (the PR head); may be {@code null}
+     * @return the pull request facts; {@link PullRequestEscalation#NONE} when none
+     *         could be resolved
+     */
+    public PullRequestEscalation pullRequest(String repoUrl, String branch) {
+        PullRequestEscalation pr = lookup.lookup(repoUrl, branch);
+        return pr == null ? PullRequestEscalation.NONE : pr;
     }
 }

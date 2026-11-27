@@ -88,6 +88,28 @@ Computations do **not** override `delta` themselves;
 overrides it on their behalf (dispatching the identity cases to the default and everything else to
 the extension points below), so a `CollectionProducerComputation` never touches `delta` directly.
 
+### Holding a value constant: `stopGradient`
+
+The first identity case can be asked for on purpose. `GradientFeatures.stopGradient(producer)`
+returns a
+[`CollectionStopGradientComputation`](../../compute/algebra/src/main/java/org/almostrealism/collect/computations/CollectionStopGradientComputation.java),
+which has the shape of `producer`, evaluates to its values and embeds into a kernel as `producer`
+would, but presents no inputs for matching: `matchableInputs()` is empty, the case that the
+matching contract of `Producer` provides for a producer held constant with respect to
+differentiation. No target is reachable through it,
+so its delta with respect to anything but itself is zero, and every rule that differentiates a
+consumer skips it as an input that `cannotMatch` the target — no zero-valued terms are built.
+
+It is for a value whose dependence on the variables does not contribute to the derivative being
+taken. `ActivationFeatures.logSoftmax` (and with it every softmax layer) holds the row maximum it
+subtracts constant: the result is invariant to that shift, so the derivative through the maximum is
+exactly zero, and taking it anyway selects the largest element and builds terms that cancel (for a
+small classifier, about half of the kernels of each training step). The constancy holds for the
+producer graph; a consumer whose Jacobian falls through to differentiating its own expression as a
+whole (`TraversableDeltaComputation`) reads the stopped input's expression as embedded, and so
+differentiates through it. `stopGradient` is therefore not a strict detach. Use it only where the
+true derivative through the stopped value is zero, so that both paths give the same result.
+
 ---
 
 ## 3. Inside a computation: the extension points

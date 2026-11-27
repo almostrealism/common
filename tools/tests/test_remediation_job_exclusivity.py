@@ -59,13 +59,6 @@ def _condition(job):
     return " ".join(str(job.get("if", "")).split())
 
 
-def _attempt_threshold(condition, operator):
-    match = re.search(r"fromJSON\(github\.run_attempt\) %s (\d+)" % re.escape(operator), condition)
-    if not match:
-        raise AssertionError("no `fromJSON(github.run_attempt) %s N` in %r" % (operator, condition))
-    return int(match.group(1))
-
-
 def _uploaded_artifacts(job):
     return [(step.get("with") or {}).get("name") for step in job.get("steps", [])
             if str(step.get("uses", "")).startswith("actions/upload-artifact")]
@@ -75,9 +68,45 @@ class RemediationJobConditionTests(unittest.TestCase):
     """The static wiring in analysis.yaml and auto-resolve-submit.yaml."""
 
     def test_auto_review_runs_on_the_first_attempt_only(self):
-        """A retry re-runs auto-review whenever one of its inputs failed; its first
-        agent is likely still working by then, so it must not submit again."""
-        self.assertEqual(1, _attempt_threshold(_condition(_jobs()["auto-review"]), "=="))
+        """Auto-review hands off on the first attempt only — but no longer by
+        pinning its ``if:`` to attempt 1. A validate run reaches attempt 2+ only
+        when the infra retry gate re-ran a gate that failed on infrastructure;
+        pinning to attempt 1 would skip that later attempt, stranding a validate
+        run whose attempt 1 suppressed its dispatch as infrastructure (no review
+        agent, no test run) when a later attempt passes. So the job now runs on
+        any attempt and the single-handoff guard (below) keeps it from starting
+        a second review round, leaving the same net effect: one handoff, on the
+        first attempt that produces one. This asserts the pin is gone; the guard
+        tests below assert the handoff still happens at most once."""
+        self.assertNotIn("fromJSON(github.run_attempt) == 1",
+                         _condition(_jobs()["auto-review"]))
+
+    def test_auto_review_detects_an_earlier_attempts_handoff(self):
+        """Running on every attempt, auto-review must hand off at most once: a
+        retry re-runs it whenever one of its inputs failed, and the agent an
+        earlier attempt submitted is likely still working. The guard step runs
+        only past attempt 1 and reads the artifacts API for the earlier
+        attempt's auto-review-request — the same artifact the retry gate keys
+        its auto-resolve-request check on."""
+        step = next(s for s in _jobs()["auto-review"]["steps"]
+                    if s.get("id") == "earlier")
+        self.assertIn("fromJSON(github.run_attempt) != 1", _condition(step))
+        self.assertIn("read", _jobs()["auto-review"]["permissions"]["actions"])
+        run = step["run"]
+        self.assertIn("artifacts?name=auto-review-request", run)
+        self.assertIn("earlier=true", run)
+        self.assertIn("earlier=false", run)
+
+    def test_every_stage_step_is_guarded_against_an_earlier_handoff(self):
+        """No route stages a request once an earlier attempt of the run did, so
+        a retried validate run never starts a second review round."""
+        staged = [s for s in _jobs()["auto-review"]["steps"]
+                  if str(s.get("name", "")).startswith("Stage submit request")]
+        self.assertEqual(5, len(staged))
+        for step in staged:
+            with self.subTest(step=step["name"]):
+                self.assertIn("steps.earlier.outputs.earlier != 'true'",
+                              _condition(step))
 
     def test_auto_resolve_never_shares_an_attempt_with_auto_review(self):
         """They never share a run: auto-review is for a validate run (a
@@ -577,7 +606,14 @@ case "$*" in
   *"-X POST"*) echo "$*" >> "%s" ;;
   *"/commits/"*) echo "$STUB_TIP_SHA" ;;
   *"/artifacts"*) [ -n "${STUB_STAGED_AT:-}" ] && echo "$STUB_STAGED_AT" ;;
-  *"/logs"*) path="${!#}"; id="${path#*/jobs/}"; cat "%s/${id%%%%/logs*}" 2>/dev/null || exit 1 ;;
+  *"--help"*) [ -n "${STUB_ESCAPE_GUARD:-}" ] && echo "      --allow-escape-sequences   Allow printing terminal escape sequences" ;;
+  *"/logs"*) path="${!#}"; id="${path#*/jobs/}"; file="%s/${id%%%%/logs*}"
+    [ -f "$file" ] || exit 1
+    if [ -n "${STUB_ESCAPE_GUARD:-}" ] && [[ "$*" != *--allow-escape-sequences* ]] && grep -q $'\\033' "$file"; then
+      echo "the response contains terminal escape sequences; pass --allow-escape-sequences to output it anyway" >&2
+      exit 1
+    fi
+    cat "$file" ;;
   *"/jobs"*) cat "%s" ;;
 esac
 exit 0
@@ -587,8 +623,11 @@ exit 0
         shutil.rmtree(self.tmp, ignore_errors=True)
 
     def _run(self, jobs, attempt="1", tip="abc", staged_at="", attempt_started_at="",
-             logs=None):
-        """Runs the script; ``logs`` maps a job's position in ``jobs`` to its log."""
+             logs=None, escape_guard=False):
+        """Runs the script; ``logs`` maps a job's position in ``jobs`` to its log.
+        ``escape_guard`` makes the stub behave like a current ``gh``, which
+        refuses to print a log containing escape sequences unless passed
+        ``--allow-escape-sequences``."""
         with open(self.jobs_file, "w") as f:
             f.write("".join("%s\t%s\t%d\n" % (job + (100 + i,))
                             for i, job in enumerate(jobs)))
@@ -601,7 +640,11 @@ exit 0
                    GH_TOKEN="t", REPO="o/r", RUN_ID="1", RUN_ATTEMPT=attempt,
                    HEAD_SHA="abc", HEAD_BRANCH="feature/x", HEAD_REPO="o/r",
                    MAX_ATTEMPTS="3", STUB_TIP_SHA=tip, GITHUB_OUTPUT=output,
-                   STUB_STAGED_AT=staged_at, ATTEMPT_STARTED_AT=attempt_started_at)
+                   STUB_STAGED_AT=staged_at, ATTEMPT_STARTED_AT=attempt_started_at,
+                   # Keep the log-fetch retry (infra-failure.sh) fast and
+                   # deterministic for the stub: two tries, no delay.
+                   CI_INFRA_LOG_ATTEMPTS="2", CI_INFRA_LOG_RETRY_DELAY="0",
+                   STUB_ESCAPE_GUARD="1" if escape_guard else "")
         result = subprocess.run(["bash", _RERUN_SCRIPT], env=env, capture_output=True, text=True)
         self.assertEqual(0, result.returncode, result.stderr)
         with open(output) as f:
@@ -641,8 +684,13 @@ exit 0
         self.assertFalse(posted)
 
     def test_a_gate_only_failure_is_not_retried(self):
-        outputs, posted = self._run([("failure", "checkstyle"), ("failure", "test-timeout-check"),
-                                     ("skipped", "test (0)")])
+        """Readable gate logs that show a code failure, not infrastructure, are
+        deterministic and are not retried."""
+        outputs, posted = self._run(
+            [("failure", "checkstyle"), ("failure", "test-timeout-check"),
+             ("skipped", "test (0)")],
+            logs={0: "[ERROR] Checkstyle violation: do not use the var keyword\n",
+                  1: "FooTest.bar has @Test without a timeout\n"})
         self.assertEqual("false", outputs["retried"])
         self.assertFalse(posted)
 
@@ -692,7 +740,78 @@ exit 0
         self.assertFalse(posted)
 
     def test_an_unreadable_log_leaves_the_job_deterministic(self):
-        outputs, posted = self._run([("failure", "code-policy-check")])
+        """An unreadable log on a job that is neither a validator nor the build
+        (here register-workstream) stays deterministic: the retry-on-unreadable
+        safety net is scoped to the jobs whose infrastructure failure skips the
+        test lanes (the *-check validators and build)."""
+        outputs, posted = self._run([("failure", "register-workstream")])
+        self.assertEqual("false", outputs["retried"])
+        self.assertFalse(posted)
+
+    def test_an_unreadable_check_log_is_retried(self):
+        """A *-check validator whose log cannot be read must not be silently
+        called deterministic: that is the case that left pipelines stuck. Retry
+        while attempts remain."""
+        outputs, posted = self._run([("failure", "test-timeout-check"), ("skipped", "test (0)")])
+        self.assertEqual("true", outputs["retried"])
+        self.assertTrue(posted)
+
+    def test_an_unreadable_build_log_is_retried(self):
+        """The build job's unreadable log is retried for the same reason."""
+        outputs, posted = self._run([("failure", "build")])
+        self.assertEqual("true", outputs["retried"])
+        self.assertTrue(posted)
+
+    def test_a_rate_limited_coverage_download_in_analysis_is_retried(self):
+        """The analysis job's Merge Coverage Data step failing on a Maven
+        Central 429, with GitHub's colour-wrapped step echo in the log and a
+        ``gh`` that guards escape sequences, is an infrastructure failure. The
+        Test Checks gate it then fails does not stop the retry."""
+        esc = "\x1b"
+        outputs, posted = self._run(
+            [("failure", "analysis"), ("failure", "Test Checks")],
+            logs={0: esc + "[36;1m  # retries transient ones with backoff" + esc + "[0m\n"
+                     "jacoco-cli 0.8.11 not in the Maven cache; downloading from Maven Central\n"
+                     "curl: (22) The requested URL returned error: 429\n"
+                     "##[error]Process completed with exit code 22.\n",
+                  1: esc + "[36;1mcheck_job analysis" + esc + "[0m\n"
+                     "##[error]Process completed with exit code 1.\n"},
+            escape_guard=True)
+        self.assertEqual("true", outputs["retried"])
+        self.assertTrue(posted)
+
+    def test_a_coloured_log_is_read_through_the_escape_guard(self):
+        """A coloured log must be readable: without --allow-escape-sequences a
+        current ``gh`` refuses it and every failure looks unreadable."""
+        esc = "\x1b"
+        outputs, posted = self._run(
+            [("failure", "register-workstream")],
+            logs={0: esc + "[36;1mcurl ... /api/workstreams" + esc + "[0m\n"
+                     "Connection " + esc + "[1mrefused" + esc + "[0m\n"},
+            escape_guard=True)
+        self.assertEqual("true", outputs["retried"])
+        self.assertTrue(posted)
+
+    def test_an_analysis_failing_on_the_code_is_not_retried(self):
+        outputs, posted = self._run(
+            [("failure", "analysis"), ("failure", "Test Checks")],
+            logs={0: "End-of-central-directory signature not found.\n"
+                     "##[error]Process completed with exit code 9.\n",
+                  1: "##[error]Process completed with exit code 1.\n"})
+        self.assertEqual("false", outputs["retried"])
+        self.assertFalse(posted)
+
+    def test_an_unreadable_analysis_log_is_retried(self):
+        """An analysis failure reaches no agent, so an unreadable log is retried
+        while attempts remain, as for build and the validators."""
+        outputs, posted = self._run([("failure", "analysis"), ("failure", "Test Checks")])
+        self.assertEqual("true", outputs["retried"])
+        self.assertTrue(posted)
+
+    def test_an_unreadable_check_log_on_the_last_attempt_is_not_retried(self):
+        """The retry-on-unreadable net is bounded by MAX_ATTEMPTS, so the final
+        attempt proceeds exactly as a deterministic failure would."""
+        outputs, posted = self._run([("failure", "test-timeout-check")], attempt="3")
         self.assertEqual("false", outputs["retried"])
         self.assertFalse(posted)
 
@@ -952,6 +1071,114 @@ echo "{}"
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertNotIn("skipped by the controller", result.stdout)
         self.assertIn("job_id=job-123", result.stdout)
+
+
+class InfrastructureFailureSharingTests(unittest.TestCase):
+    """The infrastructure-vs-deterministic classification lives in one place,
+    tools/ci/infra-failure.sh, used by both the retry gate and auto-review, and
+    auto-review suppresses a dispatch when every failing gate is infrastructure.
+    """
+
+    _SHARED = os.path.join(_REPO_ROOT, "tools", "ci", "infra-failure.sh")
+
+    def test_the_shared_script_exists(self):
+        self.assertTrue(os.path.isfile(self._SHARED))
+
+    def test_the_retry_gate_sources_the_shared_script_and_keeps_no_copy(self):
+        with open(_RERUN_SCRIPT) as f:
+            body = f.read()
+        self.assertIn("infra-failure.sh", body)
+        # No second copy of the signatures or the matcher to drift from it.
+        self.assertNotIn("INFRA_SIGNATURES=", body)
+        self.assertNotIn("is_infra_failure()", body)
+
+    def test_auto_review_may_read_the_runs_jobs_and_logs(self):
+        self.assertEqual("read", _jobs()["auto-review"]["permissions"]["actions"])
+
+    def test_auto_review_classifies_gate_failures_with_the_shared_script(self):
+        step = next(s for s in _jobs()["auto-review"]["steps"] if s.get("id") == "infra")
+        run = step["run"]
+        self.assertIn("infra-failure.sh", run)
+        self.assertIn("ci_infra_job_matches", run)
+        self.assertIn("infra_only", run)
+        # Only the failure routes are classified; docs/general review always submit.
+        condition = _condition(step)
+        for route in ("build-failure", "code-policy", "quality-gates"):
+            with self.subTest(route=route):
+                self.assertIn("route == '%s'" % route, condition)
+
+    def test_every_finding_producing_gate_is_classified(self):
+        """A gate whose failure check-quality-gates.sh can turn into a finding
+        must appear in GATE_JOBS, or an infrastructure failure in another gate
+        could set infra_only=true and suppress the agent that should handle the
+        genuine finding. The integrity checks (test-integrity-check,
+        agent-commit-validation) drive the quality-gates route just as the Maven
+        gates do, so they must be classified too."""
+        step = next(s for s in _jobs()["auto-review"]["steps"] if s.get("id") == "infra")
+        gate_jobs = step["env"]["GATE_JOBS"].split()
+        for gate in ("build", "code-policy-check", "test-timeout-check",
+                     "duplicate-code-check", "checkstyle",
+                     "test-integrity-check", "agent-commit-validation"):
+            with self.subTest(gate=gate):
+                self.assertIn(gate, gate_jobs)
+
+    def test_the_failure_routes_suppress_dispatch_on_an_infra_only_failure(self):
+        steps = _jobs()["auto-review"]["steps"]
+        for route in ("build failure", "code policy violations", "quality gates"):
+            with self.subTest(route=route):
+                step = _named_step({"steps": steps}, "Stage submit request (%s)" % route)
+                self.assertIn("steps.infra.outputs.infra_only != 'true'", _condition(step))
+
+    def test_docs_and_general_review_are_never_suppressed_as_infrastructure(self):
+        """A review that reports no gate finding must always run."""
+        steps = _jobs()["auto-review"]["steps"]
+        for route in ("docs-only review", "general review"):
+            with self.subTest(route=route):
+                step = _named_step({"steps": steps}, "Stage submit request (%s)" % route)
+                self.assertNotIn("infra_only", _condition(step))
+
+    def test_the_classifier_shell_suite_runs_in_ci(self):
+        """INFRA_SIGNATURES lives in a shell script no unittest discovery
+        reaches, and the Python wiring tests here stub the log fetch, so the
+        standalone shell suite is the only CI coverage of the regex itself. It
+        must be invoked by a python-tests step or it never runs in CI."""
+        step = _named_step(_jobs()["python-tests"],
+                           "Run infrastructure classifier tests")
+        self.assertIn("tools/tests/test-infra-classification.sh", step["run"])
+
+    def test_python_tests_runs_when_only_the_classifier_scripts_change(self):
+        """A change to infra-failure.sh or the retry gate touches no .py file,
+        so python-tests must also gate on infra_classifier_changed or the
+        classifier suite above would not run on exactly that change."""
+        self.assertIn("needs.changes.outputs.infra_classifier_changed == 'true'",
+                      _condition(_jobs()["python-tests"]))
+
+    def test_the_classifier_scripts_have_a_change_detection_flag(self):
+        """The changes job must set infra_classifier_changed from the classifier
+        scripts, and set_all_flags_true must include it, following the contract
+        every non-layer path flag follows (detection + force-all + consumer)."""
+        filter_step = next(s for s in _jobs()["changes"]["steps"]
+                           if s.get("id") == "filter")
+        run = filter_step["run"]
+        self.assertIn("infra_classifier_changed", run)
+        for path in ("tools/ci/infra-failure.sh",
+                     "tools/ci/rerun-flaky-tests.sh",
+                     "tools/tests/test-infra-classification.sh"):
+            with self.subTest(path=path):
+                self.assertIn(path, run)
+
+    def test_the_flag_also_detects_this_workflow_file(self):
+        """The auto-review GATE_JOBS and suppression conditions this very test
+        class reads live in analysis.yaml, which is not a .py, so a change to
+        that wiring alone would set neither python_changed nor (without this)
+        infra_classifier_changed — skipping python-tests and leaving the wiring
+        unexercised. analysis.yaml must be in the detection set so a change to
+        the classifier's other half runs its wiring tests."""
+        filter_step = next(s for s in _jobs()["changes"]["steps"]
+                           if s.get("id") == "filter")
+        run = filter_step["run"]
+        infra_block = run.split("INFRA_FILES=", 1)[1].split("ISO_FILES=", 1)[0]
+        self.assertIn(".github/workflows/analysis.yaml", infra_block)
 
 
 if __name__ == "__main__":

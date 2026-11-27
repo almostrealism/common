@@ -109,8 +109,12 @@ directory named by the property in parentheses):
 | FlyWire 630 | `connectome_csr.py --dataset flywire-630 --source <flywire-783 directory>` | `flywire/csr-630` (`AR_FLYWIRE_630_CSR`) |
 | FlyWire 783 | `connectome_csr.py --dataset flywire-783 --source <flywire-783 directory>` | `flywire/csr-783` (`AR_FLYWIRE_783_CSR`) |
 | Cell types | `male_cns_cell_types.py --source <male-cns release>` | `male-cns/cell-type-matrix` (`AR_MALE_CNS_CELL_TYPES`) |
-| Brian2 sugar references | `brian2_reference.py sugar --repo <model repo> --rate <100, 150 or 200>` | `flywire/brian2-reference/sugarR_630_<rate>Hz` (`AR_FLYWIRE_BRIAN2_REFERENCE`, the parent directory) |
-| MaleCNS Brian2 references | `brian2_reference.py experiment --repo <model repo> --connectome <male-cns/csr> --name male-cns_<rate>Hz --rate <100, 150 or 200> ...` | `male-cns/brian2-reference/male-cns_<rate>Hz` (`AR_MALE_CNS_BRIAN2_REFERENCE`, the parent directory) |
+| Brian2 sugar references | `brian2_reference.py sugar --repo <model repo> --rate <100, 150 or 200> --processes <n> --output <models-derived>/flywire/brian2-reference/sugarR_630_<rate>Hz` | `flywire/brian2-reference/sugarR_630_<rate>Hz` (`AR_FLYWIRE_BRIAN2_REFERENCE`, the parent directory) |
+| MaleCNS Brian2 references | `brian2_reference.py experiment --repo <model repo> --connectome <male-cns/csr> --name male-cns_<rate>Hz --stimulate-types LB3a,LB3b,LB3c,LB3d --rate <100, 150 or 200> --trials 30 --processes <n> --output <models-derived>/male-cns/brian2-reference/male-cns_<rate>Hz` | `male-cns/brian2-reference/male-cns_<rate>Hz` (`AR_MALE_CNS_BRIAN2_REFERENCE`, the parent directory) |
+
+`--processes` sets how many trials Brian2 runs in parallel and defaults to 1, which runs the 30
+trials one after another. The recorded MaleCNS references were generated with `--processes 15`,
+which takes about 6 minutes per rate; with the default the same reference takes many times longer.
 
 The committed sugar circuit fixtures are regenerated from the source tables and the 200 Hz
 reference with:
@@ -127,7 +131,18 @@ of two independent Brian2 runs: MN9 within 5%, a median relative difference of a
 90th percentile of at most 8% over neurons above 10 Hz, and at least 48 of the 50 fastest neurons in
 common. The sugar experiment on FlyWire 630 (30 trials of 1 s) takes about 8 minutes. A MaleCNS
 reference, written with `--name male-cns_<rate>Hz`, needs no change to the test: the stimulated set
-and the synapse weight come from its manifest.
+and the synapse weight come from its manifest. The MaleCNS sugar-sensing GRNs are the labellar
+bristle types `LB3a`–`LB3d` on both sides (77 neurons): MaleCNS matches all four to the FlyWire type
+`LB3`, and they are the gustatory types with the strongest two-synapse input to MN9 (bodies 10331
+and 16949). Under them MN9 fires at about 145–160 Hz (left) and 30–40 Hz (right), and the network's
+rates agree with Brian2's within the tolerance above at 100, 150 and 200 Hz. A MaleCNS experiment
+takes about 9 minutes on Metal and needs `AR_HARDWARE_MEMORY_SCALE=6`.
+
+On MaleCNS the model is not as sparse as on FlyWire. At the model's own synapse weight, any input of
+this size (sugar GRNs or not) ignites widespread activity across about 13k neurons. The negative
+control (`maleCnsNonGustatoryInputLeavesMn9Silent`) therefore finds MN9 at a few hertz rather than
+silent, in Brian2 as well as on the platform, and that test fails until the criterion for MaleCNS is
+settled.
 
 ## Tests
 

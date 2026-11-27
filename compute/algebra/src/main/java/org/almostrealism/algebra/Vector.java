@@ -700,7 +700,7 @@ public class Vector extends PackedCollection implements VectorFeatures, Cloneabl
 			throw new IllegalArgumentException();
 		}
 
-		return new Vector(collection.getDelegate(), pos * 3);
+		return new Vector(collection, pos * 3);
 	}
 
 	/**

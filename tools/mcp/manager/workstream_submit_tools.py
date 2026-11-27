@@ -53,17 +53,22 @@ def workstream_submit_task(
     delay_seconds: int = 0,
     default_phase_config: str = "",
     phase_configs: str = "",
+    fallback_default_phase_config: str = "",
+    fallback_phase_configs: str = "",
     allow_commit_language: bool = False,
     collaborative: bool = False,
     self_notify: bool = False,
     # Removed legacy config parameters (model / effort / default_runner /
     # runners). Declared without type hints so they stay out of the tool's
     # declared parameter schema while still being captured here for a clear
-    # rejection error — see _reject_removed_config_params.
+    # rejection error — see _reject_removed_config_params. They keep their
+    # original positions so an existing positional call still binds to them,
+    # which is why any genuinely new parameter is appended after them.
     model="",
     effort="",
     default_runner="",
     runners="",
+    inactivity_timeout_seconds: Optional[int] = None,
 ) -> dict:
     """Submit a coding task to a FlowTree agent.
 
@@ -136,7 +141,10 @@ def workstream_submit_task(
         description: Short human-readable description of the task (shown
             in Slack notifications).
         max_turns: Maximum Claude Code turns (0 = use workstream default).
+            A value above the workstream's own limit is clamped to it; the
+            response's ``clampedLimits`` names what was clamped.
         max_budget_usd: Maximum cost in USD (0 = use workstream default).
+            Clamped to the workstream's limit like ``max_turns``.
         protect_test_files: If true, the harness keeps every test method that
             exists on the base branch exactly as it is (new tests and
             helpers are still allowed). Use it for a job sent to make failing
@@ -387,6 +395,30 @@ def workstream_submit_task(
 
             Empty (default) inherits the workstream-level configuration.
             Unknown phase names are rejected client-side with a clear error.
+        fallback_default_phase_config: A fallback default ``PhaseConfig`` as a
+            JSON object string with optional ``runner`` / ``model`` /
+            ``effort`` / ``provider`` keys. Unlike ``default_phase_config``
+            (which wins over the workstream), the fallback applies ONLY to
+            phases the target workstream leaves unset — a phase whose
+            workstream-level config is set, or any phase when the workstream
+            has its own default, keeps the workstream's choice and ignores the
+            fallback. Use it to run CI-submitted jobs on a cheaper setup
+            without overriding a workstream an owner configured on purpose.
+            A fallback naming ``provider=openrouter`` needs the workspace's
+            ``openrouter-api-key`` secret; the opencode runner resolves the key
+            when the job starts, so a missing secret surfaces as a runtime job
+            failure rather than a submission rejection (submission validates
+            only the runner/model/provider combination). Empty (default) sends
+            no fallback and resolution is unchanged. Example::
+
+                '{"runner": "opencode", "model": "z-ai/glm-4.6",
+                  "provider": "openrouter"}'
+
+        fallback_phase_configs: Per-phase fallback overrides as a JSON object
+            mapping phase wire names to ``{runner, model, effort, provider}``
+            objects, mirroring ``phase_configs`` but at the fallback level. A
+            fallback entry applies as a whole only to a phase the workstream
+            leaves unset. Empty (default) sends no per-phase fallback.
         model: REMOVED. The legacy ``model`` parameter is no longer accepted;
             passing it fails with a 400-style error. Use
             ``default_phase_config`` or ``phase_configs`` to set models.
@@ -426,6 +458,12 @@ def workstream_submit_task(
             so it cannot create the standing self-listener loop that
             registering a workstream as its own listener would. Defaults to
             False.
+        inactivity_timeout_seconds: Per-job silence budget, in seconds: how
+            long an agent session may produce no output before the inactivity
+            watchdog destroys it. It can only shorten the runner's own budget
+            (about 35 minutes for Claude Code); a longer value is held to the
+            runner's when the job launches. Leave unset (``None``) to use the
+            runner's. Must be positive.
 
     Returns:
         Dictionary with job_id and workstream_id on success.
@@ -600,6 +638,15 @@ def workstream_submit_task(
                 "Omit max_wall_clock_hours to inherit the workstream setting",
             ],
         }
+    if inactivity_timeout_seconds is not None and inactivity_timeout_seconds <= 0:
+        return {
+            "ok": False,
+            "error": (
+                "inactivity_timeout_seconds must be positive; got "
+                f"{inactivity_timeout_seconds}. Omit it to use the runner's "
+                "own silence budget."
+            ),
+        }
     err = server._check_short_strings(
         workstream_id=workstream_id, target_branch=target_branch,
         repo_url=repo_url, description=description, started_after=started_after,
@@ -613,6 +660,14 @@ def workstream_submit_task(
     parsed_phase_configs, phase_configs_err = server._parse_phase_configs_json(phase_configs)
     if phase_configs_err:
         return phase_configs_err
+    parsed_fallback_default, fallback_default_err = server._parse_default_phase_config_json(
+        fallback_default_phase_config, "fallback_default_phase_config")
+    if fallback_default_err:
+        return fallback_default_err
+    parsed_fallback_phase_configs, fallback_phase_configs_err = server._parse_phase_configs_json(
+        fallback_phase_configs, "fallback_phase_configs")
+    if fallback_phase_configs_err:
+        return fallback_phase_configs_err
     # Commit-language linter -- rejects prompts that imply the agent controls
     # git commits (e.g. "Commit 1: do X, Commit 2: do Y").  Bypassed when the
     # caller explicitly opts out via allow_commit_language=True.
@@ -813,6 +868,8 @@ def workstream_submit_task(
     # default, apply in turn.
     if max_wall_clock_hours is not None:
         payload["maxWallClockHours"] = int(max_wall_clock_hours)
+    if inactivity_timeout_seconds is not None:
+        payload["inactivityTimeoutSeconds"] = int(inactivity_timeout_seconds)
     # sensitiveFileProtectionEnabled defaults to TRUE; forward only when the
     # operator has explicitly disabled it. Mirrors the inverted semantics of
     # the other activation booleans (which default to false and forward on true).
@@ -844,6 +901,11 @@ def workstream_submit_task(
         payload["defaultPhaseConfig"] = parsed_default_phase_config
     if parsed_phase_configs:
         payload["phaseConfigs"] = parsed_phase_configs
+    # Fallback configuration, applied only to phases the workstream leaves unset.
+    if parsed_fallback_default:
+        payload["fallbackPhaseConfig"] = parsed_fallback_default
+    if parsed_fallback_phase_configs:
+        payload["fallbackPhaseConfigs"] = parsed_fallback_phase_configs
 
     result = server._controller_post("/api/submit", payload)
 

@@ -16,6 +16,8 @@
 
 package io.flowtree.controller;
 
+import io.flowtree.jobs.BlockReport;
+import io.flowtree.jobs.CodingAgentJobEvent;
 import io.flowtree.jobs.JobCompletionEvent;
 import org.almostrealism.io.Truncation;
 
@@ -71,6 +73,9 @@ public class JobStatsStore extends ControllerDatabase {
         + "    commit_hash    VARCHAR(64),"
         + "    pull_request_url VARCHAR(1000),"
         + "    error_message  VARCHAR(2000),"
+        + "    blocked_category VARCHAR(32),"
+        + "    blocked_detail VARCHAR(2000),"
+        + "    blocked_verified BOOLEAN,"
         + "    trigger_reason VARCHAR(64) DEFAULT 'manual',"
         + "    heartbeat_at   TIMESTAMP,"
         + "    phase          VARCHAR(64),"
@@ -112,10 +117,9 @@ public class JobStatsStore extends ControllerDatabase {
         + ")";
 
     /**
-     * ALTER TABLE statements to add new columns to existing databases.
-     * HSQLDB 2.x does not support {@code IF NOT EXISTS} on {@code ADD COLUMN},
-     * so these statements will throw if the column already exists. The
-     * initialization loop catches and ignores those errors.
+     * ALTER TABLE statements to add new columns to existing databases, applied
+     * by {@link ControllerDatabase#addColumns}, which ignores the ones whose
+     * column already exists.
      */
     private static final String[] SCHEMA_MIGRATIONS = {
         "ALTER TABLE job_timing ADD COLUMN subtype VARCHAR(64)",
@@ -125,6 +129,9 @@ public class JobStatsStore extends ControllerDatabase {
         "ALTER TABLE job_timing ADD COLUMN commit_hash VARCHAR(64)",
         "ALTER TABLE job_timing ADD COLUMN pull_request_url VARCHAR(1000)",
         "ALTER TABLE job_timing ADD COLUMN error_message VARCHAR(2000)",
+        "ALTER TABLE job_timing ADD COLUMN blocked_category VARCHAR(32)",
+        "ALTER TABLE job_timing ADD COLUMN blocked_detail VARCHAR(2000)",
+        "ALTER TABLE job_timing ADD COLUMN blocked_verified BOOLEAN",
         "ALTER TABLE job_timing ADD COLUMN slack_message_ts VARCHAR(64)",
         "ALTER TABLE job_timing ADD COLUMN trigger_reason VARCHAR(64) DEFAULT 'manual'",
         "ALTER TABLE job_timing ADD COLUMN heartbeat_at TIMESTAMP",
@@ -178,15 +185,8 @@ public class JobStatsStore extends ControllerDatabase {
             stmt.execute(CREATE_INDEX);
             stmt.execute(CREATE_RUNNER_COST_TABLE);
             stmt.execute(CREATE_MODEL_COST_TABLE);
-            for (String migration : SCHEMA_MIGRATIONS) {
-                try {
-                    stmt.execute(migration);
-                } catch (SQLException ignored) {
-                    // Column may already exist on databases that were
-                    // created with the updated CREATE TABLE statement
-                }
-            }
         }
+        addColumns(SCHEMA_MIGRATIONS);
 
         // Clean orphaned STARTED rows older than 7 days
         Instant cutoff = Instant.now().minusSeconds(7 * 24 * 3600);
@@ -561,8 +561,34 @@ public class JobStatsStore extends ControllerDatabase {
             event.getPermissionDenials(),
             event.getTargetBranch(), event.getCommitHash(),
             event.getPullRequestUrl(), event.getErrorMessage());
+        if (event.getBlockedCategory() != null) {
+            recordBlockedFields(event);
+        }
         recordRunnerCosts(event.getJobId(), event.getCostByRunner());
         recordModelCosts(event.getJobId(), event.getCostByModel());
+    }
+
+    /**
+     * Persists the structured block fields of a {@link Status#BLOCKED} event so
+     * {@code getJob}/{@code getRecentJobs} can report its category and detail
+     * after the in-memory event has aged out or the controller has restarted.
+     * The base row (status, {@code error_message} carrying the human summary)
+     * is written by {@link #recordJobCompleted}; this refines it.
+     *
+     * @param event the blocked completion event
+     */
+    private void recordBlockedFields(JobCompletionEvent event) {
+        try (PreparedStatement ps = connection().prepareStatement(
+                "UPDATE job_timing SET blocked_category = ?, blocked_detail = ?, "
+                + "blocked_verified = ? WHERE job_id = ?")) {
+            ps.setString(1, truncate(event.getBlockedCategory(), 32));
+            ps.setString(2, truncate(event.getBlockedDetail(), 2000));
+            ps.setBoolean(3, event.isBlockedVerified());
+            ps.setString(4, event.getJobId());
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            warn("Failed to record blocked fields: " + e.getMessage());
+        }
     }
 
     /**
@@ -854,21 +880,26 @@ public class JobStatsStore extends ControllerDatabase {
             if (workstreamId != null) ps.setString(1, workstreamId);
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
-                    Timestamp started = rs.getTimestamp("started_at");
-                    Timestamp beat = rs.getTimestamp("heartbeat_at");
-                    result.add(new ActiveJob(
-                            rs.getString("job_id"),
-                            rs.getString("workstream_id"),
-                            started == null ? null : started.toInstant(),
-                            beat == null ? null : beat.toInstant(),
-                            rs.getString("description"),
-                            rs.getString("node")));
+                    result.add(rowToActiveJob(rs));
                 }
             }
         } catch (SQLException e) {
             warn("Failed to query active jobs: " + e.getMessage());
         }
         return result;
+    }
+
+    /** Constructs an {@link ActiveJob} from the current row of a result set. */
+    private static ActiveJob rowToActiveJob(ResultSet rs) throws SQLException {
+        Timestamp started = rs.getTimestamp("started_at");
+        Timestamp beat = rs.getTimestamp("heartbeat_at");
+        return new ActiveJob(
+                rs.getString("job_id"),
+                rs.getString("workstream_id"),
+                started == null ? null : started.toInstant(),
+                beat == null ? null : beat.toInstant(),
+                rs.getString("description"),
+                rs.getString("node"));
     }
 
     /**
@@ -936,20 +967,25 @@ public class JobStatsStore extends ControllerDatabase {
             if (workstreamId != null) ps.setString(1, workstreamId);
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
-                    Timestamp submitted = rs.getTimestamp("submitted_at");
-                    result.add(new PendingJob(
-                            rs.getString("job_id"),
-                            rs.getString("workstream_id"),
-                            submitted == null ? null : submitted.toInstant(),
-                            rs.getString("submitted_by"),
-                            rs.getString("required_labels"),
-                            rs.getString("description")));
+                    result.add(rowToPendingJob(rs));
                 }
             }
         } catch (SQLException e) {
             warn("Failed to query pending jobs: " + e.getMessage());
         }
         return result;
+    }
+
+    /** Constructs a {@link PendingJob} from the current row of a result set. */
+    private static PendingJob rowToPendingJob(ResultSet rs) throws SQLException {
+        Timestamp submitted = rs.getTimestamp("submitted_at");
+        return new PendingJob(
+                rs.getString("job_id"),
+                rs.getString("workstream_id"),
+                submitted == null ? null : submitted.toInstant(),
+                rs.getString("submitted_by"),
+                rs.getString("required_labels"),
+                rs.getString("description"));
     }
 
     /**
@@ -1067,6 +1103,47 @@ public class JobStatsStore extends ControllerDatabase {
     }
 
     /**
+     * Returns one consistent snapshot of a job's record — its event, its pending
+     * or active record, its submission time and its phase — from a single read,
+     * or {@code null} when the job is unknown or the store is unavailable.
+     *
+     * <p>A single-job lookup derives the job's event, its lifecycle state, the
+     * workstream that owns it, its submission time and its phase from this one
+     * row, so a transition between reads cannot make the response combine fields
+     * from different lifecycle states. The {@link JobRecord#pending()} record is
+     * built only for a {@code SUBMITTED} row and {@link JobRecord#active()} only
+     * for a {@code STARTED} one, matching {@link #getPendingJobs} and
+     * {@link #getActiveJobs}.</p>
+     *
+     * @param jobId the job identifier
+     * @return the snapshot, or {@code null} when the job is unknown or the store
+     *         is unavailable
+     */
+    public synchronized JobRecord getJobRecord(String jobId) {
+        if (!isOpen() || jobId == null) return null;
+
+        String sql = "SELECT * FROM job_timing WHERE job_id = ?";
+        try (PreparedStatement ps = connection().prepareStatement(sql)) {
+            ps.setString(1, jobId);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (!rs.next()) return null;
+                JobCompletionEvent.Status status = parseStatus(rs.getString("status"));
+                PendingJob pending = status == JobCompletionEvent.Status.SUBMITTED
+                        ? rowToPendingJob(rs) : null;
+                ActiveJob active = status == JobCompletionEvent.Status.STARTED
+                        ? rowToActiveJob(rs) : null;
+                Timestamp submitted = rs.getTimestamp("submitted_at");
+                Instant submittedAt = submitted == null ? null : submitted.toInstant();
+                String phase = rs.getString("phase");
+                return new JobRecord(rowToEvent(rs), pending, active, submittedAt, phase);
+            }
+        } catch (SQLException e) {
+            warn("Failed to query job record: " + e.getMessage());
+            return null;
+        }
+    }
+
+    /**
      * Constructs a {@link JobCompletionEvent} from the current row of a ResultSet.
      * Returns a best-effort reconstruction; Claude-specific fields default to zero/null.
      * Cost fields are populated from the per-runner and per-model cost tables so that
@@ -1077,6 +1154,14 @@ public class JobStatsStore extends ControllerDatabase {
      * has not been completed yet, e.g. a {@code STARTED} status). The plain
      * constructor stamps {@code Instant.now()}, which would make every read return the
      * read-time instant rather than when the job actually happened.</p>
+     *
+     * <p>The event's {@code startedAt} is left {@code null} for a job that never
+     * started: that row's {@code started_at} column is only a {@code NOT NULL}
+     * placeholder seeded to the submission time (see {@link #recordJobSubmitted})
+     * until a real start overwrites it, so a {@code started_at} still equal to
+     * {@code submitted_at} — on a {@code SUBMITTED} row, or on one cancelled before
+     * it ever started — is that placeholder, and presenting it as a real start
+     * would make a job that never ran look started.</p>
      */
     private JobCompletionEvent rowToEvent(ResultSet rs) throws SQLException {
         String jobId = rs.getString("job_id");
@@ -1087,12 +1172,7 @@ public class JobStatsStore extends ControllerDatabase {
         String pullRequestUrl = rs.getString("pull_request_url");
         String errorMessage = rs.getString("error_message");
 
-        JobCompletionEvent.Status status;
-        try {
-            status = JobCompletionEvent.Status.valueOf(statusStr);
-        } catch (IllegalArgumentException e) {
-            status = JobCompletionEvent.Status.STARTED;
-        }
+        JobCompletionEvent.Status status = parseStatus(statusStr);
 
         JobCompletionEvent event;
         if (status == JobCompletionEvent.Status.FAILED) {
@@ -1103,22 +1183,29 @@ public class JobStatsStore extends ControllerDatabase {
             event = JobCompletionEvent.degraded(jobId, description, errorMessage);
         } else if (status == JobCompletionEvent.Status.CANCELLED) {
             event = JobCompletionEvent.cancelled(jobId, description, errorMessage);
+        } else if (status == JobCompletionEvent.Status.BLOCKED
+                && rs.getString("blocked_category") != null) {
+            event = CodingAgentJobEvent.blocked(jobId, description, new BlockReport(
+                    rs.getString("blocked_category"), rs.getString("blocked_detail"),
+                    rs.getBoolean("blocked_verified")));
         } else {
             event = new JobCompletionEvent(jobId, status, description);
         }
 
         // Source the event time from the persisted row: completed_at when present,
-        // started_at otherwise. The constructor's Instant.now() stamp is overwritten
-        // so readers see when the job actually happened rather than when this row was
-        // read. setTimestamp updates both timestamp and eventTime.
+        // started_at otherwise.
         Timestamp completedTs = rs.getTimestamp("completed_at");
         Timestamp startedTs = rs.getTimestamp("started_at");
+        Timestamp submittedTs = rs.getTimestamp("submitted_at");
         Instant rowInstant = completedTs != null ? completedTs.toInstant()
                 : (startedTs != null ? startedTs.toInstant() : null);
         if (rowInstant != null) {
             event.setTimestamp(rowInstant);
         }
-        if (startedTs != null) {
+        // started_at is seeded to submitted_at at submission and overwritten only
+        // on a real start, so a started_at still equal to submitted_at is the
+        // placeholder (a SUBMITTED row, or one cancelled before it started).
+        if (startedTs != null && !startedTs.equals(submittedTs)) {
             event.setStartedAt(startedTs.toInstant());
         }
         if (completedTs != null) {
@@ -1138,6 +1225,22 @@ public class JobStatsStore extends ControllerDatabase {
         event.setCostByModel(queryCostForJob(jobId, "job_model_cost", "model"));
 
         return event;
+    }
+
+    /**
+     * Parses a stored status string, defaulting to {@code STARTED} for a value
+     * that does not name a known status (a row left by an older schema or a
+     * partial write).
+     *
+     * @param statusStr the persisted status column value
+     * @return the parsed status, or {@code STARTED} when it is unrecognised
+     */
+    private static JobCompletionEvent.Status parseStatus(String statusStr) {
+        try {
+            return JobCompletionEvent.Status.valueOf(statusStr);
+        } catch (IllegalArgumentException e) {
+            return JobCompletionEvent.Status.STARTED;
+        }
     }
 
     /**

@@ -188,6 +188,60 @@ searches. Never write the dumps to a tracked path such as `src/test/resources`: 
 regenerable and must not be committed. The model load dominates the cost of a rerun (a few
 seconds), so regenerating many times is cheap once the environment and cache exist.
 
+## CLAP2 audio-text weights and reference dumps
+
+`extract_clap2_weights.py` converts a LAION CLAP2 checkpoint (`open_clip_model.safetensors`
+from any of `laion/clap2-{xxs,xs,small,medium,large}-audioxl-s1B`) to the StateDictionary
+`org.almostrealism.ml.clap.Clap2` loads. Besides renaming, it permutes the query/key rows of every
+qkv projection from CLAP2's interleaved rotary pairing to the framework's split-half pairing,
+swaps the halves of the audio feed-forward's gated projection, and appends the register token to
+the patch embedding as one more input column (the module docstring explains each).
+`test_extract_clap2_weights.py` covers the remap with synthetic tensors.
+
+`dump_clap2_reference.py reference` loads a checkpoint through OpenCLIP and writes, under
+`--out`, both the native weights and a reference dump of a musical probe set: NSynth one-shots
+(two per instrument family, from a local copy of the NSynth test split, CC BY 4.0), synthesized
+drum one-shots and a drum loop, and loops and stems sequenced from NSynth notes, each with its
+32 kHz waveform and reference audio embedding, plus the token ids and reference text embeddings of
+twenty tag captions and a `manifest.json` naming the tags that describe each clip.
+`score_clap2_reference.py` reports the reference model's own tagging accuracy on a dump.
+
+```bash
+python3 -m venv /tmp/clap-venv
+/tmp/clap-venv/bin/pip install open_clip_torch soundfile safetensors numpy tiktoken pyarrow protobuf
+/tmp/clap-venv/bin/python engine/ml/scripts/dump_clap2_reference.py reference laion/clap2-xxs-audioxl-s1B \
+    --nsynth /data/nsynth/test-00000-of-00001.parquet --out /data/clap2-xxs
+/tmp/clap-venv/bin/python engine/ml/scripts/score_clap2_reference.py /data/clap2-xxs/references
+```
+
+`Clap2TaggingSpikeTest` reads the two directories through `AR_CLAP2_WEIGHTS` and
+`AR_CLAP2_REFERENCES` (system property or environment variable), and the SAME-S weights for its
+device-memory measurement through `AR_SAME_WEIGHTS`. Write the dumps outside the repository: they
+hold audio and weights and must not be committed.
+
+### CLAP2 caption tokenizer
+
+`export_clap2_tokenizer.py export` validates the `r50k_base` tiktoken rank file a CLAP2 checkpoint
+ships beside its weights (`open_clip_tiktoken/r50k_base.tiktoken`, named by the checkpoint's
+`open_clip_config.json`) and copies it to the given path. The native
+`org.almostrealism.ml.clap.Clap2Tokenizer` reads that file as it is (base64 token bytes and a rank
+per line), so there is no conversion to another format; the validation checks the ranks are dense
+and unique, every byte is a token, and the vocabulary ends below the text tower's control tokens.
+`probe` writes the reference token ids of a set of captions (through OpenCLIP's own
+`TikTokenTokenizer` over the same files) with the smallest rank file that encodes them exactly;
+that pair is the committed resource under `engine/ml/src/test/resources/clap2/` that
+`Clap2TaggingTest` checks tokenizer parity against in CI. `test_export_clap2_tokenizer.py` covers
+the script with synthetic rank files.
+
+```bash
+python3 engine/ml/scripts/export_clap2_tokenizer.py export /path/to/hf/snapshot /data/clap2-small/r50k_base.tiktoken
+/tmp/clap-venv/bin/python engine/ml/scripts/export_clap2_tokenizer.py probe /path/to/hf/snapshot \
+    engine/ml/src/test/resources/clap2
+```
+
+`Clap2NativeTaggingTest` scores the probe set entirely natively, with the weights and dump above
+and the exported rank file through `AR_CLAP2_TOKENIZER`.
+
 ## Workflow for Comparison Tests
 
 1. **Extract weights and generate high-level references:**

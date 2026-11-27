@@ -14,7 +14,8 @@
  *                                scale(factors, 2, n): an integer where a weight belongs, rejected
  *   row_layernorm(w, b)          layernorm(w, b, 1e-6) over every run of len(w) features
  *   row_rmsnorm(w, b)            rmsnorm(w, b, 1e-6) over every run of len(w) features
- *   rotate(inv_freq)             sequence_rope(inv_freq) on [batch, heads, seq_len, head_dim]
+ *   rotate(inv_freq)             sequence_rope(inv_freq) on [batch, heads, seq_len, head_dim];
+ *                                inv_freq may be a [seq_len, n] angle table instead
  */
 
 layer swap_axes() {

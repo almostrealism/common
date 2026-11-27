@@ -38,15 +38,11 @@ import org.almostrealism.io.Truncation;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 import io.flowtree.controller.FlowTreeController;
@@ -252,6 +248,35 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
             warn("Error archiving channel " + channelId + ": " + e.getMessage());
             return e.getMessage();
         }
+    }
+
+    /** Defers channel archiving so a {@code /flowtree archive} is acked first; lazily created. */
+    private ChannelArchiveScheduler channelArchiveScheduler;
+
+    /**
+     * Archives {@code channelId} shortly after the {@code /flowtree archive}
+     * command that requested it has been acknowledged, reporting any failure
+     * through {@code onFailure}. Delegates to {@link ChannelArchiveScheduler},
+     * which keeps the channel reachable until the reply has been delivered.
+     *
+     * @param channelId the Slack channel to archive
+     * @param onFailure invoked with the error string when the delayed archive fails
+     */
+    public void scheduleChannelArchive(String channelId, Consumer<String> onFailure) {
+        channelArchiveScheduler().schedule(channelId, onFailure);
+    }
+
+    /**
+     * The scheduler that defers channel archiving for this notifier, created on
+     * first use and bound to this notifier's {@link #archiveChannel}.
+     *
+     * @return this notifier's {@link ChannelArchiveScheduler}
+     */
+    synchronized ChannelArchiveScheduler channelArchiveScheduler() {
+        if (channelArchiveScheduler == null) {
+            channelArchiveScheduler = new ChannelArchiveScheduler(this::archiveChannel);
+        }
+        return channelArchiveScheduler;
     }
 
     /**
@@ -630,6 +655,12 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
 
         if (threadTs != null && event.getJobId() != null) {
             jobThreadTs.put(event.getJobId(), threadTs);
+            // Persist the thread ts now, not only at completion, so progress and
+            // completion messages still land in this thread if the controller
+            // restarts while the job is running (getThreadTs then recovers it).
+            if (statsStore != null) {
+                statsStore.updateJobSlackTs(event.getJobId(), threadTs);
+            }
             // The job ID stays in the thread rather than the channel
             postMessageInThread(workstream.getChannelId(),
                     "   Job ID: `" + event.getJobId() + "`", threadTs);
@@ -646,19 +677,19 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
 
         trackJob(workstreamId, event);
 
+        // Recover the thread from the persistent store when the in-memory entry
+        // is gone (e.g. the controller restarted after this job was submitted).
+        String threadTs = getThreadTs(event.getJobId());
+
         // The controller owns job-state persistence (see JobLifecycleRecorder);
         // the notifier only links its Slack message to the already-persisted row.
-        if (statsStore != null && event.getJobId() != null) {
-            String linkTs = jobThreadTs.get(event.getJobId());
-            if (linkTs != null) {
-                statsStore.updateJobSlackTs(event.getJobId(), linkTs);
-            }
+        if (statsStore != null && event.getJobId() != null && threadTs != null) {
+            statsStore.updateJobSlackTs(event.getJobId(), threadTs);
         }
 
         String message = formatStartedMessage(event);
 
         // Thread under the submission message if one exists
-        String threadTs = jobThreadTs.get(event.getJobId());
         if (threadTs != null) {
             postMessageInThread(workstream.getChannelId(), message, threadTs);
         } else {
@@ -676,9 +707,12 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
 
         trackJob(workstreamId, event);
 
-        // Terminal persistence is owned by the controller's completeJob path
-        // (see JobLifecycleRecorder), not by the notifier.
-        String threadTs = event.getJobId() != null ? jobThreadTs.remove(event.getJobId()) : null;
+        // Take the thread from the store-backed lookup so a restart still
+        // threads the completion, then drop the finished job's in-memory entry.
+        String threadTs = getThreadTs(event.getJobId());
+        if (event.getJobId() != null) {
+            jobThreadTs.remove(event.getJobId());
+        }
         String summary = formatCompletedSummary(event, threadTs != null);
         String details = formatCompletedDetails(event);
 
@@ -1180,6 +1214,22 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
                 appendSummaryFooter(sb, event);
                 break;
 
+            case BLOCKED:
+                sb.append(":octagonal_sign: *Work blocked* - agent could not proceed\n");
+                if (event.getBlockedCategory() != null) {
+                    sb.append("   Reason: ").append(event.getBlockedCategory());
+                    if (!event.isBlockedVerified()) {
+                        sb.append(" (unverified)");
+                    }
+                    sb.append("\n");
+                }
+                if (event.getBlockedDetail() != null && !event.getBlockedDetail().isEmpty()) {
+                    sb.append("   Detail: ").append(truncate(event.getBlockedDetail(), 200)).append("\n");
+                }
+                sb.append("   Job ID: `").append(event.getJobId()).append("`\n");
+                appendSummaryFooter(sb, event);
+                break;
+
             default:
                 sb.append(":grey_question: Job status: ").append(event.getStatus());
         }
@@ -1422,83 +1472,6 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
      */
     private static String formatDuration(long ms) {
         return HarnessStatusReporter.formatDuration(ms);
-    }
-
-    /**
-     * Derives a Slack channel name from a git branch name.
-     *
-     * <p>Takes the portion after the final {@code /} (the entire name when
-     * there is no {@code /}), prepends {@code "w-"}, lower-cases the result,
-     * replaces characters that are not lowercase letters, digits, or hyphens
-     * with a hyphen, collapses consecutive hyphens, trims leading/trailing
-     * hyphens, and truncates to 80 characters (Slack's channel name limit).</p>
-     *
-     * @param branch the git branch name (e.g. {@code "feature/my-xyz"})
-     * @return a Slack-safe channel name (e.g. {@code "w-my-xyz"}), or
-     *         {@code null} when the branch is {@code null}/empty or the
-     *         portion after the final slash is empty
-     */
-    public static String channelNameFromBranch(String branch) {
-        if (branch == null || branch.isEmpty()) {
-            return null;
-        }
-        int lastSlash = branch.lastIndexOf('/');
-        String suffix = (lastSlash >= 0) ? branch.substring(lastSlash + 1) : branch;
-        if (suffix.isEmpty()) {
-            return null;
-        }
-        String sanitized = suffix.toLowerCase(Locale.ROOT)
-                .replaceAll("[^a-z0-9-]", "-")
-                .replaceAll("-{2,}", "-")
-                .replaceAll("^-+|-+$", "");
-        if (sanitized.isEmpty()) {
-            return null;
-        }
-        String name = "w-" + sanitized;
-        if (name.length() > 80) {
-            name = name.substring(0, 80).replaceAll("-+$", "");
-        }
-        return name.length() > 2 ? name : null;
-    }
-
-    /**
-     * Derives a Slack channel name from a branch name and resolves any
-     * collision with an existing workstream's channel name by appending
-     * a numeric suffix ({@code -2}, {@code -3}, … up to {@code -99}).
-     *
-     * <p>Returns {@code null} when {@link #channelNameFromBranch(String)}
-     * returns {@code null} (e.g. the suffix after the last slash is empty).</p>
-     *
-     * @param branch   the git branch name
-     * @param existing all currently registered workstreams to check against
-     * @return a unique, Slack-safe channel name, or {@code null}
-     */
-    public static String autoChannelName(String branch, Collection<Workstream> existing) {
-        String base = channelNameFromBranch(branch);
-        if (base == null) {
-            return null;
-        }
-        Set<String> taken = new HashSet<>();
-        for (Workstream ws : existing) {
-            String cn = ws.getChannelName();
-            if (cn != null) {
-                taken.add(cn.startsWith("#") ? cn.substring(1) : cn);
-            }
-        }
-        if (!taken.contains(base)) {
-            return base;
-        }
-        for (int i = 2; i <= 99; i++) {
-            String sfx = "-" + i;
-            String candidate = base.length() + sfx.length() <= 80
-                    ? base + sfx
-                    : base.substring(0, 80 - sfx.length()) + sfx;
-            if (!taken.contains(candidate)) {
-                return candidate;
-            }
-        }
-        // All suffixes exhausted — cannot guarantee uniqueness.
-        return null;
     }
 
     /**

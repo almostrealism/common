@@ -277,7 +277,7 @@ public class ArgumentLimitFoldTest extends TestSuiteBase implements ExpressionFe
 		TraversableDeltaComputation delta = TraversableDeltaComputation.create("argumentLimitDelta",
 				shape(SIZE), shape(SIZE),
 				args -> DefaultCollectionExpression.create(shape(SIZE), idx -> args[1].getValueAt(idx)),
-				cp(target), cp(source));
+				null, cp(target), cp(source));
 		Assert.assertEquals(1, delta.getScopeArgumentCount(Integer.MAX_VALUE));
 
 		MaskedSumProbe probe = new MaskedSumProbe(new LimitedComputeContext(OptionalInt.empty()), delta);
@@ -648,6 +648,66 @@ public class ArgumentLimitFoldTest extends TestSuiteBase implements ExpressionFe
 			}
 		} finally {
 			MemoryDataArgumentMap.enableArgumentAggregation = previous;
+		}
+	}
+
+	/**
+	 * Lowering the aggregate size threshold below the width of the kernel's small inputs removes
+	 * them from the aggregate, so a kernel that folds enough of them to fit its limit at the
+	 * default threshold can no longer fold any of them and overflows. Folding is still enabled; it
+	 * simply has nothing small enough to fold, so compiling the kernel fails at compilation with a
+	 * descriptive exception naming the operation, the argument count it declares, and the limit,
+	 * rather than at the backend. With the threshold then raised to exactly the input width, the
+	 * same kernel at the same limit folds its inputs and compiles within the limit; the follow-up
+	 * sets that threshold explicitly rather than relying on the configured default, and the
+	 * original threshold is restored when the test ends.
+	 *
+	 * <p>The limit is set one below the kernel's real unfolded argument count (learned by compiling
+	 * it with no folding required), so folding its small inputs is what brings it under the limit.
+	 * The overflow is compiled first, before any folding compilation of the same signature, so it
+	 * cannot reuse a folded kernel.</p>
+	 */
+	@Test(timeout = 60000)
+	public void loweredAggregateThresholdIsVerifiedAgainstTheLimit() {
+		int bound = run(new LimitedComputeContext(OptionalInt.empty())).getBound(Integer.MAX_VALUE - 1);
+
+		FoldProbe unfolded = run(new LimitedComputeContext(OptionalInt.of(bound)));
+		Assert.assertEquals(0, unfolded.getFolded());
+		int limit = unfolded.getArgumentCount() - 1;
+
+		int previousThreshold = MemoryDataArgumentMap.maxAggregateLength;
+		MemoryDataArgumentMap.maxAggregateLength = SIZE - 1;
+
+		try {
+			PackedCollection out = new PackedCollection(SIZE).fill(-1.0);
+			FoldProbe overflows = new FoldProbe(new LimitedComputeContext(OptionalInt.of(limit)),
+					a(cp(out).each(), sumOfInputs(inputs(INPUTS)).each()));
+
+			Assert.assertTrue(overflows.isFoldingEnabled());
+			overflows.getInstructionSetManager();
+
+			try {
+				overflows.compile();
+				Assert.fail("A kernel whose small inputs no longer fold under the lowered threshold compiled past its limit");
+			} catch (HardwareException e) {
+				Assert.assertTrue(e.getMessage(), e.getMessage().contains(overflows.getName()));
+				Assert.assertTrue(e.getMessage(), e.getMessage().contains(
+						"declares " + unfolded.getArgumentCount() + " kernel arguments"));
+				Assert.assertTrue(e.getMessage(), e.getMessage().contains("argument limit " + limit));
+				Assert.assertTrue(e.getMessage(), e.getMessage().contains("too few of its arguments"));
+			}
+
+			Assert.assertFalse(overflows.getCompiler().isCompiled());
+			Assert.assertNull(overflows.getArguments());
+			Assert.assertEquals(0, overflows.getFolded());
+
+			MemoryDataArgumentMap.maxAggregateLength = SIZE;
+			FoldProbe fits = run(new LimitedComputeContext(OptionalInt.of(limit)));
+			Assert.assertTrue("folded=" + fits.getFolded(), fits.getFolded() >= INPUTS);
+			Assert.assertTrue("arguments=" + fits.getArgumentCount() + " limit=" + limit,
+					fits.getArgumentCount() <= limit);
+		} finally {
+			MemoryDataArgumentMap.maxAggregateLength = previousThreshold;
 		}
 	}
 

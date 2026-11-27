@@ -16,8 +16,15 @@
 
 package org.almostrealism.collect.computations.test;
 
+import io.almostrealism.expression.Expression;
+import io.almostrealism.kernel.KernelIndex;
+import io.almostrealism.kernel.KernelStructureContext;
+import io.almostrealism.relation.Producer;
+import io.almostrealism.scope.Scope;
 import org.almostrealism.algebra.Tensor;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.computations.ConstantRepeatedDeltaComputation;
+import org.almostrealism.collect.computations.ConstantRepeatedProducerComputation;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
@@ -124,6 +131,99 @@ public class CumulativeProductTests extends TestSuiteBase {
 		for (int i = 0; i < 25; i++) {
 			assertEquals(0.0, jacobian.toDouble(i));
 		}
+	}
+
+	/**
+	 * Compiles the cumulative-product Jacobian and asserts that every element its delta kernel
+	 * writes lies inside the {@code (5, 5)} output, then checks the evaluated values.
+	 *
+	 * <p>Each kernel of {@link ConstantRepeatedDeltaComputation} owns one row of the Jacobian. If
+	 * the destination of a write counts that row's offset twice, the later kernels write past the
+	 * end of the output. Native allocators may tolerate such writes silently (only some platforms
+	 * abort on the resulting heap corruption), so this test bounds the destination indices of the
+	 * compiled kernel directly, which detects the overrun deterministically on every backend.</p>
+	 */
+	@Test(timeout = 120000)
+	public void cumulativeProductDeltaStaysWithinDestination() {
+		int n = 5;
+		PackedCollection input = pack(2.0, 3.0, 0.5, 4.0, 1.5);
+
+		DestinationBoundDelta delta = new DestinationBoundDelta(
+				(ConstantRepeatedProducerComputation) cumulativeProduct(cp(input), false), cp(input));
+		PackedCollection jacobian = delta.get().evaluate();
+
+		Assert.assertEquals(n * n, jacobian.getMemLength());
+		Assert.assertEquals(n * n, delta.getDestinationsChecked());
+		Assert.assertEquals(0, delta.getMinDestination());
+		Assert.assertEquals(n * n - 1, delta.getMaxDestination());
+
+		for (int i = 0; i < n * n; i++) {
+			assertEquals(0.0, jacobian.toDouble(i));
+		}
+	}
+
+	/**
+	 * A {@link ConstantRepeatedDeltaComputation} that, when its scope is compiled, records the
+	 * smallest lower bound and largest upper bound of the output index of every destination its
+	 * kernels write: one per kernel, iteration and element of the iteration's memory block. The
+	 * index is the reference's position before it is reduced modulo the output length, which is
+	 * the element the kernel actually addresses.
+	 */
+	private static class DestinationBoundDelta extends ConstantRepeatedDeltaComputation {
+		/** The smallest lower bound of any destination index, or {@link Long#MAX_VALUE} before compilation. */
+		private long minDestination = Long.MAX_VALUE;
+
+		/** The largest upper bound of any destination index, or {@link Long#MIN_VALUE} before compilation. */
+		private long maxDestination = Long.MIN_VALUE;
+
+		/** The number of destinations the most recent compilation wrote, summed over kernels. */
+		private long destinationsChecked;
+
+		/**
+		 * Creates the delta of the given computation with respect to the given target.
+		 *
+		 * @param source the computation to differentiate
+		 * @param target the producer with respect to which the derivative is computed
+		 */
+		DestinationBoundDelta(ConstantRepeatedProducerComputation source, Producer<?> target) {
+			super(source, target);
+		}
+
+		/**
+		 * Compiles the scope, then records the bounds of the destination of every write the loop
+		 * body makes, for every kernel the context allows. The scope may be compiled more than once,
+		 * so the bounds accumulate across compilations while the count describes the latest one.
+		 *
+		 * @param context the kernel structure context of the compilation
+		 * @return the compiled scope
+		 */
+		@Override
+		public Scope<PackedCollection> getScope(KernelStructureContext context) {
+			Scope<PackedCollection> scope = super.getScope(context);
+			long kernels = context.getKernelMaximum().orElseThrow();
+			destinationsChecked = 0;
+
+			for (int i = 0; i < count; i++) {
+				for (int j = 0; j < getMemLength(); j++) {
+					Expression<?> index = getDestination(new KernelIndex(context), e(i), e(j))
+							.getChildren().get(0);
+					minDestination = Math.min(minDestination, index.lowerBound(context).orElseThrow());
+					maxDestination = Math.max(maxDestination, index.upperBound(context).orElseThrow());
+					destinationsChecked += kernels;
+				}
+			}
+
+			return scope;
+		}
+
+		/** @return the smallest lower bound of any destination index */
+		long getMinDestination() { return minDestination; }
+
+		/** @return the largest upper bound of any destination index */
+		long getMaxDestination() { return maxDestination; }
+
+		/** @return the number of destinations the most recent compilation wrote, summed over kernels */
+		long getDestinationsChecked() { return destinationsChecked; }
 	}
 
 	/**

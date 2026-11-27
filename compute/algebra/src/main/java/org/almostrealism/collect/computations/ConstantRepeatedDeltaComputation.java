@@ -27,6 +27,7 @@ import io.almostrealism.expression.Expression;
 import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Producer;
+import io.almostrealism.uml.Signature;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 
@@ -94,9 +95,6 @@ public class ConstantRepeatedDeltaComputation extends ConstantRepeatedProducerCo
 
 	/** The collection variable representing the target during scope preparation. */
 	private CollectionVariable<?> targetVariable;
-
-	/** The current row index used for destination addressing in multi-iteration contexts. */
-	private Expression row;
 
 	/** Optional fallback expression for value retrieval when direct computation is not available. */
 	private TraversableExpression<Double> fallback;
@@ -209,7 +207,7 @@ public class ConstantRepeatedDeltaComputation extends ConstantRepeatedProducerCo
 	 *
 	 * <p>The delta computation follows this pattern:</p>
 	 * <pre>
-	 * result = source.step(args, row + localIndex).delta(target).getValueAt(row + localIndex)
+	 * result = source.step(args, localIndex).delta(target).getValueAt(kernelIndex * deltaSize + localIndex)
 	 * </pre>
 	 *
 	 * @param args The traversable expressions representing input arguments
@@ -219,14 +217,14 @@ public class ConstantRepeatedDeltaComputation extends ConstantRepeatedProducerCo
 	 */
 	@Override
 	protected Expression<?> getExpression(TraversableExpression[] args, Expression globalIndex, Expression localIndex) {
-		CollectionExpression delta = source.getExpression(args, null, row.add(localIndex))
+		CollectionExpression delta = source.getExpression(args, null, localIndex)
 				.delta(targetVariable);
 
 		// Each kernel instance owns one gradient batch of the delta's size, so the
 		// position within the batch is addressed from the kernel index explicitly
 		return delta.getValueAt(new KernelIndex()
 				.multiply(delta.getShape().getSize())
-				.add(row.add(localIndex).toInt()));
+				.add(localIndex.toInt()));
 	}
 
 	/**
@@ -258,23 +256,24 @@ public class ConstantRepeatedDeltaComputation extends ConstantRepeatedProducerCo
 	}
 
 	/**
-	 * Computes the destination expression for writing delta results.
-	 * Calculates the row index based on the global index and iteration count,
-	 * then delegates to the parent implementation with the adjusted offset.
+	 * Computes the destination expression for writing delta results: each iteration writes
+	 * its own element of the executing kernel's gradient block, at position
+	 * {@code localIndex + offset} within that block.
 	 *
-	 * <p>The row calculation accounts for multiple iterations by multiplying
-	 * the global index by the iteration count, ensuring proper addressing
-	 * across all gradient accumulation iterations.</p>
+	 * <p>The block itself is located by the parent implementation, which already offsets the
+	 * output by {@code kernelIndex * out.length()}. No further offset derived from the kernel
+	 * index may be added here: doing so counts the block offset twice, so every kernel but the
+	 * first writes outside its block and the last ones write past the end of the output
+	 * buffer, corrupting whatever memory follows it.</p>
 	 *
 	 * @param globalIndex The global index in the overall computation space
-	 * @param localIndex The local index within the current iteration
-	 * @param offset The offset within the memory block (not used in this implementation)
+	 * @param localIndex The iteration index
+	 * @param offset The offset within the memory block
 	 * @return An {@link Expression} representing the destination memory location
 	 */
 	@Override
 	protected Expression<?> getDestination(Expression<?> globalIndex, Expression<?> localIndex, Expression<?> offset) {
-		row = globalIndex.multiply(e(count));
-		return super.getDestination(globalIndex, localIndex, row.add(localIndex));
+		return super.getDestination(globalIndex, localIndex, localIndex.add(offset));
 	}
 
 	/**
@@ -290,5 +289,32 @@ public class ConstantRepeatedDeltaComputation extends ConstantRepeatedProducerCo
 	public ConstantRepeatedDeltaComputation generate(List<Process<?, ?>> children) {
 		return new ConstantRepeatedDeltaComputation(source, targetShape, target,
 				children.stream().skip(1).toArray(Producer[]::new));
+	}
+
+	/**
+	 * Extends the {@link RepeatedProducerComputation#signature() class-identified} signature with
+	 * the signatures of the {@link #source} being differentiated and the {@link #target} it is
+	 * differentiated with respect to, both of which determine this delta's loop body through
+	 * {@link #getExpression(TraversableExpression[], Expression, Expression)} yet are invisible to
+	 * the inherited signature: the source's own behaviour is not an input of this computation, and
+	 * the target is obtained during scope preparation rather than passed as an input. Only the
+	 * target <em>shape</em> reaches the inherited signature, through the appended output shape, so
+	 * without these two components the gradients of two different sources — or of one source with
+	 * respect to two same-shape targets — would share a signature and collide in the
+	 * signature-keyed instruction cache.
+	 *
+	 * @return the signature including the source and target, or {@code null} when the base
+	 *         signature or either component's signature is unavailable
+	 */
+	@Override
+	public String signature() {
+		String signature = super.signature();
+		if (signature == null) return null;
+
+		String sourceSignature = source.signature();
+		String targetSignature = Signature.of(target);
+		if (sourceSignature == null || targetSignature == null) return null;
+
+		return signature + "{source:" + sourceSignature + ",target:" + targetSignature + "}";
 	}
 }

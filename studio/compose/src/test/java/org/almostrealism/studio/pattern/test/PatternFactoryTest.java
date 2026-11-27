@@ -50,7 +50,6 @@ import java.nio.file.StandardCopyOption;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.stream.Collectors;
 
 /**
@@ -208,8 +207,6 @@ public class PatternFactoryTest extends TestSuiteBase implements CellFeatures {
 		List<NoteAudioChoice> choices = readChoices(false);
 		choices.stream()
 				.flatMap(c -> c.getSources().stream())
-				.map(c -> c instanceof TreeNoteSource ? (TreeNoteSource) c : null)
-				.filter(Objects::nonNull)
 				.forEach(c -> c.setTree(library));
 
 		DefaultKeyboardTuning tuning = new DefaultKeyboardTuning();

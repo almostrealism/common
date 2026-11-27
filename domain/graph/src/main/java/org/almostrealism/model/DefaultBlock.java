@@ -146,10 +146,7 @@ public class DefaultBlock implements Block {
 
 				@Override
 				public void setReceptor(Receptor<PackedCollection> r) {
-					if (cellWarnings && DefaultBlock.this.downstream != null) {
-						warn("Replacing receptor");
-					}
-
+					Cell.warnReceptorReplacement(DefaultBlock.this, DefaultBlock.this.downstream);
 					DefaultBlock.this.downstream = r;
 				}
 

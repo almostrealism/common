@@ -976,6 +976,31 @@ public abstract class CollectionProducerComputationBase
 	}
 
 	/**
+	 * Copies the configuration this computation carries that is not reconstructed from its
+	 * inputs — its {@link #getPostprocessor() postprocessor}, {@link #getDescription() description},
+	 * {@link #getShortCircuit() short-circuit} and {@link #getDependentLifecycles() dependent
+	 * lifecycles} — onto {@code target} and returns it.
+	 *
+	 * <p>{@link #generate(List)} rebuilds a computation of this computation's own type from
+	 * transformed child processes during optimization, and the rebuilt instance must behave as this
+	 * one does apart from those children. The properties above are set after construction rather
+	 * than derived from the inputs, so each {@code generate(List)} constructs its replacement and
+	 * routes it through this method, keeping the set of preserved properties defined in one place
+	 * rather than re-listed — and able to drift — at every call site.</p>
+	 *
+	 * @param target the replacement computation to copy this computation's configuration onto
+	 * @param <T>    the concrete type of the replacement computation
+	 * @return {@code target}, with this computation's configuration applied
+	 */
+	protected <T extends CollectionProducerComputationBase> T copyConfigurationTo(T target) {
+		target.setPostprocessor(getPostprocessor());
+		target.setDescription(getDescription());
+		target.setShortCircuit(getShortCircuit());
+		target.addAllDependentLifecycles(getDependentLifecycles());
+		return target;
+	}
+
+	/**
 	 * Creates traversable expressions for the computation arguments.
 	 * This method sets up the argument access patterns for kernel execution,
 	 * allowing efficient traversal of multi-dimensional input data.
@@ -1051,9 +1076,9 @@ public abstract class CollectionProducerComputationBase
 	 */
 	@Override
 	public Evaluable<PackedCollection> get() {
-		if (optimized != null & optimized != this) {
+		if (isSupersededByOptimizedVersion()) {
 			warn("This Computation should not be used, as an optimized version already exists");
-			return (Evaluable<PackedCollection>) optimized.get();
+			return (Evaluable<PackedCollection>) getOptimizedVersion().get();
 		}
 
 		if (evaluable == null) {

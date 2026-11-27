@@ -42,7 +42,7 @@ try:
         build_consult_prompt, has_speculation,
     )
 except ImportError:
-    # Loaded by path (see consultant/inference.py) rather than as a package.
+    # Imported as a flat module (tools/mcp/common on sys.path), not as a package.
     from health import HealthCache, health_ttl
     from inference_diagnosis import (
         CREDENTIAL_MISSING, CREDENTIAL_REJECTED, MALFORMED_RESPONSE,
@@ -229,7 +229,7 @@ class InferenceBackend(ABC):
         """
         return ("Confirm an inference backend is configured and reachable: set "
                 "AR_CONSULTANT_BACKEND or start a local model "
-                "(see tools/mcp/consultant/README.md).")
+                "(see tools/mcp/manager/README.md#inference-backends).")
 
     def probe_diagnosis(self) -> dict:
         """Probe the backend now and report the outcome, classified.
@@ -1274,7 +1274,7 @@ class PassthroughBackend(InferenceBackend):
     def operator_hint(self, classification: str) -> str:
         return ("No inference model is configured or reachable; set "
                 "AR_CONSULTANT_BACKEND or start a local llama.cpp / Ollama "
-                "server (see tools/mcp/consultant/README.md).")
+                "server (see tools/mcp/manager/README.md#inference-backends).")
 
     def probe_diagnosis(self) -> dict:
         return self._diagnosis(

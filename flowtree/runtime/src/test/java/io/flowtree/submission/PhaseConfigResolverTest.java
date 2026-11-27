@@ -1043,4 +1043,298 @@ public class PhaseConfigResolverTest extends TestSuiteBase {
         Assert.assertEquals("job REVIEW runner must resolve to workspace claude",
                 "claude", job.getRunnerForPhase(Phase.REVIEW));
     }
+
+    // --- Per-job fallback level ----------------------------------------------
+
+    /**
+     * A workstream with no phase config of its own, plus a fallback: every
+     * phase resolves to the fallback. This is the cheap-setup case the fallback
+     * exists for — an unconfigured workstream runs on the submitter's fallback.
+     */
+    @Test(timeout = 5000)
+    public void fallbackAppliesWhenWorkstreamUnset() {
+        PhaseConfigBundle fallback = bundle(
+                new PhaseConfig(AgentRunnerRegistry.OPENCODE, "z-ai/glm-4.6", null, "openrouter"),
+                null, null);
+        PhaseConfigResolver r = PhaseConfigResolver.resolve(
+                PhaseConfigBundle.EMPTY, PhaseConfigBundle.EMPTY, fallback, PhaseConfigBundle.EMPTY);
+        assertNull(r.error());
+        PhaseConfig primary = r.forPhase(Phase.PRIMARY);
+        assertEquals(AgentRunnerRegistry.OPENCODE, primary.runner());
+        assertEquals("z-ai/glm-4.6", primary.model());
+        assertEquals("openrouter", primary.provider());
+        PhaseConfig review = r.forPhase(Phase.REVIEW);
+        Assert.assertEquals("every phase is unset, so every phase takes the fallback",
+                AgentRunnerRegistry.OPENCODE, review.runner());
+    }
+
+    /**
+     * A workstream that sets {@code phaseConfigs.primary}, plus a fallback:
+     * primary keeps the workstream's config, and every phase the workstream
+     * leaves unset takes the fallback.
+     */
+    @Test(timeout = 5000)
+    public void fallbackSkipsPhasesTheWorkstreamSets() {
+        PhaseConfigBundle ws = bundle(null, Phase.PRIMARY,
+                new PhaseConfig(AgentRunnerRegistry.CLAUDE, "claude-sonnet-5", "high"));
+        PhaseConfigBundle fallback = bundle(
+                new PhaseConfig(AgentRunnerRegistry.OPENCODE, "z-ai/glm-4.6", null, "openrouter"),
+                null, null);
+        PhaseConfigResolver r = PhaseConfigResolver.resolve(
+                PhaseConfigBundle.EMPTY, ws, fallback, PhaseConfigBundle.EMPTY);
+        assertNull(r.error());
+        // Primary keeps the workstream's claude config.
+        PhaseConfig primary = r.forPhase(Phase.PRIMARY);
+        assertEquals(AgentRunnerRegistry.CLAUDE, primary.runner());
+        assertEquals("claude-sonnet-5", primary.model());
+        assertEquals("high", primary.effort());
+        assertNull("primary must not pick up the fallback's openrouter provider",
+                primary.provider());
+        // Review is unset on the workstream, so it takes the fallback.
+        PhaseConfig review = r.forPhase(Phase.REVIEW);
+        assertEquals(AgentRunnerRegistry.OPENCODE, review.runner());
+        assertEquals("z-ai/glm-4.6", review.model());
+        assertEquals("openrouter", review.provider());
+    }
+
+    /**
+     * A workstream with a {@code defaultPhaseConfig} counts as setting every
+     * phase, so the fallback is ignored for all of them.
+     */
+    @Test(timeout = 5000)
+    public void fallbackIgnoredWhenWorkstreamHasDefault() {
+        PhaseConfigBundle ws = bundle(
+                new PhaseConfig(AgentRunnerRegistry.CLAUDE, "claude-sonnet-5", null), null, null);
+        PhaseConfigBundle fallback = bundle(
+                new PhaseConfig(AgentRunnerRegistry.OPENCODE, "z-ai/glm-4.6", null, "openrouter"),
+                null, null);
+        PhaseConfigResolver r = PhaseConfigResolver.resolve(
+                PhaseConfigBundle.EMPTY, ws, fallback, PhaseConfigBundle.EMPTY);
+        assertNull(r.error());
+        for (Phase phase : new Phase[] {Phase.PRIMARY, Phase.REVIEW, Phase.COMMIT_MESSAGE}) {
+            PhaseConfig resolved = r.forPhase(phase);
+            Assert.assertEquals("workstream default wins for " + phase.wireName(),
+                    AgentRunnerRegistry.CLAUDE, resolved.runner());
+            assertEquals("claude-sonnet-5", resolved.model());
+            assertNull("fallback's openrouter must not leak into " + phase.wireName(),
+                    resolved.provider());
+        }
+    }
+
+    /**
+     * Regression: the fallback must not leak into a workstream-set phase through
+     * the <em>resolved bundle</em>, not merely through {@link
+     * PhaseConfigResolver#forPhase(Phase)}. The fallback default sets a model and
+     * provider; the workstream sets {@code primary} with a runner only (model
+     * null). The resolver's own {@code forPhase} already resolves primary to
+     * claude with a null model, but {@link PhaseConfigBundle#forPhase(Phase)} on
+     * the resolved bundle — the method the worker and {@code AgentRunRequestFactory}
+     * ultimately read — re-overlays the stored primary entry on the bundle
+     * default. Before the fix that default carried the fallback's model, so the
+     * claude primary phase inherited {@code z-ai/glm-4.6}. After the fix the
+     * default excludes the fallback, so the resolved bundle reproduces the
+     * resolver: primary keeps a null model while unset phases still take the
+     * fallback.
+     */
+    @Test(timeout = 5000)
+    public void fallbackDoesNotLeakIntoWorkstreamSetPhaseInResolvedBundle() {
+        PhaseConfigBundle ws = bundle(null, Phase.PRIMARY,
+                new PhaseConfig(AgentRunnerRegistry.CLAUDE, null, null));
+        PhaseConfigBundle fallback = bundle(
+                new PhaseConfig(AgentRunnerRegistry.OPENCODE, "z-ai/glm-4.6", null, "openrouter"),
+                null, null);
+        PhaseConfigResolver r = PhaseConfigResolver.resolve(
+                PhaseConfigBundle.EMPTY, ws, fallback, PhaseConfigBundle.EMPTY);
+        assertNull(r.error());
+
+        // The resolver's own forPhase is correct: primary keeps claude, no model.
+        PhaseConfig primaryResolver = r.forPhase(Phase.PRIMARY);
+        assertEquals(AgentRunnerRegistry.CLAUDE, primaryResolver.runner());
+        assertNull(primaryResolver.model());
+
+        // The resolved bundle must reproduce it: no fallback model/provider leak.
+        PhaseConfig primary = r.resolvedBundle().forPhase(Phase.PRIMARY);
+        assertEquals(AgentRunnerRegistry.CLAUDE, primary.runner());
+        assertNull("fallback model must not leak into a workstream-set phase",
+                primary.model());
+        assertNull("fallback effort must not leak into a workstream-set phase",
+                primary.effort());
+        assertNull("fallback provider must not leak into a workstream-set phase",
+                primary.provider());
+
+        // An unset phase still takes the fallback through the resolved bundle.
+        PhaseConfig review = r.resolvedBundle().forPhase(Phase.REVIEW);
+        assertEquals(AgentRunnerRegistry.OPENCODE, review.runner());
+        assertEquals("z-ai/glm-4.6", review.model());
+        assertEquals("openrouter", review.provider());
+    }
+
+    /**
+     * A fallback that completes into an invalid runner/provider combination
+     * (claude with a non-anthropic provider) is rejected at submission, just as
+     * an explicit per-job config would be.
+     */
+    @Test(timeout = 5000)
+    public void fallbackInvalidCombinationIsRejected() {
+        PhaseConfigBundle fallback = bundle(
+                new PhaseConfig(AgentRunnerRegistry.CLAUDE, null, null, "openrouter"), null, null);
+        PhaseConfigResolver r = PhaseConfigResolver.resolve(
+                PhaseConfigBundle.EMPTY, PhaseConfigBundle.EMPTY, fallback, PhaseConfigBundle.EMPTY);
+        assertNotNull("claude + openrouter from the fallback must fail", r.error());
+        assertTrue(r.error(), r.error().contains("anthropic"));
+    }
+
+    /**
+     * An empty fallback changes nothing: resolution matches the three-argument
+     * overload exactly. This is the no-behaviour-change guarantee for every
+     * submission that sends no fallback.
+     */
+    @Test(timeout = 5000)
+    public void emptyFallbackResolvesAsWithoutFallback() {
+        PhaseConfigBundle ws = bundle(
+                new PhaseConfig(AgentRunnerRegistry.CLAUDE, "claude-opus-5-5", null), null, null);
+        PhaseConfig without = PhaseConfigResolver.resolve(
+                PhaseConfigBundle.EMPTY, ws, PhaseConfigBundle.EMPTY).forPhase(Phase.PRIMARY);
+        PhaseConfig withEmpty = PhaseConfigResolver.resolve(
+                PhaseConfigBundle.EMPTY, ws, PhaseConfigBundle.EMPTY, PhaseConfigBundle.EMPTY)
+                .forPhase(Phase.PRIMARY);
+        assertEquals(without, withEmpty);
+    }
+
+    /**
+     * The submit response carries a {@code fallbackResolution} fragment when a
+     * fallback was supplied, reporting per phase whether it was used and why;
+     * an empty fallback appends nothing.
+     */
+    @Test(timeout = 5000)
+    public void fallbackResolutionJsonReportsUseAndReason() {
+        PhaseConfigBundle ws = bundle(null, Phase.PRIMARY,
+                new PhaseConfig(AgentRunnerRegistry.CLAUDE, "claude-sonnet-5", null));
+        PhaseConfigBundle fallback = bundle(
+                new PhaseConfig(AgentRunnerRegistry.OPENCODE, "z-ai/glm-4.6", null, "openrouter"),
+                null, null);
+        PhaseConfigResolver r = PhaseConfigResolver.resolve(
+                PhaseConfigBundle.EMPTY, ws, fallback, PhaseConfigBundle.EMPTY);
+        assertNull(r.error());
+
+        StringBuilder json = new StringBuilder("{\"ok\":true");
+        r.appendFallbackResolutionJson(json);
+        json.append("}");
+        String result = json.toString();
+        assertTrue("reports fallback resolution", result.contains("\"fallbackResolution\""));
+        assertTrue("primary is kept by the workstream",
+                result.contains("workstream sets primary"));
+        assertTrue("review takes the fallback", result.contains("fallback applied"));
+
+        // An empty fallback appends nothing.
+        PhaseConfigResolver noFb = PhaseConfigResolver.resolve(
+                PhaseConfigBundle.EMPTY, ws, PhaseConfigBundle.EMPTY);
+        StringBuilder bare = new StringBuilder("{\"ok\":true");
+        noFb.appendFallbackResolutionJson(bare);
+        bare.append("}");
+        assertEquals("{\"ok\":true}", bare.toString());
+    }
+
+    /**
+     * A per-job request default that fully specifies every field shadows the
+     * fallback: the effective config is the request's regardless of the
+     * fallback, so {@code fallbackResolution} must report the fallback as
+     * unused with a reason naming the request override — not {@code used=true}
+     * just because the workstream left the phase unset and the fallback had an
+     * entry.
+     */
+    @Test(timeout = 5000)
+    public void fallbackReportedUnusedWhenRequestOverrides() {
+        PhaseConfigBundle req = bundle(
+                new PhaseConfig(AgentRunnerRegistry.CLAUDE, "claude-sonnet-5", "high", "anthropic"),
+                null, null);
+        PhaseConfigBundle fallback = bundle(
+                new PhaseConfig(AgentRunnerRegistry.OPENCODE, "z-ai/glm-4.6", null, "openrouter"),
+                null, null);
+        PhaseConfigResolver r = PhaseConfigResolver.resolve(
+                req, PhaseConfigBundle.EMPTY, fallback, PhaseConfigBundle.EMPTY);
+        assertNull(r.error());
+
+        // The request fully overrides every phase, so the resolved config is
+        // the request's claude config and the fallback changes nothing.
+        PhaseConfig primary = r.forPhase(Phase.PRIMARY);
+        assertEquals(AgentRunnerRegistry.CLAUDE, primary.runner());
+        assertEquals("claude-sonnet-5", primary.model());
+
+        StringBuilder json = new StringBuilder("{\"ok\":true");
+        r.appendFallbackResolutionJson(json);
+        json.append("}");
+        String result = json.toString();
+        assertTrue("reports fallback resolution", result.contains("\"fallbackResolution\""));
+        assertTrue("names the request override as the reason",
+                result.contains("request overrides primary"));
+        assertFalse("fallback must not be reported used when the request shadows it",
+                result.contains("\"fallbackUsed\":true"));
+    }
+
+    /**
+     * A per-job request that overrides only part of a phase still leaves the
+     * fallback contributing the fields the request omits, so the fallback is
+     * reported used. This guards the shadow detection from over-reporting
+     * "unused": a partial request override does not shadow the fallback.
+     */
+    @Test(timeout = 5000)
+    public void fallbackReportedUsedWhenRequestOverridesPartially() {
+        PhaseConfigBundle req = bundle(
+                new PhaseConfig(null, null, "high", null), null, null);
+        PhaseConfigBundle fallback = bundle(
+                new PhaseConfig(AgentRunnerRegistry.OPENCODE, "z-ai/glm-4.6", null, "openrouter"),
+                null, null);
+        PhaseConfigResolver r = PhaseConfigResolver.resolve(
+                req, PhaseConfigBundle.EMPTY, fallback, PhaseConfigBundle.EMPTY);
+        assertNull(r.error());
+
+        // The fallback supplies runner/model/provider; the request only adds effort.
+        PhaseConfig primary = r.forPhase(Phase.PRIMARY);
+        assertEquals(AgentRunnerRegistry.OPENCODE, primary.runner());
+        assertEquals("z-ai/glm-4.6", primary.model());
+        assertEquals("high", primary.effort());
+
+        StringBuilder json = new StringBuilder("{\"ok\":true");
+        r.appendFallbackResolutionJson(json);
+        json.append("}");
+        assertTrue("partial request override must still report the fallback applied",
+                json.toString().contains("fallback applied"));
+    }
+
+    /**
+     * When no request is supplied and the fallback's values already equal what
+     * the workspace / controller levels resolve to, the fallback has no net
+     * effect — but the request did not shadow it, so the reason must NOT name a
+     * request override. It must report the fallback as unused because it
+     * coincides with the already-resolved config.
+     */
+    @Test(timeout = 5000)
+    public void fallbackReportedUnusedWhenItMatchesWorkspaceConfig() {
+        PhaseConfig shared = new PhaseConfig(
+                AgentRunnerRegistry.OPENCODE, "z-ai/glm-4.6", null, "openrouter");
+        PhaseConfigBundle fallback = bundle(shared, null, null);
+        PhaseConfigBundle workspace = bundle(shared, null, null);
+        PhaseConfigResolver r = PhaseConfigResolver.resolve(
+                PhaseConfigBundle.EMPTY, PhaseConfigBundle.EMPTY, fallback, workspace);
+        assertNull(r.error());
+
+        // The fallback and workspace carry identical values, so the phase
+        // resolves to them whether or not the fallback is applied.
+        PhaseConfig primary = r.forPhase(Phase.PRIMARY);
+        assertEquals(AgentRunnerRegistry.OPENCODE, primary.runner());
+        assertEquals("z-ai/glm-4.6", primary.model());
+        assertEquals("openrouter", primary.provider());
+
+        StringBuilder json = new StringBuilder("{\"ok\":true");
+        r.appendFallbackResolutionJson(json);
+        json.append("}");
+        String result = json.toString();
+        assertFalse("no request was supplied, so the reason must not name a request override",
+                result.contains("request overrides"));
+        assertTrue("the fallback coincides with the resolved config",
+                result.contains("fallback matches resolved primary config"));
+        assertFalse("a no-effect fallback must not be reported used",
+                result.contains("\"fallbackUsed\":true"));
+    }
 }

@@ -15,6 +15,8 @@
  */
 
 package org.almostrealism.music.notes;
+import org.almostrealism.audio.data.FileWaveDataProvider;
+import org.almostrealism.audio.data.FileWaveDataProviderTree;
 import org.almostrealism.audio.notes.NoteAudio;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
@@ -24,6 +26,7 @@ import org.almostrealism.audio.tone.KeyboardTuned;
 import org.almostrealism.audio.tone.KeyboardTuning;
 
 import java.util.List;
+import java.util.function.Supplier;
 
 /**
  * A source of {@link org.almostrealism.audio.notes.NoteAudio} instances used within
@@ -62,6 +65,20 @@ public interface NoteAudioSource extends KeyboardTuned, Named {
 	void setTuning(KeyboardTuning tuning);
 
 	/**
+	 * Binds this source to the sample library its notes are selected from.
+	 *
+	 * <p>A source that selects its notes from a library tree (such as
+	 * {@link TreeNoteSource}) rebuilds its notes from the given tree. A source whose
+	 * notes come from a fixed origin of its own — a single file, a note group — does
+	 * not draw from the library, so the library it is offered does not change it;
+	 * that is the default.</p>
+	 *
+	 * @param tree the library tree notes are selected from, or {@code null} for none
+	 */
+	@JsonIgnore
+	default void setTree(FileWaveDataProviderTree<? extends Supplier<FileWaveDataProvider>> tree) { }
+
+	/**
 	 * Returns a list of {@link PatternNoteAudio} instances wrapping the raw notes.
 	 *
 	 * @return the list of pattern notes
@@ -77,6 +94,24 @@ public interface NoteAudioSource extends KeyboardTuned, Named {
 	/** Returns all raw notes available from this source. */
 	@JsonIgnore
 	List<NoteAudio> getNotes();
+
+	/**
+	 * Returns the notes this source has already materialized, including any that are
+	 * currently inactive, without loading or recomputing anything. This is the set
+	 * whose cached audio must be released when the source's owner is torn down
+	 * (see {@link NoteAudio#releaseCachedAudio()}). A teardown path must not trigger
+	 * lazy loading, which would build fresh notes only to release them.
+	 *
+	 * <p>The default returns {@link #getNotes()}, which is correct for sources whose
+	 * notes are fixed at construction. Sources that load lazily or filter their notes
+	 * override it.</p>
+	 *
+	 * @return a new list of the materialized notes
+	 */
+	@JsonIgnore
+	default List<NoteAudio> getLoadedNotes() {
+		return getNotes();
+	}
 
 	/**
 	 * Returns whether this source belongs in a {@link NoteAudioChoice}'s saved

@@ -30,6 +30,11 @@ from server import mcp
 #: attempts.
 PR_STATE_VALUES = ("open", "closed")
 
+#: A job that finished in one of these states is what GitHub's
+#: rerun-failed-jobs endpoint reruns. A completed run with none of them among
+#: its jobs has nothing for github_rerun_failed_jobs to rerun.
+RERUNNABLE_JOB_CONCLUSIONS = ("failure", "cancelled", "timed_out")
+
 
 @mcp.tool()
 def github_set_pr_state(
@@ -353,5 +358,234 @@ def github_start_test_run(
             "Follow the run with github_list_workflow_runs("
             f"branch='{target}', event='deployment')",
             "Then github_workflow_run_status(run_id=...) for the run's jobs",
+        ],
+    }
+
+
+def _run_has_rerunnable_job(jobs: list) -> bool:
+    """True when at least one of ``jobs`` failed, was cancelled, or timed out.
+
+    These are the conclusions GitHub's rerun-failed-jobs endpoint acts on; a
+    completed run with none of them among its jobs has nothing to rerun.
+
+    Args:
+        jobs: The run's jobs, as returned by the run's ``/jobs`` endpoint.
+
+    Returns:
+        True when any job carries a rerunnable conclusion.
+    """
+    return any(
+        (job.get("conclusion") or "") in RERUNNABLE_JOB_CONCLUSIONS
+        for job in jobs
+    )
+
+
+def _run_has_rerunnable_jobs(owner: str, repo: str, run_id: int):
+    """Report whether a workflow run has a rerunnable job, paging as needed.
+
+    GitHub's run-jobs endpoint returns at most 100 jobs per page, so a run with
+    more than 100 jobs carries its later jobs — and any failure among them — on
+    the pages after the first. A rerun needs only a single failed, cancelled or
+    timed-out job to be justified, so paging stops at the first page that
+    carries one rather than reading every page of a large matrix run; a run with
+    no rerunnable job is confirmed only after its last (short) page, so a failure
+    that sits beyond the first page is never missed.
+
+    The request pins ``filter=latest`` so only the most recent attempt's jobs
+    are returned. That is already the endpoint's default, but a rerun decision
+    must never see a failure left behind by an earlier attempt that the latest
+    attempt has since passed, so the contract is made explicit rather than left
+    to the default.
+
+    Args:
+        owner: The repository owner.
+        repo: The repository name.
+        run_id: The numeric workflow run id.
+
+    Returns:
+        ``True`` as soon as a page carries a failed, cancelled or timed-out job;
+        ``False`` when the run's latest attempt has none; or the error dict from
+        the first request that failed or returned something other than the
+        expected ``{"jobs": [...]}`` shape.
+    """
+    page = 1
+    while True:
+        result = server._github_request(
+            "GET",
+            f"/repos/{owner}/{repo}/actions/runs/{run_id}/jobs"
+            f"?per_page=100&page={page}&filter=latest")
+        if isinstance(result, dict) and result.get("ok") is False:
+            return result
+        if not isinstance(result, dict) or not isinstance(
+                result.get("jobs"), list):
+            return {
+                "ok": False,
+                "error": (f"could not list jobs of workflow run {run_id} on "
+                          f"{owner}/{repo}"),
+                "returned": result,
+            }
+        jobs = result["jobs"]
+        if _run_has_rerunnable_job(jobs):
+            return True
+        if len(jobs) < 100:
+            return False
+        page += 1
+
+
+@mcp.tool()
+def github_rerun_failed_jobs(
+    run_id: int = 0,
+    workstream_id: str = "",
+    org: str = "",
+    repo: str = "",
+) -> dict:
+    """Rerun only the failed jobs of an existing workflow run, in place.
+
+    GitHub reruns the failed, cancelled and timed-out jobs of ``run_id`` as a
+    new attempt of that same run: the jobs that passed are kept, and the run's
+    identity and URL do not change. Use this to recover a run that went red on a
+    transient failure — a flaky test, a runner that dropped out — without
+    starting a fresh run from scratch.
+
+    This is the counterpart to ``github_start_test_run`` and the two are not
+    interchangeable. ``github_start_test_run`` creates a *new* ``deployment`` run
+    of a branch; it cannot touch an existing run, so the original red run stays
+    red, and on a repository whose workflow has no deployment trigger it starts
+    nothing at all. This reruns the failed jobs of a run that already exists,
+    whatever event triggered it. Reach for ``github_start_test_run`` when there
+    is no run yet (a pushed branch that needs its first test run); reach for this
+    when a run exists and some of its jobs failed.
+
+    Before rerunning, the run is read and the request is refused when it is still
+    queued or in progress (nothing has finished to rerun yet) or when none of its
+    jobs failed, were cancelled or timed out (nothing to rerun). There is
+    deliberately no "rerun all jobs" mode: rerunning jobs that already passed is
+    wasteful and is not what recovering a red run needs.
+
+    Like the other GitHub tools this routes through the controller's GitHub
+    proxy, so the rerun is posted with the controller's own per-org credential —
+    the same credential ``github_start_test_run`` uses.
+
+    Args:
+        run_id: The numeric workflow run id, from ``github_list_workflow_runs``
+            or ``github_workflow_run_status``. Required.
+        workstream_id: Workstream to resolve the repo from. Defaults to the token
+            context. Used when ``org``/``repo`` are not given.
+        org: GitHub org (owner) to address directly. Must be passed together with
+            ``repo``; scoped tokens are checked against this org via the
+            workspace scope gate.
+        repo: GitHub repository name. Must be passed together with ``org``.
+
+    Returns:
+        dict with ``ok=True``, ``run_id``, ``repo``, ``run_attempt`` (the run's
+        attempt number after the rerun, when GitHub reports it), ``html_url`` and
+        ``next_steps`` pointing to ``github_workflow_run_status`` on success;
+        ``ok=False`` with ``error`` when the run is unfinished, has nothing to
+        rerun, or GitHub rejects the request (a 403 notes that the controller's
+        credential may lack Actions write on the repository).
+    """
+    server._require_scope("github")
+    direct_addressing = bool(org and repo)
+    if direct_addressing:
+        server._require_org_in_scope(org)
+
+    if isinstance(run_id, bool) or not isinstance(run_id, int) or run_id <= 0:
+        return {"ok": False, "error": "run_id must be a positive integer"}
+
+    owner, repo_name, _, err = server._resolve_github_repo(
+        workstream_id=workstream_id, owner=org, repo=repo)
+    if err:
+        return err
+
+    server._audit("github_rerun_failed_jobs", run_id=run_id,
+                  workstream_id=workstream_id)
+
+    run = server._github_request(
+        "GET", f"/repos/{owner}/{repo_name}/actions/runs/{run_id}")
+    if isinstance(run, dict) and run.get("ok") is False:
+        return run
+    if not isinstance(run, dict) or "status" not in run:
+        return {
+            "ok": False,
+            "error": (f"could not read workflow run {run_id} on "
+                      f"{owner}/{repo_name}"),
+            "returned": run,
+        }
+
+    # GitHub reruns the jobs of a completed run only, so an unfinished run is
+    # refused before its jobs are even listed.
+    status = (run.get("status") or "").strip().lower()
+    if status != "completed":
+        return {
+            "ok": False,
+            "error": (f"workflow run {run_id} is {status or 'not completed'}; "
+                      "wait for it to finish before rerunning its failed jobs"),
+        }
+
+    rerunnable = _run_has_rerunnable_jobs(owner, repo_name, run_id)
+    if isinstance(rerunnable, dict) and rerunnable.get("ok") is False:
+        return rerunnable
+    if not rerunnable:
+        return {
+            "ok": False,
+            "error": (f"workflow run {run_id} has no failed, cancelled or "
+                      "timed-out jobs to rerun"),
+        }
+
+    rerun = server._github_request(
+        "POST",
+        f"/repos/{owner}/{repo_name}/actions/runs/{run_id}/rerun-failed-jobs")
+    if isinstance(rerun, dict) and rerun.get("ok") is False:
+        error = rerun.get("error", "")
+        if "HTTP 403" in error:
+            error = (f"{error}; the controller's credential may lack Actions "
+                     f"write permission on {owner}/{repo_name}")
+        return {"ok": False, "error": error}
+
+    # The rerun endpoint answers 201 with no body, so the attempt number the
+    # rerun produced comes from re-reading the run. A rerun advances the
+    # attempt, so only a refreshed attempt greater than the pre-rerun one
+    # confirms the new attempt; the pre-rerun value — and a GET that is briefly
+    # stale and still reports it — is not usable. When the re-read cannot
+    # confirm an advanced attempt, run_attempt stays None rather than reporting
+    # a stale number the caller might act on, and next_steps sends the caller to
+    # status polling. The run's identity and URL do not change, so the pre-rerun
+    # read still supplies html_url.
+    pre_attempt = run.get("run_attempt")
+    refreshed = server._github_request(
+        "GET", f"/repos/{owner}/{repo_name}/actions/runs/{run_id}")
+    attempt = None
+    html_url = run.get("html_url")
+    if isinstance(refreshed, dict) and refreshed.get("ok") is not False:
+        refreshed_attempt = refreshed.get("run_attempt")
+        html_url = refreshed.get("html_url", html_url)
+        if isinstance(refreshed_attempt, int) \
+                and not isinstance(refreshed_attempt, bool) \
+                and (not isinstance(pre_attempt, int)
+                     or isinstance(pre_attempt, bool)
+                     or refreshed_attempt > pre_attempt):
+            attempt = refreshed_attempt
+
+    # A direct-addressed call may carry no workstream or token context, so its
+    # follow-up names org/repo; an explicit workstream_id must likewise be
+    # carried, or the status lookup falls back to token context and can resolve
+    # a different repo (or none). A purely contextual call keeps the short form.
+    if direct_addressing:
+        follow_up = (f"github_workflow_run_status(run_id={run_id}, "
+                     f"org='{owner}', repo='{repo_name}')")
+    elif workstream_id:
+        follow_up = (f"github_workflow_run_status(run_id={run_id}, "
+                     f"workstream_id='{workstream_id}')")
+    else:
+        follow_up = f"github_workflow_run_status(run_id={run_id})"
+
+    return {
+        "ok": True,
+        "run_id": run_id,
+        "repo": f"{owner}/{repo_name}",
+        "run_attempt": attempt,
+        "html_url": html_url,
+        "next_steps": [
+            f"Follow the new attempt with {follow_up}",
         ],
     }

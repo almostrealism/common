@@ -38,6 +38,9 @@ The fundamental abstraction for composable computational work.
 **Key Methods:**
 - `optimize()` / `optimize(ProcessContext)` - Entry point for optimization
 - `isolate()` - Wraps process for independent execution via `Process.of(this)`
+- `Process.asProcess(Supplier)` - Presents an input as a child: a process as itself, any other
+  supplier wrapped by `Process.of`. A parent uses it, not `Process.of`, so that a child that is
+  a process keeps its own children, parallelism and isolation visible to the strategies
 - `isIsolationTarget(ProcessContext)` - Returns `true` if process needs isolation
 - `getOutputSize()` - Returns memory footprint for cost analysis
 
@@ -51,6 +54,9 @@ if (Process.isolationPermitted(process)) {
     process = process.isolate();
 }
 ```
+
+The targets are predicates over processes, so while any are configured a supplier that is not
+a `Process` matches none of them and `isolationPermitted` is `false` for it.
 
 ### ParallelProcess
 
@@ -235,6 +241,30 @@ double score(parallelism, size) = parallelismValue - memoryCost;
 - Positive score: Good (parallelism benefits outweigh memory costs)
 - Negative score: Problematic (memory dominates)
 - Strategies compare current vs. isolated scores to make decisions
+
+## Cost of Optimization
+
+`Producer.evaluate()` optimizes the graph it is given, so a graph built for a single
+evaluation is optimized every time, and every strategy of the cascade runs at every node of
+it. The pass is part of the cost of each such evaluation, so its questions about the tree
+must not walk the tree again:
+
+- `ComputationBase` determines `isFixedCount()` and `getChildren()` from its inputs once and
+  keeps the answers until its inputs are set again. Both follow from the inputs alone, which
+  are fixed at construction, while strategies ask each child for its count and parallelism
+  repeatedly; without this, every such question walked the whole subtree below the node.
+- A strategy reads parallelism, output sizes and scores only when they can change its
+  decision. `ParallelismDiversityOptimization` returns at once for a process with no more
+  children than its diversity threshold, and `ParallelismTargetOptimization` computes the
+  two scores only when its count tests leave isolation open.
+- `Tree.countDepth` walks the children directly rather than through a stream pipeline built
+  for each node it visits.
+
+For the 29-node graph that `SimilarityOverheadTest` evaluates once per comparison, these
+reduced the pass from about 110 µs to about 53 µs per graph, on Metal and on the native
+backend alike, without changing any isolation decision. A new strategy should keep to the
+same rule: apply its cheap tests first, and ask each child for a metric at most once per
+decision.
 
 ## Configuration Points
 

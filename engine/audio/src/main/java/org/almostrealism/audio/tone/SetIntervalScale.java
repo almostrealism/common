@@ -16,6 +16,8 @@
 
 package org.almostrealism.audio.tone;
 
+import java.util.function.Consumer;
+
 /**
  * A scale implementation that generates notes algorithmically from a root note and interval pattern.
  *
@@ -47,8 +49,11 @@ package org.almostrealism.audio.tone;
  * WesternChromatic third = cMajor.valueAt(2);  // E4 (2 more semitones)
  * }</pre>
  *
- * <p>The scale length is determined by {@code repetitions * intervals.length}, allowing
- * multi-octave scales to be generated from a single interval pattern.</p>
+ * <p>The declared scale length is {@code repetitions * intervals.length}, allowing
+ * multi-octave scales to be generated from a single interval pattern. When the root is
+ * close enough to the top of its key type's range that some of those notes do not exist,
+ * {@link #length()} reports only the reachable notes, so the scale is truncated at the
+ * highest representable note rather than failing partway through.</p>
  *
  * @param <T> the type of key position (typically {@link WesternChromatic})
  * @see Scale
@@ -129,26 +134,93 @@ public class SetIntervalScale<T extends KeyPosition<T>> implements Scale<T> {
 	 */
 	public void setIntervals(int[] intervals) { this.intervals = intervals; }
 
+	/**
+	 * Returns the note at the given position, walking up from the root one interval
+	 * at a time. The bounds check runs once, so the cost is linear in {@code position}
+	 * plus one call to {@link #length()}.
+	 *
+	 * @param position the zero-based scale position
+	 * @return the note at that position
+	 * @throws IndexOutOfBoundsException if {@code position} is outside {@code [0, length())}
+	 */
 	@Override
 	public T valueAt(int position) {
-		if (position < 0 || position >= length()) {
+		int length = length();
+		if (position < 0 || position >= length) {
 			throw new IndexOutOfBoundsException(
-					"Position " + position + " is out of range for scale of length " + length());
+					"Position " + position + " is out of range for scale of length " + length);
 		}
 
-		if (position == 0) {
-			return root;
-		} else {
-			T note = valueAt(position - 1);
-			int intervalIndex = (position - 1) % intervals.length;
-			for (int i = 0; i < intervals[intervalIndex]; i++) {
-				note = note.next();
-			}
+		T note = root;
+		for (int p = 1; p <= position; p++) {
+			note = step(note, p);
+		}
 
-			return note;
+		return note;
+	}
+
+	/**
+	 * Visits every note of the scale in order, walking the intervals once rather
+	 * than recomputing each note from the root.
+	 *
+	 * @param consumer receives each note in {@code [0, length())}
+	 */
+	@Override
+	public void forEach(Consumer<T> consumer) {
+		int length = length();
+		T note = root;
+		for (int position = 0; position < length; position++) {
+			if (position > 0) note = step(note, position);
+			consumer.accept(note);
 		}
 	}
 
+	/**
+	 * Returns the number of positions whose notes actually exist.
+	 *
+	 * <p>The declared length is {@code repetitions * intervals.length}, but a scale
+	 * cannot extend past the top of its key type's range: once a note has no
+	 * successor, no higher position is representable. Only the reachable positions
+	 * are counted, so {@link #valueAt(int)} returns a note for every position in
+	 * {@code [0, length())} and {@link #forEach(Consumer)} never walks off the end
+	 * of the keyboard, where {@link KeyPosition#next()} would otherwise throw
+	 * {@link IllegalStateException}.</p>
+	 *
+	 * @return the number of reachable notes, or the declared length when no root is set
+	 */
 	@Override
-	public int length() { return repetitions * intervals.length; }
+	public int length() {
+		int declared = repetitions * intervals.length;
+		if (root == null) return declared;
+
+		T note = root;
+		int reachable = 0;
+		try {
+			for (int position = 0; position < declared; position++) {
+				if (position > 0) note = step(note, position);
+				reachable++;
+			}
+		} catch (IllegalStateException outsideKeyRange) {
+			// next() has no successor past the top of the range; stop counting here.
+		}
+
+		return reachable;
+	}
+
+	/**
+	 * Advances from the note at {@code position - 1} to the note at {@code position}
+	 * by applying the interval that precedes {@code position}.
+	 *
+	 * @param note     the note at {@code position - 1}
+	 * @param position the target position, at least 1
+	 * @return the note at {@code position}
+	 */
+	private T step(T note, int position) {
+		int intervalIndex = (position - 1) % intervals.length;
+		for (int i = 0; i < intervals[intervalIndex]; i++) {
+			note = note.next();
+		}
+
+		return note;
+	}
 }

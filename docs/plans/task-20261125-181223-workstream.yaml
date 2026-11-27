@@ -1,0 +1,5 @@
+# Implementation must reproduce the sustained all-channel render timeout, which
+# requires a Metal backend and the curated sample library — present only on macOS
+# nodes. See docs/plans/PLAN-20261125-all-channel-render-timeout.md.
+requiredLabels:
+  platform: macos

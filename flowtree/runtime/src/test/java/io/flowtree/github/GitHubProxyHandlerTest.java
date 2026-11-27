@@ -16,6 +16,8 @@
 
 package io.flowtree.github;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import fi.iki.elonen.NanoHTTPD;
@@ -33,11 +35,13 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
+import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
+import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
@@ -686,6 +690,185 @@ public class GitHubProxyHandlerTest extends TestSuiteBase {
         } finally {
             server.stop(0);
         }
+    }
+
+    /**
+     * An Actions artifact download answers with a redirect to a storage host that
+     * serves a zip archive. The archive's bytes are not UTF-8, so the proxy must
+     * carry them base64-encoded and say so; decoding them as text would corrupt the
+     * archive. The decoded body must equal the bytes the storage host served.
+     */
+    @Test(timeout = 30000)
+    public void binaryBodyBehindARedirectIsCarriedAsBase64() throws IOException {
+        byte[] archive = {0x50, 0x4b, 0x03, 0x04, (byte) 0xff, (byte) 0xfe, 0x00, (byte) 0x80, 0x41};
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        String storage = "http://127.0.0.1:%d/blob/artifact.zip";
+        server.createContext("/repos/", exchange -> {
+            exchange.getResponseHeaders().add("Location",
+                    String.format(storage, server.getAddress().getPort()));
+            exchange.sendResponseHeaders(302, -1);
+            exchange.close();
+        });
+        server.createContext("/blob/", exchange -> {
+            exchange.getResponseHeaders().add("Content-Type", "application/zip");
+            exchange.sendResponseHeaders(200, archive.length);
+            try (OutputStream out = exchange.getResponseBody()) {
+                out.write(archive);
+            }
+        });
+        server.start();
+        try {
+            GitHubProxyHandler handler = new GitHubProxyHandler(Map.of("almostrealism", "tok"),
+                    "http://127.0.0.1:" + server.getAddress().getPort());
+            IHTTPSession session = new FakeSession(Method.GET,
+                    Map.of("url", "/repos/almostrealism/common/actions/artifacts/7/zip"),
+                    Map.of(), new ByteArrayInputStream(new byte[0]));
+
+            String envelope = bodyOf(handler.handle(session, Method.GET,
+                    s -> null, GitHubProxyHandlerTest::errorResponse));
+
+            assertTrue(envelope, envelope.contains("\"status\":200"));
+            assertTrue(envelope, envelope.contains("\"encoding\":\"base64\""));
+            String encoded = envelope.replaceFirst("(?s).*\"body\":\"([^\"]*)\".*", "$1");
+            assertArrayEquals(archive, Base64.getDecoder().decode(encoded));
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    /**
+     * A text body keeps its existing envelope: a JSON body is spliced in, any other
+     * text is quoted, and neither carries an {@code encoding} member.
+     */
+    @Test(timeout = 10000)
+    public void textBodiesAreNotBase64Encoded() {
+        byte[] json = "{\"a\":1}".getBytes(StandardCharsets.UTF_8);
+        byte[] log = "line one\nline é".getBytes(StandardCharsets.UTF_8);
+
+        assertEquals("{\"status\":200,\"link\":\"\",\"body\":{\"a\":1}}",
+                new GitHubProxyEnvelope(200, null, json, "application/json").toJson());
+        String text = new GitHubProxyEnvelope(200, null, log, "text/plain").toJson();
+        assertTrue(text, text.contains("\"body\":\"line one\\nline é\""));
+        assertFalse(text, text.contains("encoding"));
+        assertEquals("{\"status\":204,\"link\":\"\",\"body\":null}",
+                new GitHubProxyEnvelope(204, null, new byte[0], null).toJson());
+    }
+
+    /**
+     * A reliably-read, untruncated listing is complete, lists every unresolved
+     * thread anchored at its first comment, and omits resolved threads.
+     */
+    @Test(timeout = 10000)
+    public void reviewThreadListingIsCompleteWhenFullyRead() throws IOException {
+        JsonNode root = new ObjectMapper().readTree(
+                "{\"data\":{\"repository\":{\"pullRequest\":{\"reviewThreads\":{"
+                + "\"pageInfo\":{\"hasNextPage\":false},\"nodes\":["
+                + "{\"isResolved\":false,\"comments\":{\"nodes\":["
+                + "{\"path\":\"A.java\",\"line\":4,\"url\":\"https://x/c1\",\"body\":\"open one\"}]}},"
+                + "{\"isResolved\":true,\"comments\":{\"nodes\":["
+                + "{\"path\":\"B.java\",\"line\":7,\"url\":\"https://x/c2\",\"body\":\"resolved\"}]}}"
+                + "]}}}}}");
+        GitHubProxyHandler.ReviewThreadListing listing = GitHubProxyHandler.ReviewThreadListing.from(root);
+        assertTrue("a fully read listing is complete", listing.complete());
+        assertEquals("the resolved thread is omitted", 1, listing.findings().size());
+        assertEquals("https://x/c1", listing.findings().get(0).url());
+    }
+
+    /**
+     * A listing truncated at the page limit ({@code hasNextPage}) is incomplete,
+     * so the repeat check cannot mistake a thread beyond the first page for none.
+     */
+    @Test(timeout = 10000)
+    public void reviewThreadListingTruncatedAtThePageLimitIsIncomplete() throws IOException {
+        JsonNode root = new ObjectMapper().readTree(
+                "{\"data\":{\"repository\":{\"pullRequest\":{\"reviewThreads\":{"
+                + "\"pageInfo\":{\"hasNextPage\":true},\"nodes\":["
+                + "{\"isResolved\":false,\"comments\":{\"nodes\":["
+                + "{\"path\":\"A.java\",\"line\":4,\"url\":\"https://x/c1\",\"body\":\"open one\"}]}}"
+                + "]}}}}}");
+        GitHubProxyHandler.ReviewThreadListing listing = GitHubProxyHandler.ReviewThreadListing.from(root);
+        assertFalse("a truncated listing is incomplete", listing.complete());
+    }
+
+    /**
+     * An unresolved thread whose first comment is absent cannot be anchored, so
+     * the thread is dropped from the findings and the whole listing is marked
+     * incomplete — the repeat check must fail open, not treat the remaining
+     * threads as the complete set.
+     */
+    @Test(timeout = 10000)
+    public void reviewThreadListingWithAMissingFirstCommentIsIncomplete() throws IOException {
+        JsonNode root = new ObjectMapper().readTree(
+                "{\"data\":{\"repository\":{\"pullRequest\":{\"reviewThreads\":{"
+                + "\"pageInfo\":{\"hasNextPage\":false},\"nodes\":["
+                + "{\"isResolved\":false,\"comments\":{\"nodes\":["
+                + "{\"path\":\"A.java\",\"line\":4,\"url\":\"https://x/c1\",\"body\":\"open one\"}]}},"
+                + "{\"isResolved\":false,\"comments\":{\"nodes\":[]}}"
+                + "]}}}}}");
+        GitHubProxyHandler.ReviewThreadListing listing = GitHubProxyHandler.ReviewThreadListing.from(root);
+        assertFalse("a thread without a first comment makes the listing incomplete", listing.complete());
+        assertEquals("the unanchored thread is omitted", 1, listing.findings().size());
+    }
+
+    /**
+     * A failed query ({@code null} root) and a malformed response (non-array
+     * {@code nodes}) are both incomplete with no findings, so neither is read as
+     * "no open threads".
+     */
+    @Test(timeout = 10000)
+    public void reviewThreadListingFromAnUnreadableResponseIsIncomplete() throws IOException {
+        GitHubProxyHandler.ReviewThreadListing failed = GitHubProxyHandler.ReviewThreadListing.from(null);
+        assertFalse("a failed query is incomplete", failed.complete());
+        assertTrue(failed.findings().isEmpty());
+
+        JsonNode malformed = new ObjectMapper().readTree(
+                "{\"data\":{\"repository\":{\"pullRequest\":{\"reviewThreads\":{\"nodes\":\"oops\"}}}}}");
+        GitHubProxyHandler.ReviewThreadListing listing = GitHubProxyHandler.ReviewThreadListing.from(malformed);
+        assertFalse("a non-array nodes is incomplete", listing.complete());
+        assertTrue(listing.findings().isEmpty());
+    }
+
+    /**
+     * A GraphQL response served with HTTP 200 but carrying an {@code errors}
+     * array is a partial result, so the listing is incomplete even when its
+     * {@code nodes} array is readable — the repeat check must fail open rather
+     * than treat the partial threads as the complete set.
+     */
+    @Test(timeout = 10000)
+    public void reviewThreadListingWithGraphQlErrorsIsIncomplete() throws IOException {
+        JsonNode root = new ObjectMapper().readTree(
+                "{\"errors\":[{\"message\":\"Something went wrong\"}],"
+                + "\"data\":{\"repository\":{\"pullRequest\":{\"reviewThreads\":{"
+                + "\"pageInfo\":{\"hasNextPage\":false},\"nodes\":["
+                + "{\"isResolved\":false,\"comments\":{\"nodes\":["
+                + "{\"path\":\"A.java\",\"line\":4,\"url\":\"https://x/c1\",\"body\":\"open one\"}]}}"
+                + "]}}}}}");
+        GitHubProxyHandler.ReviewThreadListing listing = GitHubProxyHandler.ReviewThreadListing.from(root);
+        assertFalse("a response with a GraphQL errors array is incomplete", listing.complete());
+    }
+
+    /**
+     * A response whose {@code pageInfo.hasNextPage} is absent or not a boolean
+     * leaves the pagination state unknown, so the listing is incomplete: a
+     * missing or malformed field must not be read as "not truncated" and let a
+     * partial listing suppress a pass.
+     */
+    @Test(timeout = 10000)
+    public void reviewThreadListingWithoutHasNextPageIsIncomplete() throws IOException {
+        JsonNode absent = new ObjectMapper().readTree(
+                "{\"data\":{\"repository\":{\"pullRequest\":{\"reviewThreads\":{"
+                + "\"nodes\":["
+                + "{\"isResolved\":false,\"comments\":{\"nodes\":["
+                + "{\"path\":\"A.java\",\"line\":4,\"url\":\"https://x/c1\",\"body\":\"open one\"}]}}"
+                + "]}}}}}");
+        assertFalse("an absent hasNextPage is incomplete",
+                GitHubProxyHandler.ReviewThreadListing.from(absent).complete());
+
+        JsonNode malformed = new ObjectMapper().readTree(
+                "{\"data\":{\"repository\":{\"pullRequest\":{\"reviewThreads\":{"
+                + "\"pageInfo\":{\"hasNextPage\":\"nope\"},\"nodes\":[]}}}}}");
+        assertFalse("a non-boolean hasNextPage is incomplete",
+                GitHubProxyHandler.ReviewThreadListing.from(malformed).complete());
     }
 
     /** Builds the 400 error envelope the proxy endpoint returns, for the handler's responder. */

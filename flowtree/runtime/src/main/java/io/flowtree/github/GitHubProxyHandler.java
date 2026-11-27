@@ -264,9 +264,9 @@ public class GitHubProxyHandler implements ConsoleFeatures {
             String contentType = conn.getContentType();
 
             InputStream is = status >= 400 ? conn.getErrorStream() : conn.getInputStream();
-            String responseBody = "";
+            byte[] responseBody = new byte[0];
             if (is != null) {
-                responseBody = new String(is.readAllBytes(), StandardCharsets.UTF_8);
+                responseBody = is.readAllBytes();
                 is.close();
             }
 
@@ -315,7 +315,7 @@ public class GitHubProxyHandler implements ConsoleFeatures {
             HttpResponse<String> response = sendPatch(fullUrl, payload == null ? "" : payload, token);
             return wrapResponse(response.statusCode(),
                     response.headers().firstValue("Link").orElse(null),
-                    response.body() == null ? "" : response.body(),
+                    response.body() == null ? new byte[0] : response.body().getBytes(StandardCharsets.UTF_8),
                     response.headers().firstValue("Content-Type").orElse(null));
         } catch (IOException e) {
             log("GitHub proxy error: " + e.getMessage());
@@ -330,8 +330,7 @@ public class GitHubProxyHandler implements ConsoleFeatures {
     }
 
     /**
-     * Wraps a GitHub response in the proxy envelope
-     * {@code {"status":N,"link":"...","body":<github-json-or-string>}}.
+     * Wraps a GitHub response in the proxy envelope (see {@link GitHubProxyEnvelope}).
      *
      * @param status       the HTTP status GitHub returned
      * @param linkHeader   the pagination {@code Link} header, or {@code null}
@@ -340,17 +339,9 @@ public class GitHubProxyHandler implements ConsoleFeatures {
      * @return a 200 response carrying the envelope
      */
     private Response wrapResponse(int status, String linkHeader,
-                                  String responseBody, String contentType) {
-        StringBuilder json = new StringBuilder();
-        json.append("{\"status\":").append(status);
-        json.append(",\"link\":\"")
-            .append(JsonFieldExtractor.escapeJson(linkHeader != null ? linkHeader : ""))
-            .append("\"");
-        json.append(",\"body\":").append(encodeBody(responseBody, contentType));
-        json.append("}");
-
-        return NanoHTTPD.newFixedLengthResponse(Response.Status.OK,
-                "application/json", json.toString());
+                                  byte[] responseBody, String contentType) {
+        return NanoHTTPD.newFixedLengthResponse(Response.Status.OK, "application/json",
+                new GitHubProxyEnvelope(status, linkHeader, responseBody, contentType).toJson());
     }
 
     /**
@@ -409,25 +400,6 @@ public class GitHubProxyHandler implements ConsoleFeatures {
         conn.setInstanceFollowRedirects(false);
 
         return conn;
-    }
-
-    /**
-     * Renders a GitHub response body as the {@code body} member of the proxy envelope.
-     *
-     * <p>A JSON body is spliced in as it stands, so callers receive the structure GitHub
-     * sent. Anything else is a document rather than a structure — job logs and raw file
-     * contents are the cases that occur — and becomes a JSON string, since splicing text
-     * in unquoted would produce an envelope that does not parse.</p>
-     *
-     * @param body        the response body, possibly empty
-     * @param contentType the response {@code Content-Type}, or null if absent
-     * @return the body encoded as a JSON value
-     */
-    private static String encodeBody(String body, String contentType) {
-        if (body.isEmpty()) return "null";
-        if (contentType != null && contentType.contains("json")) return body;
-
-        return "\"" + JsonFieldExtractor.escapeJson(body) + "\"";
     }
 
     /**
@@ -996,9 +968,77 @@ public class GitHubProxyHandler implements ConsoleFeatures {
         if (pr == null) return PullRequestEscalation.NONE;
         int number = pr.number();
         String headSha = pr.json().path("head").path("sha").asText(null);
-        return new PullRequestEscalation(pr.htmlUrl(),
-                unresolvedReviewThreads(ownerRepo, number, token),
-                branchAddedTodos(ownerRepo, number, headSha, token));
+        ReviewThreadListing threads = unresolvedReviewThreads(ownerRepo, number, token);
+        return new PullRequestEscalation(pr.htmlUrl(), threads.findings(),
+                branchAddedTodos(ownerRepo, number, headSha, token), threads.complete());
+    }
+
+    /**
+     * The unresolved review threads of a pull request, and whether the listing
+     * was obtained completely and reliably. It is {@code complete} only when the
+     * GraphQL query succeeded and returned every unresolved thread, each
+     * identifiable by its first comment; a transport failure, a result truncated
+     * at the page limit, or a thread whose first comment is absent leaves it
+     * {@code false}, so the repeat check can tell "no open threads" from "could
+     * not list them".
+     *
+     * @param findings the unresolved threads that were listed
+     * @param complete whether that listing is the whole, reliably-read set
+     */
+    record ReviewThreadListing(List<PullRequestEscalation.Finding> findings,
+                               boolean complete) {
+
+        /**
+         * Parses the {@code reviewThreads} GraphQL response into a listing.
+         *
+         * <p>Each unresolved thread is anchored to its first comment's file, line
+         * and URL. The listing is complete only when the response could be read,
+         * carried no GraphQL {@code errors}, reported its pagination state, was not
+         * truncated at the page limit, and every unresolved thread carried a first
+         * comment: a {@code null} root (a failed query), a response carrying a
+         * GraphQL {@code errors} array (a partial result served with HTTP 200), a
+         * non-array {@code nodes}, an absent or non-boolean {@code hasNextPage}
+         * (unknown pagination), a {@code hasNextPage} truncation, or an unresolved
+         * thread whose first comment is missing each marks it incomplete, so an
+         * unknown or partial listing cannot be mistaken for "no open threads" by
+         * the repeat check. A thread dropped for a missing first comment is omitted
+         * from {@code findings} but still forces {@code complete} to {@code false}.</p>
+         *
+         * @param root the GraphQL response root, or {@code null} on a failed query
+         * @return the listing, {@code complete} only when reliably whole
+         */
+        static ReviewThreadListing from(JsonNode root) {
+            List<PullRequestEscalation.Finding> findings = new ArrayList<>();
+            if (root == null) return new ReviewThreadListing(findings, false);
+            JsonNode errors = root.path("errors");
+            if (errors.isArray() && !errors.isEmpty()) {
+                return new ReviewThreadListing(findings, false);
+            }
+            JsonNode reviewThreads = root.path("data").path("repository").path("pullRequest")
+                    .path("reviewThreads");
+            JsonNode nodes = reviewThreads.path("nodes");
+            if (!nodes.isArray()) return new ReviewThreadListing(findings, false);
+            JsonNode hasNextPage = reviewThreads.path("pageInfo").path("hasNextPage");
+            if (!hasNextPage.isBoolean()) return new ReviewThreadListing(findings, false);
+            boolean complete = !hasNextPage.booleanValue();
+            for (JsonNode thread : nodes) {
+                if (thread.path("isResolved").asBoolean(false)) continue;
+                JsonNode comment = thread.path("comments").path("nodes").path(0);
+                if (comment.isMissingNode()) {
+                    // An unresolved thread we cannot anchor to a first comment is a
+                    // thread we cannot identify, so the listing is no longer the
+                    // reliably-read whole set and the repeat check must fail open.
+                    complete = false;
+                    continue;
+                }
+                findings.add(PullRequestEscalation.Finding.reviewComment(
+                        comment.path("path").asText(""),
+                        comment.path("line").asInt(0),
+                        comment.path("url").asText(null),
+                        comment.path("body").asText("")));
+            }
+            return new ReviewThreadListing(findings, complete);
+        }
     }
 
     /**
@@ -1009,34 +1049,19 @@ public class GitHubProxyHandler implements ConsoleFeatures {
      * @param ownerRepo the {@code owner/repo} path component
      * @param number    the pull request number
      * @param token     the GitHub API bearer token
-     * @return the unresolved threads, newest-anchored first; empty on any failure
+     * @return the unresolved threads, newest-anchored first, with whether the
+     *         listing was complete; an empty, incomplete listing on any failure
      */
-    private List<PullRequestEscalation.Finding> unresolvedReviewThreads(
+    private ReviewThreadListing unresolvedReviewThreads(
             String ownerRepo, int number, String token) {
-        List<PullRequestEscalation.Finding> findings = new ArrayList<>();
         int slash = ownerRepo.indexOf('/');
-        if (slash < 0) return findings;
+        if (slash < 0) return new ReviewThreadListing(new ArrayList<>(), false);
         String owner = ownerRepo.substring(0, slash);
         String name = ownerRepo.substring(slash + 1);
         String query = "{\"query\":\"query{repository(owner:\\\"" + owner + "\\\",name:\\\"" + name
-            + "\\\"){pullRequest(number:" + number + "){reviewThreads(first:100){nodes{isResolved "
-            + "comments(first:1){nodes{path line url body}}}}}}}\"}";
-        JsonNode root = apiGraphQl(query, token);
-        if (root == null) return findings;
-        JsonNode nodes = root.path("data").path("repository").path("pullRequest")
-                .path("reviewThreads").path("nodes");
-        if (!nodes.isArray()) return findings;
-        for (JsonNode thread : nodes) {
-            if (thread.path("isResolved").asBoolean(false)) continue;
-            JsonNode comment = thread.path("comments").path("nodes").path(0);
-            if (comment.isMissingNode()) continue;
-            findings.add(PullRequestEscalation.Finding.reviewComment(
-                    comment.path("path").asText(""),
-                    comment.path("line").asInt(0),
-                    comment.path("url").asText(null),
-                    comment.path("body").asText("")));
-        }
-        return findings;
+            + "\\\"){pullRequest(number:" + number + "){reviewThreads(first:100){pageInfo{hasNextPage} "
+            + "nodes{isResolved comments(first:1){nodes{path line url body}}}}}}}\"}";
+        return ReviewThreadListing.from(apiGraphQl(query, token));
     }
 
     /**

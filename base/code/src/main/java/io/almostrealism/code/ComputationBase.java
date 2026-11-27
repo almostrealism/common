@@ -32,10 +32,13 @@ import io.almostrealism.scope.Variable;
 import io.almostrealism.uml.Signature;
 
 import java.lang.ref.WeakReference;
+import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.BiFunction;
 import java.util.stream.Collectors;
 
 /**
@@ -100,7 +103,7 @@ public abstract class ComputationBase<I, O, T>
 	 * Cached optimized version of this computation.
 	 * Once optimization is performed, the result is stored here to avoid redundant processing.
 	 */
-	protected ComputationBase<I, O, T> optimized;
+	private ComputationBase<I, O, T> optimized;
 
 	/**
 	 * Weak reference to the {@link ArgumentProvider} that last drove
@@ -112,6 +115,20 @@ public abstract class ComputationBase<I, O, T>
 	 * manager in memory.
 	 */
 	private WeakReference<ArgumentProvider> lastArgumentProvider;
+
+	/**
+	 * Whether every input of this computation has a fixed count, once {@link #isFixedCount()}
+	 * has determined it, or {@code null} before then. Each input's count is fixed or variable
+	 * from its construction (see {@link Countable#isFixedCount()}), so the answer is determined
+	 * once instead of walking the whole input graph on every call. Setting the inputs clears it.
+	 */
+	private volatile Boolean fixedCountInputs;
+
+	/**
+	 * The child processes presented by {@link #getChildren()}, built from the inputs on the
+	 * first request, or {@code null} before then. Setting the inputs clears it.
+	 */
+	private volatile List<Process<?, ?>> children;
 
 	/**
 	 * Prepares the operation metadata by incorporating process information and signature.
@@ -172,14 +189,41 @@ public abstract class ComputationBase<I, O, T>
 	 * Determines if this computation has a fixed iteration count.
 	 * A fixed count means the count will not change during execution.
 	 *
+	 * <p>The count is fixed when the count of every input is fixed, as each input reports
+	 * it through {@link Countable#isFixedCount(Object)}. Because that is decided when the
+	 * inputs are constructed, it is determined on the first call and remembered until the
+	 * inputs are set again. Optimization asks for the count of each node of a graph many
+	 * times, and every one of those questions would otherwise walk the entire input graph
+	 * below the node.</p>
+	 *
 	 * @return {@code true} if the count is fixed, {@code false} otherwise
 	 */
 	@Override
 	public boolean isFixedCount() {
+		Boolean fixed = fixedCountInputs;
+		if (fixed != null) return fixed;
+
 		List<Producer<I>> inputs = getInputs();
 		if (inputs == null) return false;
 
-		return inputs.stream().noneMatch(v -> v instanceof Countable && !((Countable) v).isFixedCount());
+		fixed = inputs.stream().allMatch(Countable::isFixedCount);
+		fixedCountInputs = fixed;
+		return fixed;
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>The inputs are stored as an unmodifiable snapshot of the given list, so that
+	 * {@link #getInputs()} cannot be used to replace an input in place: replacing the
+	 * inputs always goes through this method, which forgets whether the previous inputs
+	 * all had a fixed count, and the child processes built from them.</p>
+	 */
+	@Override
+	protected void setInputs(List<Producer<I>> inputs) {
+		super.setInputs(inputs == null ? null : Collections.unmodifiableList(new ArrayList<>(inputs)));
+		fixedCountInputs = null;
+		children = null;
 	}
 
 	/**
@@ -285,18 +329,31 @@ public abstract class ComputationBase<I, O, T>
 
 	/**
 	 * Returns the child processes (inputs) of this computation.
-	 * Each input producer is wrapped in a {@link Process} if not already one.
+	 * Each input is presented as a {@link Process} by
+	 * {@link Process#asProcess(java.util.function.Supplier)}: an input that is a process is
+	 * its own child, and any other input is wrapped.
+	 *
+	 * <p>The children are built once from the inputs and the same unmodifiable list is
+	 * returned until the inputs are set again. Optimization and the traversals of the
+	 * process tree ask every node for its children many times, so rebuilding the list
+	 * (and a new wrapper for each input that is not a {@link Process}) on every call is
+	 * a cost paid for each visit rather than once per node.</p>
 	 *
 	 * @return the collection of child processes, or {@code null} if inputs are not set
 	 */
 	@Override
 	public Collection<Process<?, ?>> getChildren() {
+		List<Process<?, ?>> result = children;
+		if (result != null) return result;
+
 		List<Producer<I>> inputs = getInputs();
 		if (inputs == null) return null;
 
-		return inputs.stream()
-				.map(in -> in instanceof Process<?, ?> ? (Process<?, ?>) in : Process.of(in))
-				.collect(Collectors.toList());
+		result = Collections.unmodifiableList(inputs.stream()
+				.map(Process::asProcess)
+				.collect(Collectors.toList()));
+		children = result;
+		return result;
 	}
 
 	/**
@@ -325,17 +382,60 @@ public abstract class ComputationBase<I, O, T>
 	 */
 	@Override
 	public Scope<O> getScope(KernelStructureContext context) {
-		if (optimized != null && optimized != this) {
+		return createScope(Scope::new);
+	}
+
+	/**
+	 * Creates the kernel scope of this computation as a scope of the kind
+	 * {@code kind} constructs, configured the way every kernel scope must be: named
+	 * by {@link #getFunctionName()} with this computation's {@link #getMetadata()},
+	 * carrying its {@link #getComputeRequirements() compute requirements} (which
+	 * {@link Scope#convertArgumentsToRequiredScopes} consults when deciding whether
+	 * one kernel may absorb another) and its intermediate {@link #getVariables()
+	 * variables}. A subclass whose kernel is not a plain {@link Scope} (a
+	 * {@code Repeated} loop, for example) builds it here rather than by hand, so it
+	 * cannot drop any of that configuration.
+	 *
+	 * @param kind constructs an unconfigured scope from a name and metadata, such
+	 *             as {@code Scope::new} or {@code Repeated::new}
+	 * @param <S>  the kind of scope
+	 * @return the configured scope
+	 * @throws IllegalArgumentException if an optimized version has superseded this
+	 *         computation, which must then not be compiled itself
+	 */
+	protected <S extends Scope<O>> S createScope(BiFunction<String, OperationMetadata, S> kind) {
+		if (isSupersededByOptimizedVersion()) {
 			throw new IllegalArgumentException("This Computation should not be used, as an optimized version already exists");
 		}
 
-		Scope<O> scope = new Scope<>(getFunctionName(), getMetadata());
+		S scope = kind.apply(getFunctionName(), getMetadata());
 		if (getComputeRequirements() != null) {
 			scope.setComputeRequirements(getComputeRequirements());
 		}
 
 		scope.getVariables().addAll(getVariables());
 		return scope;
+	}
+
+	/**
+	 * Returns the optimized version of this computation produced by
+	 * {@link #optimize(ProcessContext)}, or {@code null} when it has not been
+	 * optimized. It may be this computation itself.
+	 *
+	 * @return the cached optimized version, or {@code null}
+	 */
+	protected ComputationBase<I, O, T> getOptimizedVersion() {
+		return optimized;
+	}
+
+	/**
+	 * Returns whether optimization produced a different computation that should be
+	 * used in place of this one.
+	 *
+	 * @return {@code true} when an optimized version other than this one exists
+	 */
+	protected boolean isSupersededByOptimizedVersion() {
+		return optimized != null && optimized != this;
 	}
 
 	/**

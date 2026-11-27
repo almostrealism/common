@@ -22,14 +22,15 @@ import io.almostrealism.relation.Producer;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.music.arrange.AudioSceneContext;
 import org.almostrealism.music.data.ChannelInfo;
+import org.almostrealism.audio.data.FileWaveDataProvider;
 import org.almostrealism.audio.data.FileWaveDataProviderTree;
 import org.almostrealism.music.data.ParameterFunction;
 import org.almostrealism.audio.filter.AudioProcessingUtils;
 import org.almostrealism.music.midi.MidiNoteEvent;
+import org.almostrealism.audio.notes.NoteAudio;
 import org.almostrealism.music.notes.NoteAudioChoice;
 import org.almostrealism.music.notes.NoteAudioSource;
 import org.almostrealism.music.notes.NoteSourceProvider;
-import org.almostrealism.music.notes.TreeNoteSource;
 import org.almostrealism.audio.tone.KeyboardTuning;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
@@ -39,10 +40,12 @@ import org.almostrealism.heredity.ProjectedChromosome;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.function.DoubleConsumer;
 import java.util.function.Function;
 import java.util.function.IntSupplier;
@@ -170,6 +173,14 @@ public class PatternSystemManager implements NoteSourceProvider, CodeFeatures, D
 	private volatile int patternGeneration;
 
 	/**
+	 * Whether this manager's patterns keep their rendered note audio across render passes,
+	 * or {@code null} when it has not been set and each pattern keeps the
+	 * {@link PatternLayerManager} default. Applied to every pattern added later, so it
+	 * survives {@link #setSettings(Settings)} rebuilding the pattern set.
+	 */
+	private Boolean noteCachePersistent;
+
+	/**
 	 * Creates a {@code PatternSystemManager} with no initial choices.
 	 *
 	 * @param chromosomes the list of chromosomes for pattern parameterization
@@ -230,6 +241,25 @@ public class PatternSystemManager implements NoteSourceProvider, CodeFeatures, D
 		return getChoices()
 				.stream()
 				.flatMap(c -> c.getSources().stream()).toList();
+	}
+
+	/**
+	 * Returns the distinct notes holding cached audio for what the sources of every
+	 * choice have already materialized, compared by identity, without loading any (see
+	 * {@link NoteAudioChoice#getLoadedNotes()} and {@link NoteAudio#getCachedAudioOwners()}).
+	 * A composite note is represented by its members, so a note reached both directly
+	 * and through a composite appears once. These are the notes whose cached audio this
+	 * manager's owner may release when it is torn down.
+	 *
+	 * @return a new identity-based set of the loaded cache-holding notes
+	 */
+	public Set<NoteAudio> getLoadedNotes() {
+		Set<NoteAudio> notes = Collections.newSetFromMap(new IdentityHashMap<>());
+		getChoices().stream()
+				.flatMap(c -> c.getLoadedNotes().stream())
+				.map(NoteAudio::getCachedAudioOwners)
+				.forEach(notes::addAll);
+		return notes;
 	}
 
 	/**
@@ -306,6 +336,23 @@ public class PatternSystemManager implements NoteSourceProvider, CodeFeatures, D
 	}
 
 	/**
+	 * Sets whether every pattern of this manager — those present now and those added
+	 * later — keeps its rendered note audio across render passes
+	 * (see {@link PatternLayerManager#setCachePersistent(boolean)}).
+	 *
+	 * <p>A render that loops one fixed arrangement for a sustained period enables this so
+	 * each note is evaluated once rather than re-evaluated and re-freed on every pass. A
+	 * caller that switches arrangements while persistence is on must call
+	 * {@link PatternLayerManager#invalidateCaches()} after the switch.</p>
+	 *
+	 * @param persistent {@code true} to keep note audio across render passes
+	 */
+	public void setNoteCachePersistent(boolean persistent) {
+		this.noteCachePersistent = persistent;
+		patterns.forEach(p -> p.setCachePersistent(persistent));
+	}
+
+	/**
 	 * Refreshes the parameters for all patterns, adjusting seed bias based on active layer count.
 	 */
 	public void refreshParameters() {
@@ -334,7 +381,7 @@ public class PatternSystemManager implements NoteSourceProvider, CodeFeatures, D
 	 *
 	 * @param root the file tree to set
 	 */
-	public void setTree(FileWaveDataProviderTree<?> root) {
+	public void setTree(FileWaveDataProviderTree<? extends Supplier<FileWaveDataProvider>> root) {
 		setTree(root, null);
 	}
 
@@ -344,17 +391,15 @@ public class PatternSystemManager implements NoteSourceProvider, CodeFeatures, D
 	 * @param root     the file tree to set
 	 * @param progress an optional consumer that receives progress values in {@code [0, 1]}
 	 */
-	public void setTree(FileWaveDataProviderTree<?> root, DoubleConsumer progress) {
+	public void setTree(FileWaveDataProviderTree<? extends Supplier<FileWaveDataProvider>> root,
+						DoubleConsumer progress) {
 		List<NoteAudioSource> sources = getAllSources();
 
 		if (progress != null && !sources.isEmpty())
 			progress.accept(0.0);
 
 		IntStream.range(0, sources.size()).forEach(i -> {
-			NoteAudioSource s = sources.get(i);
-
-			if (s instanceof TreeNoteSource)
-				((TreeNoteSource) s).setTree(root);
+			sources.get(i).setTree(root);
 
 			if (progress != null)
 				progress.accept((double) (i + 1) / sources.size());
@@ -379,6 +424,7 @@ public class PatternSystemManager implements NoteSourceProvider, CodeFeatures, D
 				new PatternLayerManager(choices,
 						chromosomes.get(patterns.size()),
 						channel, measures, melodic);
+		if (noteCachePersistent != null) pattern.setCachePersistent(noteCachePersistent);
 		patterns.add(pattern);
 		patternGeneration++;
 		return pattern;

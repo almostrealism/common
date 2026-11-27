@@ -17,6 +17,7 @@
 package org.almostrealism.studio.persistence;
 
 import org.almostrealism.audio.AudioLibrary;
+import org.almostrealism.audio.LibraryCleanup;
 import org.almostrealism.audio.api.Audio;
 import org.almostrealism.audio.data.WaveDetails;
 import org.almostrealism.audio.data.WaveDetailsJob;
@@ -234,10 +235,11 @@ public class LegacyLibraryMigrator implements ConsoleFeatures {
 	 * @param skippedCount   number of records skipped (already in store)
 	 * @param failedCount    number of records that failed to decode
 	 * @param legacyFiles    list of legacy batch file paths
-	 * @param totalBytes     total size of legacy files in bytes
+	 * @param totalBytes     total size of legacy files in bytes; the cleanup is
+	 *                       {@linkplain #isPresent() present} when this is positive
 	 */
 	public record Result(int submittedCount, int skippedCount, int failedCount,
-						 List<String> legacyFiles, long totalBytes) {
+						 List<String> legacyFiles, long totalBytes) implements LibraryCleanup {
 
 		/**
 		 * Returns the number of records submitted for migration.
@@ -245,17 +247,50 @@ public class LegacyLibraryMigrator implements ConsoleFeatures {
 		 */
 		public int migratedCount() { return submittedCount(); }
 
+		/** Describes the leftover legacy batch files left behind after migration. */
+		@Override
+		public String description() {
+			return migratedCount() + " records were migrated from your old "
+					+ "library format; the original files are no longer needed by the application.";
+		}
+
+		/**
+		 * Present only when leftover legacy files remain and every record migrated
+		 * successfully. A record that failed to decode or lacked an identifier was
+		 * never written to the new store, so while any failure remains the legacy
+		 * files are its only copy and deleting them would discard it; the cleanup
+		 * withholds itself until no failures remain.
+		 */
+		@Override
+		public boolean isPresent() {
+			return failedCount == 0 && totalBytes > 0;
+		}
+
 		/**
 		 * Deletes all legacy batch files.
 		 *
 		 * @return the number of files successfully deleted
 		 */
-		public int deleteLegacyFiles() {
+		@Override
+		public int remove() {
 			int deleted = 0;
 			for (String path : legacyFiles) {
 				if (new File(path).delete()) deleted++;
 			}
 			return deleted;
+		}
+
+		/**
+		 * Deletes all legacy batch files.
+		 *
+		 * @return the number of files successfully deleted
+		 * @deprecated renamed to {@link #remove()} when {@code Result} became a
+		 *             {@link LibraryCleanup}. Retained as a delegating alias so
+		 *             existing callers continue to compile; prefer {@link #remove()}.
+		 */
+		@Deprecated
+		public int deleteLegacyFiles() {
+			return remove();
 		}
 	}
 }

@@ -118,7 +118,7 @@ Start a new test run asynchronously.
 | `test_classes` | string[] | No* | Exact class names or `Class#method` selectors; a bare class name is accepted |
 | `test_methods` | object[] | No* | Methods: `[{"class": "...", "method": "..."}, ...]` |
 | `timeout_minutes` | int | No | Max run time (default: 15, maximum: 40) |
-| `jvm_args` | string[] | No | Additional JVM arguments |
+| `jvm_args` | string[] | No | Additional JVM arguments; every entry reaches the forked JVM's `argLine`, in order |
 
 \* A bounded selection is required across `test_classes` and `test_methods`
 (see `run_validation.py`): at most 5 classes and at most 40 `Class#method`
@@ -229,7 +229,10 @@ Cancel a running test.
 ## Storage
 
 Test run data is stored in `runs/{run_id}/`:
-- `metadata.json` - Run configuration and status
+- `metadata.json` - Run configuration and status. Its `arg_line` field records
+  the effective extra arguments the forked JVM is launched with (the
+  space-joined `jvm_args`, in order), so a caller can confirm every entry
+  reached the fork rather than being silently dropped.
 - `output.txt` - Captured stdout/stderr
 - `reports/` - Copied surefire reports
 

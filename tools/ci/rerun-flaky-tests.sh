@@ -56,17 +56,33 @@
 # test-media-mac, test-media-cl, …). The deterministic `*-check` validators
 # (test-timeout-check, test-integrity-check) are explicitly NOT flaky-eligible.
 #
-# Any other failed job — a `*-check` validator, `build`, `checkstyle` — is
+# Any other failed job — a `*-check` validator, `build`, `checkstyle`,
+# `analysis` (and the "Test Checks" gate it then fails) — is
 # deterministic unless its log shows an infrastructure failure: a dependency or
 # plugin that could not be downloaded, a dropped or timed-out connection, a
 # server error from a package or artifact host, a runner that shut down or lost
-# contact, or a full disk (INFRA_SIGNATURES below). Such a failure says nothing
-# about the commit, so it is retried like a flaky test, up to the same
-# MAX_ATTEMPTS. It never reaches an agent: auto-resolve stages nothing for a run
-# whose test jobs did not fail, so a run that is still failing this way on its
-# last attempt is left for a person. Without this, one failed download in
-# test-timeout-check skips every test lane, and the run is neither retried nor
-# remediated.
+# contact, or a full disk. The signatures and the log fetch live in
+# tools/ci/infra-failure.sh, shared with the pull-request auto-review path so
+# the two classify a failure the same way. Such a failure says nothing about the
+# commit, so it is retried like a flaky test, up to the same MAX_ATTEMPTS. It
+# never reaches an agent: auto-resolve stages nothing for a run whose test jobs
+# did not fail, so a run that is still failing this way on its last attempt is
+# left for a person. Without this, one failed download in test-timeout-check
+# skips every test lane, and the run is neither retried nor remediated.
+#
+# A log that cannot be read is neither infrastructure nor deterministic but
+# unknown, and must not silently be called deterministic — the fetch failing
+# (most often because the per-job log is not archived the instant the run
+# completes) is what left those pipelines stuck. The fetch therefore retries
+# before giving up and reports a persistent failure as a ::warning:: rather than
+# discarding it; and when the log of a failed `*-check` validator, the `build`
+# job or the `analysis` job still cannot be read, the run is retried while
+# attempts remain rather than classified deterministic. (`analysis` merges the
+# test lanes' coverage after they passed; no agent can be handed its failure,
+# because auto-resolve stages nothing for a run whose test jobs did not fail.) The retry is bounded by MAX_ATTEMPTS and the final
+# attempt proceeds exactly as a deterministic failure would, so nothing is
+# masked: a genuine deterministic failure is still reported and handed on, at
+# most MAX_ATTEMPTS-1 re-runs later.
 #
 # This must run from a workflow_run workflow (after "Build and Test"
 # completes): rerun-failed-jobs can only act on a completed run.
@@ -110,9 +126,12 @@ set -euo pipefail
 : "${HEAD_REPO:?HEAD_REPO is required}"
 MAX_ATTEMPTS="${MAX_ATTEMPTS:-3}"
 
-# Log lines that mark a failed job as an infrastructure failure; see the header.
-# Extended regular expression, matched case-insensitively.
-INFRA_SIGNATURES='Could not (find|resolve|transfer) artifact|Failed to (transfer|read artifact descriptor)|Could not resolve dependencies|Connection (reset|refused|timed out)|(connect|read) timed out|ETIMEDOUT|ECONNRESET|Temporary failure in name resolution|(HTTP|status code:?) ?5[0-9][0-9]|(502 Bad Gateway|503 Service Unavailable|504 Gateway Time-?out)|runner has received a shutdown signal|lost communication with the server|No space left on device'
+# INFRA_SIGNATURES and the log-reading helpers (ci_infra_fetch_job_log,
+# ci_infra_job_matches) are shared with the auto-review path so the two cannot
+# drift; see tools/ci/infra-failure.sh.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=tools/ci/infra-failure.sh
+. "$SCRIPT_DIR/infra-failure.sh"
 
 # emit <retried> [superseded]
 emit() {
@@ -179,17 +198,6 @@ done
 # here — only a job that ran and failed (or hit its timeout) counts.
 FAILED_JOBS=$(printf '%s\n' "$JOBS" | awk -F '\t' '$1 == "failure" || $1 == "timed_out" { print $2 "\t" $3 }')
 
-# is_infra_failure <job-id>: the job's log shows an infrastructure failure. A log
-# that cannot be read shows nothing, so the job stays deterministic. The log is
-# captured before matching: piping it into `grep -q` would let grep exit on the
-# first match and, under pipefail, report the SIGPIPE'd `gh` as a non-match.
-is_infra_failure() {
-    [ -n "$1" ] || return 1
-    local log
-    log=$(gh api "/repos/$REPO/actions/jobs/$1/logs" 2>/dev/null) || return 1
-    grep -Eiq "$INFRA_SIGNATURES" <<< "$log"
-}
-
 if [ -z "$FAILED_JOBS" ]; then
     echo "::notice::No failed jobs found for run $RUN_ID attempt $RUN_ATTEMPT — proceeding to auto-resolve"
     emit false
@@ -213,14 +221,44 @@ while IFS=$'\t' read -r name id; do
     if [ "$kind" = "test" ]; then
         FLAKY_FOUND=true
         echo "::notice::Failed flaky-eligible test job: $name"
-    elif is_infra_failure "$id"; then
-        INFRA_FOUND=true
-        echo "::notice::Failed job with an infrastructure failure in its log: $name"
-    elif [ "$kind" = "check" ]; then
-        echo "::notice::Failed validation job (deterministic): $name"
-    else
-        echo "::notice::Failed non-test job (deterministic): $name"
+        continue
     fi
+
+    # A non-test job is deterministic unless its log shows an infrastructure
+    # failure. rc: 0 = infrastructure, 1 = readable and deterministic, 2 = the
+    # log could not be read (ci_infra_job_matches already warned).
+    rc=0
+    ci_infra_job_matches "$id" || rc=$?
+    case "$rc" in
+        0)
+            INFRA_FOUND=true
+            echo "::notice::Failed job with an infrastructure failure in its log: $name"
+            ;;
+        2)
+            # An unreadable log must not silently classify a validation or build
+            # job as deterministic: that is exactly the case that left PR
+            # pipelines stuck (one failed plugin download in test-timeout-check
+            # skips every test lane, so the slow path never classifies the run).
+            # Retry such a job while attempts remain — bounded by MAX_ATTEMPTS,
+            # and the final attempt proceeds to auto-resolve exactly as a
+            # deterministic failure would. `analysis` is included because its
+            # failure reaches no agent either way. Any other job stays
+            # deterministic.
+            if [ "$kind" = "check" ] || [ "$name" = "build" ] || [ "$name" = "analysis" ]; then
+                INFRA_FOUND=true
+                echo "::warning::Could not read the log of failed ${kind} job '$name' — retrying while attempts remain rather than treating it as deterministic"
+            else
+                echo "::notice::Failed non-test job with an unreadable log (deterministic): $name"
+            fi
+            ;;
+        *)
+            if [ "$kind" = "check" ]; then
+                echo "::notice::Failed validation job (deterministic): $name"
+            else
+                echo "::notice::Failed non-test job (deterministic): $name"
+            fi
+            ;;
+    esac
 done <<< "$FAILED_JOBS"
 
 if [ "$FLAKY_FOUND" != "true" ] && [ "$INFRA_FOUND" != "true" ]; then

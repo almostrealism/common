@@ -127,6 +127,21 @@
 #                       config, e.g. '{"primary":{"model":"opus"}}'. Each named
 #                       phase overrides DEFAULT_PHASE_CONFIG field-by-field.
 #                       Use this to pin one phase without disturbing the rest.
+#   FALLBACK_PHASE_CONFIG - JSON object applied ONLY to phases the target
+#                       workstream leaves unset, e.g. '{"runner":"opencode",
+#                       "model":"z-ai/glm-4.6","provider":"openrouter"}'. Unlike
+#                       DEFAULT_PHASE_CONFIG (which overrides the workstream),
+#                       this never overrides a workstream an owner configured on
+#                       purpose: a phase the workstream sets keeps its choice.
+#                       Sent as fallbackPhaseConfig. The CI remediation
+#                       submitters set it from the AR_CI_FALLBACK_PHASE_CONFIG
+#                       repository variable so the owner can switch models while
+#                       experimenting without a code change. Omitted → nothing is
+#                       sent and resolution is byte-for-byte unchanged.
+#   FALLBACK_PHASE_CONFIGS - JSON object mapping phase wire names to per-phase
+#                       fallback config, e.g. '{"review":{"runner":"opencode"}}'.
+#                       Mirrors PHASE_CONFIGS at the fallback level. Sent as
+#                       fallbackPhaseConfigs. Omitted → nothing is sent.
 #   REQUIRED_LABELS   - JSON object of capability labels the executing Node
 #                       must carry, e.g. '{"platform":"macos"}'. Omitted →
 #                       the workstream's own requiredLabels apply, and when
@@ -314,6 +329,21 @@ fi
 if [ -n "${PHASE_CONFIGS:-}" ]; then
     PAYLOAD=$(echo "$PAYLOAD" | jq --argjson c "$PHASE_CONFIGS" \
         '. + {phaseConfigs: $c}')
+fi
+
+# Fallback phase config, applied by the controller only to phases the target
+# workstream leaves unset. Parsed as JSON for the same reason as the fields
+# above: a malformed value should fail loudly here, not run on the wrong model.
+# When the variable is unset nothing is added, so the payload is byte-for-byte
+# what it is today.
+if [ -n "${FALLBACK_PHASE_CONFIG:-}" ]; then
+    PAYLOAD=$(echo "$PAYLOAD" | jq --argjson c "$FALLBACK_PHASE_CONFIG" \
+        '. + {fallbackPhaseConfig: $c}')
+fi
+
+if [ -n "${FALLBACK_PHASE_CONFIGS:-}" ]; then
+    PAYLOAD=$(echo "$PAYLOAD" | jq --argjson c "$FALLBACK_PHASE_CONFIGS" \
+        '. + {fallbackPhaseConfigs: $c}')
 fi
 
 # Node routing labels, parsed the same way and for the same reason: a job

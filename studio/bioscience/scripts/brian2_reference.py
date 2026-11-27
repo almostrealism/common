@@ -47,7 +47,7 @@ Usage:
     brian2_reference.py sugar --repo <model repo> --snapshot 630 --rate 150 \\
         --trials 30 --processes 8 --output <dir>
     brian2_reference.py experiment --repo <model repo> --connectome <csr dir> \\
-        --name <name> --stimulate-types LB3a,LB3b --rate 150 --trials 30 \\
+        --name <name> --stimulate-types LB3a,LB3b,LB3c,LB3d --rate 150 --trials 30 \\
         --processes 8 --output <dir>
 """
 

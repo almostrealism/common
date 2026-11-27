@@ -53,11 +53,35 @@ import java.util.List;
  * {@code results/rt-monitor.log} so a long run can be watched. The first arrangement
  * is written to {@code results/rt-sample.wav} as proof of real audio.</p>
  *
+ * <p><b>Loop boundaries.</b> At the end of each arrangement pass the cells are reset (or,
+ * on an arrangement switch, the genome is re-enabled, which also resets them) and then
+ * {@link TemporalCellular#setup() set up} again before the next pass is ticked. The reset
+ * stops the runner's render-ahead producer and rewinds its cursors; only setup restarts
+ * the producer, so ticking a reset runner without it fails on the first buffer of the
+ * second pass (and, before a stopped render-ahead stream rejected waits, blocked forever).
+ * This follows the same reset-then-setup order every other {@link TemporalCellular}
+ * driver uses.</p>
+ *
+ * <p><b>Note caching.</b> The renderer enables persistent note caching on the scene's
+ * patterns
+ * ({@link org.almostrealism.music.pattern.PatternSystemManager#setNoteCachePersistent(boolean)})
+ * unless {@code AR_RT_CACHE_PERSIST=false}: it loops a fixed arrangement, so each note is
+ * evaluated on the first pass and its audio reused on every later pass instead of being
+ * re-evaluated and re-freed. An arrangement switch ({@code AR_RT_SWITCH_LOOPS}) calls
+ * {@link PatternLayerManager#invalidateCaches()}, which discards the persisted audio so the
+ * new arrangement renders fresh.</p>
+ *
+ * <p>{@code AR_RT_HEAP=true} runs each buffer's render inside a {@link Heap} stage so
+ * per-buffer device allocations are freed every buffer. With the persisted note cache
+ * there are no note-evaluation intermediates after the first pass, so it is off by
+ * default: the per-buffer stage push/pop interferes with kernel completion signaling.</p>
+ *
  * <p>Configuration via system properties: {@code AR_RT_CHANNELS} (comma list, default
  * {@code 0}), {@code AR_RT_MEASURES} (arrangement length, default {@code 64}),
  * {@code AR_RT_BUFFER} (frames, default {@code 8192}), {@code AR_RT_HOURS} (target
  * audio hours, default {@code 40}), {@code AR_RT_LOG_EVERY} (buffers between log
- * lines, default {@code 64}).</p>
+ * lines, default {@code 64}), {@code AR_RT_CACHE_PERSIST} (persistent note caching,
+ * default {@code true}).</p>
  */
 public final class RealtimeContinuousRenderer {
 
@@ -99,6 +123,8 @@ public final class RealtimeContinuousRenderer {
 
 		AudioScene<?> scene = AudioSceneOptimizer.createScene();
 		scene.setTotalMeasures(measures);
+		scene.getPatternManager().setNoteCachePersistent(
+				Boolean.parseBoolean(System.getProperty("AR_RT_CACHE_PERSIST", "true")));
 		int frames = scene.getContext().getFrameForPosition().applyAsInt(measures);
 		int buffersPerLoop = (frames + bufferSize - 1) / bufferSize;
 		double bufferAudioSec = (double) bufferSize / OutputLine.sampleRate;
@@ -130,12 +156,6 @@ public final class RealtimeContinuousRenderer {
 		double[] worstRoll = {0};
 		long wallStart = System.nanoTime();
 
-		// When AR_RT_HEAP is enabled, each buffer's render runs inside a Heap stage so
-		// per-buffer device allocations (note-evaluation intermediates) are freed every
-		// buffer. With AR_PATTERN_CACHE_PERSIST a looped arrangement evaluates notes
-		// only on the first pass, so after that there are no intermediates to free and
-		// the Heap is unnecessary (it is disabled by default because the per-buffer
-		// stage push/pop interferes with kernel completion signaling).
 		boolean useHeap = Boolean.getBoolean("AR_RT_HEAP");
 		Runnable runTick = useHeap ? () -> Heap.stage(tick) : tick;
 		Runnable writeOut = useHeap
@@ -200,6 +220,9 @@ public final class RealtimeContinuousRenderer {
 				} else {
 					cells.reset();
 				}
+
+				// The reset stopped the render-ahead producer; setup restarts it (see class javadoc)
+				if (count[0] < targetBuffers) setup.run();
 			}
 		};
 

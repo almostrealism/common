@@ -21,7 +21,9 @@ import org.almostrealism.audio.AudioLibrary;
 import org.almostrealism.audio.api.Audio;
 import org.almostrealism.audio.data.WaveData;
 import org.almostrealism.audio.data.WaveDetails;
+import org.almostrealism.audio.data.TagModelVersion;
 import org.almostrealism.audio.data.WaveFeatures;
+import org.almostrealism.audio.data.WaveTags;
 import org.almostrealism.audio.similarity.PrototypeIndexData;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.io.Console;
@@ -97,6 +99,7 @@ import java.util.function.Supplier;
  *   <li>Frequency analysis data (FFT results)</li>
  *   <li>Feature data (for similarity computation)</li>
  *   <li>Pre-computed similarity scores to other samples</li>
+ *   <li>Tag sets keyed by (tagging model, vocabulary version)</li>
  * </ul>
  *
  * <h2>File Path Resolution</h2>
@@ -783,6 +786,9 @@ public class AudioLibraryPersistence {
 		for (String modelId : details.getFeatureModelIdentifiers()) {
 			data.addFeatureSets(encodeFeatureSet(details.getFeatures(modelId)));
 		}
+		for (TagModelVersion key : details.getTagModelVersions()) {
+			data.addTagSets(encodeTagSet(details.getTags(key)));
+		}
 		if (details.getIdentifier() != null) data.setIdentifier(details.getIdentifier());
 		if (details.getRank() != null) data.setRank(details.getRank());
 		if (audioPrecision != null) {
@@ -808,6 +814,31 @@ public class AudioLibraryPersistence {
 				.setFeatureData(CollectionEncoder.encode(features.getFeatureData(), Precision.FP32))
 				.putAllSimilarities(features.getSimilarities())
 				.build();
+	}
+
+	/**
+	 * Encodes a single {@link WaveTags} into a protobuf {@link Audio.TagSet}.
+	 *
+	 * @param tags the tag set to encode
+	 * @return the encoded TagSet
+	 */
+	private static Audio.TagSet encodeTagSet(WaveTags tags) {
+		return Audio.TagSet.newBuilder()
+				.setModelIdentifier(tags.getModelIdentifier())
+				.setVocabularyVersion(tags.getVocabularyVersion())
+				.putAllTags(tags.getTags())
+				.build();
+	}
+
+	/**
+	 * Decodes a protobuf {@link Audio.TagSet} into a {@link WaveTags}.
+	 *
+	 * @param tagSet the protobuf tag set to decode
+	 * @return the decoded tag set
+	 */
+	private static WaveTags decodeTagSet(Audio.TagSet tagSet) {
+		return new WaveTags(new TagModelVersion(tagSet.getModelIdentifier(),
+				tagSet.getVocabularyVersion()), tagSet.getTagsMap());
 	}
 
 	/**
@@ -849,6 +880,9 @@ public class AudioLibraryPersistence {
 		if (includeSimilarities) details.getLegacySimilarities().putAll(data.getSimilaritiesMap());
 		for (Audio.FeatureSet featureSet : data.getFeatureSetsList()) {
 			details.putFeatures(decodeFeatureSet(featureSet, includeSimilarities));
+		}
+		for (Audio.TagSet tagSet : data.getTagSetsList()) {
+			details.putTags(decodeTagSet(tagSet));
 		}
 		if (data.hasRank()) details.setRank(data.getRank());
 		if (data.hasData()) details.setData(CollectionEncoder.decode(data.getData()));

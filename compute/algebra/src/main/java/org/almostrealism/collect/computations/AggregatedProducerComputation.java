@@ -379,7 +379,7 @@ public abstract class AggregatedProducerComputation extends TraversableRepeatedP
 	public Scope<PackedCollection> getScope(KernelStructureContext context) {
 		if (uniqueIndex == null) return super.getScope(context);
 
-		Scope<PackedCollection> scope = new Scope<>(getFunctionName(), getMetadata());
+		Scope<PackedCollection> scope = createScope(Scope::new);
 
 		Expression<?> out = getDestination(new KernelIndex(context), ref, e(0));
 		Expression<?> val = inputArg.getValueAt(uniqueIndex.withIndex(row, new KernelIndex(context)));
@@ -523,7 +523,7 @@ public abstract class AggregatedProducerComputation extends TraversableRepeatedP
 		} else {
 			ConstantRepeatedDeltaComputation repeated = new ConstantRepeatedDeltaComputation(this, target);
 			TraversableDeltaComputation traversable = TraversableDeltaComputation.create("delta", getShape(), shape(target),
-					args -> CollectionExpression.create(getShape(), this::getValueAt), target,
+					args -> CollectionExpression.create(getShape(), this::getValueAt), signature(), target,
 					getInputs().stream().skip(1).toArray(Producer[]::new));
 			traversable.addDependentLifecycle(this);
 			repeated.setFallback(traversable);

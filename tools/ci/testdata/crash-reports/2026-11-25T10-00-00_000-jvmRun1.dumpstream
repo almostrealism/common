@@ -1,0 +1,18 @@
+# Created at 2026-11-25T10:06:52.611
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream 'free(): invalid pointer'.
+# Created at 2026-11-25T10:06:52.612
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream '#'.
+# Created at 2026-11-25T10:06:52.612
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream '# A fatal error has been detected by the Java Runtime Environment:'.
+# Created at 2026-11-25T10:06:52.612
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream '#  SIGABRT (0x6) at pc=0x00007f3a1c49eb2c, pid=4242, tid=4251'.
+# Created at 2026-11-25T10:06:52.613
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream '# Problematic frame:'.
+# Created at 2026-11-25T10:06:52.613
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream '# C  [libc.so.6+0x9eb2c]  pthread_kill+0x11c'.
+# Created at 2026-11-25T10:06:52.614
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream '# An error report file with more information is saved as:'.
+# Created at 2026-11-25T10:06:52.614
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream '# HS_ERR_PATH'.
+# Created at 2026-11-25T10:06:52.615
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream 'Aborted (core dumped) xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'.

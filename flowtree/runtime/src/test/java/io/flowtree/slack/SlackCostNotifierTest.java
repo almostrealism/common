@@ -605,4 +605,79 @@ public class SlackCostNotifierTest extends TestSuiteBase {
         SlackNotifier notifier = new SlackNotifier(null);
         assertNull(notifier.getThreadTs("job-Z"));
     }
+
+    /**
+     * Simulates a controller restart: one notifier submits a job and posts its
+     * submission message, then a brand-new notifier built on the same
+     * {@link JobStatsStore} — with an empty in-memory {@code jobThreadTs} map —
+     * handles the running job's progress and completion. Both must thread under
+     * the submission message created before the "restart" rather than posting to
+     * the top of the channel, which requires the thread ts to have been
+     * persisted at submission time and every job-event lookup to route through
+     * {@link SlackNotifier#getThreadTs}.
+     */
+    @Test(timeout = 10000)
+    public void testFreshNotifierThreadsProgressAndCompletionAfterRestart() throws Exception {
+        File tempDir = Files.createTempDirectory("restart-thread").toFile();
+        tempDir.deleteOnExit();
+        String dbPath = new File(tempDir, "stats").getAbsolutePath();
+
+        JobStatsStore store = new JobStatsStore(dbPath);
+        store.initialize();
+        try {
+            Workstream workstream = new Workstream("C_RESTART", "#restart-test");
+            workstream.setDefaultBranch("feature/restart");
+
+            // The controller records the SUBMITTED row before the notifier posts
+            // (FlowTreeApiEndpoint#handleSubmit), so the row exists when the
+            // notifier persists the thread ts onto it.
+            store.recordJobSubmitted("job-restart", workstream.getWorkstreamId(),
+                "Survive a restart", null, null, Instant.now());
+
+            // Before the restart: a notifier submits the job, posts the
+            // submission message and persists its thread ts.
+            SlackNotifier before = new SlackNotifier(null);
+            before.setMessageCallback(json -> { });
+            before.setStatsStore(store);
+            before.registerWorkstream(workstream);
+            before.onJobSubmitted(workstream.getWorkstreamId(),
+                JobCompletionEvent.started("job-restart", "Survive a restart"));
+
+            String threadTs = before.getThreadTs("job-restart");
+            assertNotNull("Submission must establish a thread", threadTs);
+            Assert.assertEquals("Submission thread ts must be persisted immediately",
+                threadTs, store.getJobSlackTs("job-restart"));
+
+            // The restart: a brand-new notifier on the same store, whose
+            // in-memory jobThreadTs map knows nothing about the running job.
+            List<String> messages = new ArrayList<>();
+            SlackNotifier after = new SlackNotifier(null);
+            after.setMessageCallback(messages::add);
+            after.setStatsStore(store);
+            after.registerWorkstream(workstream);
+
+            // Progress must land in the pre-restart thread.
+            after.onJobStarted(workstream.getWorkstreamId(),
+                JobCompletionEvent.started("job-restart", "Survive a restart"));
+            assertEquals(1, messages.size());
+            Assert.assertEquals("Progress must thread under the pre-restart submission",
+                threadTs, JsonFieldExtractor.extractString(messages.get(0), "thread_ts"));
+
+            // Completion must land in the pre-restart thread too.
+            messages.clear();
+            CodingAgentJobEvent completion =
+                CodingAgentJobEvent.success("job-restart", "Survive a restart");
+            completion.withGitInfo("feature/restart", "abc1234567890",
+                List.of("f.java"), List.of(), true);
+            after.onJobCompleted(workstream.getWorkstreamId(), completion);
+
+            assertFalse("Completion must post at least a summary", messages.isEmpty());
+            for (String message : messages) {
+                Assert.assertEquals("Completion must thread under the pre-restart submission",
+                    threadTs, JsonFieldExtractor.extractString(message, "thread_ts"));
+            }
+        } finally {
+            store.close();
+        }
+    }
 }

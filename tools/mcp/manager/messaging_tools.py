@@ -58,6 +58,13 @@ CONTROLLER_POLL_SECONDS = 120
 # a controller answers a long poll immediately.
 MINIMUM_POLL_INTERVAL_SECONDS = 1.0
 
+# Messages a ``mailbox_peek`` returns when the caller does not say.
+DEFAULT_PEEK_LIMIT = 20
+
+# Most messages a single ``mailbox_peek`` returns, so one call cannot fill
+# the caller's context with a week of conversation.
+MAX_PEEK_LIMIT = 200
+
 
 @mcp.tool()
 def send_message(
@@ -336,6 +343,95 @@ def send_message(
     return server._controller_post(path, body)
 
 
+# The fixed set of block categories, mirroring io.flowtree.jobs.BlockReport.
+BLOCK_CATEGORIES = (
+    "guardrail",
+    "missing_resource",
+    "ambiguous_task",
+    "out_of_scope",
+    "already_done",
+)
+
+
+@mcp.tool()
+def job_report_blocked(
+    category: str,
+    detail: str = "",
+    job_id: str = "",
+    workstream_id: str = "",
+) -> dict:
+    """Report that this job cannot proceed, ending it with a structured BLOCKED status.
+
+    Call this instead of exiting silently or writing a free-text abandonment
+    note when something genuinely prevents you from completing the task. The
+    harness records the report against the job bound to your token, does not
+    retry the job through enforcement, and ends it ``BLOCKED`` with the
+    ``category`` and ``detail`` visible in ``workstream_get_job`` and the job's
+    completion event. A ``guardrail`` claim is re-verified against the tool and
+    permission denials actually recorded in the session; a claim it cannot
+    corroborate is kept but marked unverified. Report a block only when it is
+    real — it is not an escape hatch from difficult but doable work.
+
+    Args:
+        category: Why the job is blocked. One of: ``guardrail`` (a guardrail or
+            hook denied an action you needed), ``missing_resource`` (a required
+            library, model, credential, or file is absent), ``ambiguous_task``
+            (the request needs a clarifying decision before it can be acted on),
+            ``out_of_scope`` (the change does not belong on this branch), or
+            ``already_done`` (the work already exists, typically on the base
+            branch).
+        detail: Free-text explanation of the specific block — name the rule,
+            resource, ambiguity, or existing work. Defaults to empty.
+        job_id: The job to report blocked. Defaults to empty, resolving to the
+            job bound to the in-flight request's token.
+        workstream_id: The owning workstream. Defaults to empty, resolving from
+            the token like ``job_id``.
+
+    Returns:
+        dict with ok=True on success, or ok=False with error details (including
+        an unknown category or a context with no resolvable job).
+    """
+    server._require_scope("write")
+
+    if category not in BLOCK_CATEGORIES:
+        return {
+            "ok": False,
+            "error": f"Unknown block category: {category!r}",
+            "next_steps": [f"Use one of: {', '.join(BLOCK_CATEGORIES)}"],
+        }
+
+    per_req_ws, per_req_job, _label, _reason = (
+        server._decode_current_request_token_full())
+    effective_ws = (workstream_id or per_req_ws
+                    or server._request_workstream_id.get(None)
+                    or getattr(server._thread_local, "workstream_id", None) or "")
+    effective_job = (job_id or per_req_job
+                     or server._request_job_id.get(None)
+                     or getattr(server._thread_local, "job_id", None) or "")
+
+    server._audit("job_report_blocked", workstream_id=effective_ws,
+                  job_id=effective_job, category=category, detail=detail[:200])
+
+    if not effective_ws or not effective_job:
+        return {
+            "ok": False,
+            "error": "A block can only be reported from a job session",
+            "next_steps": [
+                "Provide workstream_id and job_id, or call from a job session"
+                " whose token resolves to a job",
+            ],
+        }
+
+    err = server._check_length(detail, "detail", server.MAX_CONTENT_LEN)
+    if err:
+        return err
+    server._require_workstream_in_scope(effective_ws)
+
+    path = (f"/api/workstreams/{quote(effective_ws, safe='')}"
+            f"/jobs/{quote(effective_job, safe='')}/blocked")
+    return server._controller_post(path, {"category": category, "detail": detail})
+
+
 def _derived_message_id(sender: str, activity: str, text: str) -> str:
     """Derive a message identity from what the caller would repeat on a retry.
 
@@ -536,33 +632,9 @@ def await_message(
     """
     server._require_scope("read")
 
-    per_req_ws, per_req_job, _label, per_req_reason = (
-        server._decode_current_request_token_full())
-    effective_ws = (workstream_id or per_req_ws
-                    or server._request_workstream_id.get(None)
-                    or getattr(server._thread_local, "workstream_id", None) or "")
-    effective_job = (per_req_job or server._request_job_id.get(None)
-                     or getattr(server._thread_local, "job_id", None) or "")
-
-    if not effective_ws:
-        return {
-            "ok": False,
-            "error": (
-                "workstream_id could not be resolved. Pass workstream_id"
-                " explicitly, or call from a job session whose HMAC"
-                " temp token resolves to a registered workstream."
-            ),
-            "per_request_decode_reason": per_req_reason,
-            "next_steps": [
-                "Use workstream_list to find the workstream ID and pass"
-                " workstream_id=<id>",
-                "If calling from a job session, verify the bearer token"
-                " is an armt_tmp_ HMAC token (a static admin bearer"
-                " carries no workstream binding)",
-            ],
-        }
-
-    server._require_workstream_in_scope(effective_ws)
+    effective_ws, effective_job, unresolved = _conversation_reader(workstream_id)
+    if unresolved:
+        return unresolved
 
     budget = min(max(int(timeout_seconds), 0), MAX_AWAIT_SECONDS)
     clamped = int(timeout_seconds) > MAX_AWAIT_SECONDS
@@ -625,3 +697,162 @@ def await_message(
         idle = min(MINIMUM_POLL_INTERVAL_SECONDS, deadline - time.monotonic())
         if time.monotonic() - started < MINIMUM_POLL_INTERVAL_SECONDS and idle > 0:
             time.sleep(idle)
+
+
+@mcp.tool()
+def mailbox_peek(
+    workstream_id: str = "",
+    since: int = -1,
+    limit: int = DEFAULT_PEEK_LIMIT,
+) -> dict:
+    """Show a workstream's conversation without waiting and without taking part in it.
+
+    For debugging a stalled collaboration: a person or a supervising agent
+    sees what the participants have said to each other — every sender's
+    messages, including the caller's own — and what the conversation's
+    latest ``seq`` is. Nothing is consumed. The controller keeps no
+    per-reader position (each reader holds its own ``since``), so a peek
+    changes nothing that ``await_message`` returns afterwards, to this
+    caller or to anyone else. Unlike ``await_message`` this never blocks:
+    it answers with whatever is in the mailbox now, possibly nothing.
+
+    Messages are kept for seven days, so the oldest a peek can show is a
+    week old.
+
+    Args:
+        workstream_id: Workstream whose conversation to read. Defaults to
+            the workstream resolved from the in-flight request's HMAC temp
+            token, so a job session can omit it.
+        since: Show only messages after this ``seq``. ``-1`` (the default)
+            shows the most recent ``limit`` messages; ``0`` or a positive
+            ``seq`` shows the first ``limit`` messages after it.
+        limit: Most messages to return. Defaults to ``DEFAULT_PEEK_LIMIT``
+            (20) and is capped at ``MAX_PEEK_LIMIT`` (200).
+
+    Returns:
+        Dictionary with ``ok``, ``messages`` (oldest first, each with
+        ``seq``, ``createdAt``, ``sender`` and ``text``), ``latest_seq``
+        (the highest ``seq`` the mailbox has assigned, ``0`` when it never
+        held a message, and never the requested ``since`` echoed back) and
+        ``truncated`` (true when ``limit`` held back messages: newer ones
+        after a ``since`` view, older ones before the default tail view),
+        or ``ok=false`` with error details.
+
+        Only the messages shown cross the wire: ``limit`` is applied by the
+        controller, not after the whole conversation has been fetched. The
+        tail view is a single controller read taken under one mailbox lock,
+        so its messages and ``latest_seq`` describe the same moment, and its
+        ``truncated`` counts the messages still retained rather than
+        inferring them from the head, so it stays right after old messages
+        expire.
+    """
+    server._require_scope("read")
+
+    effective_ws, effective_job, unresolved = _conversation_reader(workstream_id)
+    if unresolved:
+        return unresolved
+
+    count = min(max(int(limit), 1), MAX_PEEK_LIMIT)
+    server._audit("mailbox_peek", workstream_id=effective_ws,
+                  job_id=effective_job, since=since, limit=count)
+
+    mailbox = f"/api/workstreams/{quote(effective_ws, safe='')}/mailbox"
+    if int(since) < 0:
+        # One more than is shown: older messages are held back exactly when
+        # the controller still retains that extra one.
+        result = _mailbox_read(f"{mailbox}?tail=true&limit={count + 1}")
+        if not result.get("ok"):
+            return result
+        messages = result.get("messages", [])
+        truncated = len(messages) > count
+        messages = messages[-count:]
+    else:
+        # One more than is shown: newer messages are held back exactly when
+        # the controller still has that extra one, so a mailbox pruned to
+        # nothing never reports truncation it cannot paginate to.
+        result = _mailbox_read(f"{mailbox}?since={int(since)}&wait=0&limit={count + 1}")
+        if not result.get("ok"):
+            return result
+        messages = result.get("messages", [])
+        truncated = len(messages) > count
+        messages = messages[:count]
+
+    return {
+        "ok": True,
+        "messages": messages,
+        "latest_seq": result["head"],
+        "truncated": truncated,
+    }
+
+
+def _mailbox_read(path: str) -> dict:
+    """Make one non-blocking mailbox read and check that it reports the head.
+
+    Args:
+        path: Controller path of the read, query string included.
+
+    Returns:
+        The controller's response when it succeeded and carries ``head``, or
+        ``ok=false`` with the reason otherwise. A controller that predates
+        ``head`` also ignores ``limit``, so its answer is refused rather than
+        shown as if it were bounded.
+    """
+    result = server._controller_get(path)
+    if not result.get("ok"):
+        return {
+            "ok": False,
+            "error": result.get("error", "Controller rejected the mailbox read"),
+        }
+    if not isinstance(result.get("head"), int):
+        return {
+            "ok": False,
+            "error": ("The controller's mailbox read did not report head; it"
+                      " predates mailbox_peek and must be updated"),
+        }
+    return result
+
+
+def _conversation_reader(workstream_id: str):
+    """Resolve whose conversation is being read, and by which job.
+
+    The explicit workstream wins; otherwise both come from the in-flight
+    request's token, then the auth middleware's context variable, then the
+    thread-local, in that order. A resolved workstream is checked against
+    the caller's scope before it is returned.
+
+    Args:
+        workstream_id: The workstream the caller named, or an empty string.
+
+    Returns:
+        A ``(workstream_id, job_id, error)`` triple. ``error`` is ``None``
+        when a workstream was resolved, and otherwise the result the tool
+        should return as-is.
+    """
+    per_req_ws, per_req_job, _label, per_req_reason = (
+        server._decode_current_request_token_full())
+    effective_ws = (workstream_id or per_req_ws
+                    or server._request_workstream_id.get(None)
+                    or getattr(server._thread_local, "workstream_id", None) or "")
+    effective_job = (per_req_job or server._request_job_id.get(None)
+                     or getattr(server._thread_local, "job_id", None) or "")
+
+    if not effective_ws:
+        return "", effective_job, {
+            "ok": False,
+            "error": (
+                "workstream_id could not be resolved. Pass workstream_id"
+                " explicitly, or call from a job session whose HMAC"
+                " temp token resolves to a registered workstream."
+            ),
+            "per_request_decode_reason": per_req_reason,
+            "next_steps": [
+                "Use workstream_list to find the workstream ID and pass"
+                " workstream_id=<id>",
+                "If calling from a job session, verify the bearer token"
+                " is an armt_tmp_ HMAC token (a static admin bearer"
+                " carries no workstream binding)",
+            ],
+        }
+
+    server._require_workstream_in_scope(effective_ws)
+    return effective_ws, effective_job, None
