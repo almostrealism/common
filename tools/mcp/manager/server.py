@@ -1459,6 +1459,7 @@ from messaging_tools import (  # noqa: E402
 from workstream_config_tools import (  # noqa: E402
     workstream_register,
     workstream_update_config,
+    phase_config_explain,
 )
 from workstream_submit_tools import (  # noqa: E402
     workstream_submit_task,
