@@ -654,7 +654,7 @@ Stage 2 is done when all of the following hold:
 | 1. Lazy output allocation | `DefaultCellularLayer`: `init` keeps only the shape and an `outputTracking` flag; `getForward()` and `setInputTracking` test the flag, not the field; the push lambdas call `outputForPush()`, which creates the output on first need. |
 | 2. Read/write-set walk | `OperationList.getExecutionSteps()` and `ExecutionStep` (base/hardware). The kernel test is one method, `OperationList.isCompiledAsKernel()`, which `get()` now uses too. Touches are every provider leaf (`MemoryRegionList.touches`); writes come from the new `Process.getDestinations()` (`MemoryRegionList.destinations`). |
 | 3. Pool, kill switch, verify mode | `LayerOutputPool` (domain/graph, `org.almostrealism.layers`), owned and released by `CompiledModel`; `CompiledModel.enableLayerBufferReuse` (`AR_GRAPH_LAYER_BUFFER_REUSE`, on by default) and `enableLayerBufferReuseVerification` (`AR_GRAPH_LAYER_BUFFER_REUSE_VERIFY`). The compile logs `layerOutputBytes=` and `pooledBytes=`. |
-| 4. Compose `auxInput` pass-through | `LayerRoutingFeatures.compose`: with the layer's input tracking off and the branch reached before the layer reads the record, the branch's output is passed straight through and the copy is skipped; the record itself is kept allocated for any later compile (for example a backward one) that reads it. |
+| 4. Compose `auxInput` pass-through | `LayerRoutingFeatures.compose`: while a `LayerOutputPool` is in use (reuse on), with the layer's input tracking off and the branch reached before the layer reads the record, the branch's output is passed straight through and the copy is skipped; the record itself is kept allocated for any later compile (for example a backward one) that reads it. |
 | 5. `getOutput()` contract | `getOutput()` throws `IllegalStateException` for a shared output; `DefaultCellularLayer.retainOutput()` and `Model.setLayerOutputsRetained(true)` keep standalone outputs. |
 | 6. Tests and measurement | See "Tests" below. |
 
@@ -755,8 +755,13 @@ Against the success criteria:
 6. Reported. The analysis adds about 2 s to the first clip against reuse off (20.6 s against
    18.5 s), which is where the T5Gemma, DiT compiles happen; no bound was set.
 
-The reuse-off column is lower than master mainly because the compose pass-through (item 4) is
-active whenever input tracking is off, independently of the kill switch.
+The reuse-off column is lower than master because of lazy output allocation (item 1 of the table
+above), which does not depend on the kill switch: a layer whose output is never pushed or read
+allocates none, so the layers of graphs not yet compiled (the DiT and T5Gemma before the first
+clip) and layers no compiled graph reaches hold no output buffer. It is not the compose
+pass-through (item 4): that pass-through applies only while a `LayerOutputPool` is in use, so it
+is inactive with reuse off, and it never frees the record in either mode, since the record stays
+allocated. The gap was not broken down further by layer.
 
 Follow-ups filed: sharing one pool across a generator's compiled models (open question 3),
 allocating input records lazily (question 4), and per-pass temporaries (question 8). Exposing

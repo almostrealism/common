@@ -250,7 +250,7 @@ public class DefaultCellularLayer implements CellularLayer, CodeFeatures, Learni
 
 		this.inputTrackingEnabled = inputTracking;
 		this.input = inputTracking ? new PackedCollection(inputShape) : null;
-		this.outputTracking = true;
+		this.outputTracking = outputTracking;
 
 		this.entry = Cell.of((in, next) -> {
 			if (this.input == null) {

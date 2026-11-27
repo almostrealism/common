@@ -20,7 +20,9 @@ import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Provider;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.graph.Cell;
 import org.almostrealism.graph.Receptor;
+import org.almostrealism.hardware.OperationList;
 import org.almostrealism.hardware.mem.MemoryDataArgumentMap;
 import org.almostrealism.layers.CellularLayer;
 import org.almostrealism.layers.DefaultCellularLayer;
@@ -87,6 +89,56 @@ public class LayerBufferReuseTest extends TestSuiteBase {
 			}
 			return model;
 		}, 0, inputs(new Random(4), shape(LARGE)));
+	}
+
+	/**
+	 * A layer initialized without output tracking stays untracked under lazy output allocation:
+	 * it reports no output, hands out its raw forward cell and refuses input tracking, while a
+	 * layer initialized with output tracking creates its output on demand.
+	 */
+	@Test(timeout = 60000)
+	public void initWithoutOutputTracking() {
+		Cell<PackedCollection> untrackedForward = Cell.of((in, next) -> new OperationList());
+		DefaultCellularLayer untracked = new DefaultCellularLayer("untracked", shape(SIZE),
+				untrackedForward, null);
+		untracked.init(shape(SIZE), false, false);
+
+		Assert.assertNull(untracked.getOutput());
+		Assert.assertSame(untrackedForward, untracked.getForward());
+		Assert.assertFalse(untracked.isInputTracking());
+		assertFails(IllegalStateException.class, () -> untracked.setInputTracking(true));
+		assertFails(UnsupportedOperationException.class, () -> untracked.init(shape(SIZE), true, false));
+		Assert.assertNull(untracked.getOutput());
+
+		Cell<PackedCollection> trackedForward = Cell.of((in, next) -> new OperationList());
+		DefaultCellularLayer tracked = new DefaultCellularLayer("tracked", shape(SIZE),
+				trackedForward, null);
+		tracked.init(shape(SIZE), false, true);
+
+		Assert.assertNotSame(trackedForward, tracked.getForward());
+		PackedCollection output = tracked.getOutput();
+		Assert.assertNotNull(output);
+		Assert.assertEquals(SIZE, output.getShape().getTotalSize());
+		Assert.assertSame(output, tracked.getOutput());
+		Assert.assertFalse(tracked.isOutputShared());
+		Assert.assertNull(tracked.getOutputPool());
+	}
+
+	/**
+	 * Requires that the given action throws an exception of the given type.
+	 *
+	 * @param type   the expected exception type
+	 * @param action the action expected to throw
+	 */
+	private static void assertFails(Class<? extends RuntimeException> type, Runnable action) {
+		try {
+			action.run();
+		} catch (RuntimeException e) {
+			Assert.assertTrue("expected " + type.getSimpleName() + " but got " + e, type.isInstance(e));
+			return;
+		}
+
+		Assert.fail("expected " + type.getSimpleName());
 	}
 
 	/** Residual connections keep the skipped output alive across the branch they skip. */
