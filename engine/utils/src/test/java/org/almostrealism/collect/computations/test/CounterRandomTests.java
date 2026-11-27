@@ -433,6 +433,35 @@ public class CounterRandomTests extends TestSuiteBase {
 	}
 
 	/**
+	 * Advancing the counter by a device-computed amount adds that amount to the counter each
+	 * time the assignment runs: a zero amount leaves the stream in place and a one moves it on,
+	 * so a caller can advance only on the samples where it needs a new value. The amount is read
+	 * on the device, so the same compiled assignment serves whatever the amount evaluates to.
+	 */
+	@Test(timeout = 60000)
+	public void advanceByAmountAddsThatAmount() {
+		PackedCollection seed = PackedCollection.of(SEED);
+		PackedCollection counter = new PackedCollection(1);
+		CounterRandom random = new CounterRandom(shape(16), false, seed, counter);
+
+		Runnable hold = random.advance(c(0.0)).get();
+		Runnable step = random.advance(c(1.0)).get();
+
+		hold.run();
+		Assert.assertEquals(0.0, counter.toDouble(0), 0.0);
+		step.run();
+		Assert.assertEquals(1.0, counter.toDouble(0), 0.0);
+		hold.run();
+		Assert.assertEquals(1.0, counter.toDouble(0), 0.0);
+		step.run();
+		step.run();
+		Assert.assertEquals(3.0, counter.toDouble(0), 0.0);
+
+		seed.destroy();
+		counter.destroy();
+	}
+
+	/**
 	 * Outputs for consecutive counters and for distinct seeds are uncorrelated and almost
 	 * never coincide position by position (two independent 24-bit uniforms are equal with
 	 * probability 2^-24), and consecutive elements within one stream are uncorrelated.

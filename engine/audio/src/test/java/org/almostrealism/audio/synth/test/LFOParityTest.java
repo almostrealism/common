@@ -159,6 +159,25 @@ public class LFOParityTest extends TestSuiteBase {
 	}
 
 	/**
+	 * Destroying an LFO releases its device state and is idempotent: a second destroy, as can
+	 * happen when an owner clears the same modulation source more than once, does nothing and
+	 * does not throw. The LFO produces a valid value up to the point it is destroyed, including
+	 * after sample-and-hold has compiled and run its redraw operation.
+	 */
+	@Test(timeout = 60000)
+	public void destroyIsSafeAndIdempotent() {
+		LFO lfo = new LFO(LFO.Shape.SAMPLE_HOLD, 4.0, SR);
+		Runnable tick = lfo.tick().get();
+		tick.run();
+
+		double value = lfo.getValue();
+		assertTrue("value " + value + " in [-1, 1]", value >= -1.0 && value <= 1.0);
+
+		lfo.destroy();
+		lfo.destroy();
+	}
+
+	/**
 	 * Runs ticks and compares the device value, phase and output to the reference after each.
 	 *
 	 * @param tick      the compiled tick

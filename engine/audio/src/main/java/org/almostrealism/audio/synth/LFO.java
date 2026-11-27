@@ -16,6 +16,7 @@
 
 package org.almostrealism.audio.synth;
 
+import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.lifecycle.Lifecycle;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.CodeFeatures;
@@ -25,6 +26,7 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.CounterRandom;
 import org.almostrealism.hardware.OperationList;
 
+import java.util.List;
 import java.util.Random;
 import java.util.function.Supplier;
 
@@ -57,7 +59,7 @@ import java.util.function.Supplier;
  *
  * @see ModulationSource
  */
-public class LFO implements ModulationSource, Lifecycle, CodeFeatures {
+public class LFO implements ModulationSource, Lifecycle, Destroyable, CodeFeatures {
 
 	/**
 	 * Available LFO waveform shapes.
@@ -274,7 +276,7 @@ public class LFO implements ModulationSource, Lifecycle, CodeFeatures {
 		tick.add(a(cp(output), waveform(current, held, selectedShape)));
 		tick.add(a(cp(phase), next));
 		tick.add(a(cp(hold), held.add(resample.multiply(drawn.subtract(held)))));
-		tick.add(noise.advance());
+		tick.add(noise.advance(resample));
 		return tick;
 	}
 
@@ -348,6 +350,22 @@ public class LFO implements ModulationSource, Lifecycle, CodeFeatures {
 		}
 
 		redraw.run();
+	}
+
+	/**
+	 * Releases the device collections that hold this LFO's running state and parameters, its
+	 * random source, and the compiled redraw operation. An owner that drops an LFO &mdash; for
+	 * example when modulation is disabled &mdash; calls this so the native buffers are not
+	 * leaked; every release is attempted even if an earlier one fails. The LFO is not usable
+	 * after it is destroyed.
+	 */
+	@Override
+	public void destroy() {
+		Destroyable.releaseAll(List.of(
+				phase::destroy, hold::destroy, previousPhase::destroy, previousHold::destroy,
+				increment::destroy, shapeIndex::destroy, output::destroy, noise::destroy),
+				() -> Destroyable.destroy(redraw));
+		redraw = null;
 	}
 
 	// Factory methods for common LFO configurations

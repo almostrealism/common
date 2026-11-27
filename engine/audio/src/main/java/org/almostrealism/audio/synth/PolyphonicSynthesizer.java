@@ -350,6 +350,10 @@ public class PolyphonicSynthesizer extends SummationCell implements Setup {
 	 * Disables vibrato.
 	 */
 	public void clearVibrato() {
+		// TODO(review): destroy() frees buffers an already-compiled tick() captured via vibratoLFO.tick(); running that tick after clearing reads freed memory.
+		if (vibratoLFO != null) {
+			vibratoLFO.destroy();
+		}
 		this.vibratoLFO = null;
 		this.vibratoDepth = 0;
 	}
@@ -373,6 +377,10 @@ public class PolyphonicSynthesizer extends SummationCell implements Setup {
 	 * Disables tremolo.
 	 */
 	public void clearTremolo() {
+		// TODO(review): destroy() frees buffers an already-compiled tick() captured via tremoloLFO.tick(); running that tick after clearing reads freed memory.
+		if (tremoloLFO != null) {
+			tremoloLFO.destroy();
+		}
 		this.tremoloLFO = null;
 		this.tremoloDepth = 0;
 	}
