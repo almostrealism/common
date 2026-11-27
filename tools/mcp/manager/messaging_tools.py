@@ -766,11 +766,15 @@ def mailbox_peek(
         truncated = len(messages) > count
         messages = messages[-count:]
     else:
-        result = _mailbox_read(f"{mailbox}?since={int(since)}&wait=0&limit={count}")
+        # One more than is shown: newer messages are held back exactly when
+        # the controller still has that extra one, so a mailbox pruned to
+        # nothing never reports truncation it cannot paginate to.
+        result = _mailbox_read(f"{mailbox}?since={int(since)}&wait=0&limit={count + 1}")
         if not result.get("ok"):
             return result
         messages = result.get("messages", [])
-        truncated = result.get("nextSince", 0) < result["head"]
+        truncated = len(messages) > count
+        messages = messages[:count]
 
     return {
         "ok": True,

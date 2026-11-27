@@ -309,7 +309,7 @@ class TestMailboxPeek(unittest.TestCase):
 
         self.mailbox.served = 0
         server.mailbox_peek(since=0, limit=5)
-        self.assertEqual(self.mailbox.served, 5)
+        self.assertEqual(self.mailbox.served, 6)
 
     def test_tail_shorter_than_limit_is_not_truncated(self):
         """A conversation that fits in ``limit`` is shown whole and not marked truncated."""
@@ -338,6 +338,24 @@ class TestMailboxPeek(unittest.TestCase):
 
         self.assertTrue(server.mailbox_peek(limit=9)["truncated"])
         self.assertFalse(server.mailbox_peek(limit=10)["truncated"])
+
+    def test_since_after_full_pruning_is_not_truncated(self):
+        """A ``since`` view whose window retention has emptied is not marked truncated."""
+        self.mailbox.messages = []
+        self.mailbox.assigned = 7
+        result = server.mailbox_peek(since=0)
+        self.assertEqual(result["messages"], [])
+        self.assertEqual(result["latest_seq"], 7)
+        self.assertFalse(result["truncated"])
+
+    def test_since_truncation_counts_retained_messages(self):
+        """A ``since`` view holds messages back only when the extra one is retained."""
+        full = server.mailbox_peek(since=25, limit=5)
+        self.assertEqual([m["seq"] for m in full["messages"]], [26, 27, 28, 29, 30])
+        self.assertFalse(full["truncated"])
+        bounded = server.mailbox_peek(since=25, limit=4)
+        self.assertEqual([m["seq"] for m in bounded["messages"]], [26, 27, 28, 29])
+        self.assertTrue(bounded["truncated"])
 
     def test_tail_with_seq_gaps_still_shows_limit_messages(self):
         """Gaps in ``seq`` do not shrink the tail below ``limit``."""

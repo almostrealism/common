@@ -82,7 +82,7 @@ import io.flowtree.submission.PhaseConfigResolver;
  *   <tr><th>Method</th><th>Path</th><th>Body</th><th>Description</th></tr>
  *   <tr><td>POST</td><td>/api/workstreams/{id}/messages</td><td>{@code {"text":"..."}}</td><td>Post a message to the workstream's channel</td></tr>
  *   <tr><td>POST</td><td>/api/workstreams/{id}/jobs/{jobId}/messages</td><td>{@code {"text":"..."}}</td><td>Post a message to the job's thread</td></tr>
- *   <tr><td>GET</td><td>/api/workstreams/{id}/mailbox?since=&amp;wait=&amp;exclude=</td><td>--</td><td>Read the workstream's conversation, blocking until a peer posts — see {@link MailboxEndpointHandler}</td></tr>
+ *   <tr><td>GET</td><td>/api/workstreams/{id}/mailbox?since=&amp;wait=&amp;exclude=&amp;limit=&amp;tail=</td><td>--</td><td>Read the workstream's conversation, blocking until a peer posts — see {@link MailboxEndpointHandler}</td></tr>
  *   <tr><td>POST</td><td>/api/workstreams/{id}/submit</td><td>{@code {"prompt":"..."}}</td><td>Submit a new job to connected agents</td></tr>
  *   <tr><td>POST</td><td>/api/workstreams/{id}/phase-config</td><td>{@code {"defaultPhaseConfig":{...}}} (optional)</td><td>Explain per-phase runner/model/effort/provider resolution and sources; dry-run validator — see {@link PhaseConfigQueryHandler}</td></tr>
  *   <tr><td>POST</td><td>/api/submit</td><td>{@code {"prompt":"...","targetBranch":"...","repoUrl":"...","createWorkstreamIfMissing":true}}</td><td>Submit a job, resolving the workstream from the request body and optionally creating it</td></tr>
