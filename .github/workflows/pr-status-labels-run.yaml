@@ -17,13 +17,15 @@ name: "PR Status Labels (reusable)"
 #   jobs:
 #     label:
 #       uses: almostrealism/common/.github/workflows/pr-status-labels-run.yaml@master
+#       # The reusable workflow has no permissions of its own, so these are the
+#       # token the labeller runs with. Add `statuses: read` only when you also
+#       # set `cap-status` below.
 #       permissions:
 #         actions: read
 #         checks: read
 #         contents: read
 #         issues: write
 #         pull-requests: write
-#         statuses: read
 #       with:
 #         branch: ${{ github.event.workflow_run.head_branch || '' }}
 #         workflow-file: ci.yml           # its CI workflow's file name
@@ -158,15 +160,8 @@ on:
 jobs:
   label:
     runs-on: ubuntu-latest
-    permissions:
-      actions: read
-      checks: read
-      contents: read
-      issues: write
-      # The remediation-cap commit status (ci: review limit), when configured.
-      # TODO(review): requested unconditionally, so every caller must grant it; the script reads it only with cap-status set.
-      statuses: read
-      pull-requests: write
+    # No permissions block: the labeller runs with the caller's grant, so each
+    # caller asks for only what its config needs (statuses: read for cap-status).
     steps:
       - name: Checkout the labeller script
         uses: actions/checkout@v4

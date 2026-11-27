@@ -2245,13 +2245,14 @@ concurrency:
 jobs:
   label:
     uses: almostrealism/common/.github/workflows/pr-status-labels-run.yaml@master
+    # The reusable workflow declares no permissions of its own, so these are the
+    # token the labeller runs with; add `statuses: read` only with `cap-status`.
     permissions:
       actions: read
       checks: read
       contents: read
       issues: write
       pull-requests: write
-      statuses: read
     with:
       branch: ${{ github.event.workflow_run.head_branch || '' }}
       workflow-file: ci.yml   # its own CI workflow's file name

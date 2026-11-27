@@ -281,7 +281,7 @@ class LabelChangesTest(unittest.TestCase):
                          sorted([labels.STALLED, labels.READY_TO_LAUNCH]))
         self.assertEqual(remove, [])
 
-    def test_ready_to_launch_replaces_ready_for_review(self):
+    def test_ready_to_launch_removes_a_present_ready_for_review(self):
         # The settled stage where the marker takes the label's place: a draft
         # plan currently ci: ready for review that is ready to launch shows the
         # marker alone, so ci: ready for review is removed as the marker is added.
@@ -884,10 +884,11 @@ class ReusableWorkflowTest(unittest.TestCase):
         self.assertEqual(checkout["with"]["ref"], "${{ inputs.framework-ref }}")
         self.assertFalse(checkout["with"].get("persist-credentials", True))
 
-    def test_permissions(self):
-        self.assertEqual(self.job["permissions"], {
-            "actions": "read", "checks": "read", "contents": "read",
-            "issues": "write", "pull-requests": "write", "statuses": "read"})
+    def test_declares_no_permissions_of_its_own(self):
+        # A reusable workflow's token is the caller's grant. Declaring no
+        # permissions block lets each caller ask for only what its own config
+        # needs (statuses: read only with cap-status), as qa-round.yaml does.
+        self.assertNotIn("permissions", self.job)
 
     def test_defaults_assume_no_particular_repositorys_pipeline(self):
         # A repository with no FlowTree workstream and no particular job or
