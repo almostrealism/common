@@ -229,7 +229,7 @@ public class Periodic extends OperationComputationAdapter<MemoryData>
 	 */
 	@Override
 	public Scope<Void> getScope(KernelStructureContext context) {
-		Scope<Void> scope = new Scope<>(getFunctionName(), getMetadata());
+		Scope<Void> scope = createScope(Scope::new);
 		Expression counter = getArgument(0).valueAt(e(0));
 
 		scope.assign(counter, counter.add(1));
