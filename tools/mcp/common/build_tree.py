@@ -114,15 +114,19 @@ def _summarize(metadata: dict) -> str:
 def _project_root_of(metadata: dict) -> Path:
     """Return the project a run is building.
 
-    Only the test runner can target another checkout, and it records that as a
-    ``project`` in its config; everything else builds the repository the
-    servers live in.
+    A run that targets another checkout -- the test runner, or the build
+    validator -- records it as a ``project`` in its config; everything else
+    builds the repository the servers live in. The path is reconstructed the
+    same way ``maven_project.resolve_project_root`` resolves it, so a ``~`` or
+    relative ``project`` yields the identical root here; otherwise a run
+    recorded with ``~/elsewhere`` would be compared against ``<repo>/~/elsewhere``
+    and slip past :func:`in_flight`, letting a second run modify the same tree.
     """
     project = (metadata.get("config") or {}).get("project") or ""
     if not project:
         return REPO_ROOT
 
-    path = Path(project)
+    path = Path(project).expanduser()
     if not path.is_absolute():
         path = REPO_ROOT / path
 

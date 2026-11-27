@@ -61,8 +61,16 @@ only recognized as subcommands of the `/flowtree` slash command (e.g. `/flowtree
 |---------|-------------|
 | `/status` | Show workstream status |
 | `/task <prompt>`, `/do <prompt>`, `/run <prompt>` | Submit a prompt |
-| `/flowtree stats [global]` | Show weekly job statistics (this week and last week) |
+| `/flowtree stats [global]` | Show weekly job statistics (this week and last week): this channel's workstream if it has one, otherwise across all workstreams; `global` always gives the global view |
 | `/flowtree archive [keep-channel]` | Archive this channel's workstream, and archive the Slack channel itself unless `keep-channel` is passed |
+
+`/flowtree` subcommands come in two groups, and `/flowtree help` lists them that way.
+`info`, `status`, `task`, `cancel`, `config`, `jobs` and `archive` act on the invoking
+channel's workstream; in a channel without one they reply that the command needs one and
+how to set it up. `stats`, `active` (alias `workstreams`) and `default-channel` are
+general and work from any channel. Every reply is ephemeral and goes back through the
+command's response URL rather than being posted into the channel, so the general
+commands also work in a DM with the app and in channels the bot has not joined.
 
 ### SlackNotifier
 
