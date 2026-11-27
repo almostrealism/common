@@ -19,6 +19,7 @@ package org.almostrealism.collect.computations.test;
 import io.almostrealism.code.ComputeContext;
 import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.expression.test.BitwiseExpressionTests;
+import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.profile.OperationProfileNode;
 import io.almostrealism.profile.OperationSource;
 import io.almostrealism.relation.Evaluable;
@@ -428,6 +429,37 @@ public class CounterRandomTests extends TestSuiteBase {
 
 		counter.setMem(0, 0.0);
 		Assert.assertArrayEquals(streams[0], ev.evaluate().toArray(), 0.0);
+		seed.destroy();
+		counter.destroy();
+	}
+
+	/**
+	 * Advancing the counter by a device-computed amount adds that amount to the counter each
+	 * time the assignment runs: a zero amount leaves the stream in place and a one moves it on,
+	 * so a caller can advance only on the samples where it needs a new value. The amount is read
+	 * on the device, so the same compiled assignment serves whatever the amount evaluates to.
+	 */
+	@Test(timeout = 60000)
+	public void advanceByAmountAddsThatAmount() {
+		PackedCollection seed = PackedCollection.of(SEED);
+		PackedCollection counter = new PackedCollection(1);
+		CounterRandom random = new CounterRandom(shape(16), false, seed, counter);
+
+		Runnable hold = random.advance(c(0.0)).get();
+		Runnable step = random.advance(c(1.0)).get();
+
+		hold.run();
+		Assert.assertEquals(0.0, counter.toDouble(0), 0.0);
+		step.run();
+		Assert.assertEquals(1.0, counter.toDouble(0), 0.0);
+		hold.run();
+		Assert.assertEquals(1.0, counter.toDouble(0), 0.0);
+		step.run();
+		step.run();
+		Assert.assertEquals(3.0, counter.toDouble(0), 0.0);
+
+		Destroyable.destroy(hold);
+		Destroyable.destroy(step);
 		seed.destroy();
 		counter.destroy();
 	}

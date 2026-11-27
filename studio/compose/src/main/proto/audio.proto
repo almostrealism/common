@@ -63,6 +63,12 @@ message WaveDetailData {
   // by earlier releases.
   repeated TagSet tag_sets = 22;
 
+  // The layout freq_data was written in (WaveDetails.FREQUENCY_LAYOUT_VERSION);
+  // 0 when it was written before the layout was recorded, in which case
+  // multi-channel frequency data is recomputed. Additive, ignored by earlier
+  // releases.
+  int32 freq_layout_version = 23;
+
   reserved 1;
 }
 
