@@ -345,6 +345,19 @@ class SnapshotIndexPackagingTests(unittest.TestCase):
     def test_scripts_are_staged_for_the_index(self):
         self.assertIn("COPY scripts/ ./scripts/", _docs_stage_text())
 
+    def test_the_index_reads_path_change_dates_rebuild_writes(self):
+        # The build context has no .git, so rebuild.sh writes the git log the
+        # index needs for file change dates into the context it copies.
+        match = re.search(r"--path-dates\s+(\S+)", _docs_stage_text())
+        self.assertIsNotNone(match, "the docs stage does not pass --path-dates")
+        self.assertTrue(match.group(1).startswith("tools/"),
+                        f"{match.group(1)} is not inside the copied tools/ tree")
+        rebuild = os.path.join(_REPO_ROOT, "flowtree", "runtime", "rebuild.sh")
+        with open(rebuild) as handle:
+            self.assertIn(f'PATH_DATES_FILE="{match.group(1)}"', handle.read())
+        with open(os.path.join(_REPO_ROOT, ".gitignore")) as handle:
+            self.assertIn(match.group(1), handle.read())
+
     def test_compose_passes_the_corpus_commit(self):
         compose = os.path.join(_REPO_ROOT, "flowtree", "runtime", "controller",
                                "docker-compose.yml")

@@ -28,6 +28,13 @@ What the index holds:
   only paraphrases the logic the signals state literally.
 - ``constants`` — ``static final`` fields initialised with a single string or
   numeric literal, of any visibility, keyed by name, with their owner type.
+- ``path_dates`` — when each file last changed, for the files that changed in
+  the stretch of history the build was given (``since`` days back, at least
+  the notes' recency window), so a path absent from it has not changed in that
+  time. The build context has no ``.git``; ``rebuild.sh`` writes the
+  ``git log`` output beside it and the build reads it with ``--path-dates``
+  (:func:`parse_git_log_dates`). An index built without it records no dates,
+  and then nothing is judged changed.
 
 Run as a script to build the index (see ``main``).
 """
@@ -41,6 +48,11 @@ from datetime import datetime, timezone
 from typing import Optional
 
 INDEX_VERSION = 3
+
+# How many days of history rebuild.sh hands the build for path change dates:
+# twice the notes' 45-day recency window, so every note young enough to be
+# current is covered.
+PATH_DATES_WINDOW_DAYS = 90
 
 # Directory names never indexed: build output and caches.
 _SKIP_DIRS = frozenset({
@@ -173,8 +185,36 @@ def script_signals(text: str) -> str:
     return " | ".join(parts)[:_MAX_SIGNAL_CHARS]
 
 
+def parse_git_log_dates(text: str, since_days: int = PATH_DATES_WINDOW_DAYS) -> dict:
+    """When each file last changed, read from ``git log --format=@%aI
+    --name-only`` output (newest commit first), as ``rebuild.sh`` writes it.
+
+    The author date is used because a rebase or a merge does not move it, so
+    a note written after the work it describes is not mistaken for one the
+    work later invalidated.
+
+    Args:
+        text: The log output: an ``@<ISO date>`` line per commit, followed by
+            the paths it touched.
+        since_days: How many days back the log reaches; recorded so a reader
+            knows that a path with no date has not changed in that time.
+
+    Returns:
+        ``{"since_days": since_days, "dates": {path: ISO date}}``.
+    """
+    dates: dict[str, str] = {}
+    current = ""
+    for line in text.splitlines():
+        line = line.strip()
+        if line.startswith("@"):
+            current = line[1:]
+        elif line and current:
+            dates.setdefault(line, current)
+    return {"since_days": since_days, "dates": dates}
+
+
 def build(root: str, commit: str = "unknown", built_at: str = "",
-          roots: Optional[list] = None) -> dict:
+          roots: Optional[list] = None, path_dates: Optional[dict] = None) -> dict:
     """Index the tree under ``root`` (optionally only the ``roots`` beneath it).
 
     Args:
@@ -183,6 +223,8 @@ def build(root: str, commit: str = "unknown", built_at: str = "",
         built_at: ISO timestamp of the build; now when empty.
         roots: Repository-relative files or directories to index; the whole
             tree when omitted.
+        path_dates: Change dates from :func:`parse_git_log_dates` for the
+            same tree, or ``None`` to record none.
 
     Returns:
         The index as a JSON-serialisable dict.
@@ -228,7 +270,7 @@ def build(root: str, commit: str = "unknown", built_at: str = "",
                                  "exits": script_exits(text, suffix),
                                  "signals": script_signals(text)}
 
-    return {
+    index = {
         "version": INDEX_VERSION,
         "corpus": {
             "commit": commit or "unknown",
@@ -242,6 +284,14 @@ def build(root: str, commit: str = "unknown", built_at: str = "",
         "script_facts": script_facts,
         "constants": dict(sorted(constants.items())),
     }
+    if path_dates is not None:
+        indexed = set(paths)
+        index["path_dates"] = {
+            "since_days": path_dates.get("since_days", PATH_DATES_WINDOW_DAYS),
+            "dates": {p: d for p, d in sorted((path_dates.get("dates") or {}).items())
+                      if p in indexed},
+        }
+    return index
 
 
 class SnapshotIndex:
@@ -299,6 +349,45 @@ class SnapshotIndex:
         return any(p.endswith(suffix) for p in self._paths) or any(
             d.endswith(suffix if suffix.endswith("/") else suffix + "/")
             for d in self._dirs)
+
+    def changed_after(self, mentions: list[str], when: Optional[datetime]) -> list[str]:
+        """The file mentions whose file changed after ``when``.
+
+        A mention counts only when it resolves to exactly one file of the
+        snapshot (a full path, a trailing fragment of one, or a file name no
+        other file shares) and that file's recorded change date is later than
+        ``when``. Directories, patterns and ambiguous names are not judged,
+        and an index without change dates judges nothing.
+
+        Args:
+            mentions: Path-shaped names a note uses.
+            when: When the note was written (timezone-aware), or ``None``.
+
+        Returns:
+            The mentions, in order, whose file changed after ``when``.
+        """
+        dates = (self.data.get("path_dates") or {}).get("dates") or {}
+        if not dates or when is None:
+            return []
+        changed = []
+        for mention in mentions:
+            path = self._unique_file(mention)
+            stamp = dates.get(path) if path else None
+            if stamp and _parse_iso(stamp) > when and mention not in changed:
+                changed.append(mention)
+        return changed
+
+    def _unique_file(self, token: str) -> Optional[str]:
+        """The one snapshot file ``token`` names, or ``None`` when it names
+        none, several, or a directory."""
+        token = token.strip().split(":", 1)[0].removeprefix("./")
+        if not token or token.endswith("/"):
+            return None
+        if token in self._paths:
+            return token
+        suffix = "/" + token.lstrip("/")
+        matches = [p for p in self._paths if p.endswith(suffix)]
+        return matches[0] if len(matches) == 1 else None
 
     def is_tree_path(self, token: str) -> bool:
         """Whether a slash-bearing token is shaped like a path in this tree:
@@ -396,6 +485,24 @@ def _constant_fact(name: str, entry: dict) -> dict:
                      f"{entry['owner']}.{name} = {shown}"}
 
 
+def _parse_iso(value: str) -> datetime:
+    """An ISO-8601 timestamp as an aware datetime (UTC when it has no zone)."""
+    parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+
+
+def _read_path_dates(path: str) -> Optional[dict]:
+    """The change dates in the ``git log`` output at ``path``, or ``None``
+    when there is none (an image built without ``rebuild.sh``) or the file is
+    empty (a build outside a git checkout)."""
+    if not path or not os.path.isfile(path):
+        if path:
+            print(f"no path change dates at {path}; none recorded", file=sys.stderr)
+        return None
+    text = _read(path)
+    return parse_git_log_dates(text) if text.strip() else None
+
+
 def main(argv=None) -> int:
     """Build the index from a tree and write it as JSON."""
     parser = argparse.ArgumentParser(description="Build the snapshot index.")
@@ -404,11 +511,14 @@ def main(argv=None) -> int:
     parser.add_argument("--commit", default="unknown",
                         help="commit the tree was taken from")
     parser.add_argument("--built-at", default="", help="ISO build timestamp")
+    parser.add_argument("--path-dates", default="",
+                        help="git log output giving path change dates "
+                             "(see parse_git_log_dates); a missing file records none")
     parser.add_argument("roots", nargs="*",
                         help="relative files/directories to index (default: all)")
     args = parser.parse_args(argv)
     index = build(args.root, args.commit.strip() or "unknown", args.built_at,
-                  args.roots or None)
+                  args.roots or None, _read_path_dates(args.path_dates))
     os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
     with open(args.out, "w", encoding="utf-8") as handle:
         json.dump(index, handle, separators=(",", ":"))
