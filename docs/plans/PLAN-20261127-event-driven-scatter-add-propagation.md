@@ -193,8 +193,9 @@ A reviewer can confirm the task is done when:
    which the two cross over, so the regime where the event-driven path helps is
    documented rather than merely asserted.
 5. Index exactness: target positions and entry offsets above `2^24` are handled
-   exactly (the split integer-exact layout the CSR/CSC orderings already use), so
-   the primitive is correct at connectome scale.
+   exactly (the split integer-exact layout of `SplitIndexTraversalOrdering`, which
+   `CompressedRowTraversalOrdering` already uses for its row offsets and columns),
+   so the primitive is correct at connectome scale.
 
 ## Dependencies
 
@@ -221,9 +222,13 @@ A reviewer can confirm the task is done when:
    The parent task required parity "on Metal and native", so the native path
    must at least produce correct results even if its performance characteristics
    differ.
-2. **OpenCL float-atomic strategy.** Confirm the base OpenCL profile lacks a
+2. **OpenCL and Metal float-atomic availability.** Confirm the base OpenCL profile lacks a
    native float atomic add and that a `atomic_cmpxchg` CAS loop is the intended
-   fallback, or whether an extension is assumed available.
+   fallback, or whether an extension is assumed available. The same question
+   applies to Metal: `atomic_float` is not available in every Metal Shading
+   Language version, so the implementer should confirm the language version the
+   Metal backend compiles against supports it before relying on it, and say what
+   happens on a device that does not.
 3. **First version vs compaction.** Is the one-thread-per-presynaptic-neuron
    version (with inactive threads returning early) an acceptable first
    deliverable, with stream compaction filed as a separate follow-up? The plan
