@@ -354,43 +354,50 @@ public class SlackApiWorkstreamTest extends TestSuiteBase {
         }
     }
 
-    /** channelNameFromBranch: {@code feature/foo} produces {@code w-foo}. */
+    /**
+     * channelNameFromBranch: {@code feature/foo} produces {@code w-feature-foo}, because
+     * {@code foo} alone is shorter than {@link WorkstreamChannelName#MIN_SEGMENT_CHARACTERS}
+     * and the type segment is the only one left to add.
+     */
     @Test(timeout = 10000)
     public void testChannelNameFromBranchStandardCase() {
-        assertEquals("w-foo", SlackNotifier.channelNameFromBranch("feature/foo"));
+        assertEquals("w-feature-foo", WorkstreamChannelNameTest.name("feature/foo"));
     }
 
-    /** channelNameFromBranch: {@code release/v2/bar} uses last path segment, producing {@code w-bar}. */
+    /**
+     * channelNameFromBranch: {@code release/v2/bar} adds segments from the end until they hold
+     * four characters, producing {@code w-v2-bar}.
+     */
     @Test(timeout = 10000)
     public void testChannelNameFromBranchMultipleSlashes() {
-        assertEquals("w-bar", SlackNotifier.channelNameFromBranch("release/v2/bar"));
+        assertEquals("w-v2-bar", WorkstreamChannelNameTest.name("release/v2/bar"));
     }
 
     /** channelNameFromBranch: {@code singlename} (no slash) produces {@code w-singlename}. */
     @Test(timeout = 10000)
     public void testChannelNameFromBranchNoSlash() {
-        assertEquals("w-singlename", SlackNotifier.channelNameFromBranch("singlename"));
+        assertEquals("w-singlename", WorkstreamChannelNameTest.name("singlename"));
     }
 
     /** channelNameFromBranch: branch ending with {@code /} is malformed and returns null. */
     @Test(timeout = 10000)
     public void testChannelNameFromBranchMalformed() {
-        assertNull(SlackNotifier.channelNameFromBranch("feature/"));
+        assertNull(WorkstreamChannelNameTest.name("feature/"));
     }
 
     /** channelNameFromBranch sanitizes uppercase letters, spaces, and underscores to lowercase hyphens. */
     @Test(timeout = 10000)
     public void testChannelNameFromBranchSanitization() {
-        assertEquals("w-my-xyz", SlackNotifier.channelNameFromBranch("feature/My XYZ!"));
-        assertEquals("w-audio-loop", SlackNotifier.channelNameFromBranch("feature/audio_loop"));
-        assertEquals("w-foo-bar", SlackNotifier.channelNameFromBranch("feature/foo--bar"));
+        assertEquals("w-my-xyz", WorkstreamChannelNameTest.name("feature/My XYZ!"));
+        assertEquals("w-audio-loop", WorkstreamChannelNameTest.name("feature/audio_loop"));
+        assertEquals("w-foo-bar", WorkstreamChannelNameTest.name("feature/foo--bar"));
     }
 
     /** channelNameFromBranch truncates names exceeding 80 characters. */
     @Test(timeout = 10000)
     public void testChannelNameFromBranchLengthTruncation() {
         String longSuffix = "a".repeat(79);
-        String result = SlackNotifier.channelNameFromBranch("feature/" + longSuffix);
+        String result = WorkstreamChannelNameTest.name("feature/" + longSuffix);
         assertNotNull(result);
         assertTrue("Channel name must be at most 80 chars", result.length() <= 80);
         assertTrue(result.startsWith("w-"));
@@ -488,8 +495,8 @@ public class SlackApiWorkstreamTest extends TestSuiteBase {
         SlackNotifier notifier = new SlackNotifier(null);
         SlackListener listener = new SlackListener(notifier);
 
-        Workstream existing = new Workstream(null, "w-foo");
-        existing.setDefaultBranch("feature/foo");
+        Workstream existing = new Workstream(null, "w-foo-bar");
+        existing.setDefaultBranch("feature/foo-bar");
         notifier.registerWorkstream(existing);
 
         FlowTreeApiEndpoint endpoint = new FlowTreeApiEndpoint(0, notifier);
@@ -498,7 +505,7 @@ public class SlackApiWorkstreamTest extends TestSuiteBase {
 
         try {
             int port = endpoint.getListeningPort();
-            String body = "{\"defaultBranch\":\"bugfix/foo\","
+            String body = "{\"defaultBranch\":\"bugfix/foo-bar\","
                     + "\"baseBranch\":\"master\"}";
 
             HttpURLConnection conn = (HttpURLConnection) new URL(
@@ -515,11 +522,11 @@ public class SlackApiWorkstreamTest extends TestSuiteBase {
             String response = new String(conn.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
             assertTrue(response.contains("\"ok\":true"));
             assertTrue("Second registration should get -2 suffix",
-                    response.contains("\"channelName\":\"w-foo-2\""));
+                    response.contains("\"channelName\":\"w-foo-bar-2\""));
 
-            Workstream second = notifier.findWorkstreamByBranch("bugfix/foo");
+            Workstream second = notifier.findWorkstreamByBranch("bugfix/foo-bar");
             assertNotNull(second);
-            assertEquals("w-foo-2", second.getChannelName());
+            assertEquals("w-foo-bar-2", second.getChannelName());
         } finally {
             endpoint.stop();
         }

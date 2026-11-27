@@ -33,6 +33,7 @@ import io.flowtree.workstream.ListenerCycleChecker;
 import io.flowtree.workstream.Workstream;
 import io.flowtree.slack.SlackListener;
 import io.flowtree.slack.SlackNotifier;
+import io.flowtree.slack.WorkstreamChannelName;
 import io.flowtree.slack.NotifierRegistry;
 import io.flowtree.github.GitHubOrgs;
 import io.flowtree.github.GitHubProxyHandler;
@@ -532,11 +533,14 @@ final class WorkstreamRegistrationHandler {
             if (defaultBranch.endsWith("/")) {
                 return Registration.failed(errorResponse.apply("defaultBranch is malformed: ends with '/'"));
             }
-            channelName = SlackNotifier.autoChannelName(defaultBranch, notifiers.allWorkstreams().values());
-            if (channelName == null) {
+            WorkstreamChannelName derived = WorkstreamChannelName.fromBranch(defaultBranch);
+            WorkstreamChannelName unique = derived == null ? null
+                : derived.uniqueAmong(notifiers.allWorkstreams().values());
+            if (unique == null) {
                 return Registration.failed(errorResponse.apply(
                     "Could not derive a valid channel name from defaultBranch: " + defaultBranch));
             }
+            channelName = unique.toString();
         }
         String explicitWorkspaceId = JsonFieldExtractor.extractString(body, "workspaceId");
         if (explicitWorkspaceId == null || explicitWorkspaceId.isEmpty()) {

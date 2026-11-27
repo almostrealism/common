@@ -88,7 +88,11 @@ Registration applies the workstream settings the plan declares for itself, which
 
 Registration:
 - Creates a new `SlackWorkstream` with the branch name, base branch, repo URL, and plan document path
-- Auto-creates a **private** Slack channel named `w-<branch>` (with slashes replaced by hyphens)
+- Auto-creates a **private** Slack channel named after the branch (`WorkstreamChannelName.fromBranch`):
+  `w-` plus the branch's last segment, with earlier segments joined in front while the segments
+  taken hold fewer than four characters, so `feature/my-xyz` gives `w-my-xyz`,
+  `feature/my-thing-phases/0` gives `w-my-thing-phases-0` and `ci/abc` gives `w-ci-abc`. A name
+  already in use gets a `-2`, `-3`, ... suffix
 - Invites the configured `channelOwnerUserId` to the new channel
 - Persists the workstream to the YAML config file
 
