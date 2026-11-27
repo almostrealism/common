@@ -273,9 +273,11 @@ one of three jobs (see "Remediation Jobs" in `analysis.yaml` and
 `.github/CLAUDE.md`):
 
 - `auto-resolve-python` — python-tests or python-evals failed; submits at once.
-- `auto-review` — attempt 1 only; always submits one of build failure, code
-  policy, quality gates, docs-only review, or the general review, as soon as the
-  gates report. A gate that failed without recording a cause
+- `auto-review` — validate runs only, and hands off at most once across a run's
+  attempts (so an attempt the infra retry gate re-ran still hands off when it
+  passes, without a second review round); always submits one of build failure,
+  code policy, quality gates, docs-only review, or the general review, as soon
+  as the gates report. A gate that failed without recording a cause
   (`check-quality-gates.sh`'s `unattributed`) is never reported as a finding: the
   branch gets the general review, with a note that the gate is not the agent's
   to fix.
