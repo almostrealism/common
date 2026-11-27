@@ -206,6 +206,34 @@ the derived matrix, which is not in the repository, so it runs only where that d
 On Metal the step reads the 0.55 GB matrix at about 48 GB/s, far below the device's memory
 bandwidth, so it is the looped reduction kernel, not dispatch, that sets the cost.
 
+A whole-brain spiking step, from `ConnectomeThroughputBenchmarkTest` (in `studio/bioscience`): a
+`ConnectomeNetwork` of one replica of the MaleCNS connectome (164,506 neurons, 25,135,616 stored
+edges in compressed sparse rows) at the Shiu et al. constants, its 77 sugar-sensing neurons
+driven by 150 Hz Poisson input, timed over 2,000 steps after a 200-step warm-up on a Mac Studio
+(M1 Ultra, 128 GB). The sparse product is also timed on its own through a `SimulationRunner`. Like
+the cell-type step, it needs data that is not in the repository.
+
+| Step | Backend | perStepMicros | Simulated s per wall s | Sparse product alone |
+|---|---|---|---|---|
+| MaleCNS spiking step, one replica | mtl (FP32) | 8,244 | 0.0121 | 7,812 |
+| MaleCNS spiking step, one replica | native (FP64) | 20,373 | 0.0049 | 11,739 |
+| MaleCNS spiking step, one replica | cl, Apple OpenCL (FP32) | 17,016 | 0.0059 | 9,239 |
+
+On native, where kernels run synchronously, the operation profile breaks the step's 18 kernels
+down per step:
+
+- sparse product: 11.7 ms (the `SegmentedWeightedSumComputation` plus its scale);
+- delay line: 4.3 ms, of which 3.95 ms is `cacheWrite`, which sweeps all 19 rows of the ring to
+  write one;
+- neuron update and Poisson input: 3.4 ms over 12 element-wise kernels;
+- outside the kernels: about 1.0 ms.
+
+On Metal and OpenCL the profile records when each kernel was issued, not how long the device spent
+in it, so only the difference between the two timings is available there. On Metal, everything but
+the product (22 dispatches) costs 0.43 ms, so dispatch is under 5% of the step. The product streams
+its edges at about 39 GB/s. As in the cell-type step, the reduction kernel sets the cost, and it
+reads every edge on every step, although only about 90 neurons spike per step.
+
 The runner optimizes the flattened step (`Process.optimized(op.flatten())`) before compiling it,
 keeping each top-level operation a separate dispatch. That is what
 isolates a reduction such as a large `matmul` into a looped kernel. Compiled without optimization,
