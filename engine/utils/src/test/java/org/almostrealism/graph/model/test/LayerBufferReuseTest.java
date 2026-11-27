@@ -17,6 +17,8 @@
 package org.almostrealism.graph.model.test;
 
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.compute.Process;
+import io.almostrealism.relation.Provider;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.graph.Receptor;
 import org.almostrealism.hardware.mem.MemoryDataArgumentMap;
@@ -37,6 +39,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
 import java.util.function.Function;
+import java.util.function.Supplier;
 
 /**
  * Tests inference layer buffer reuse ({@link LayerOutputPool}): a model compiled without
@@ -405,13 +408,18 @@ public class LayerBufferReuseTest extends TestSuiteBase {
 
 	/**
 	 * A compile that throws after its pool has given layers their outputs releases the pool's
-	 * memory, since no compiled model is returned to own it.
+	 * memory, since no compiled model is returned to own it, and detaches the layers from it, so
+	 * that none of them returns the released memory as its output.
 	 */
 	@Test(timeout = 5 * 60000)
 	public void failedCompileReleasesPool() {
 		List<DefaultCellularLayer> layers = new ArrayList<>();
 		Model model = chain(weights(new Random(38), 3, SIZE, SIZE), layers);
+		List<LayerOutputPool> pools = new ArrayList<>();
+		List<PackedCollection> pushed = new ArrayList<>();
 		Receptor<PackedCollection> failing = in -> {
+			pools.add(LayerOutputPool.getCurrent());
+			pushed.add(Provider.valueOf(in, PackedCollection.class));
 			throw new IllegalStateException("push failed");
 		};
 		layers.get(1).andThen(failing);
@@ -423,10 +431,81 @@ public class LayerBufferReuseTest extends TestSuiteBase {
 			Assert.assertEquals("push failed", e.getMessage());
 		}
 
-		LayerOutputPool pool = layers.get(1).getOutputPool();
-		Assert.assertNotNull("the layer output must have come from the compile's pool", pool);
+		Assert.assertEquals(1, pools.size());
+		LayerOutputPool pool = pools.get(0);
+		Assert.assertNotNull("the cells must have been pushed under the compile's pool", pool);
 		Assert.assertTrue("the pool must have given layers outputs", pool.getLayerCount() >= 2);
 		Assert.assertEquals(0, pool.getPooledBytes());
+		Assert.assertNotNull("the receptor must have received the layer's output", pushed.get(0));
+
+		for (DefaultCellularLayer layer : layers) {
+			Assert.assertNull(layer.getName(), layer.getOutputPool());
+			Assert.assertFalse(layer.getName(), layer.isOutputShared());
+		}
+
+		Assert.assertNotSame("the layer must not return the released output",
+				pushed.get(0), layers.get(1).getOutput());
+	}
+
+	/**
+	 * A compile that throws after its pool has shared layer outputs, here while the optimized
+	 * forward list is compiled, detaches the layers along with releasing the memory: the layers
+	 * are no longer marked as sharing it, and the same model compiles again, shares outputs again
+	 * and computes the same values as a model compiled without reuse.
+	 */
+	@Test(timeout = 5 * 60000)
+	public void failedCompileAfterSharingAllowsRecompile() {
+		List<PackedCollection> w = weights(new Random(39), 3, SIZE, SIZE);
+		PackedCollection x = randn(shape(SIZE), 0.0, 1.0, new Random(40)).evaluate();
+		double[] expected = forward(chain(w, new ArrayList<>()), false, x);
+
+		List<DefaultCellularLayer> layers = new ArrayList<>();
+		Model model = chain(w, layers);
+		List<LayerOutputPool> pools = new ArrayList<>();
+		boolean[] failing = {true};
+		Receptor<PackedCollection> failsWhenCompiled = in -> {
+			pools.add(LayerOutputPool.getCurrent());
+			Supplier<Runnable> compile = () -> {
+				if (failing[0]) throw new IllegalStateException("compile failed");
+				return () -> { };
+			};
+			return Process.of(compile, in);
+		};
+		layers.get(1).andThen(failsWhenCompiled);
+
+		try {
+			compile(model, true);
+			Assert.fail("an operation that throws when it is compiled must fail the compile");
+		} catch (IllegalStateException e) {
+			Assert.assertEquals("compile failed", e.getMessage());
+		}
+
+		LayerOutputPool failed = pools.get(0);
+		Assert.assertNull(failed.getFallbackReason(), failed.getFallbackReason());
+		Assert.assertTrue("the compile must have shared outputs before it failed",
+				failed.getSharedLayerCount() > 0);
+		Assert.assertEquals(0, failed.getPooledBytes());
+		for (DefaultCellularLayer layer : layers) {
+			Assert.assertNull(layer.getName(), layer.getOutputPool());
+			Assert.assertFalse(layer.getName(), layer.isOutputShared());
+		}
+
+		failing[0] = false;
+		CompiledModel compiled = compile(model, true);
+		try {
+			LayerOutputPool pool = compiled.getLayerOutputPool();
+			Assert.assertNotSame(failed, pool);
+			Assert.assertTrue(pool.getSharedLayerCount() > 0);
+			Assert.assertArrayEquals(expected, compiled.forward(x).toArray(), 0.0);
+		} finally {
+			compiled.destroy();
+		}
+
+		for (DefaultCellularLayer layer : layers) {
+			Assert.assertNull("destroying the compiled model must detach " + layer.getName(),
+					layer.getOutputPool());
+			Assert.assertFalse(layer.getName(), layer.isOutputShared());
+		}
 	}
 
 	/**

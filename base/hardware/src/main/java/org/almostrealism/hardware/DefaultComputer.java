@@ -633,7 +633,9 @@ public class DefaultComputer implements Computer<MemoryData>, ConsoleFeatures {
 	 *
 	 * <p>The computation is wrapped in an {@link AcceleratedComputationOperation} and
 	 * registered with {@link Heap} for automatic cleanup. The runnable is compiled once
-	 * and can be executed repeatedly.</p>
+	 * and can be executed repeatedly. It compiles its kernel the first time it runs, so a
+	 * caller that wants the compilation to happen now {@link AcceleratedComputationOperation#load()
+	 * loads} the operation that is returned.</p>
 	 *
 	 * <p>Example:</p>
 	 * <pre>{@code
@@ -643,10 +645,10 @@ public class DefaultComputer implements Computer<MemoryData>, ConsoleFeatures {
 	 * }</pre>
 	 *
 	 * @param c The void computation to compile
-	 * @return Executable runnable
+	 * @return The operation that executes the compiled computation
 	 */
 	@Override
-	public Runnable compileRunnable(Computation<Void> c) {
+	public AcceleratedComputationOperation<Void> compileRunnable(Computation<Void> c) {
 		return Heap.addCompiled(new AcceleratedComputationOperation<>(getContext(c), c));
 	}
 

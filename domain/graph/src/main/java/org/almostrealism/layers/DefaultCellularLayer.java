@@ -457,6 +457,23 @@ public class DefaultCellularLayer implements CellularLayer, CodeFeatures, Learni
 	 */
 	void markOutputShared() { this.outputShared = true; }
 
+	/**
+	 * Detaches this layer from the given {@link LayerOutputPool}, which is releasing its memory,
+	 * when the layer's current output is one that pool created. The layer then holds no output,
+	 * as if it had never been pushed: {@link #getOutput()} creates a buffer of its own instead of
+	 * returning freed memory, and the layer may be compiled again even if its output was shared.
+	 * An output a later push replaced, under another pool or none, is left as it is.
+	 *
+	 * @param pool the pool being released
+	 */
+	void releaseOutput(LayerOutputPool pool) {
+		if (outputPool != pool) return;
+
+		output = null;
+		outputPool = null;
+		outputShared = false;
+	}
+
 	/** {@inheritDoc} */
 	@Override
 	public Supplier<Runnable> setup() { return setup; }

@@ -429,7 +429,7 @@ public interface Process<P extends Process<?, ?>, T> extends Node, Supplier<T>, 
 		List<Process<?, ?>> children = new ArrayList<>();
 		for (Supplier<?> input : inputs) {
 			if (input != null) {
-				children.add(input instanceof Process ? (Process<?, ?>) input : Process.of(input));
+				children.add(asProcess(input));
 			}
 		}
 
@@ -444,6 +444,24 @@ public interface Process<P extends Process<?, ?>, T> extends Node, Supplier<T>, 
 				return supplier.get();
 			}
 		};
+	}
+
+	/**
+	 * Presents a supplier as a {@link Process}: the supplier itself when it already is one,
+	 * and otherwise the wrapper that {@link #of(Supplier)} creates for it.
+	 *
+	 * <p>This is how a parent presents its inputs as its children. An input that is a process
+	 * must be presented as itself, so that its own children, parallelism, isolation and
+	 * optimization stay visible to the optimization cascade. {@link #of(Supplier)} cannot be
+	 * used for that, because it always creates a new wrapper, which is what {@link #isolate()}
+	 * relies on to separate a process from its parent.</p>
+	 *
+	 * @param <T>      the result type
+	 * @param supplier the supplier to present as a process
+	 * @return {@code supplier} if it is a {@link Process}, otherwise a process that delegates to it
+	 */
+	static <T> Process<?, T> asProcess(Supplier<T> supplier) {
+		return supplier instanceof Process ? (Process<?, T>) supplier : of(supplier);
 	}
 
 	/**
@@ -495,8 +513,9 @@ public interface Process<P extends Process<?, ?>, T> extends Node, Supplier<T>, 
 	 *
 	 * <p>When explicit isolation targets are configured, only processes matching
 	 * at least one predicate in {@link #explicitIsolationTargets} are permitted
-	 * to be isolated. When no explicit targets are configured, isolation is
-	 * always permitted.</p>
+	 * to be isolated. The targets are predicates over processes, so a supplier that
+	 * is not a {@link Process} matches none of them. When no explicit targets are
+	 * configured, isolation is always permitted.</p>
 	 *
 	 * @param <T>     the result type
 	 * @param <P>     the supplier type
@@ -506,8 +525,11 @@ public interface Process<P extends Process<?, ?>, T> extends Node, Supplier<T>, 
 	 * @see #isExplicitIsolation()
 	 */
 	static <T, P extends Supplier<T>> boolean isolationPermitted(P process) {
-		return !isExplicitIsolation() ||
-				explicitIsolationTargets.stream().anyMatch(p -> p.test((Process) process));
+		if (!isExplicitIsolation()) return true;
+		if (!(process instanceof Process)) return false;
+
+		Process<?, ?> candidate = (Process<?, ?>) process;
+		return explicitIsolationTargets.stream().anyMatch(target -> target.test(candidate));
 	}
 
 	/**

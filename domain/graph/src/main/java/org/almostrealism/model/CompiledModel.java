@@ -325,7 +325,7 @@ public class CompiledModel implements Destroyable, CodeFeatures {
 	 * {@link Model} if another compilation is needed.</p>
 	 *
 	 * <p>The {@link #getLayerOutputPool() layer output pool}, when there is one, is released
-	 * too.</p>
+	 * too, and the layers it gave outputs to no longer refer to them.</p>
 	 */
 	@Override
 	public void destroy() {
@@ -458,7 +458,6 @@ public class CompiledModel implements Destroyable, CodeFeatures {
 			compiled.reset();
 			return compiled;
 		} catch (RuntimeException | Error e) {
-			// TODO(review): layers keep views on the destroyed pool (and outputShared if assign ran); detach them so getOutput()/recompile do not see freed memory.
 			if (layerOutputs != null) layerOutputs.destroy();
 			throw e;
 		}

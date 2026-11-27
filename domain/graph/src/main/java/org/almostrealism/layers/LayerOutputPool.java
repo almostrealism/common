@@ -377,10 +377,16 @@ public class LayerOutputPool implements Destroyable, ConsoleFeatures {
 	}
 
 	/**
-	 * Releases the memory this pool holds. The outputs of its layers are unusable afterwards.
+	 * Releases the memory this pool holds, first detaching every layer whose output is still one
+	 * this pool created ({@link DefaultCellularLayer#releaseOutput(LayerOutputPool)}). Those
+	 * layers are left as if they had never been pushed, so none of them refers to the released
+	 * memory, and none stays marked as sharing it. This is what lets a compile that fails, after
+	 * this pool gave layers their outputs or even shared them, leave the model as it found it.
+	 * The views this pool created are unusable afterwards.
 	 */
 	@Override
 	public void destroy() {
+		for (Tenant t : tenants) t.layer.releaseOutput(this);
 		memory.forEach(Bytes::destroy);
 		memory.clear();
 	}

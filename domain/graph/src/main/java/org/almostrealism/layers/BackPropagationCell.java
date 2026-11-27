@@ -136,10 +136,7 @@ public class BackPropagationCell implements Cell<PackedCollection>, Learning, Na
 	 */
 	@Override
 	public void setReceptor(Receptor<PackedCollection> next) {
-		if (this.next != null) {
-			warn("Replacing receptor");
-		}
-
+		Cell.warnReceptorReplacement(this, this.next);
 		this.next = next;
 	}
 }
