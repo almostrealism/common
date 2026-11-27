@@ -922,17 +922,22 @@ def _resolve_branch_context(
         require_branch: If False, only repo_url is required (branch may
             be empty).  Defaults to True for backward compatibility.
 
-    A repository the caller names directly must belong to its workspace
-    scope (:func:`_require_repo_in_scope`); otherwise the error explains the
-    refusal. Unscoped callers are not restricted.
+    The *effective* repository and branch — after a ``workstream_id`` or the
+    token context has filled them, and with an explicit branch override kept —
+    must belong to the caller's workspace scope (:func:`_require_repo_in_scope`);
+    otherwise the error explains the refusal. Authorizing the resolved values
+    rather than the raw arguments is what closes the override path, where a
+    scoped caller supplies its own ``workstream_id`` and an explicit branch on a
+    shared repository that belongs to another workspace, with no ``repo_url`` for
+    an up-front check to see. Unscoped callers are not restricted.
 
     Returns:
         (repo_url, branch, error_dict_or_None)
     """
-    err = _repo_scope_error(repo_url, branch)
-    if err:
-        return ("", "", err)
     if repo_url and (branch or not require_branch):
+        err = _repo_scope_error(repo_url, branch)
+        if err:
+            return ("", "", err)
         return (repo_url, branch, None)
 
     if workstream_id:
@@ -990,6 +995,9 @@ def _resolve_branch_context(
             "next_steps": next_steps,
         })
 
+    err = _repo_scope_error(repo_url, branch)
+    if err:
+        return ("", "", err)
     return (repo_url, branch, None)
 
 

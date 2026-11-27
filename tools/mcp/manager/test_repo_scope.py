@@ -93,6 +93,35 @@ class RepoScopeTests(unittest.TestCase):
         result = server.workstream_context(repo_url=OWN_REPO, branch="feature/theirs")
         self.assertFalse(result["ok"], result)
 
+    def test_branch_override_via_own_workstream_is_authorized_on_resolved_repo(
+            self, mock_client_fn, *_):
+        """The override path: a scoped caller supplies its own ``workstream_id``
+        and an explicit branch owned by another workspace on the shared
+        repository, with no ``repo_url``. The up-front check sees an empty
+        repository and passes; the authorization must run again on the repo the
+        workstream resolves to, with the branch override kept, and refuse."""
+        client = self._client(mock_client_fn)
+        _set_workspaces("TOWN")
+        result = server.workstream_context(
+            workstream_id="w-own", branch="feature/theirs")
+        self.assertFalse(result["ok"], result)
+        self.assertIn("not scoped", result["error"])
+        client.search_by_branch.assert_not_called()
+
+    def test_store_branch_override_via_own_workstream_is_refused(
+            self, mock_client_fn, *_):
+        """The write side of the override path: a ``memory_store`` keyed to
+        another workspace's branch on the shared repository, reached by naming
+        the caller's own ``workstream_id`` with a branch override and no
+        ``repo_url``, must be refused before the memory is written."""
+        client = self._client(mock_client_fn)
+        _set_workspaces("TOWN")
+        result = server.memory_store(
+            content="note", workstream_id="w-own", branch="feature/theirs")
+        self.assertFalse(result["ok"], result)
+        self.assertIn("not scoped", result["error"])
+        client.store.assert_not_called()
+
     def test_own_workspaces_repo_and_branch_are_readable(self, mock_client_fn, *_):
         client = self._client(mock_client_fn)
         _set_workspaces("TOWN")
