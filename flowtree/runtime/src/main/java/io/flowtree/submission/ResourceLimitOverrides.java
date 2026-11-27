@@ -41,10 +41,16 @@ import java.util.Map;
  */
 public final class ResourceLimitOverrides {
 
-    /** Requested turn cap as parsed, or {@code null} when none was given. */
+    /** Whether the submission names a turn cap at all, numeric or not. */
+    private final boolean maxTurnsGiven;
+
+    /** Requested turn cap as parsed, or {@code null} when it is absent or not numeric. */
     private final Double maxTurns;
 
-    /** Requested spend cap in US dollars as parsed, or {@code null} when none was given. */
+    /** Whether the submission names a spend cap at all, numeric or not. */
+    private final boolean maxBudgetGiven;
+
+    /** Requested spend cap in US dollars as parsed, or {@code null} when it is absent or not numeric. */
     private final Double maxBudgetUsd;
 
     /** Whether the submission names a silence budget at all, numeric or not. */
@@ -66,7 +72,9 @@ public final class ResourceLimitOverrides {
      * @param body the JSON submission body
      */
     public ResourceLimitOverrides(String body) {
+        this.maxTurnsGiven = JsonFieldExtractor.hasField(body, "maxTurns");
         this.maxTurns = JsonFieldExtractor.getNumber(body, "maxTurns");
+        this.maxBudgetGiven = JsonFieldExtractor.hasField(body, "maxBudgetUsd");
         this.maxBudgetUsd = JsonFieldExtractor.getNumber(body, "maxBudgetUsd");
         this.inactivityTimeoutGiven = JsonFieldExtractor.hasField(body, "inactivityTimeoutSeconds");
         this.inactivityTimeoutSeconds = JsonFieldExtractor.getNumber(body, "inactivityTimeoutSeconds");
@@ -77,15 +85,17 @@ public final class ResourceLimitOverrides {
      * they can. A turn cap and a silence budget must be whole numbers that fit
      * an {@code int}, and a spend cap must be finite: a fractional or
      * non-finite request is refused rather than truncated or passed through.
-     * The silence budget must also be positive.
+     * The silence budget must also be positive. A field that is named but is
+     * not a number is refused as well, rather than being silently ignored and
+     * run with the workstream's own limit.
      *
      * @return the error message, or {@code null}
      */
     public String validationError() {
-        if (maxTurns != null && !isWholeInt(maxTurns)) {
+        if (maxTurnsGiven && (maxTurns == null || !isWholeInt(maxTurns))) {
             return "maxTurns must be a whole number";
         }
-        if (maxBudgetUsd != null && !Double.isFinite(maxBudgetUsd)) {
+        if (maxBudgetGiven && (maxBudgetUsd == null || !Double.isFinite(maxBudgetUsd))) {
             return "maxBudgetUsd must be a finite number";
         }
         if (inactivityTimeoutGiven) {

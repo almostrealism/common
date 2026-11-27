@@ -139,6 +139,24 @@ public class ResourceLimitSubmitTest extends FlowTreeApiSubmitTestBase {
     }
 
     /**
+     * An invalid resource limit is a 400 even when a skip path would otherwise
+     * fire: the first submission records a job start, so the second — carrying
+     * an earlier {@code startedAfter} — would be skipped as stale, yet its
+     * non-positive silence budget is still refused rather than masked as an
+     * {@code ok:true, skipped:true} response, and nothing more is queued.
+     */
+    @Test(timeout = 15000)
+    public void invalidLimitIsRefusedBeforeTheStaleSkip() throws IOException {
+        submit("");
+        assertEquals(1, server.queued.size());
+
+        HttpURLConnection conn = post(",\"startedAfter\":\"1\",\"inactivityTimeoutSeconds\":0");
+        assertEquals(400, conn.getResponseCode());
+        assertTrue(readErrorBody(conn).contains("inactivityTimeoutSeconds"));
+        assertEquals("the stale submission must not be queued", 1, server.queued.size());
+    }
+
+    /**
      * Submits to the registered workstream and parses a successful response.
      *
      * @param extraFields JSON members to append, each with a leading comma

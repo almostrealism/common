@@ -187,6 +187,23 @@ public class ResourceLimitOverridesTest extends TestSuiteBase {
                 new ResourceLimitOverrides("{\"inactivityTimeoutSeconds\":\"soon\"}").validationError());
     }
 
+    /**
+     * A turn cap or spend cap that is named but not a number is refused rather
+     * than ignored: a caller must not receive a success for a limit it asked
+     * for but the job then ran without, keeping the workstream's own value.
+     */
+    @Test(timeout = 30000)
+    public void nonNumericCapsAreRejected() {
+        assertEquals("maxTurns must be a whole number",
+                new ResourceLimitOverrides("{\"maxTurns\":\"many\"}").validationError());
+        assertEquals("maxBudgetUsd must be a finite number",
+                new ResourceLimitOverrides("{\"maxBudgetUsd\":{}}").validationError());
+        assertEquals("maxTurns must be a whole number",
+                new ResourceLimitOverrides("{\"maxTurns\":null}").validationError());
+        assertEquals("maxBudgetUsd must be a finite number",
+                new ResourceLimitOverrides("{\"maxBudgetUsd\":[1,2]}").validationError());
+    }
+
     /** Applying overrides that fail validation throws instead of configuring the job. */
     @Test(timeout = 30000)
     public void invalidOverridesAreNotApplied() {

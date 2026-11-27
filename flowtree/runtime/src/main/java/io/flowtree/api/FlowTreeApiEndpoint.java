@@ -935,6 +935,13 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
                     "application/json", json);
         }
 
+        // Validate the request's own resource limits before resolution and the
+        // skip/accept paths below, so an invalid limit is always a 400 rather
+        // than masked by a skip or availability response. See applyTo below.
+        ResourceLimitOverrides limits = new ResourceLimitOverrides(body);
+        String limitsError = limits.validationError();
+        if (limitsError != null) return errorResponse(limitsError);
+
         // Workstream resolution: explicit ID wins, then branch/repo, then path
         // ID, and finally — when the caller opted in with
         // createWorkstreamIfMissing — registering the workstream this job
@@ -1007,12 +1014,6 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
             return newFixedLengthResponse(Response.Status.OK, "application/json", "{\"ok\":true,"
                 + "\"skipped\":true,\"reason\":\"" + JsonFieldExtractor.escapeJson(remediationSkip) + "\"}");
         }
-
-        // Validate the request's own limits before the availability checks, so a
-        // non-positive silence budget is a 400 rather than being masked by the
-        // "No agents connected" response below.
-        ResourceLimitOverrides limits = new ResourceLimitOverrides(body);
-        if (limits.validationError() != null) return errorResponse(limits.validationError());
 
         if (server == null) {
             return errorResponse("No FlowTree server configured");
