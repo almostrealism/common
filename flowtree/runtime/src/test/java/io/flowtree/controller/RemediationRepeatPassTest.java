@@ -72,7 +72,7 @@ public class RemediationRepeatPassTest extends TestSuiteBase {
         for (String thread : threads) {
             findings.add(PullRequestEscalation.Finding.reviewComment("A.java", 3, thread, "fix this"));
         }
-        return new PullRequestEscalation("https://github.com/o/r/pull/1", findings, List.of());
+        return new PullRequestEscalation("https://github.com/o/r/pull/1", findings, List.of(), true);
     }
 
     /** The same pass on the same commit, with the same threads open, is skipped and not counted. */
@@ -238,6 +238,70 @@ public class RemediationRepeatPassTest extends TestSuiteBase {
         }
     }
 
+    /** At the cap a repeat still surfaces the one-time ping rather than being silently skipped. */
+    @Test(timeout = 30000)
+    public void atTheCapARepeatStillPingsAPerson() throws Exception {
+        File dir = Files.createTempDirectory("remediation-repeat").toFile();
+        RemediationStateStore store = newStore(dir);
+        try {
+            store.evaluateSubmission("ws", 2, null, activity(REVIEW, OLD_THREAD));
+            store.registerJob("job-1", "ws");
+            store.completeJob("job-1", "ws", "b", "c1", true);
+            assertSame(RemediationStateStore.Decision.DISPATCH,
+                    store.evaluateSubmission("ws", 2, "c1", activity(REVIEW, OLD_THREAD)));
+
+            assertSame("the exhausted cap outranks the repeat skip, so a person is pinged once",
+                    RemediationStateStore.Decision.BUDGET_SPENT_NOTIFY,
+                    store.evaluateSubmission("ws", 2, "c1", activity(REVIEW, OLD_THREAD)));
+            assertSame("after the one ping the repeating cap stays silent",
+                    RemediationStateStore.Decision.BUDGET_SPENT_SILENT,
+                    store.evaluateSubmission("ws", 2, "c1", activity(REVIEW, OLD_THREAD)));
+        } finally {
+            store.close();
+        }
+    }
+
+    /** A thread listing that was truncated or could not be read is unknown activity, never a repeat. */
+    @Test(timeout = 30000)
+    public void anIncompleteThreadListingNeverSkips() throws Exception {
+        File dir = Files.createTempDirectory("remediation-repeat").toFile();
+        RemediationStateStore store = newStore(dir);
+        try {
+            PullRequestEscalation incomplete = new PullRequestEscalation(
+                    "https://github.com/o/r/pull/1",
+                    List.of(PullRequestEscalation.Finding.reviewComment("A.java", 3, OLD_THREAD, "x")),
+                    List.of(), false);
+            RemediationBudgetGuard guard = new RemediationBudgetGuard(store, 10, (ws, msg) -> true,
+                    ws -> null, ws -> incomplete);
+            assertNull(guard.skipReason("ws", true, "c1", REVIEW));
+            assertNull("an incomplete listing cannot establish a repeat",
+                    guard.skipReason("ws", true, "c1", REVIEW));
+            assertNull(store.get("ws").getLastReviewed());
+        } finally {
+            store.close();
+        }
+    }
+
+    /** A thread without a stable link is unknown activity, so it never establishes a repeat. */
+    @Test(timeout = 30000)
+    public void aThreadWithoutALinkNeverSkips() throws Exception {
+        File dir = Files.createTempDirectory("remediation-repeat").toFile();
+        RemediationStateStore store = newStore(dir);
+        try {
+            PullRequestEscalation noLink = new PullRequestEscalation(
+                    "https://github.com/o/r/pull/1",
+                    List.of(PullRequestEscalation.Finding.reviewComment("A.java", 3, null, "x")),
+                    List.of(), true);
+            RemediationBudgetGuard guard = new RemediationBudgetGuard(store, 10, (ws, msg) -> true,
+                    ws -> null, ws -> noLink);
+            assertNull(guard.skipReason("ws", true, "c1", REVIEW));
+            assertNull("a thread with no link cannot establish a repeat",
+                    guard.skipReason("ws", true, "c1", REVIEW));
+        } finally {
+            store.close();
+        }
+    }
+
     /** The stored form of the activity reads back as the same activity. */
     @Test(timeout = 30000)
     public void activityRoundTrips() {
@@ -246,6 +310,13 @@ public class RemediationRepeatPassTest extends TestSuiteBase {
         assertEquals(activity(""), ReviewActivity.decode(activity(null).encode()));
         assertNull(ReviewActivity.decode(null));
         assertNull("no pull request, no activity", PullRequestEscalation.NONE.reviewActivity(REVIEW));
+        assertNull("an incomplete thread listing is unknown activity",
+                new PullRequestEscalation("https://github.com/o/r/pull/1", List.of(), List.of(), false)
+                        .reviewActivity(REVIEW));
+        assertNull("a thread with no link is unknown activity",
+                new PullRequestEscalation("https://github.com/o/r/pull/1",
+                        List.of(PullRequestEscalation.Finding.reviewComment("A.java", 3, null, "x")),
+                        List.of(), true).reviewActivity(REVIEW));
         assertFalse(activity(REVIEW).hasNothingNewSince(null));
     }
 }

@@ -968,9 +968,23 @@ public class GitHubProxyHandler implements ConsoleFeatures {
         if (pr == null) return PullRequestEscalation.NONE;
         int number = pr.number();
         String headSha = pr.json().path("head").path("sha").asText(null);
-        return new PullRequestEscalation(pr.htmlUrl(),
-                unresolvedReviewThreads(ownerRepo, number, token),
-                branchAddedTodos(ownerRepo, number, headSha, token));
+        ReviewThreadListing threads = unresolvedReviewThreads(ownerRepo, number, token);
+        return new PullRequestEscalation(pr.htmlUrl(), threads.findings(),
+                branchAddedTodos(ownerRepo, number, headSha, token), threads.complete());
+    }
+
+    /**
+     * The unresolved review threads of a pull request, and whether the listing
+     * was obtained completely and reliably. It is {@code complete} only when the
+     * GraphQL query succeeded and returned every unresolved thread; a transport
+     * failure or a result truncated at the page limit leaves it {@code false}, so
+     * the repeat check can tell "no open threads" from "could not list them".
+     *
+     * @param findings the unresolved threads that were listed
+     * @param complete whether that listing is the whole, reliably-read set
+     */
+    private record ReviewThreadListing(List<PullRequestEscalation.Finding> findings,
+                                       boolean complete) {
     }
 
     /**
@@ -981,23 +995,25 @@ public class GitHubProxyHandler implements ConsoleFeatures {
      * @param ownerRepo the {@code owner/repo} path component
      * @param number    the pull request number
      * @param token     the GitHub API bearer token
-     * @return the unresolved threads, newest-anchored first; empty on any failure
+     * @return the unresolved threads, newest-anchored first, with whether the
+     *         listing was complete; an empty, incomplete listing on any failure
      */
-    private List<PullRequestEscalation.Finding> unresolvedReviewThreads(
+    private ReviewThreadListing unresolvedReviewThreads(
             String ownerRepo, int number, String token) {
         List<PullRequestEscalation.Finding> findings = new ArrayList<>();
         int slash = ownerRepo.indexOf('/');
-        if (slash < 0) return findings;
+        if (slash < 0) return new ReviewThreadListing(findings, false);
         String owner = ownerRepo.substring(0, slash);
         String name = ownerRepo.substring(slash + 1);
         String query = "{\"query\":\"query{repository(owner:\\\"" + owner + "\\\",name:\\\"" + name
-            + "\\\"){pullRequest(number:" + number + "){reviewThreads(first:100){nodes{isResolved "
-            + "comments(first:1){nodes{path line url body}}}}}}}\"}";
+            + "\\\"){pullRequest(number:" + number + "){reviewThreads(first:100){pageInfo{hasNextPage} "
+            + "nodes{isResolved comments(first:1){nodes{path line url body}}}}}}}\"}";
         JsonNode root = apiGraphQl(query, token);
-        if (root == null) return findings;
-        JsonNode nodes = root.path("data").path("repository").path("pullRequest")
-                .path("reviewThreads").path("nodes");
-        if (!nodes.isArray()) return findings;
+        if (root == null) return new ReviewThreadListing(findings, false);
+        JsonNode reviewThreads = root.path("data").path("repository").path("pullRequest")
+                .path("reviewThreads");
+        JsonNode nodes = reviewThreads.path("nodes");
+        if (!nodes.isArray()) return new ReviewThreadListing(findings, false);
         for (JsonNode thread : nodes) {
             if (thread.path("isResolved").asBoolean(false)) continue;
             JsonNode comment = thread.path("comments").path("nodes").path(0);
@@ -1008,7 +1024,8 @@ public class GitHubProxyHandler implements ConsoleFeatures {
                     comment.path("url").asText(null),
                     comment.path("body").asText("")));
         }
-        return findings;
+        return new ReviewThreadListing(findings,
+                !reviewThreads.path("pageInfo").path("hasNextPage").asBoolean(false));
     }
 
     /**

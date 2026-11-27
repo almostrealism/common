@@ -30,34 +30,42 @@ import java.util.regex.Pattern;
  * {@link GitHubProxyHandler#escalationFor(String, String)} from GitHub and
  * rendered by {@code RemediationEscalation}.
  *
- * @param prUrl             the PR's HTML URL, or {@code null} when none was found
- * @param unresolvedThreads the PR's unresolved review threads, each a location
- *                          with a link
- * @param addedTodos        the TODO lines the branch added, each a location with
- *                          a link
+ * @param prUrl                 the PR's HTML URL, or {@code null} when none was found
+ * @param unresolvedThreads     the PR's unresolved review threads, each a
+ *                              location with a link
+ * @param addedTodos            the TODO lines the branch added, each a location
+ *                              with a link
+ * @param reviewThreadsComplete whether {@code unresolvedThreads} is the whole,
+ *                              reliably-read set, or was truncated or could not
+ *                              be listed
  */
 public record PullRequestEscalation(String prUrl, List<Finding> unresolvedThreads,
-                                    List<Finding> addedTodos) {
+                                    List<Finding> addedTodos, boolean reviewThreadsComplete) {
 
     /** An empty escalation: no PR was found, so nothing is listed. */
     public static final PullRequestEscalation NONE =
-            new PullRequestEscalation(null, List.of(), List.of());
+            new PullRequestEscalation(null, List.of(), List.of(), false);
 
     /**
      * Returns the review activity a remediation pass labelled {@code label} runs
      * against on this pull request: its unresolved review threads, each
-     * identified by its first comment's link. Returns {@code null} when no pull
-     * request was found, so "nothing could be looked up" is never mistaken for
-     * "no open threads".
+     * identified by its first comment's link. The repeat check this feeds skips a
+     * pass only when the activity is known to be unchanged, so the activity is
+     * reported unknown ({@code null}) whenever it cannot be trusted to be
+     * complete: no pull request was found, the thread listing was truncated or
+     * could not be read ({@link #reviewThreadsComplete}), or a thread has no
+     * stable link to identify it by. That way "nothing could be looked up" is
+     * never mistaken for "no open threads".
      *
      * @param label the submitter's label for the pass, or {@code null}
      * @return the activity, or {@code null} when it is unknown
      */
     public ReviewActivity reviewActivity(String label) {
-        if (prUrl == null) return null;
+        if (prUrl == null || !reviewThreadsComplete) return null;
         Set<String> threads = new TreeSet<>();
         for (Finding thread : unresolvedThreads) {
-            threads.add(thread.url() != null ? thread.url() : thread.path() + ":" + thread.line());
+            if (thread.url() == null || thread.url().isBlank()) return null;
+            threads.add(thread.url());
         }
         return new ReviewActivity(label, threads);
     }

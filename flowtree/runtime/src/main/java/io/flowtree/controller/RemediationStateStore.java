@@ -332,11 +332,15 @@ public class RemediationStateStore extends ControllerDatabase {
      * dispatched, as {@link #evaluateSubmission(String, int, String)} does, and
      * also skips one that would repeat the last dispatched pass.
      *
-     * <p>Before any of that, a submission that would repeat the last dispatched
-     * pass — the same triggering commit, the same kind of pass, and no review
-     * thread opened since ({@link RemediationState#isRepeatOf}) — is skipped as
+     * <p>A submission that would repeat the last dispatched pass — the same
+     * triggering commit, the same kind of pass, and no review thread opened since
+     * ({@link RemediationState#isRepeatOf}) — is skipped as
      * {@link Decision#ALREADY_REVIEWED}, without counting or writing anything.
-     * Without known review activity a submission is never skipped this way.</p>
+     * Without known review activity a submission is never skipped this way. The
+     * cap takes precedence over the repeat skip: once the budget is exhausted a
+     * repeat still surfaces the one-time cap-reached ping rather than being
+     * silently skipped, so a loop stuck repeating the same no-op pass still pages
+     * a person.</p>
      *
      * @param workstreamId  the workstream (branch / PR) key
      * @param budget        the per-PR cap; non-positive disables it
@@ -359,15 +363,15 @@ public class RemediationStateStore extends ControllerDatabase {
             return Decision.UNAVAILABLE;
         }
         if (state == null) state = RemediationState.empty(workstreamId);
-        if (state.isRepeatOf(triggerCommit, activity)) {
-            return Decision.ALREADY_REVIEWED;
-        }
         if (!state.wasProducedByRemediationPass(triggerCommit)) {
             state = state.afterForeignCommitReset();
         }
         if (state.budgetExhausted(budget)) {
             return claimNotification(state) ? Decision.BUDGET_SPENT_NOTIFY
                     : Decision.BUDGET_SPENT_SILENT;
+        }
+        if (state.isRepeatOf(triggerCommit, activity)) {
+            return Decision.ALREADY_REVIEWED;
         }
         if (!write(state.afterDispatch(triggerCommit, activity), null, null)) {
             // The counted pass could not be persisted. Fail closed rather than
