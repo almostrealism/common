@@ -129,10 +129,15 @@ final class WorkstreamRegistrationHandler {
      * Handles {@code POST /api/workstreams} to register a new workstream.
      *
      * <p>All fields are optional except {@code defaultBranch}. When
-     * {@code channelName} is absent the controller derives one from the
-     * last path component of {@code defaultBranch} (e.g. {@code "feature/foo"}
-     * → {@code "w-foo"}) and appends a numeric suffix if the name collides
-     * with an existing workstream. Supply {@code channelName} to override.</p>
+     * {@code channelName} is absent the controller derives one from
+     * {@code defaultBranch} with {@link WorkstreamChannelName#fromBranch}:
+     * {@code "w-"} plus the branch's last segment, with earlier segments
+     * joined in front while the segments taken hold fewer than
+     * {@link WorkstreamChannelName#MIN_SEGMENT_CHARACTERS} characters (e.g.
+     * {@code "feature/my-xyz"} → {@code "w-my-xyz"}, {@code "feature/foo"} →
+     * {@code "w-feature-foo"}), and appends a numeric suffix if the name
+     * collides with an existing workstream. Supply {@code channelName} to
+     * override.</p>
      *
      * <p>Runner / model / effort defaults are configured through
      * {@code defaultPhaseConfig} / {@code phaseConfigs}; the legacy

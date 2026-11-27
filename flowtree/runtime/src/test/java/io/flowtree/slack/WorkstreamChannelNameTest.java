@@ -20,11 +20,13 @@ import io.flowtree.workstream.Workstream;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
@@ -141,5 +143,44 @@ public class WorkstreamChannelNameTest extends TestSuiteBase {
         WorkstreamChannelName unique =
                 WorkstreamChannelName.fromBranch("feature/my-xyz").uniqueAmong(existing);
         assertEquals("w-my-xyz-3", unique.toString());
+    }
+
+    /** A collision suffix that would pass the length limit replaces the end of the name. */
+    @Test(timeout = 10000)
+    public void collisionSuffixThatWouldExceedTheLimitReplacesTheEnd() {
+        String segment = "a".repeat(WorkstreamChannelName.MAX_LENGTH);
+        WorkstreamChannelName derived = WorkstreamChannelName.fromBranch("feature/" + segment);
+        assertEquals(WorkstreamChannelName.MAX_LENGTH, derived.toString().length());
+
+        List<Workstream> existing = Collections.singletonList(
+                new Workstream("C1", derived.toString()));
+        WorkstreamChannelName unique = derived.uniqueAmong(existing);
+        assertEquals(WorkstreamChannelName.MAX_LENGTH, unique.toString().length());
+        assertTrue(unique.toString().endsWith("-2"));
+    }
+
+    /** When every numeric suffix is already taken, no unique name can be made. */
+    @Test(timeout = 10000)
+    public void exhaustedSuffixesYieldNoName() {
+        WorkstreamChannelName derived = WorkstreamChannelName.fromBranch("feature/my-xyz");
+        List<Workstream> existing = new ArrayList<>();
+        existing.add(new Workstream("C1", "w-my-xyz"));
+        for (int i = 2; i <= 99; i++) {
+            existing.add(new Workstream("C" + i, "w-my-xyz-" + i));
+        }
+        assertNull(derived.uniqueAmong(existing));
+    }
+
+    /** Names are equal, and hash alike, exactly when their text matches. */
+    @Test(timeout = 10000)
+    public void equalsAndHashCodeFollowTheText() {
+        WorkstreamChannelName a = WorkstreamChannelName.fromBranch("feature/my-xyz");
+        WorkstreamChannelName b = WorkstreamChannelName.fromBranch("feature/my-xyz");
+        WorkstreamChannelName c = WorkstreamChannelName.fromBranch("feature/other");
+        assertEquals(a, b);
+        assertEquals(a.hashCode(), b.hashCode());
+        assertNotEquals(a, c);
+        assertNotEquals(a, "w-my-xyz");
+        assertNotEquals(a, null);
     }
 }
