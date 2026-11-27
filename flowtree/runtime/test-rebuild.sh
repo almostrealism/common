@@ -48,6 +48,8 @@ fi
 case "$*" in
   *" ps -q"*) [ -z "${MOCK_DOCKER_PS_IDS:-}" ] || echo "${MOCK_DOCKER_PS_IDS}" ;;
   inspect*)   [ -z "${MOCK_DOCKER_INSPECT:-}" ] || echo "${MOCK_DOCKER_INSPECT}" ;;
+  # The preflight counts the documentation corpus in the new ar-manager image.
+  *" exec -T ar-manager "*) echo "${MOCK_DOCS_COUNT:-120}" ;;
 esac
 exit 0
 EOF
@@ -440,6 +442,50 @@ run_case "a failed agent build leaves the controller stack running" 1 \
     "${AGENT_ENV_ARGS[@]}" TRANSCRIPT_DIR_HOST="$(mktemp -d)" \
     MOCK_DOCKER_FAIL_ON="agent/docker-compose.yml build"
 check_docker_log "no container is replaced when an agent image fails to build" absent "${SWAP_UP}"
+
+run_case "a preflight whose ar-manager image has no documentation corpus fails" 1 \
+    "no usable documentation corpus" "Replacing the controller stack" \
+    -- \
+    FLEET_BIND_ADDR=100.64.1.2 MOCK_DOCS_COUNT=3
+check_docker_log "nothing running is replaced when the corpus is missing" absent "${SWAP_UP}"
+
+# ── Rehearsal ───────────────────────────────────────────────────────
+
+REHEARSAL_PREFLIGHT_UP="-p flowtree-rehearsal-preflight"
+
+echo ""
+echo "rebuild.sh rehearsal tests"
+
+run_case "a rehearsal builds and preflights everything and replaces nothing" 0 \
+    "Rehearsal passed" "Replacing the" \
+    --rehearse --agents -- \
+    FLEET_BIND_ADDR=127.0.0.1 FLOWTREE_HOST_DIR="$(mktemp -d)"
+check_docker_log "a rehearsal builds the controller and agent images, then preflights them" \
+    in_order "compose -f flowtree/runtime/controller/docker-compose.yml build --no-cache --pull" \
+        "compose -f flowtree/runtime/agent/docker-compose.yml build --no-cache --pull" \
+        "${REHEARSAL_PREFLIGHT_UP}"
+check_docker_log "a rehearsal starts the rehearsal project's own images" \
+    in_order "${REHEARSAL_PREFLIGHT_UP}"
+check_docker_log "a rehearsal never swaps a stack" absent "--force-recreate"
+check_docker_log "a rehearsal never prunes" absent "prune"
+
+run_case "a rehearsal needs no agent credentials" 0 \
+    "Rehearsal passed" "is required to rebuild the agent pool" \
+    --rehearse --agents -- \
+    FLEET_BIND_ADDR=127.0.0.1 FLOWTREE_HOST_DIR="$(mktemp -d)" \
+    FLOWTREE_AGENT_ENV=/nonexistent/agent.env
+
+run_case "a rehearsal fails when the new images fail the preflight" 1 \
+    "did not pass the preflight" "Rehearsal passed" \
+    --rehearse -- \
+    FLEET_BIND_ADDR=127.0.0.1 FLOWTREE_HOST_DIR="$(mktemp -d)" \
+    MOCK_DOCKER_FAIL_ON="--no-build --wait"
+
+run_case "a rehearsal fails when an image fails to build" 1 \
+    "" "Rehearsal passed" \
+    --rehearse -- \
+    FLEET_BIND_ADDR=127.0.0.1 FLOWTREE_HOST_DIR="$(mktemp -d)" \
+    MOCK_DOCKER_FAIL_ON="controller/docker-compose.yml build"
 
 # ── Operator settings carried from a file outside the checkout ───────
 #
