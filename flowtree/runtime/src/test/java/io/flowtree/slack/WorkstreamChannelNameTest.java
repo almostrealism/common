@@ -159,6 +159,23 @@ public class WorkstreamChannelNameTest extends TestSuiteBase {
         assertTrue(unique.toString().endsWith("-2"));
     }
 
+    /**
+     * A collision suffix whose cut lands just after a joining hyphen does not produce a
+     * doubled hyphen: {@code w-} plus 75 characters and a hyphen fill 78, so cutting at 78
+     * for {@code -2} would otherwise leave {@code ...--2}.
+     */
+    @Test(timeout = 10000)
+    public void collisionSuffixDoesNotDoubleAHyphen() {
+        String segment = "c".repeat(75);
+        WorkstreamChannelName derived = WorkstreamChannelName.fromBranch(segment + "/dd");
+        assertEquals("w-" + segment + "-dd", derived.toString());
+
+        List<Workstream> existing = Collections.singletonList(
+                new Workstream("C1", derived.toString()));
+        WorkstreamChannelName unique = derived.uniqueAmong(existing);
+        assertEquals("w-" + segment + "-2", unique.toString());
+    }
+
     /** When every numeric suffix is already taken, no unique name can be made. */
     @Test(timeout = 10000)
     public void exhaustedSuffixesYieldNoName() {

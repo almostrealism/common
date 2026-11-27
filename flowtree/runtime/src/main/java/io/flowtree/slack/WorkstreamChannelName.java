@@ -123,7 +123,8 @@ public final class WorkstreamChannelName {
      * Returns this name, or the first variant of it no registered workstream
      * already uses, made by appending {@code -2}, {@code -3}, ... up to
      * {@code -99}. A suffix that would pass {@link #MAX_LENGTH} replaces the
-     * end of the name instead.
+     * end of the name instead, and a hyphen the cut leaves at the end is
+     * dropped so the suffix never doubles it.
      *
      * @param existing the workstreams currently registered; their channel
      *                 names are compared with any leading {@code #} removed
@@ -145,7 +146,7 @@ public final class WorkstreamChannelName {
             String suffix = "-" + i;
             String candidate = name.length() + suffix.length() <= MAX_LENGTH
                     ? name + suffix
-                    : name.substring(0, MAX_LENGTH - suffix.length()) + suffix;
+                    : name.substring(0, MAX_LENGTH - suffix.length()).replaceAll("-+$", "") + suffix;
             if (!taken.contains(candidate)) {
                 return new WorkstreamChannelName(candidate);
             }
