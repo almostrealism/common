@@ -753,7 +753,10 @@ leaves a non-empty answer body, keeps every `BASIS:`/`CONFLICTS:` trailer
 line the draft had (dropping just one is rejected), and leaves the draft's
 reported conflicts unchanged (the retry repairs citations, so it may not drop,
 add or rewrite a `CONFLICTS:` entry that would otherwise alter the published
-conflict metadata);
+conflict metadata), and does not raise the count of uncited claims (a
+grounded-but-uncited sentence is not a warning, so fixing a flagged citation by
+dropping a marker instead of correcting it must not be rewarded with a lower
+warning count);
 `citation_retry` in the response records the warning counts before and after
 and which answer was `kept`. Sentences that still fail are marked
 `[unsupported]` in the answer and listed in `citation_warnings`. A question naming a file the snapshot does not contain is

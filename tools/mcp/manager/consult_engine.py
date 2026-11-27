@@ -566,10 +566,16 @@ class ConsultTurn:
         The revision is kept only when it has fewer warnings than the draft,
         does not abstain where the draft answered, leaves a non-empty answer
         body, keeps every ``BASIS:`` / ``CONFLICTS:`` trailer line the draft
-        had, and leaves the draft's reported conflicts unchanged, so a retry
-        can repair citations but cannot turn an answer into a refusal, a
-        malformed response, or a response whose published conflict metadata
-        differs from the draft's. A revision with nothing left once
+        had, leaves the draft's reported conflicts unchanged, and does not
+        raise the count of uncited claims, so a retry can repair citations but
+        cannot turn an answer into a refusal, a malformed response, a response
+        whose published conflict metadata differs from the draft's, or a
+        response that trades a flagged cited sentence for a grounded but
+        uncited one. The uncited-claim guard is needed because
+        ``VerificationReport.warnings`` excludes grounded-but-uncited sentences
+        (:data:`REASON_UNCITED`) while :attr:`VerificationReport.uncited_claims`
+        counts them: without it a revision could lower the warning count by
+        dropping a citation and still be published. A revision with nothing left once
         :meth:`_post_process` moves its history-only sentences aside counts as
         a refusal too, since that method abstains on an empty answer, so the
         emptiness is measured after the same history removal rather than on the
@@ -619,8 +625,13 @@ class ConsultTurn:
         conflicts_changed = revision["conflict_lines"] != draft["conflict_lines"]
         if conflicts_changed:
             record["revision_conflicts_changed"] = True
+        uncited_increased = revision["report"].uncited_claims \
+            > draft["report"].uncited_claims
+        if uncited_increased:
+            record["revision_uncited_increased"] = True
         if revision["abstained"] or lost_trailer or empty_body \
-                or conflicts_changed or record["warnings_after"] >= len(warnings):
+                or conflicts_changed or uncited_increased \
+                or record["warnings_after"] >= len(warnings):
             return draft
         record["kept"] = "revision"
         return revision

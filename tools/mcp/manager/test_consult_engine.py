@@ -641,6 +641,26 @@ class TestCitationRetry(_Pipeline):
         self.assertEqual(result["citation_retry"]["kept"], "revision")
         self.assertNotIn("revision_conflicts_changed", result["citation_retry"])
 
+    def test_a_revision_that_adds_an_uncited_claim_is_not_kept(self):
+        # The revision "fixes" the flagged sentence by dropping its marker
+        # instead of citing I1, leaving a grounded-but-uncited claim. That
+        # lowers the warning count (uncited-grounded sentences are not warnings)
+        # while raising uncited_claims, so the retry would publish an uncited
+        # claim. The guard keeps the draft instead.
+        revision = ("It rejects edits to base-branch tests [D1]. It exits 3.\n"
+                    "BASIS: documentation\nCONFLICTS: none")
+        result, _ = self.run_with(self.BAD, Synthesis(revision, "fake"))
+        self.assertEqual(result["citation_retry"]["kept"], "draft")
+        self.assertEqual(result["citation_retry"]["warnings_after"], 0)
+        self.assertTrue(result["citation_retry"]["revision_uncited_increased"])
+        self.assertEqual(result["uncited_claims"], 0)
+        self.assertEqual(len(result["citation_warnings"]), 1)
+
+    def test_a_kept_revision_records_no_uncited_increase(self):
+        result, _ = self.run_with(self.BAD, Synthesis(self.GOOD, "fake"))
+        self.assertEqual(result["citation_retry"]["kept"], "revision")
+        self.assertNotIn("revision_uncited_increased", result["citation_retry"])
+
     def verify_calls(self, draft, revision=None):
         """Run a consult and return how many times the verifier ran."""
         with patch.object(consult_engine, "verify",
