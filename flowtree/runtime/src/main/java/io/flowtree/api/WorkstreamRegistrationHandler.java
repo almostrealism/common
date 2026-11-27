@@ -524,6 +524,18 @@ final class WorkstreamRegistrationHandler {
      * exact match always wins, so a workstream that genuinely tracks
      * {@code (branch, repo)} is never returned as a dependent-repo match.</p>
      *
+     * <p>A registration that names a {@code repoUrl} but no
+     * {@code settledCiTrigger} is given the {@link CiTrigger#defaultSettled()
+     * default} ({@code deployment:test}). A branch workstream whose merge gate
+     * is a long-running test run must carry a trigger, or its pull request
+     * settles the review loop and then stalls in {@code ci: auto-review} with
+     * no test run ever started. The controller is the single chokepoint every
+     * registration passes through, so defaulting here closes the gap for any
+     * client that omits the field. The default is gated on a {@code repoUrl}
+     * because a workstream with no repository runs no CI; an operator who
+     * truly wants none clears it with an empty {@code settledCiTrigger} on the
+     * update endpoint, which this create path does not reach.</p>
+     *
      * @param body          the raw request body JSON
      * @param defaultBranch the branch the workstream tracks; must be non-empty
      * @return the resulting {@link Registration}
@@ -674,6 +686,11 @@ final class WorkstreamRegistrationHandler {
             workstream.setPlanInstructions(planInstructions);
         }
 
+        // Default a missing trigger so no branch workstream is left unable to
+        // start its merge-gating test run; see this method's javadoc.
+        if (settledCiTrigger == null && repoUrl != null && !repoUrl.isEmpty()) {
+            settledCiTrigger = CiTrigger.defaultSettled();
+        }
         workstream.setSettledCiTrigger(settledCiTrigger);
 
         if (!requiredLabels.isEmpty()) {

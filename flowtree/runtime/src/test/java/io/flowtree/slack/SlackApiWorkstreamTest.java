@@ -997,6 +997,89 @@ public class SlackApiWorkstreamTest extends TestSuiteBase {
     }
 
     /**
+     * A registration that names a repository but omits {@code settledCiTrigger}
+     * is given the default {@code deployment:test}. A missing trigger is how a
+     * pull request settles its review loop and then stalls in
+     * {@code ci: auto-review} with no test run ever started; the controller is
+     * the single chokepoint every registration passes through, so defaulting
+     * here makes a silently-missing trigger impossible regardless of the client.
+     */
+    @Test(timeout = 10000)
+    public void testApiRegisterDefaultsSettledCiTriggerWhenRepoGiven() throws Exception {
+        SlackNotifier notifier = new SlackNotifier(null);
+        SlackListener listener = new SlackListener(notifier);
+
+        FlowTreeApiEndpoint endpoint = new FlowTreeApiEndpoint(0, notifier);
+        endpoint.setListener(listener);
+        endpoint.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false);
+
+        try {
+            int port = endpoint.getListeningPort();
+            String body = "{\"defaultBranch\":\"feature/no-trigger\","
+                + "\"baseBranch\":\"master\","
+                + "\"repoUrl\":\"git@github.com:almostrealism/common.git\","
+                + "\"channelName\":\"w-no-trigger\"}";
+
+            HttpURLConnection conn = (HttpURLConnection) new URL(
+                    "http://localhost:" + port + "/api/workstreams").openConnection();
+            conn.setRequestMethod("POST");
+            conn.setDoOutput(true);
+            conn.setRequestProperty("Content-Type", "application/json");
+            try (OutputStream os = conn.getOutputStream()) {
+                os.write(body.getBytes(StandardCharsets.UTF_8));
+            }
+            assertEquals(200, conn.getResponseCode());
+
+            Workstream registered = notifier.findWorkstreamByBranch("feature/no-trigger");
+            assertNotNull("Workstream should be findable by branch", registered);
+            assertNotNull("A registration with a repoUrl but no trigger gets the default",
+                    registered.getSettledCiTrigger());
+            assertEquals("deployment:test", registered.getSettledCiTrigger().spec());
+        } finally {
+            endpoint.stop();
+        }
+    }
+
+    /**
+     * A registration with no repository gets no default trigger: a workstream
+     * with nothing to check out runs no CI, so a trigger would name a run that
+     * can never start. The default applies only when a {@code repoUrl} is given.
+     */
+    @Test(timeout = 10000)
+    public void testApiRegisterWithoutRepoHasNoDefaultTrigger() throws Exception {
+        SlackNotifier notifier = new SlackNotifier(null);
+        SlackListener listener = new SlackListener(notifier);
+
+        FlowTreeApiEndpoint endpoint = new FlowTreeApiEndpoint(0, notifier);
+        endpoint.setListener(listener);
+        endpoint.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false);
+
+        try {
+            int port = endpoint.getListeningPort();
+            String body = "{\"defaultBranch\":\"feature/no-repo\","
+                + "\"baseBranch\":\"master\","
+                + "\"channelName\":\"w-no-repo\"}";
+
+            HttpURLConnection conn = (HttpURLConnection) new URL(
+                    "http://localhost:" + port + "/api/workstreams").openConnection();
+            conn.setRequestMethod("POST");
+            conn.setDoOutput(true);
+            conn.setRequestProperty("Content-Type", "application/json");
+            try (OutputStream os = conn.getOutputStream()) {
+                os.write(body.getBytes(StandardCharsets.UTF_8));
+            }
+            assertEquals(200, conn.getResponseCode());
+
+            Workstream registered = notifier.findWorkstreamByBranch("feature/no-repo");
+            assertNotNull("Workstream should be findable by branch", registered);
+            assertNull("a repo-less registration gets no default trigger",
+                    registered.getSettledCiTrigger());
+        } finally {
+            endpoint.stop();
+        }
+    }
+
+    /**
      * A workstream created by a submission takes the branch, base branch, and
      * repository from it — and nothing else. {@code requiredLabels} on a
      * submission constrains that one job; it must not become a permanent
