@@ -206,6 +206,17 @@ public class PolyphonicSynthesizer extends SummationCell implements Setup, Destr
 	}
 
 	/**
+	 * Returns the voice at {@code index} in the voice pool, the one the {@link #getAllocator()
+	 * allocator} assigns that index to.
+	 *
+	 * @param index the voice index, from zero to {@link #getMaxVoices()} exclusive
+	 * @return the voice
+	 */
+	public AudioSynthesizer getVoice(int index) {
+		return voices.get(index);
+	}
+
+	/**
 	 * Returns the number of maximum voices.
 	 */
 	public int getMaxVoices() {
@@ -411,6 +422,30 @@ public class PolyphonicSynthesizer extends SummationCell implements Setup, Destr
 	}
 
 	/**
+	 * Returns the vibrato depth a tick that captured {@code captured} applies: the current depth
+	 * while {@code captured} is still the active vibrato LFO, and zero once it has been cleared or
+	 * replaced, so a tick compiled before the change does not modulate from a retired LFO.
+	 *
+	 * @param captured the vibrato LFO a compiled tick was built with
+	 * @return the depth in semitones to apply
+	 */
+	private double vibratoDepthFor(LFO captured) {
+		return vibratoLFO == captured ? vibratoDepth : 0;
+	}
+
+	/**
+	 * Returns the tremolo depth a tick that captured {@code captured} applies: the current depth
+	 * while {@code captured} is still the active tremolo LFO, and zero once it has been cleared or
+	 * replaced, so a tick compiled before the change does not modulate from a retired LFO.
+	 *
+	 * @param captured the tremolo LFO a compiled tick was built with
+	 * @return the depth, as a fraction of amplitude, to apply
+	 */
+	private double tremoloDepthFor(LFO captured) {
+		return tremoloLFO == captured ? tremoloDepth : 0;
+	}
+
+	/**
 	 * Returns the vibrato LFO, or null if not enabled.
 	 */
 	public LFO getVibratoLFO() {
@@ -565,10 +600,12 @@ public class PolyphonicSynthesizer extends SummationCell implements Setup, Destr
 	 *
 	 * <p>
 	 * The vibrato and tremolo LFOs active when this method is called are captured by the returned
-	 * operation, while the modulation depths are read each time it runs. A tick compiled before
+	 * operation, while the modulation depths are read each time it runs, and only while the LFO
+	 * the operation captured is still the active one. A tick compiled before
 	 * {@link #clearVibrato()} or {@link #clearTremolo()} therefore keeps using the retired LFO
 	 * (which stays alive until {@link #destroy()}) with a depth of zero, so it applies no
-	 * modulation rather than dereferencing the cleared field.
+	 * modulation rather than dereferencing the cleared field &mdash; even after modulation is
+	 * enabled again with a new LFO, which that older tick does not advance.
 	 *
 	 * @return operation that processes one sample frame
 	 */
@@ -597,7 +634,7 @@ public class PolyphonicSynthesizer extends SummationCell implements Setup, Destr
 					VoiceState state = allocator.getVoice(voiceIndex);
 					if (state.isActive()) {
 						double lfoValue = vibrato.getValue();
-						double semitoneOffset = lfoValue * vibratoDepth;
+						double semitoneOffset = lfoValue * vibratoDepthFor(vibrato);
 						double pitchMultiplier = Math.pow(2.0, semitoneOffset / 12.0);
 						Frequency baseFreq = tuning.getTone(state.getMidiNote(),
 							KeyNumbering.MIDI);
@@ -611,7 +648,7 @@ public class PolyphonicSynthesizer extends SummationCell implements Setup, Destr
 					VoiceState state = allocator.getVoice(voiceIndex);
 					if (state.isActive()) {
 						double lfoValue = tremolo.getValue();
-						double modulation = 1.0 - (tremoloDepth * (1.0 - (lfoValue + 1.0) / 2.0));
+						double modulation = 1.0 - (tremoloDepthFor(tremolo) * (1.0 - (lfoValue + 1.0) / 2.0));
 						voice.setVelocity(state.getVelocity() * modulation);
 					}
 				});

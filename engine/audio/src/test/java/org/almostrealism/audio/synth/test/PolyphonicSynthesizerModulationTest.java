@@ -54,18 +54,22 @@ public class PolyphonicSynthesizerModulationTest extends TestSuiteBase {
 	public void clearingVibratoReleasesTheLFO() {
 		PolyphonicSynthesizer synth = new PolyphonicSynthesizer(4);
 
-		synth.setVibrato(5.0, 2.0);
-		LFO vibrato = synth.getVibratoLFO();
-		assertTrue(vibrato != null);
-		vibrato.tick().get().run();
+		try {
+			synth.setVibrato(5.0, 2.0);
+			LFO vibrato = synth.getVibratoLFO();
+			assertTrue(vibrato != null);
+			vibrato.tick().get().run();
 
-		synth.clearVibrato();
-		assertTrue(synth.getVibratoLFO() == null);
+			synth.clearVibrato();
+			assertTrue(synth.getVibratoLFO() == null);
 
-		synth.setVibrato(6.0, 1.0);
-		assertTrue(synth.getVibratoLFO() != null);
-		assertTrue(synth.getVibratoLFO() != vibrato);
-		synth.clearVibrato();
+			synth.setVibrato(6.0, 1.0);
+			assertTrue(synth.getVibratoLFO() != null);
+			assertTrue(synth.getVibratoLFO() != vibrato);
+			synth.clearVibrato();
+		} finally {
+			synth.destroy();
+		}
 	}
 
 	/**
@@ -111,24 +115,63 @@ public class PolyphonicSynthesizerModulationTest extends TestSuiteBase {
 		synth.setVibrato(5.0, 2.0);
 		synth.setTremolo(5.0, 0.5);
 
-		Runnable setup = synth.setup().get();
-		Runnable tick = synth.tick().get();
-		setup.run();
+		try {
+			Runnable setup = synth.setup().get();
+			Runnable tick = synth.tick().get();
+			setup.run();
 
-		assertTrue(synth.noteOn(60, 0.8));
-		tick.run();
-
-		synth.clearVibrato();
-		synth.clearTremolo();
-		assertTrue(synth.getVibratoLFO() == null);
-		assertTrue(synth.getTremoloLFO() == null);
-
-		for (int i = 0; i < 4; i++) {
+			assertTrue(synth.noteOn(60, 0.8));
 			tick.run();
-		}
 
-		assertEquals(1, synth.getActiveVoiceCount());
-		synth.destroy();
+			synth.clearVibrato();
+			synth.clearTremolo();
+			assertTrue(synth.getVibratoLFO() == null);
+			assertTrue(synth.getTremoloLFO() == null);
+
+			for (int i = 0; i < 4; i++) {
+				tick.run();
+			}
+
+			assertEquals(1, synth.getActiveVoiceCount());
+		} finally {
+			synth.destroy();
+		}
+	}
+
+	/**
+	 * A synthesizer tick compiled while one tremolo LFO was active stops modulating once that LFO
+	 * is replaced: after clearing tremolo and enabling it again with a new LFO and a larger depth,
+	 * the older tick &mdash; which advances only the retired LFO &mdash; leaves the voice at its
+	 * note velocity instead of applying the new depth to the retired LFO's value. Before the
+	 * replacement the same tick does modulate, so the check is not vacuous.
+	 */
+	@Test(timeout = 120000)
+	public void compiledTickIgnoresReplacedModulation() {
+		PolyphonicSynthesizer synth = new PolyphonicSynthesizer(1);
+		synth.setTremolo(5.0, 0.5);
+
+		try {
+			Runnable setup = synth.setup().get();
+			Runnable tick = synth.tick().get();
+			setup.run();
+
+			assertTrue(synth.noteOn(60, 0.8));
+			tick.run();
+			assertTrue("tremolo modulates before it is replaced",
+					Math.abs(synth.getVoice(0).getVelocity() - 0.8) > 1e-3);
+
+			LFO retired = synth.getTremoloLFO();
+			synth.clearTremolo();
+			synth.setTremolo(5.0, 1.0);
+			assertTrue(synth.getTremoloLFO() != retired);
+
+			for (int i = 0; i < 4; i++) {
+				tick.run();
+				assertEquals(0.8, synth.getVoice(0).getVelocity());
+			}
+		} finally {
+			synth.destroy();
+		}
 	}
 
 	/**
@@ -140,12 +183,16 @@ public class PolyphonicSynthesizerModulationTest extends TestSuiteBase {
 	public void clearingTremoloReleasesTheLFO() {
 		PolyphonicSynthesizer synth = new PolyphonicSynthesizer(4);
 
-		synth.setTremolo(5.0, 0.5);
-		LFO tremolo = synth.getTremoloLFO();
-		assertTrue(tremolo != null);
-		tremolo.tick().get().run();
+		try {
+			synth.setTremolo(5.0, 0.5);
+			LFO tremolo = synth.getTremoloLFO();
+			assertTrue(tremolo != null);
+			tremolo.tick().get().run();
 
-		synth.clearTremolo();
-		assertTrue(synth.getTremoloLFO() == null);
+			synth.clearTremolo();
+			assertTrue(synth.getTremoloLFO() == null);
+		} finally {
+			synth.destroy();
+		}
 	}
 }

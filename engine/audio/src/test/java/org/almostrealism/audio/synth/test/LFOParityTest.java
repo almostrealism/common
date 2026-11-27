@@ -16,6 +16,7 @@
 
 package org.almostrealism.audio.synth.test;
 
+import io.almostrealism.lifecycle.Destroyable;
 import org.almostrealism.audio.synth.LFO;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.util.TestSuiteBase;
@@ -100,19 +101,25 @@ public class LFOParityTest extends TestSuiteBase {
 
 		for (LFO.Shape shape : shapes) {
 			LFO lfo = new LFO(shape, 4.0, SR);
-			Reference reference = new Reference(shape, 4.0);
 			Runnable tick = lfo.tick().get();
 
-			assertTracksReference(tick, lfo, reference, 40, shape + " at 4 Hz");
+			try {
+				Reference reference = new Reference(shape, 4.0);
 
-			lfo.setFrequency(3.0);
-			reference.frequency = 3.0;
-			assertTracksReference(tick, lfo, reference, 40, shape + " at 3 Hz");
+				assertTracksReference(tick, lfo, reference, 40, shape + " at 4 Hz");
 
-			LFO.Shape next = shapes[(shape.ordinal() + 1) % shapes.length];
-			lfo.setShape(next);
-			reference.shape = next;
-			assertTracksReference(tick, lfo, reference, 40, shape + " then " + next);
+				lfo.setFrequency(3.0);
+				reference.frequency = 3.0;
+				assertTracksReference(tick, lfo, reference, 40, shape + " at 3 Hz");
+
+				LFO.Shape next = shapes[(shape.ordinal() + 1) % shapes.length];
+				lfo.setShape(next);
+				reference.shape = next;
+				assertTracksReference(tick, lfo, reference, 40, shape + " then " + next);
+			} finally {
+				Destroyable.destroy(tick);
+				lfo.destroy();
+			}
 		}
 	}
 
@@ -121,13 +128,19 @@ public class LFOParityTest extends TestSuiteBase {
 	public void syncMovesThePhase() {
 		LFO lfo = new LFO(LFO.Shape.SAW_UP, 4.0, SR);
 		Runnable tick = lfo.tick().get();
-		tick.run();
 
-		lfo.sync(0.5);
-		assertEquals(0.5, lfo.getPhase());
-		tick.run();
-		assertEquals(0.0, lfo.getValue());
-		assertEquals(0.5625, lfo.getPhase());
+		try {
+			tick.run();
+
+			lfo.sync(0.5);
+			assertEquals(0.5, lfo.getPhase());
+			tick.run();
+			assertEquals(0.0, lfo.getValue());
+			assertEquals(0.5625, lfo.getPhase());
+		} finally {
+			Destroyable.destroy(tick);
+			lfo.destroy();
+		}
 	}
 
 	/** Sample-and-hold holds one value per cycle and draws a new one in [-1, 1] at each wrap. */
@@ -135,27 +148,33 @@ public class LFOParityTest extends TestSuiteBase {
 	public void sampleAndHoldChangesOnlyAtTheWrap() {
 		LFO lfo = new LFO(LFO.Shape.SAMPLE_HOLD, 4.0, SR);
 		Runnable tick = lfo.tick().get();
-		int cycle = SR / 4;
 
-		List<Double> held = new ArrayList<>();
-		for (int c = 0; c < 6; c++) {
-			double first = Double.NaN;
-			for (int i = 0; i < cycle; i++) {
-				tick.run();
-				double value = lfo.getValue();
-				assertTrue("value " + value + " in [-1, 1]", value >= -1.0 && value <= 1.0);
-				if (i == 0) {
-					first = value;
-				} else {
-					assertEquals("cycle " + c + " sample " + i + " holds its value", first, value);
+		try {
+			int cycle = SR / 4;
+
+			List<Double> held = new ArrayList<>();
+			for (int c = 0; c < 6; c++) {
+				double first = Double.NaN;
+				for (int i = 0; i < cycle; i++) {
+					tick.run();
+					double value = lfo.getValue();
+					assertTrue("value " + value + " in [-1, 1]", value >= -1.0 && value <= 1.0);
+					if (i == 0) {
+						first = value;
+					} else {
+						assertEquals("cycle " + c + " sample " + i + " holds its value", first, value);
+					}
 				}
+
+				held.add(first);
 			}
 
-			held.add(first);
+			long distinct = held.stream().distinct().count();
+			assertTrue("a new value is drawn at each wrap: " + held, distinct == held.size());
+		} finally {
+			Destroyable.destroy(tick);
+			lfo.destroy();
 		}
-
-		long distinct = held.stream().distinct().count();
-		assertTrue("a new value is drawn at each wrap: " + held, distinct == held.size());
 	}
 
 	/**
