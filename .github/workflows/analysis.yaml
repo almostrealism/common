@@ -2450,7 +2450,14 @@ jobs:
             | awk '{print "- repo working tree: " $1}' >> "$GITHUB_STEP_SUMMARY"
 
       - name: Build ar-manager image
-        run: docker build -f tools/mcp/manager/Dockerfile -t ar-manager:ci .
+        env:
+          # The commit the checkout above fetched. The build context has no
+          # .git, so the image learns it from this build argument, as in
+          # rebuild.sh; without it consult reports the corpus commit "unknown".
+          CORPUS_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          docker build --build-arg "CORPUS_COMMIT=${CORPUS_COMMIT}" \
+            -f tools/mcp/manager/Dockerfile -t ar-manager:ci .
 
       - name: Verify the documentation corpus reached the image
         run: |

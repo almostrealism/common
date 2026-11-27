@@ -360,7 +360,7 @@ it knowingly does not cover are in
 
 | Script | Purpose |
 |---|---|
-| `check-ci-file-lock.sh` | Fail the `changes` job when `.github/workflows/` or `tools/ci/` change outside a `ci/...` branch (a controller-signed `Sensitive-File-Bypass` trailer lifts it) |
+| `check-ci-file-lock.sh` | Fail the `changes` job when `.github/workflows/`, `.github/actions/` or `tools/ci/` change outside a `ci/...` branch (a controller-signed `Sensitive-File-Bypass` trailer lifts it) |
 | `check-quality-gates.sh` | Evaluate quality gate pass/fail from job outputs |
 | `deception-audit.sh` | Cross-session deception pattern detection |
 | `detect-python-test-hiding.sh` | `test-integrity-check`'s Python step: a base-branch `def test_*` must survive, and a test file's assertion count must not fall |
