@@ -40,24 +40,36 @@ What decides each state (``derive``), for the pull request's head commit:
     - otherwise: ``ci: needs attention``
 - no run yet: ``ci: validating``
 
-Beside that stage label, the way ``ci: stalled`` sits beside it, a draft plan
-pull request can also carry ``ci: ready to launch``: a marker that an approver
-marking it ready for review now would launch an implementation agent. It
-mirrors the conditions of the ready-for-review chain (``ready-plan.yaml`` ->
-``plan-ready.yaml`` -> ``verify-completion.yaml`` -> ``implement-plan.yaml``)
-that the ready-for-review transition runs — see ``ready_to_launch``. The
-chain's in-flight-workstream guard is not among them: the labeller holds no
-controller credentials, so the marker can show while a job is already in
-flight (in which case the switch would be refused).
+A draft plan pull request can also carry ``ci: ready to launch``: a marker that
+an approver marking it ready for review now would launch an implementation
+agent. It mirrors the conditions of the ready-for-review chain
+(``ready-plan.yaml`` -> ``plan-ready.yaml`` -> ``verify-completion.yaml`` ->
+``implement-plan.yaml``) that the ready-for-review transition runs — see
+``ready_to_launch``. The chain's in-flight-workstream guard is not among them:
+the labeller holds no controller credentials, so the marker can show while a
+job is already in flight (in which case the switch would be refused).
+
+Where the marker sits depends on the stage. On ``ci: ready for review`` — the
+settled stage that means the work is done and only a person's review and merge
+remain — the marker takes that label's *place*: a settled draft plan that is
+ready to launch is not waiting for a reviewer to merge it, it is waiting for the
+owner to approve it off draft, so it shows ``ci: ready to launch`` alone and
+never ``ci: ready for review`` beside it. The two are never both on a pull
+request. Beside the other settled stages (``ci: needs attention``,
+``ci: review limit``) the marker is added the way ``ci: stalled`` sits beside a
+stage, without replacing them.
 
 The marker is only valid beside a settled stage. A plan an agent is still
 validating, reviewing, testing or fixing is not ready to launch, so the marker
 is never added while the stage label is an in-progress one (``IN_PROGRESS``):
 ``ci: ready to launch`` and ``ci: auto-review`` (or ``ci: validating`` /
 ``ci: full tests`` / ``ci: auto-fix``) can never both be on a pull request.
-That exclusivity is enforced in ``label_changes`` from the stage label derived
-on the same pass, so a review starting on a later push removes the marker on
-the next call and the stateless recompute cannot leave the two together.
+Both rules — the replacement of ``ci: ready for review`` and the suppression
+beside an in-progress stage — live in ``wanted_labels`` (through
+``label_changes``), the one place that composes the wanted set, decided from
+the stage label derived on the same pass, so a review starting on a later push
+removes the marker on the next call and the stateless recompute cannot leave a
+forbidden pair behind.
 
 The cap is read from the ``remediation-cap`` commit status that
 ``submit-agent-job.sh`` sets on the head commit when the controller refuses a
@@ -135,8 +147,8 @@ LABELS = {
                              "a person needs to look", None),
     STALLED: ("b60205", "In the same CI state for longer than it should take",
               None),
-    READY_TO_LAUNCH: ("0e8a16", "Beside the stage label: approving this draft "
-                                "plan now would launch an implementation agent",
+    READY_TO_LAUNCH: ("0e8a16", "Approving this draft plan launches an "
+                                "implementation agent; replaces ready for review",
                       None),
 }
 
@@ -153,7 +165,9 @@ STAGED_REQUEST = "auto-resolve-request"
 # to launch`` can therefore never both sit on a pull request. These are exactly
 # the stages that can stall (the ones ``LABELS`` gives a non-None time budget);
 # the settled stages (``ci: ready for review``, ``ci: needs attention``,
-# ``ci: review limit``) never stall and are where the marker is allowed.
+# ``ci: review limit``) never stall and are where the marker is allowed. On
+# ``ci: needs attention`` and ``ci: review limit`` it sits beside the stage; on
+# ``ci: ready for review`` it takes that label's place (see ``wanted_labels``).
 IN_PROGRESS = frozenset({VALIDATING, AUTO_REVIEW, FULL_TESTS, AUTO_FIX})
 
 
@@ -322,24 +336,44 @@ def ready_to_launch(facts, repo):
                for item in files)
 
 
-def label_changes(current, label, stalled, ready=False):
-    """The ``ci: `` labels to add and to remove, as two sorted lists.
+def wanted_labels(label, stalled, ready):
+    """The exact set of ``ci: `` labels a pull request in stage ``label`` should
+    carry. ``label_changes`` and the step-summary reporting both read it, so the
+    rule that composes the wanted set lives in one place and the freshly derived
+    ``label`` decides it each time.
 
-    ``stalled`` and ``ready`` each add their marker beside the stage ``label``.
-    The ready-to-launch marker is suppressed while ``label`` is an in-progress
-    stage (see ``IN_PROGRESS``): a plan an agent is still validating, reviewing,
-    testing or fixing is not ready to launch, so ``ci: ready to launch`` and
+    ``stalled`` adds ``ci: stalled`` beside the stage. ``ready`` requests the
+    ready-to-launch marker, honoured only beside a settled stage (not one of
+    ``IN_PROGRESS``): a plan an agent is still validating, reviewing, testing or
+    fixing is not ready to launch, so ``ci: ready to launch`` and
     ``ci: auto-review`` (or ``ci: validating`` / ``ci: full tests`` /
-    ``ci: auto-fix``) can never both be present. The rule lives here, the one
-    place that composes the wanted set, so every caller inherits it and the
-    freshly derived ``label`` decides it each time. Every ``ci: `` label this
-    script manages other than the wanted ones is removed; labels outside that
-    set are left alone."""
+    ``ci: auto-fix``) can never both be present. On the settled stage
+    ``ci: ready for review`` the marker takes that label's place rather than
+    joining it — a settled draft plan that is ready to launch is waiting for the
+    owner to approve it off draft, not for a reviewer to merge it — so the two
+    are never both wanted. Beside the other settled stages (``ci: needs
+    attention``, ``ci: review limit``) the marker is added without replacing
+    them."""
     wanted = {label}
     if stalled:
         wanted.add(STALLED)
     if ready and label not in IN_PROGRESS:
         wanted.add(READY_TO_LAUNCH)
+        if label == READY:
+            wanted.discard(READY)
+    return wanted
+
+
+def label_changes(current, label, stalled, ready=False):
+    """The ``ci: `` labels to add and to remove, as two sorted lists.
+
+    The wanted set is ``wanted_labels(label, stalled, ready)``, the single place
+    that composes it, so every caller inherits the rule: the ready-to-launch
+    marker is suppressed beside an in-progress stage and replaces
+    ``ci: ready for review`` on a settled draft plan rather than joining it.
+    Every ``ci: `` label this script manages other than the wanted ones is
+    removed; labels outside that set are left alone."""
+    wanted = wanted_labels(label, stalled, ready)
     present = set(current) & set(LABELS)
     return sorted(wanted - present), sorted(present - wanted)
 
@@ -496,17 +530,22 @@ def main(argv=None):
             facts = gather(client, pr)
             label, since, reason = derive(facts, now)
             stalled = is_stalled(label, since, now)
-            ready = ready_to_launch(facts, client.repo) \
-                and label not in IN_PROGRESS
+            ready = ready_to_launch(facts, client.repo)
+            wanted = wanted_labels(label, stalled, ready)
             add, remove = label_changes(
                 [item["name"] for item in pr.get("labels", [])], label, stalled,
                 ready)
             if not args.dry_run:
                 apply(client, pr, add, remove)
-            rows.append(summary_row(pr, label, since, reason, stalled, ready))
+            # Report the labels actually applied: on a settled ready-to-launch
+            # draft plan the marker replaces ci: ready for review, so the stage
+            # shown is the marker itself and never both.
+            stage = label if label in wanted else READY_TO_LAUNCH
+            launch = READY_TO_LAUNCH in wanted and stage != READY_TO_LAUNCH
+            rows.append(summary_row(pr, stage, since, reason, stalled, launch))
             print("#%d %s%s%s: %s (add %s, remove %s)" % (
-                pr["number"], label, " stalled" if stalled else "",
-                " ready-to-launch" if ready else "", reason, add, remove))
+                pr["number"], stage, " stalled" if stalled else "",
+                " ready-to-launch" if launch else "", reason, add, remove))
         except (urllib.error.URLError, KeyError, ValueError) as error:
             failures += 1
             print("::warning::#%d: could not update its status label: %s"

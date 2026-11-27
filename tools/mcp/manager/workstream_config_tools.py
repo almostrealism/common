@@ -682,3 +682,113 @@ def workstream_update_config(
         ])
 
     return result
+
+
+@mcp.tool()
+def phase_config_explain(
+    workstream_id: str,
+    default_phase_config: str = "",
+    phase_configs: str = "",
+    fallback_default_phase_config: str = "",
+    fallback_phase_configs: str = "",
+) -> dict:
+    """Explain how each phase's runner/model/effort/provider resolves for a workstream.
+
+    A read-only diagnostic: for every phase it reports the resolved
+    ``runner`` / ``model`` / ``effort`` / ``provider`` and, for each field,
+    which precedence level supplied the value (``"job per-phase"``,
+    ``"job default"``, ``"workstream per-phase"``, ``"workstream default"``,
+    ``"fallback per-phase"``, ``"fallback default"``, ``"workspace per-phase"``,
+    ``"workspace default"``, ``"controller default"``, or ``"none"``). Use it to
+    understand why a phase runs with a given model, or to confirm a per-phase
+    override took effect, without reading the raw workstream and workspace
+    configuration by hand.
+
+    The optional ``default_phase_config`` / ``phase_configs`` /
+    ``fallback_*`` arguments let you preview a *hypothetical* submission: they
+    are resolved exactly as ``workstream_submit_task`` would resolve them, on
+    top of the workstream and workspace configuration, without submitting a
+    job. Because resolution runs the same validation the submit path does, an
+    unsupported model-for-runner or an incompatible provider is returned here
+    as an ``error`` — so this tool doubles as a dry-run validator before you
+    submit.
+
+    This is a dedicated tool rather than a field on ``workstream_get_status``
+    because that tool reports operational analytics (job counts, cost, turns),
+    whereas this one resolves configuration and accepts hypothetical per-job
+    overrides to preview a submission.
+
+    Args:
+        workstream_id: The workstream identifier (from ``workstream_list``).
+        default_phase_config: Optional JSON object with ``runner`` / ``model`` /
+            ``effort`` / ``provider`` keys, resolved as a hypothetical per-job
+            default across all phases. Empty means "no per-job default".
+        phase_configs: Optional JSON object mapping phase wire names to
+            ``{runner, model, effort, provider}`` objects, resolved as
+            hypothetical per-job per-phase overrides. Empty means "none".
+        fallback_default_phase_config: Optional JSON object resolved as the
+            per-job fallback default (applied only to phases the workstream
+            leaves unset). Empty means "no fallback default".
+        fallback_phase_configs: Optional JSON object mapping phase wire names to
+            config objects, resolved as the per-job fallback per-phase overrides.
+            Empty means "none".
+
+    Returns:
+        dict with ``ok=True``, ``workstreamId``, the resolved
+        ``defaultPhaseConfig`` / ``phaseConfigs``, a ``phaseConfigResolution``
+        map (per phase, each field's ``value`` and ``source``), an optional
+        ``fallbackResolution`` (when a fallback was supplied), and an optional
+        ``warnings`` list (e.g. an effort set for a runner that cannot honour
+        it). On an unknown workstream or an invalid hypothetical configuration,
+        ``ok=False`` with an ``error`` naming the problem.
+    """
+    server._require_scope("read")
+    err = server._check_short_strings(workstream_id=workstream_id)
+    if err:
+        return err
+
+    parsed_default, default_err = server._parse_default_phase_config_json(
+        default_phase_config)
+    if default_err:
+        return default_err
+    parsed_phases, phases_err = server._parse_phase_configs_json(phase_configs)
+    if phases_err:
+        return phases_err
+    parsed_fallback_default, fb_default_err = server._parse_default_phase_config_json(
+        fallback_default_phase_config, param_name="fallback_default_phase_config")
+    if fb_default_err:
+        return fb_default_err
+    parsed_fallback_phases, fb_phases_err = server._parse_phase_configs_json(
+        fallback_phase_configs, param_name="fallback_phase_configs")
+    if fb_phases_err:
+        return fb_phases_err
+
+    server._require_workstream_in_scope(workstream_id)
+    server._audit("phase_config_explain", workstream_id=workstream_id)
+
+    payload: dict = {}
+    if parsed_default:
+        payload["defaultPhaseConfig"] = parsed_default
+    if parsed_phases:
+        payload["phaseConfigs"] = parsed_phases
+    if parsed_fallback_default:
+        payload["fallbackPhaseConfig"] = parsed_fallback_default
+    if parsed_fallback_phases:
+        payload["fallbackPhaseConfigs"] = parsed_fallback_phases
+
+    result = server._controller_post(
+        f"/api/workstreams/{quote(workstream_id, safe='')}/phase-config",
+        payload,
+    )
+    if result.get("ok"):
+        result.setdefault("next_steps", [
+            "Use workstream_submit_task to submit a job with this configuration",
+            "Use agent_options to list runners, phases, and model names",
+        ])
+    else:
+        result.setdefault("next_steps", [
+            "Use workstream_list to verify the workstream_id is correct",
+            "Use agent_options to list valid runners and models",
+        ])
+
+    return result
