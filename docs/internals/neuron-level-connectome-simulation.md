@@ -120,8 +120,9 @@ Two firing neurons may share a target, so every addition is an atomic accumulati
 `LanguageOperations.atomicAccumulation`: a native atomic add on Metal and CUDA, a compare-and-swap
 loop on OpenCL and in native code; a backend that cannot express one refuses). The returned list
 first resets `input` to zero in place and then scatters, as two separately dispatched operations,
-because a kernel cannot order one thread's reset before another thread's addition; it must not be
-flattened into a list that compiles. `scatterAdd` is the scatter alone, which adds into what the
+because a kernel cannot order one thread's reset before another thread's addition. The scatter is
+an isolation target, so a compiling list the product is flattened into keeps the two in separate
+kernels once optimized; such a list must be optimized before it is run. `scatterAdd` is the scatter alone, which adds into what the
 destination holds. The order of concurrent additions is undefined, so the result equals `W s`
 exactly when every partial sum is exactly representable — as it is for the integer weights and a
 binary spike vector while sums stay below `2^24` at FP32 — and to within rounding otherwise.
