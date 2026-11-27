@@ -997,16 +997,6 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
                 log("Invalid startedAfter value: " + startedAfterStr);
             }
         }
-        // Per-PR remediation cap for remediation passes (auto-review/auto-resolve),
-        // which CI marks explicitly — not every automated job. The triggering
-        // commit lets the cap reset when the branch gains a commit no pass produced.
-        boolean remediationPass = JsonFieldExtractor.getBoolean(body, "remediationPass", false);
-        String remediationSkip = remediationGuard.skipReason(workstreamId, remediationPass, JsonFieldExtractor.extractString(body, "triggerCommit"));
-        if (remediationSkip != null) {
-            return newFixedLengthResponse(Response.Status.OK, "application/json", "{\"ok\":true,"
-                + "\"skipped\":true,\"reason\":\"" + JsonFieldExtractor.escapeJson(remediationSkip) + "\"}");
-        }
-
         if (server == null) {
             return errorResponse("No FlowTree server configured");
         }
@@ -1015,6 +1005,18 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
             String json = "{\"ok\":false,\"error\":\"No agents connected\"}";
             return newFixedLengthResponse(Response.Status.OK,
                     "application/json", json);
+        }
+
+        // Remediation passes are gated per PR, after the no-server/no-agents
+        // rejections above: the gate counts the pass and records it as dispatched,
+        // so a pass recorded but never queued would make a retry look like a repeat.
+        boolean remediationPass = JsonFieldExtractor.getBoolean(body, "remediationPass", false);
+        String remediationSkip = remediationGuard.skipReason(workstreamId, remediationPass,
+                JsonFieldExtractor.extractString(body, "triggerCommit"),
+                JsonFieldExtractor.extractString(body, "description"));
+        if (remediationSkip != null) {
+            return newFixedLengthResponse(Response.Status.OK, "application/json", "{\"ok\":true,"
+                + "\"skipped\":true,\"reason\":\"" + JsonFieldExtractor.escapeJson(remediationSkip) + "\"}");
         }
 
         String repoUrl = bodyRepoUrl;

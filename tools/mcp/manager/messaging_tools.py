@@ -418,6 +418,7 @@ def job_report_blocked(
     err = server._check_length(detail, "detail", server.MAX_CONTENT_LEN)
     if err:
         return err
+    server._require_workstream_in_scope(effective_ws)
 
     path = (f"/api/workstreams/{quote(effective_ws, safe='')}"
             f"/jobs/{quote(effective_job, safe='')}/blocked")

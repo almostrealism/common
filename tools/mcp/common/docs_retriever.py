@@ -29,7 +29,7 @@ if _env_docs:
     DOCS_DIR = Path(_env_docs)
     COMMON_DIR = DOCS_DIR.parent
 else:
-    COMMON_DIR = SCRIPT_DIR.parent.parent.parent  # tools/mcp/consultant -> common
+    COMMON_DIR = SCRIPT_DIR.parent.parent.parent  # tools/mcp/common -> repository root
     DOCS_DIR = COMMON_DIR / "docs"
 MODULES_DIR = DOCS_DIR / "modules"
 INTERNALS_DIR = DOCS_DIR / "internals"
@@ -124,7 +124,6 @@ STANDALONE_MD_ROOTS = [
     "tools/mcp/README.md",
     "tools/mcp/CLAUDE.md",
     "tools/mcp/SECRETS.md",
-    "tools/mcp/consultant/README.md",
     "tools/mcp/jmx/README.md",
     "tools/mcp/manager/README.md",
     "tools/mcp/memory/README.md",

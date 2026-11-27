@@ -90,6 +90,27 @@ public abstract class ControllerDatabase implements ConsoleFeatures {
      */
     protected abstract void prepare() throws SQLException;
 
+    /**
+     * Adds columns to an existing table, for a {@link #prepare()} that migrates a
+     * database created before those columns were part of its {@code CREATE TABLE}.
+     * HSQLDB 2.x has no {@code IF NOT EXISTS} for {@code ADD COLUMN}, so each
+     * statement that fails, because the column is already there, is ignored.
+     *
+     * @param alterStatements {@code ALTER TABLE ... ADD COLUMN ...} statements
+     * @throws SQLException when a statement cannot be created
+     */
+    protected void addColumns(String... alterStatements) throws SQLException {
+        try (Statement stmt = connection().createStatement()) {
+            for (String statement : alterStatements) {
+                try {
+                    stmt.execute(statement);
+                } catch (SQLException alreadyPresent) {
+                    // The column already exists on a database created with it.
+                }
+            }
+        }
+    }
+
     /** Returns whether the database is open. */
     public boolean isOpen() {
         return connection != null;

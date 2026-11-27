@@ -114,7 +114,9 @@ public class RigidSphere extends Sphere implements RigidBody, ParticleGroup, Sur
 														{0.0, a, 0.0, 0.0},
 														{0.0, 0.0, a, 0.0},
 														{0.0, 0.0, 0.0, 1.0}});
-		
+
+		this.state.setAngularVelocity(this.state.w);
+
 		super.setLocation(this.state.x);
 		
 		if (this.light != null) {

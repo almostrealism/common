@@ -117,10 +117,9 @@ public class JobStatsStore extends ControllerDatabase {
         + ")";
 
     /**
-     * ALTER TABLE statements to add new columns to existing databases.
-     * HSQLDB 2.x does not support {@code IF NOT EXISTS} on {@code ADD COLUMN},
-     * so these statements will throw if the column already exists. The
-     * initialization loop catches and ignores those errors.
+     * ALTER TABLE statements to add new columns to existing databases, applied
+     * by {@link ControllerDatabase#addColumns}, which ignores the ones whose
+     * column already exists.
      */
     private static final String[] SCHEMA_MIGRATIONS = {
         "ALTER TABLE job_timing ADD COLUMN subtype VARCHAR(64)",
@@ -186,15 +185,8 @@ public class JobStatsStore extends ControllerDatabase {
             stmt.execute(CREATE_INDEX);
             stmt.execute(CREATE_RUNNER_COST_TABLE);
             stmt.execute(CREATE_MODEL_COST_TABLE);
-            for (String migration : SCHEMA_MIGRATIONS) {
-                try {
-                    stmt.execute(migration);
-                } catch (SQLException ignored) {
-                    // Column may already exist on databases that were
-                    // created with the updated CREATE TABLE statement
-                }
-            }
         }
+        addColumns(SCHEMA_MIGRATIONS);
 
         // Clean orphaned STARTED rows older than 7 days
         Instant cutoff = Instant.now().minusSeconds(7 * 24 * 3600);

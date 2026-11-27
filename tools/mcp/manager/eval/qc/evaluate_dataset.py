@@ -23,10 +23,8 @@ import re
 import sys
 from pathlib import Path
 
-# Add the consultant directory and the shared tools/mcp/common directory to
-# the path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent))
-sys.path.insert(1, str(Path(__file__).parent.parent.parent / "common"))
+# The shared tools/mcp/common directory holds the retriever and speculation check.
+sys.path.insert(0, str(Path(__file__).parents[3] / "common"))
 from docs_retriever import DocsRetriever
 from inference import has_speculation
 
