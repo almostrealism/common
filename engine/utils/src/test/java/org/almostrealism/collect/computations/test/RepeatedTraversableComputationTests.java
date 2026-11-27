@@ -16,14 +16,22 @@
 
 package org.almostrealism.collect.computations.test;
 
+import io.almostrealism.compute.ComputeRequirement;
+import io.almostrealism.kernel.DefaultKernelStructureContext;
+import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.profile.OperationProfile;
 import io.almostrealism.relation.Evaluable;
+import io.almostrealism.scope.Scope;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.CollectionProducerComputationAdapter;
+import org.almostrealism.collect.computations.RepeatedProducerComputationAdapter;
+import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareOperator;
+import org.almostrealism.hardware.mem.MemoryDataArgumentMap;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
+import java.util.List;
 import java.util.stream.IntStream;
 
 /**
@@ -106,5 +114,26 @@ public class RepeatedTraversableComputationTests extends TestSuiteBase {
 
 		IntStream.range(0, len).forEach(i ->
 				assertEquals("element " + i, expected[i], data.toDouble(i)));
+	}
+
+	/**
+	 * The kernel scope of a repeated computation carries the computation's compute
+	 * requirements, as every kernel scope built by {@code ComputationBase} does.
+	 * The repeated kernel used to be built by hand and dropped them, so the scope
+	 * reported no requirements for a computation that required the CPU.
+	 */
+	@Test(timeout = 60000)
+	public void repeatedKernelCarriesComputeRequirements() {
+		RepeatedProducerComputationAdapter repeated = ((CollectionProducerComputationAdapter)
+				add(v(shape(-1), 0), v(shape(-1), 1))).toRepeated();
+		repeated.setComputeRequirements(List.of(ComputeRequirement.CPU));
+
+		MemoryDataArgumentMap arguments = MemoryDataArgumentMap.create(
+				Hardware.getLocalHardware().getComputeContext(), null);
+		KernelStructureContext context = new DefaultKernelStructureContext();
+		repeated.prepareScope(arguments, context);
+
+		Scope<PackedCollection> scope = repeated.getScope(context);
+		assertEquals(List.of(ComputeRequirement.CPU), scope.getComputeRequirements());
 	}
 }

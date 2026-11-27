@@ -1076,9 +1076,9 @@ public abstract class CollectionProducerComputationBase
 	 */
 	@Override
 	public Evaluable<PackedCollection> get() {
-		if (optimized != null & optimized != this) {
+		if (isSupersededByOptimizedVersion()) {
 			warn("This Computation should not be used, as an optimized version already exists");
-			return (Evaluable<PackedCollection>) optimized.get();
+			return (Evaluable<PackedCollection>) getOptimizedVersion().get();
 		}
 
 		if (evaluable == null) {
