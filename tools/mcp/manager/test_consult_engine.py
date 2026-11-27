@@ -552,6 +552,22 @@ class TestCitationRetry(_Pipeline):
         result, _ = self.run_with(self.BAD, Synthesis(self.GOOD, "fake"))
         self.assertNotIn("revision_trailer_missing", result["citation_retry"])
 
+    def verify_calls(self, draft, revision=None):
+        """Run a consult and return how many times the verifier ran."""
+        with patch.object(consult_engine, "verify",
+                          wraps=consult_engine.verify) as spy:
+            self.run_with(draft, revision)
+        return spy.call_count
+
+    def test_a_clean_draft_is_verified_once(self):
+        self.assertEqual(self.verify_calls(self.GOOD), 1)
+
+    def test_a_kept_revision_is_not_verified_again(self):
+        self.assertEqual(self.verify_calls(self.BAD, Synthesis(self.GOOD, "fake")), 2)
+
+    def test_a_kept_draft_is_not_verified_again(self):
+        self.assertEqual(self.verify_calls(self.BAD, Synthesis(self.BAD, "fake")), 2)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -511,15 +511,16 @@ class ConsultTurn:
             "corpus": self.corpus,
         }
 
+        history = None
         if llm is None:
             synthesis, reason = None, "no inference backend could be constructed"
             no_backend_cause = not_configured_cause(reason)
         else:
             no_backend_cause = None
-            history = self.conversation.history() if self.conversation else None
+            history = (self.conversation.history() if self.conversation else None) or None
             synthesis = llm.consult(self.question, evidence=self.evidence,
                                     extra_context=self.context or None,
-                                    history=history or None)
+                                    history=history)
             reason = synthesis.reason if synthesis.degraded else None
 
         result["evidence"] = self.evidence.to_response()
@@ -548,15 +549,13 @@ class ConsultTurn:
             self._finish(result, [])
             return result
 
-        history = self.conversation.history() if self.conversation else None
-        # TODO(review): history and _verify of the kept text are recomputed; reuse the earlier results.
-        text = self._revised(llm, synthesis.text, history or None, result)
-        cited = self._post_process(text, result, keyword_guidance)
+        checked = self._revised(llm, synthesis.text, history, result)
+        cited = self._post_process(checked, result, keyword_guidance)
         self._finish(result, cited)
         return result
 
-    def _revised(self, llm, text: str, history, result: dict) -> str:
-        """Return the answer to present: the model's own, or — when the
+    def _revised(self, llm, text: str, history, result: dict) -> dict:
+        """Return the checked answer to present: the model's own, or — when the
         citation verifier flags any of its sentences — the better of it and
         one revision, which the model writes from the same evidence with the
         flagged sentences and reasons in front of it.
@@ -575,13 +574,14 @@ class ConsultTurn:
             result: The response being built.
 
         Returns:
-            The text to post-process.
+            The :meth:`_verify` result for the answer to post-process, so
+            the kept text is parsed and verified only once.
         """
         draft = self._verify(text)
         warnings = draft["report"].warnings
         revise = getattr(llm, "revise", None)
         if not warnings or draft["abstained"] or revise is None:
-            return text
+            return draft
         record = {"warnings_before": len(warnings), "kept": "draft"}
         result["citation_retry"] = record
         synthesis = revise(self.question, evidence=self.evidence, draft=text,
@@ -589,7 +589,7 @@ class ConsultTurn:
                            history=history)
         if synthesis is None or synthesis.degraded:
             record["degraded"] = synthesis.reason if synthesis is not None else "no response"
-            return text
+            return draft
         revision = self._verify(synthesis.text)
         record["warnings_after"] = len(revision["report"].warnings)
         record["revision_abstained"] = revision["abstained"]
@@ -598,9 +598,9 @@ class ConsultTurn:
             record["revision_trailer_missing"] = True
         if revision["abstained"] or lost_trailer \
                 or record["warnings_after"] >= len(warnings):
-            return text
+            return draft
         record["kept"] = "revision"
-        return synthesis.text
+        return revision
 
     def _verify(self, text: str) -> dict:
         """Parse a model answer and run the citation verifier over it.
@@ -677,15 +677,14 @@ class ConsultTurn:
             "tier": item.tier, "evidence_id": item.id,
         }
 
-    def _post_process(self, text: str, result: dict, keyword_guidance) -> list:
-        """Turn the model's output into the answer fields. Returns the cited
-        evidence items."""
+    def _post_process(self, checked: dict, result: dict, keyword_guidance) -> list:
+        """Turn the model's checked output (a :meth:`_verify` result) into
+        the answer fields. Returns the cited evidence items."""
         # The stated basis is parsed only so the line leaves the answer. The
         # computed basis is authoritative, and the model cannot predict it:
         # it rests on note tiers and on which sentences the verifier keeps,
         # so a disagreement is the expected case, not a format fault worth
         # reporting to the caller.
-        checked = self._verify(text)
         body, conflict_lines = checked["body"], checked["conflict_lines"]
         abstained_by_model, report = checked["abstained"], checked["report"]
         found_value_conflicts = checked["value_conflicts"]
