@@ -114,7 +114,6 @@ See `flowtree/runtime/src/main/resources/workstreams-example.yaml` for full conf
 |--------|-----------|-------------|
 | **ar-manager** | [manager/](manager/) | Centralized MCP endpoint for messaging, memory, GitHub, and workstream management |
 | **ar-secrets** | [secrets/](secrets/) | Auto-pushed stdio server (delivered by the controller to every agent container) that renders workspace secrets into files on the agent's filesystem (see [SECRETS.md](SECRETS.md)) |
-| ~~ar-consultant~~ | [consultant/](consultant/) | **Retired.** Source retained for reference; not registered in `.mcp.json`. Its memory, documentation and Q&A tools moved to ar-manager |
 | **ar-memory** | [memory/](memory/) | Centralized HTTP memory service with embedding-based search |
 | **ar-build-validator** | [build-validator/](build-validator/) | Static analysis: checkstyle, code policy, test timeouts, duplicate code, ErrorProne. Validates this repository by default, or any Maven checkout (such as a downstream consumer's sibling checkout) passed as `project` |
 | **ar-test-runner** | [test-runner/](test-runner/) | Async test execution with structured result parsing |
@@ -185,14 +184,13 @@ flat namespace. Two rules keep that workable, both asserted by
 
 ar-manager uses a local LLM to synthesize documentation into answers. It is not required to run: without one, documentation search, memory recall and history all keep working, and the tools return their retrieval results marked `degraded: true` instead of failing. Backend health is re-probed rather than fixed at startup, so starting or stopping a model takes effect without restarting the MCP server.
 
-**See [consultant/README.md](consultant/README.md) for detailed backend setup instructions.**
+**See [Inference Backends in the ar-manager README](manager/README.md#inference-backends) for backend setup and its environment variables.** The former ar-consultant server has been removed; its answer-quality tools are in [manager/eval/qc/](manager/eval/qc/).
 
 ## Server Details
 
 Each server has its own README with tool reference and configuration:
 
 - [ar-manager](manager/README.md) -- authentication, deployment, tool tiers
-- [ar-consultant](consultant/README.md) -- retired; retained for backend setup and environment-variable reference
 - [ar-memory](memory/README.md) -- HTTP API reference, Docker deployment, URL normalization
 - [ar-test-runner](test-runner/README.md) -- test parameters, depth filtering, result parsing
 - [ar-jmx](jmx/README.md) -- JVM attachment, heap analysis, JFR recording workflows

@@ -573,7 +573,7 @@ def inference_health() -> dict:
             "next_steps": [
                 "Confirm the inference dependencies are importable in this image",
                 "Set AR_CONSULTANT_BACKEND or start a local model "
-                "(see tools/mcp/consultant/README.md)",
+                "(see tools/mcp/manager/README.md#inference-backends)",
             ],
         }
 

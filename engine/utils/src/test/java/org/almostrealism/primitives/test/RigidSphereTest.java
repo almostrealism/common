@@ -43,6 +43,35 @@ public class RigidSphereTest extends TestSuiteBase {
 		return new RigidSphere(location, ZERO, ZERO, ZERO, ZERO, ZERO, 1.0, 1.0, 1.0, 4);
 	}
 
+	/**
+	 * Returns a rigid sphere spinning at the given angular velocity, with the given mass and radius.
+	 *
+	 * @param w       the angular velocity
+	 * @param mass    the mass
+	 * @param radius  the radius
+	 * @return the sphere
+	 */
+	private RigidSphere spinningSphere(Vector w, double mass, double radius) {
+		return new RigidSphere(ZERO, ZERO, ZERO, w, ZERO, ZERO, mass, 1.0, radius, 4);
+	}
+
+	/**
+	 * Asserts that the sphere's angular momentum equals {@code I w} for a solid sphere,
+	 * where the scalar moment of inertia is {@code (2/5) mass radius^2} on each axis.
+	 *
+	 * @param s       the sphere
+	 * @param w       the angular velocity
+	 * @param mass    the mass used to build the inertia tensor
+	 * @param radius  the radius used to build the inertia tensor
+	 */
+	private void assertAngularMomentum(RigidSphere s, Vector w, double mass, double radius) {
+		double a = (2.0 / 5.0) * mass * radius * radius;
+		Vector l = s.getState().getAngularMomentum();
+		assertEquals(a * w.getX(), l.getX(), 1e-6);
+		assertEquals(a * w.getY(), l.getY(), 1e-6);
+		assertEquals(a * w.getZ(), l.getZ(), 1e-6);
+	}
+
 	/** A default rigid sphere has unit radius and one vertex per radial sample pair. */
 	@Test(timeout = 30000)
 	public void defaultRadiusAndVertices() {
@@ -68,6 +97,42 @@ public class RigidSphereTest extends TestSuiteBase {
 			double r = Math.sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
 			assertEquals(3.0, r, 1e-6);
 		}
+	}
+
+	/**
+	 * Changing the radius rebuilds the inertia tensor and refreshes angular momentum so that
+	 * {@code L = I w} holds for the new tensor. A stale momentum (left over from the old radius)
+	 * would fail this assertion.
+	 */
+	@Test(timeout = 30000)
+	public void settingRadiusRefreshesAngularMomentum() {
+		Vector w = new Vector(1.0, 2.0, 3.0);
+		RigidSphere s = spinningSphere(w, 2.0, 1.0);
+
+		// Initially the inertia tensor reflects the construction radius.
+		assertAngularMomentum(s, w, 2.0, 1.0);
+
+		s.setRadius(2.0);
+
+		// After the radius change the inertia tensor, and therefore the angular momentum, must grow.
+		assertAngularMomentum(s, w, 2.0, 2.0);
+	}
+
+	/**
+	 * Changing the mass and then triggering a model update (here via {@link RigidSphere#setRadius(double)})
+	 * must recompute angular momentum from the rebuilt, mass-dependent inertia tensor. This pins the
+	 * {@code updateModel()} refresh against a regression where the rebuilt tensor leaves {@code l} stale.
+	 */
+	@Test(timeout = 30000)
+	public void massChangeRefreshesAngularMomentumOnUpdate() {
+		Vector w = new Vector(1.0, 2.0, 3.0);
+		RigidSphere s = spinningSphere(w, 2.0, 1.0);
+
+		s.getState().setMass(5.0);
+		s.setRadius(1.0);
+
+		// The inertia tensor rebuilt in updateModel reflects the new mass, and so must the momentum.
+		assertAngularMomentum(s, w, 5.0, 1.0);
 	}
 
 	/** Two overlapping spheres report a contact point on the surface and an outward normal. */
