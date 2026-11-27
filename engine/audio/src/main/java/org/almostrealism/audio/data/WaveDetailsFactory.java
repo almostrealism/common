@@ -437,10 +437,12 @@ public class WaveDetailsFactory implements CodeFeatures {
 	}
 
 	/**
-	 * Summarizes the per-frame cosine similarities of two items as the
-	 * {@link #trimmedMean trimmed mean} over the frames in which either item is
-	 * sounding, where a frame in which only one of them is sounding counts as
-	 * zero similarity.
+	 * Summarizes the per-frame cosine similarities of two items as the mean over
+	 * the frames in which either item is sounding, where a frame in which only
+	 * one of them is sounding counts as zero similarity. Outliers are removed
+	 * with a {@link #trimmedMean trimmed mean} over the frames in which both are
+	 * sounding; the one-sided frames are never trimmed, so each of them always
+	 * lowers the result.
 	 *
 	 * <p>Features are computed over a fixed-length clip, so the frames after a
 	 * sound ends hold the features of its silent padding rather than of the
@@ -462,10 +464,14 @@ public class WaveDetailsFactory implements CodeFeatures {
 	private static double soundingSimilarity(double[] cosines, int offset, int frames, int validA, int validB) {
 		int sounding = Math.min(Math.max(validA, validB), frames);
 		int shared = Math.min(Math.min(validA, validB), sounding);
+		if (sounding == 0) return -1.0;
+		if (shared == 0) return 0.0;
 
-		double[] values = new double[sounding];
+		// Outlier trimming applies to the shared frames only, so that the
+		// one-sided frames are never trimmed away and each one counts as zero
+		double[] values = new double[shared];
 		System.arraycopy(cosines, offset, values, 0, shared);
-		return trimmedMean(values);
+		return trimmedMean(values) * shared / sounding;
 	}
 
 	/**

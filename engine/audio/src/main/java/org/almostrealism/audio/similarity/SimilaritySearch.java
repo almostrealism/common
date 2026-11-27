@@ -142,8 +142,10 @@ public class SimilaritySearch implements ConsoleFeatures {
 	 * reports; only the set of items scored is narrowed. Without a store, without
 	 * features for the current model, or while the index is missing a
 	 * substantial part of the library (less than {@link #NEIGHBOR_INDEX_COVERAGE}
-	 * of the complete items), every item is scored, so no item is left out
-	 * merely because it has not been indexed yet.</p>
+	 * of the complete items), every item that is not excluded is scored, so no
+	 * item is left out merely because it has not been indexed yet. Either way
+	 * the scores are computed afresh rather than read from the stored similarity
+	 * map, which may hold scores computed under an earlier definition.</p>
 	 *
 	 * <p>Excluded items are never scored, so they cost nothing to leave out;
 	 * {@code candidates} counts the items that remain.</p>
@@ -151,20 +153,21 @@ public class SimilaritySearch implements ConsoleFeatures {
 	 * @param details    the details to find matches for
 	 * @param candidates how many nearest items to score
 	 * @param excluded   identifiers of items to leave out
-	 * @return a map from item identifiers to similarity scores, covering at
-	 *         least the nearest candidates that are not excluded (the
-	 *         exhaustive computation may also report excluded items)
+	 * @return a map from item identifiers to similarity scores, covering the
+	 *         scored items and no excluded item
 	 */
 	public Map<String, Double> nearest(WaveDetails details, int candidates, Set<String> excluded) {
 		if (details == null) return Collections.emptyMap();
 
-		List<String> nearest = nearestIdentifiers(details, candidates, excluded);
-		if (nearest == null) {
-			return compute(details, library.getAllIdentifiers()).getSimilarities();
+		List<String> targets = nearestIdentifiers(details, candidates, excluded);
+		if (targets == null) {
+			targets = library.getAllIdentifiers().stream()
+					.filter(id -> !excluded.contains(id))
+					.toList();
 		}
 
 		// Scored afresh, so a score stored under an earlier definition is not mixed in
-		return score(details, nearest);
+		return score(details, targets);
 	}
 
 	/**
