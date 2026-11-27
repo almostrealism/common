@@ -26,6 +26,7 @@ import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.heredity.Chromosome;
 import org.almostrealism.heredity.ProjectedGenome;
+import org.almostrealism.music.data.ChannelInfo;
 import org.almostrealism.studio.optimize.FixedFilterChromosome;
 import org.almostrealism.time.Frequency;
 import org.almostrealism.util.TestSuiteBase;
@@ -306,19 +307,78 @@ public class MixdownManagerPdslAdapterTest extends TestSuiteBase implements Cell
 		return HardwareOperator.cpuCompileCount + HardwareOperator.gpuCompileCount - before;
 	}
 
-	/** Builds the fixture with {@link #CHANNELS} channels; see {@link #buildFixture(int)}. */
+	/**
+	 * On the efx-off layer the wet arm has no volume or send stage to carry a channel's pan, so a
+	 * stereo-side adapter scales each row of {@code wet_hp_coeffs} and {@code wet_filter_coeffs}
+	 * by that channel's balance-law gain on its side. A centre (no side) adapter leaves the rows
+	 * as the unscaled response-table rows. The pans give the LEFT side gains of {@code 0.8},
+	 * {@code 0.45} and, for a left-panned channel, the clamped {@code 1.0}, so a gain applied to
+	 * the wrong channel, applied twice or left unclamped fails a row.
+	 */
+	@Test(timeout = 300_000)
+	public void baseLayerWetBanksFoldPanGainPerChannel() {
+		double[] pans = { 0.2, 0.55, -0.6 };
+		double[] leftGains = { 0.8, 0.45, 1.0 };
+
+		for (ChannelInfo.StereoChannel side : new ChannelInfo.StereoChannel[] {
+				null, ChannelInfo.StereoChannel.LEFT }) {
+			buildFixture(CHANNELS, false, side);
+			for (int ch = 0; ch < CHANNELS; ch++) {
+				mixdown.setPan(ch, pans[ch]);
+			}
+
+			FixedFilterChromosome wetFilter = mixdown.getWetFilter();
+			for (boolean high : new boolean[] { true, false }) {
+				String key = (high ? "wet_hp_coeffs" : "wet_filter_coeffs") + "(side=" + side + ")";
+				try (PackedCollection bank = evaluateArg(high ? "wet_hp_coeffs" : "wet_filter_coeffs");
+					 PackedCollection table = adapter.biquadResponseTable(high)) {
+					for (int ch = 0; ch < CHANNELS; ch++) {
+						int bin;
+						try (PackedCollection bounded = bound(high ? wetFilter.highPassFrequency(ch)
+										: wetFilter.lowPassFrequency(ch),
+								AudioPassFilter.MIN_FREQUENCY, 20000).evaluate()) {
+							bin = bin(bounded.toDouble(0));
+						}
+						double gain = side == null ? 1.0 : leftGains[ch];
+						for (int t = 0; t < TAPS; t++) {
+							Assert.assertEquals(key + "[" + ch + ", " + t + "]",
+									gain * table.toDouble(bin * TAPS + t),
+									bank.toDouble(ch * TAPS + t), EPS);
+						}
+					}
+				}
+			}
+		}
+	}
+
+	/** Builds the wet-layer fixture with {@link #CHANNELS} channels; see {@link #buildFixture(int)}. */
 	private void buildFixture() {
 		buildFixture(CHANNELS);
 	}
 
 	/**
-	 * Builds a mixdown and effects manager over one genome with seeded, varied parameters (so
-	 * every channel's genes differ), runs their setup, and builds the wet-layer argument map.
-	 * Any previous fixture is released first, so a test may build more than one.
+	 * Builds the wet-layer (efx-on), centre fixture with the given channel count; see
+	 * {@link #buildFixture(int, boolean, ChannelInfo.StereoChannel)}.
 	 *
 	 * @param channels the number of channels
 	 */
 	private void buildFixture(int channels) {
+		buildFixture(channels, true, null);
+	}
+
+	/**
+	 * Builds a mixdown and effects manager over one genome with seeded, varied parameters (so
+	 * every channel's genes differ), runs their setup, and builds the adapter's argument map.
+	 * Any previous fixture is released first, so a test may build more than one. The effects
+	 * manager is always built, so the genome layout is the same either way, but the adapter
+	 * receives it only when {@code withEfx} is set; without it the adapter builds the efx-off
+	 * {@code mixdown_master} arguments.
+	 *
+	 * @param channels the number of channels
+	 * @param withEfx  whether the adapter builds the efx-on (wet) layer's arguments
+	 * @param side     the stereo side the adapter renders, or {@code null} for centre
+	 */
+	private void buildFixture(int channels, boolean withEfx, ChannelInfo.StereoChannel side) {
 		releaseFixture();
 
 		MixdownManager.enableMainFilterUp = true;
@@ -348,9 +408,9 @@ public class MixdownManagerPdslAdapterTest extends TestSuiteBase implements Cell
 		setup.get().run();
 		time.getClock().setFrame(AUTOMATION_MEASURE * measure * SAMPLE_RATE);
 
-		adapter = new MixdownManagerPdslAdapter(mixdown, efx,
+		adapter = new MixdownManagerPdslAdapter(mixdown, withEfx ? efx : null,
 				new MixdownManagerPdslAdapter.Config(channels, SAMPLE_RATE / 16, SAMPLE_RATE,
-						FILTER_ORDER, 0.5, 2000));
+						FILTER_ORDER, 0.5, 2000), side);
 		args = adapter.buildArgsMap();
 	}
 
