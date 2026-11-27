@@ -3,7 +3,7 @@
 Status: **PROPOSAL — awaiting approval.** No migration has been applied.
 Author context: quality-control audit of the consultant/memory corpus,
 2026-07-03. All numbers below come from a live census of the store
-(`tools/mcp/consultant/qc/memory_census.py`, 9,521 entries).
+(`tools/mcp/manager/eval/qc/memory_census.py`, 9,521 entries).
 
 ## 1. Why change the schema
 

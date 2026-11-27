@@ -273,7 +273,7 @@ for working with the Almost Realism codebase. It includes:
 - `tools/mcp/secrets/` — stdio MCP server that renders workspace secrets into files on the agent's filesystem
 - `tools/mcp/transcript-analyzer/` — MCP server for parsing agent session transcripts
 - `tools/mcp/common/` — shared substrate used by ar-manager (`MemoryHTTPClient`, `InferenceBackend`, `DocsRetriever`, `git_context`)
-- `tools/mcp/consultant/` — RETIRED. Source retained for reference, not registered in `.mcp.json`. Its memory, documentation, and Q&A tools were folded into ar-manager.
+- `tools/mcp/manager/eval/qc/` — answer-quality tools for consult (history analyzer, LLM-as-judge, memory census, dataset evaluation), carried over from the removed ar-consultant, whose memory, documentation and Q&A tools were folded into ar-manager.
 - `docs/mcp/server.py` — repo-local `ar-docs` MCP server (`mcp__ar-docs__search_ar_docs`, `mcp__ar-docs__read_ar_module`, …) registered via the project root `.mcp.json`; lives outside `tools/mcp/` because it indexes the documentation corpus and is unique to this repository.
 
 #### Dependency on ar-ml

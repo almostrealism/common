@@ -22,9 +22,10 @@ that matter:
   - Error rate and month-by-month trend.
 
 Usage:
-    python3 analyze_history.py [--db PATH] [--out report.json]
+    python3 analyze_history.py --db PATH [--out report.json]
 
-Default --db is ``../data/history.db`` relative to this file.
+``--db`` names the ``history.db`` of a deployed ar-consultant (its
+``data/`` volume); ar-manager, which now serves ``consult``, keeps no such log.
 """
 
 import argparse
@@ -34,19 +35,14 @@ import sqlite3
 import sys
 from collections import Counter, defaultdict
 
-# Add the consultant directory and the shared tools/mcp/common directory to
-# the path for imports
-_CONSULTANT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
-sys.path.insert(0, _CONSULTANT_DIR)
-sys.path.insert(1, os.path.join(_CONSULTANT_DIR, "..", "common"))
+# The shared tools/mcp/common directory holds the speculation check.
+_COMMON_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                           "..", "..", "..", "common")
+sys.path.insert(0, _COMMON_DIR)
 from inference import has_speculation
 
 
 PASSTHROUGH_BANNER = "[Consultant model not available"
-
-_DEFAULT_DB = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)), "..", "data", "history.db"
-)
 
 
 def _percentiles(values, points=(50, 90, 99)):
@@ -179,8 +175,8 @@ def print_summary(report):
 
 def main():
     parser = argparse.ArgumentParser(description="Analyze consultant history.db")
-    parser.add_argument("--db", default=_DEFAULT_DB,
-                        help="Path to history.db (default: ../data/history.db)")
+    parser.add_argument("--db", required=True,
+                        help="Path to a deployed ar-consultant's history.db")
     parser.add_argument("--out", help="Write full JSON report to this path")
     args = parser.parse_args()
 
