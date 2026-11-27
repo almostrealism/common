@@ -16,9 +16,11 @@
 
 package org.almostrealism.collect.computations.test;
 
+import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalOrdering;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.ComputeRequirement;
+import io.almostrealism.kernel.KernelIndex;
 import org.almostrealism.algebra.MatrixFeatures;
 import org.almostrealism.algebra.computations.SegmentedWeightedSumComputation;
 import org.almostrealism.collect.CollectionProducer;
@@ -26,6 +28,7 @@ import org.almostrealism.collect.CompressedRowTraversalOrdering;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.util.TestDepth;
 import org.almostrealism.util.TestSuiteBase;
+import org.junit.Assert;
 import org.junit.Test;
 
 import java.util.ArrayList;
@@ -165,6 +168,41 @@ public class CompressedRowTransposeTests extends TestSuiteBase implements Matrix
 				transposed.getRootDelegate().getMem() == values.getRootDelegate().getMem());
 	}
 
+	/**
+	 * The transpose reads the memory of the matrix in an order the matrix's own elements cannot
+	 * express, so it is not traversable and refuses to supply an expression for an element.
+	 */
+	@Test(timeout = 60000)
+	public void transposeIsNotTraversable() {
+		TraversableExpression<?> view = (TraversableExpression<?>) cp(sparse()).transpose();
+		assertFalse("the transpose should not be traversable", view.isTraversable());
+		assertTrue("the transpose should report no unique offset",
+				view.uniqueNonZeroOffset(new KernelIndex(), new KernelIndex(), e(0)) == null);
+
+		try {
+			view.getValueAt(e(0));
+			Assert.fail("the transpose should not supply an expression for an element");
+		} catch (UnsupportedOperationException expected) {
+			// the element must be read from memory through the ordering of the transpose
+		}
+	}
+
+	/**
+	 * A computation of a sparse matrix produces dense output, so its shape carries no ordering
+	 * and its transpose is the ordinary traversable transpose rather than a view of entries.
+	 */
+	@Test(timeout = 60000)
+	public void transposeOfComputedMatrixIsDense() {
+		CollectionProducer computed = cp(sparse()).multiply(c(2.0));
+		assertTrue("the computed matrix should be dense", shape(computed).getOrder() == null);
+
+		CollectionProducer transposed = computed.transpose();
+		assertTrue("the transpose of the computed matrix should be dense", shape(transposed).getOrder() == null);
+		assertTrue(Arrays.equals(new long[] { 6, 4 }, shape(transposed).extentLong()));
+		assertTrue("the transpose of the computed matrix should be traversable",
+				((TraversableExpression<?>) transposed).isTraversable());
+	}
+
 	/** Read element by element, the transpose equals the dense transpose, including a zero row. */
 	@Test(timeout = 60000)
 	public void transposeReadsDense() { assertFixed(m -> m.multiply(c(2.0))); }
@@ -172,6 +210,30 @@ public class CompressedRowTransposeTests extends TestSuiteBase implements Matrix
 	/** The evaluated transpose, read on the host, equals the dense transpose. */
 	@Test(timeout = 60000)
 	public void transposeEvaluated() { assertFixed(m -> m); }
+
+	/**
+	 * The transpose of a computation of a sparse matrix, rather than of the matrix itself, equals
+	 * the same computation of the dense transpose, read element by element and through a product.
+	 */
+	@Test(timeout = 60000)
+	public void transposeOfComputedMatrix() {
+		PackedCollection matrix = sparse();
+		CollectionProducer x = cp(pack(1.0, 2.0, 3.0, 4.0));
+		for (ComputeRequirement backend : backends()) {
+			PackedCollection dense = denseTranspose(matrix, backend);
+			double[] expected = evaluate(cp(dense).multiply(c(2.0)).add(c(1.0)), backend).toArray(0, 24);
+			double[] actual = evaluate(cp(matrix).multiply(c(2.0)).transpose().add(c(1.0)), backend).toArray(0, 24);
+			for (int i = 0; i < expected.length; i++) {
+				assertEquals("element " + i + " on " + backend, expected[i], actual[i]);
+			}
+
+			double[] expectedProduct = evaluate(matmul(cp(dense).multiply(c(2.0)), x), backend).toArray(0, 6);
+			double[] actualProduct = evaluate(matmul(cp(matrix).multiply(c(2.0)).transpose(), x), backend).toArray(0, 6);
+			for (int i = 0; i < expectedProduct.length; i++) {
+				assertEquals("product element " + i + " on " + backend, expectedProduct[i], actualProduct[i]);
+			}
+		}
+	}
 
 	/** The transpose of the transpose is the original matrix, read through its own ordering. */
 	@Test(timeout = 60000)

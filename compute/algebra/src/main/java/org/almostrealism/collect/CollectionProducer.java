@@ -234,7 +234,6 @@ public interface CollectionProducer extends
 		Optional<TraversalOrdering> transposed = shape.getDimensions() == 2 && shape.getOrder() != null ?
 				shape.getOrder().transpose(shape.length(0), shape.length(1)) : Optional.empty();
 		if (transposed.isPresent()) {
-			// TODO(review): assumes this producer's memory holds only the entries; test transpose of a computed CSR producer (e.g. multiply)
 			return reshape(new TraversalPolicy(transposed.get(), shape.length(1), shape.length(0)));
 		}
 

@@ -611,30 +611,53 @@ public class ReshapeProducer
 	}
 
 	/**
-	 * Returns the element of the reshaped producer at the same flat index. A reshape with an
-	 * {@link #getOwnOrder() ordering of its own} reads the producer's memory in a different
-	 * order, which the logical elements of the producer cannot express, so it has no expression
-	 * here and is read from memory through its ordering.
+	 * Returns the element of the reshaped producer at the same flat index.
+	 *
+	 * <p>A reshape with an {@link #getOwnOrder() ordering of its own} reads the producer's
+	 * memory in a different order, which the logical elements of the producer cannot express.
+	 * It is therefore {@link #isTraversable() not traversable}: a kernel reads it from memory
+	 * through {@link #getOrdering() its ordering}, and asking it for an expression is an
+	 * error.</p>
 	 *
 	 * @param index the flat index
-	 * @return the element, or {@code null} if it must be read from memory
+	 * @return the element, or {@code null} if the reshaped producer is not traversable
+	 * @throws UnsupportedOperationException if this reshape has an ordering of its own
 	 */
 	@Override
 	public Expression<Double> getValueAt(Expression index) {
-		// TODO(review): base/CLAUDE.md forbids returning null from getValueAt(); confirm an ordered reshape needs no expression here
-		if (getOwnOrder() != null) return null;
+		if (getOwnOrder() != null) {
+			throw new UnsupportedOperationException("A reshape with an ordering of its own " +
+					"is not traversable and must be read from memory through its ordering");
+		}
+
 		return producer instanceof TraversableExpression ? ((TraversableExpression) producer).getValueAt(index) : null;
 	}
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>The offset is the reshaped producer's, since a reshape reads the same flat index. A
+	 * reshape with an {@link #getOwnOrder() ordering of its own} reads a different element of
+	 * the producer at each index, so it reports no offset.</p>
+	 */
 	@Override
 	public Expression uniqueNonZeroOffset(Index globalIndex, Index localIndex, Expression<?> targetIndex) {
+		if (getOwnOrder() != null) return null;
+
 		return producer instanceof TraversableExpression ?
 				((TraversableExpression) producer).uniqueNonZeroOffset(globalIndex, localIndex, targetIndex) :
 				null;
 	}
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>A reshape is traversable when the reshaped producer is, unless it has an
+	 * {@link #getOwnOrder() ordering of its own}, whose elements are read from memory.</p>
+	 */
 	@Override
 	public boolean isTraversable() {
+		if (getOwnOrder() != null) return false;
 		if (producer instanceof TraversableExpression) return ((TraversableExpression) producer).isTraversable();
 		return false;
 	}
