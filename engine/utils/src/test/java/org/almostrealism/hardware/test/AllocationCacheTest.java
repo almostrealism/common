@@ -60,10 +60,10 @@ public class AllocationCacheTest extends TestSuiteBase {
 	/** Flushing releases every held handle, and the cache keeps accepting afterwards. */
 	@Test(timeout = 10_000)
 	public void flushReleasesEverything() {
-		AllocationCache<String> cache = new AllocationCache<>(1024, 512);
-		cache.offer(64, "a");
-		cache.offer(64, "b");
-		cache.offer(32, "c");
+		AllocationCache<String> cache = new AllocationCache<>(2048, 512);
+		Assert.assertTrue(cache.offer(64, "a"));
+		Assert.assertTrue(cache.offer(64, "b"));
+		Assert.assertTrue(cache.offer(32, "c"));
 
 		List<String> released = new ArrayList<>();
 		cache.flush(released::add);
@@ -79,10 +79,10 @@ public class AllocationCacheTest extends TestSuiteBase {
 	/** Every handle is released even if releasing one fails, and the failure is reported. */
 	@Test(timeout = 10_000)
 	public void flushReleasesPastFailure() {
-		AllocationCache<String> cache = new AllocationCache<>(1024, 512);
-		cache.offer(16, "a");
-		cache.offer(16, "b");
-		cache.offer(16, "c");
+		AllocationCache<String> cache = new AllocationCache<>(2048, 512);
+		Assert.assertTrue(cache.offer(16, "a"));
+		Assert.assertTrue(cache.offer(16, "b"));
+		Assert.assertTrue(cache.offer(16, "c"));
 
 		List<String> released = new ArrayList<>();
 		try {
@@ -112,6 +112,45 @@ public class AllocationCacheTest extends TestSuiteBase {
 		Assert.assertEquals(0, cache.getHeldBytes());
 		Assert.assertNull(cache.take(1));
 		Assert.assertNull(cache.take(64));
+	}
+
+	/**
+	 * Tiny handles that stay far under the byte capacity are still bounded in number, at the
+	 * capacity divided by the largest cached size, and room comes back as handles are taken.
+	 */
+	@Test(timeout = 10_000)
+	public void boundsHeldHandlesByCount() {
+		AllocationCache<String> cache = new AllocationCache<>(1024, 256);
+
+		for (int i = 0; i < 4; i++) {
+			Assert.assertTrue("handle " + i, cache.offer(1, "h" + i));
+		}
+		Assert.assertFalse(cache.offer(1, "h4"));
+		Assert.assertFalse(cache.offer(2, "other size"));
+		Assert.assertEquals(4, cache.getHeldHandles());
+		Assert.assertEquals(4, cache.getHeldBytes());
+
+		Assert.assertNotNull(cache.take(1));
+		Assert.assertEquals(3, cache.getHeldHandles());
+		Assert.assertTrue(cache.offer(1, "h5"));
+
+		cache.flush(h -> { });
+		Assert.assertEquals(0, cache.getHeldHandles());
+		Assert.assertTrue(cache.offer(1, "h6"));
+	}
+
+	/**
+	 * A largest cached size above the capacity still leaves room for one handle, bounded by
+	 * the byte capacity as before.
+	 */
+	@Test(timeout = 10_000)
+	public void entryLargerThanCapacityHoldsOneHandle() {
+		AllocationCache<String> cache = new AllocationCache<>(256, 512);
+
+		Assert.assertFalse(cache.offer(300, "too large for the capacity"));
+		Assert.assertTrue(cache.offer(1, "a"));
+		Assert.assertFalse(cache.offer(1, "b"));
+		Assert.assertEquals(1, cache.getHeldHandles());
 	}
 
 	/** A closed cache releases what it holds and declines everything offered afterwards. */
