@@ -56,6 +56,7 @@ import io.flowtree.controller.RemediationBudgetGuard;
 import io.flowtree.controller.RemediationEscalation;
 import io.flowtree.controller.RemediationStateStore;
 import io.flowtree.controller.PendingJob;
+import io.flowtree.submission.ResourceLimitOverrides;
 import io.flowtree.submission.SubmissionConfigResolver;
 import io.flowtree.workstream.MailboxRegistry;
 import io.flowtree.workstream.Workstream;
@@ -924,6 +925,13 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
             return errorResponse("selfNotify is only supported for shell-command jobs (jobType=shell)");
         }
 
+        // Validate the request's own resource limits before the automated-job
+        // gate, resolution, and the skip/accept paths below, so an invalid limit
+        // is always a 400 rather than masked by an earlier path. See applyTo below.
+        ResourceLimitOverrides limits = new ResourceLimitOverrides(body);
+        String limitsError = limits.validationError();
+        if (limitsError != null) return errorResponse(limitsError);
+
         // Reject automated jobs when the gate is closed
         boolean automated = JsonFieldExtractor.extractBoolean(body, "automated");
         if (automated && !acceptAutomatedJobs) {
@@ -1022,8 +1030,6 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         String repoUrl = bodyRepoUrl;
         String baseBranch = JsonFieldExtractor.extractString(body, "baseBranch");
         String jobDescription = JsonFieldExtractor.extractString(body, "description");
-        int maxTurns = JsonFieldExtractor.extractInt(body, "maxTurns");
-        double maxBudgetUsd = JsonFieldExtractor.extractDouble(body, "maxBudgetUsd");
         boolean protectTestFiles = JsonFieldExtractor.extractBoolean(body, "protectTestFiles");
         boolean enforceChanges = JsonFieldExtractor.extractBoolean(body, "enforceChanges");
         String deduplicationMode = JsonFieldExtractor.extractString(body, "deduplicationMode");
@@ -1062,8 +1068,9 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         }
         factory.setAgentEnv(workstream.agentEnvWith(
                 JsonFieldExtractor.extractStringObject(body, "agentEnv")));
-        if (maxTurns > 0) factory.setMaxTurns(maxTurns);
-        if (maxBudgetUsd > 0) factory.setMaxBudgetUsd(maxBudgetUsd);
+        limits.applyTo(workstream, factory);
+        limits.getClamped().forEach((field, value) -> log("Clamped " + field + " to the workstream limit "
+                + value + " for workstream " + workstreamId));
         if (baseBranch != null) factory.setBaseBranch(baseBranch);
         if (repoUrl != null) factory.setRepoUrl(repoUrl);
 
@@ -1246,6 +1253,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         // Report which optional phases are active so callers can confirm
         // the effective job configuration without inspecting phase bundles.
         SubmissionConfigResolver.appendResolvedJobConfigJson(json, factory);
+        limits.appendClampedJson(json);
         List<String> accepted = factory.operatorGrants().getAcceptedMergeResolutions();
         if (!accepted.isEmpty()) {
             json.append(",\"acceptedMergeResolutions\":").append(JsonFieldExtractor.toJsonArray(accepted));

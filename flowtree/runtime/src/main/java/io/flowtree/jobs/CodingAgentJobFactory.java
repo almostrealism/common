@@ -27,7 +27,6 @@ import io.flowtree.workstream.Workstream;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.util.KeyUtils;
 
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.List;
@@ -64,11 +63,11 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
     /** Comma-separated list of tools Claude Code is permitted to invoke. */
     private String allowedTools = CodingAgentJob.DEFAULT_TOOLS;
 
-    /** Maximum number of agentic turns Claude Code may take per job. */
-    private int maxTurns = 50;
-
-    /** Maximum spend budget per job in US dollars. */
-    private double maxBudgetUsd = 10.0;
+    /**
+     * The turn and spend caps, wall-clock ceiling and silence budget given to
+     * each job; see {@link JobResourceLimits}.
+     */
+    private final JobResourceLimits resourceLimits = new JobResourceLimits(this::set);
 
     /** HTTP base URL of the ar-manager service, or {@code null} if not configured. */
     private String arManagerUrl;
@@ -139,14 +138,6 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
      * source enabling tmux is sufficient.
      */
     private boolean useTmux = false;
-
-    /**
-     * Job-wide wall-clock ceiling in hours, or {@code null} when the job
-     * inherits {@link RestartGovernor#DEFAULT_MAX_WALL_CLOCK}. Zero disables
-     * the ceiling. Seeded from the workstream default by
-     * {@link Workstream#newJobFactory(String, String)}; a per-job value overrides it.
-     */
-    private Integer maxWallClockHours = null;
 
     /**
      * When {@code true} (the default), jobs created by this factory activate the
@@ -408,7 +399,7 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
      * @return the turn limit
      */
     public int getMaxTurns() {
-        return maxTurns;
+        return resourceLimits.getMaxTurns();
     }
 
     /**
@@ -417,8 +408,7 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
      * @param maxTurns  the turn limit
      */
     public void setMaxTurns(int maxTurns) {
-        this.maxTurns = maxTurns;
-        set("maxTurns", String.valueOf(maxTurns));
+        resourceLimits.setMaxTurns(maxTurns);
     }
 
     /**
@@ -427,7 +417,7 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
      * @return the budget cap in USD
      */
     public double getMaxBudgetUsd() {
-        return maxBudgetUsd;
+        return resourceLimits.getMaxBudgetUsd();
     }
 
     /**
@@ -436,8 +426,7 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
      * @param maxBudgetUsd  the budget cap in USD; negative values disable the limit
      */
     public void setMaxBudgetUsd(double maxBudgetUsd) {
-        this.maxBudgetUsd = maxBudgetUsd;
-        set("maxBudget", String.valueOf(maxBudgetUsd));
+        resourceLimits.setMaxBudgetUsd(maxBudgetUsd);
     }
 
     /**
@@ -889,22 +878,40 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
      *         when the job inherits the default
      */
     public Integer getMaxWallClockHours() {
-        return maxWallClockHours;
+        return resourceLimits.getMaxWallClockHours();
     }
 
     /**
-     * Sets the job-wide wall-clock ceiling in hours.
+     * Sets the job-wide wall-clock ceiling in hours. Seeded from the workstream
+     * default by {@link Workstream#newJobFactory(String, String)}; a per-job
+     * value overrides it.
      *
      * @param maxWallClockHours the ceiling in hours, {@code 0} to disable the
      *                          ceiling, or {@code null} to inherit the default
      */
     public void setMaxWallClockHours(Integer maxWallClockHours) {
-        this.maxWallClockHours = maxWallClockHours;
-        if (maxWallClockHours == null) {
-            set("maxWallClockHours", "");
-        } else {
-            set("maxWallClockHours", String.valueOf(maxWallClockHours.intValue()));
-        }
+        resourceLimits.setMaxWallClockHours(maxWallClockHours);
+    }
+
+    /**
+     * Returns the job's own silence budget in seconds.
+     *
+     * @return the budget, or {@code null} when the job uses its runner's
+     */
+    public Integer getInactivityTimeoutSeconds() {
+        return resourceLimits.getInactivityTimeoutSeconds();
+    }
+
+    /**
+     * Sets the job's own silence budget: how long an agent session may produce
+     * no output before the inactivity watchdog destroys it. It can only shorten
+     * the runner's budget; see {@link RestartGovernor#inactivityTimeoutMillis(long)}.
+     *
+     * @param inactivityTimeoutSeconds the budget in seconds, which must be
+     *                                 positive, or {@code null} to use the runner's
+     */
+    public void setInactivityTimeoutSeconds(Integer inactivityTimeoutSeconds) {
+        resourceLimits.setInactivityTimeoutSeconds(inactivityTimeoutSeconds);
     }
 
     /**
@@ -1382,8 +1389,7 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
     private void configure(CodingAgentJob job) {
         job.setAllowedTools(allowedTools);
         job.setWorkingDirectory(getWorkingDirectory());
-        job.setMaxTurns(maxTurns);
-        job.setMaxBudgetUsd(maxBudgetUsd);
+        resourceLimits.applyTo(job);
         if (getDescription() != null) job.setDescription(getDescription());
 
         if (getRepoUrl() != null) job.setRepoUrl(getRepoUrl());
@@ -1417,9 +1423,6 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
         job.setEnforceOrganizationalPlacement(enforceOrganizationalPlacement);
         job.setObjectOrientedReviewEnabled(objectOrientedReviewEnabled);
         job.setUseTmux(useTmux);
-        if (maxWallClockHours != null) {
-            job.restartGovernor().setMaxWallClock(Duration.ofHours(maxWallClockHours.intValue()));
-        }
         job.setReviewEnabled(reviewEnabled);
         job.setMaxReviewPasses(maxReviewPasses);
         job.setRetrospectiveEnabled(retrospectiveEnabled);
@@ -1474,16 +1477,11 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
     @Override
     public void set(String key, String value) {
         super.set(key, value);
+        if (resourceLimits.applySetting(key, value)) return;
 
         switch (key) {
             case "tools":
                 this.allowedTools = value;
-                break;
-            case "maxTurns":
-                this.maxTurns = Integer.parseInt(value);
-                break;
-            case "maxBudget":
-                this.maxBudgetUsd = Double.parseDouble(value);
                 break;
             case "arManagerUrl":
                 this.arManagerUrl = GitManagedJob.base64Decode(value);
@@ -1549,10 +1547,6 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
                 return;
             case "useTmux":
                 this.useTmux = Boolean.parseBoolean(value);
-                return;
-            case "maxWallClockHours":
-                this.maxWallClockHours = value == null || value.isEmpty()
-                        ? null : Integer.valueOf(Integer.parseInt(value));
                 return;
             case "reviewEnabled":
                 this.reviewEnabled = Boolean.parseBoolean(value);
