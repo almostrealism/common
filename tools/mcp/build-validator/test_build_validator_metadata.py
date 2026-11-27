@@ -1,4 +1,4 @@
-"""Tests for ar-build-validator's metadata handling.
+"""Tests for ar-build-validator's metadata handling and project targeting.
 
 ar-build-validator used to reimplement metadata load/save and old-run cleanup
 inline. It now delegates to the shared ``RunStore`` in ``common``. These tests
@@ -6,6 +6,13 @@ pin that delegation at build-validator's own call sites, and in particular that
 a corrupt ``metadata.json`` now reads as absent (``None``) — the robustness the
 inline copy lacked, where ``json.load`` raised straight out of ``_load_metadata``
 and out of ``get_status``.
+
+They also pin that a run can target any Maven project, not only the repository
+the server ships in: an empty ``project`` selects that repository (so common's
+behaviour is unchanged), a supplied path redirects the build, the invalid-file
+scan and the policy report both follow the chosen root, and the project is
+recorded in the run config so the shared build-tree conflict check can scope to
+it.
 
 The server module is loaded from its explicit path under a directory-specific
 name: nine ``tools/mcp`` directories define a top-level ``server.py``, so a bare
@@ -18,6 +25,7 @@ import json
 import sys
 import tempfile
 import unittest
+from dataclasses import asdict
 from pathlib import Path
 
 _SERVER_DIR = Path(__file__).resolve().parent
@@ -87,6 +95,59 @@ class BuildValidatorMetadataTest(unittest.TestCase):
         remaining = sorted(p.name for p in self.dir.iterdir() if p.is_dir())
         self.assertEqual(server.MAX_RUNS - 1, len(remaining))
         self.assertNotIn("r000", remaining)
+
+
+class BuildValidatorProjectTargetTest(unittest.TestCase):
+    """A validation run resolves and targets the Maven project it was given."""
+
+    def _project(self) -> Path:
+        """Return a throwaway directory that is a buildable Maven project."""
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        root = Path(tmp.name)
+        (root / "pom.xml").write_text("<project/>")
+        return root
+
+    def test_config_defaults_to_servers_own_repository(self):
+        """An empty project leaves common's behaviour unchanged."""
+        self.assertEqual(server.PROJECT_ROOT, server.ValidationConfig().project_root())
+
+    def test_config_resolves_a_supplied_project(self):
+        """A supplied path redirects the build away from the server's own repo."""
+        root = self._project()
+        config = server.ValidationConfig(project=str(root))
+        self.assertEqual(root.resolve(), config.project_root())
+
+    def test_supplied_project_without_pom_is_rejected(self):
+        """An unbuildable target fails fast, not as an opaque Maven error later."""
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        with self.assertRaises(ValueError):
+            server.ValidationConfig(project=tmp.name).project_root()
+
+    def test_project_is_recorded_in_the_config(self):
+        """The project rides in the run config so conflict detection can scope it."""
+        self.assertEqual(
+            "../downstream",
+            asdict(server.ValidationConfig(project="../downstream"))["project"])
+
+    def test_surefire_report_follows_the_target_project(self):
+        """The policy report is read from under whichever project is validated."""
+        root = self._project()
+        report = server.BuildValidator._surefire_report(root)
+        self.assertEqual(
+            root / server._SAFE_TEST_MODULE / "target" / "surefire-reports"
+            / f"TEST-{server.SUREFIRE_TEST_CLASS}.xml",
+            report)
+
+    def test_invalid_file_scan_targets_the_given_project(self):
+        """The *.bin scan walks the chosen project, not the server's own repo."""
+        root = self._project()
+        (root / "stray.bin").write_text("x")
+        nested = root / "sub"
+        nested.mkdir()
+        (nested / "keep.txt").write_text("ok")
+        self.assertEqual(["stray.bin"], server.BuildValidator._scan_invalid_files(root))
 
 
 if __name__ == "__main__":
