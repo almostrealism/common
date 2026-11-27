@@ -108,6 +108,16 @@ public class FileNoteSource implements NoteAudioSource {
 		return List.of(note);
 	}
 
+	/**
+	 * Returns the note provider if it has been created, without creating it.
+	 *
+	 * @return a singleton list with the provider, or an empty list if not yet loaded
+	 */
+	@Override
+	public List<NoteAudio> getLoadedNotes() {
+		return note == null ? List.of() : List.of(note);
+	}
+
 	@Override
 	public boolean checkResourceUsed(String canonicalPath) {
 		return source != null && source.equals(canonicalPath);

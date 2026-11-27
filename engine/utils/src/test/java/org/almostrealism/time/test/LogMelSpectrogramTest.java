@@ -72,6 +72,48 @@ public class LogMelSpectrogramTest extends TestSuiteBase implements TemporalFeat
 		}
 	}
 
+	/**
+	 * Reflect padding about a valid length read at run time pads the first {@code L} samples of a
+	 * longer buffer exactly as {@link TemporalFeatures#reflectPad(io.almostrealism.relation.Producer, int)}
+	 * pads those samples alone: the samples after them are never read, and one compiled kernel pads
+	 * every valid length.
+	 */
+	@Test(timeout = 60000)
+	public void reflectPadAboutARuntimeLengthMatchesTheShorterSignal() {
+		PackedCollection buffer = pack(1, 2, 3, 4, 5, 90, 91, 92);
+		PackedCollection length = new PackedCollection(shape(1));
+		PackedCollection padded = new PackedCollection(shape(8 + 6));
+		Runnable pad = a(p(padded), reflectPad(cp(buffer), 3, cp(length))).get();
+
+		for (int valid : new int[] {5, 4, 8}) {
+			length.fill((double) valid);
+			pad.run();
+			PackedCollection alone = reflectPad(cp(buffer.range(shape(valid))), 3).evaluate();
+			for (int i = 0; i < valid + 6; i++) {
+				assertEquals("valid " + valid + " sample " + i, alone.toDouble(i), padded.toDouble(i), 1e-9);
+			}
+		}
+	}
+
+	/**
+	 * The frames {@link TemporalFeatures#logMelFrames} computes from a signal padded by half a window
+	 * are the frames {@link TemporalFeatures#logMelSpectrogram} computes from the signal itself.
+	 */
+	@Test(timeout = 120000)
+	public void logMelFramesOfThePaddedSignalMatchTheSpectrogram() {
+		int fftSize = 64;
+		int hop = 16;
+		int samples = 200;
+		PackedCollection signal = sin(integers(0, samples).multiply(c(0.37))).evaluate();
+		PackedCollection whole = logMelSpectrogram(fftSize, hop, 16000, 8, 50, 8000, cp(signal)).evaluate();
+		PackedCollection frames = logMelFrames(fftSize, hop, 16000, 8, 50, 8000,
+				reflectPad(cp(signal), fftSize / 2), 1 + samples / hop).evaluate();
+		assertEquals(whole.getShape().getTotalSize(), frames.getShape().getTotalSize());
+		for (int i = 0; i < whole.getShape().getTotalSize(); i++) {
+			assertEquals("value " + i, whole.toDouble(i), frames.toDouble(i), 1e-6);
+		}
+	}
+
 	/** The periodic Hann window divides by the window length, not by the length minus one. */
 	@Test(timeout = 60000)
 	public void periodicHannDividesByTheLength() {

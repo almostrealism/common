@@ -848,12 +848,13 @@ export AR_HARDWARE_NIO_MEMORY=true
 
 # Keep released CUDA buffers (64 KB or less, the per-evaluation results of short dispatches) for
 # reuse instead of freeing them immediately. On by default; set AR_HARDWARE_ALLOCATION_CACHE to
-# false to turn it off. Reuse avoids the cost of repeatedly allocating and freeing native memory
+# disabled to turn it off (like every enabled/disabled flag, it rejects true/false). Reuse avoids
+# the cost of repeatedly allocating and freeing native memory
 # (freeing synchronizes the device) that a workload such as a training loop otherwise pays on
 # every step, at the cost of holding the cached memory against the reservation (freed when an
 # allocation would exceed it). Larger released buffers are always freed at once and allocated
 # fresh; when off, every released buffer is.
-export AR_HARDWARE_ALLOCATION_CACHE=false   # CUDA released-buffer reuse (on by default)
+export AR_HARDWARE_ALLOCATION_CACHE=disabled   # CUDA released-buffer reuse (on by default)
 ```
 
 ### Development vs Production

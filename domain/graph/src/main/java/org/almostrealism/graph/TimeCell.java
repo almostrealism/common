@@ -222,10 +222,7 @@ public class TimeCell implements Cell<PackedCollection>, Temporal, Destroyable, 
 	 */
 	@Override
 	public void setReceptor(Receptor<PackedCollection> r) {
-		if (cellWarnings && this.r != null) {
-			warn("Replacing receptor");
-		}
-
+		Cell.warnReceptorReplacement(this, this.r);
 		this.r = r;
 	}
 

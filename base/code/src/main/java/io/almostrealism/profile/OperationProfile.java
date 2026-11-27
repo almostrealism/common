@@ -300,6 +300,17 @@ public class OperationProfile implements Nameable, ConsoleFeatures {
 	public String summary() { return metric == null ? "No metric data" : metric.summary(getName()); }
 
 	/**
+	 * Includes the operation described by the given metadata in this profile before it records
+	 * anything, so that the profile has a place for its results. This profile records each
+	 * result under its identifier in a single metric, which needs no place prepared in advance,
+	 * so it includes nothing; {@link OperationProfileNode} adds the node for the operation, and
+	 * the nodes of the operations its metadata describes as children.
+	 *
+	 * @param metadata the metadata of the operation that is about to run under this profile
+	 */
+	public void include(OperationMetadata metadata) { }
+
+	/**
 	 * Records a duration entry for the given operation. The entry key is
 	 * derived from the operation metadata via the identifier function.
 	 *

@@ -61,8 +61,16 @@ only recognized as subcommands of the `/flowtree` slash command (e.g. `/flowtree
 |---------|-------------|
 | `/status` | Show workstream status |
 | `/task <prompt>`, `/do <prompt>`, `/run <prompt>` | Submit a prompt |
-| `/flowtree stats [global]` | Show weekly job statistics (this week and last week) |
+| `/flowtree stats [global]` | Show weekly job statistics (this week and last week): this channel's workstream if it has one, otherwise across all workstreams; `global` always gives the global view |
 | `/flowtree archive [keep-channel]` | Archive this channel's workstream, and archive the Slack channel itself unless `keep-channel` is passed |
+
+`/flowtree` subcommands come in two groups, and `/flowtree help` lists them that way.
+`info`, `status`, `task`, `cancel`, `config`, `jobs` and `archive` act on the invoking
+channel's workstream; in a channel without one they reply that the command needs one and
+how to set it up. `stats`, `active` (alias `workstreams`) and `default-channel` are
+general and work from any channel. Every reply is ephemeral and goes back through the
+command's response URL rather than being posted into the channel, so the general
+commands also work in a DM with the app and in channels the bot has not joined.
 
 ### SlackNotifier
 
@@ -87,6 +95,7 @@ Lightweight HTTP server (NanoHTTPD, default port 7780) that receives status even
 | GET | `/api/workstreams` | -- | List registered workstreams (see [Workstream listing filters](#workstream-listing-filters) below) |
 | GET | `/api/workstreams/{id}/jobs/active` | -- | List jobs still recorded as running for a workstream; each entry carries `jobId`, `workstreamId`, `startedAt`, `heartbeatAt`, `ageSeconds`, `sinceHeartbeatSeconds`, `node` (when known), `state` (`RUNNING`, or `UNRESPONSIVE` once silent past the configured threshold), and `description` (see Javadoc on `FlowTreeApiEndpoint`) |
 | GET | `/api/workstreams/{id}/jobs/pending` | -- | List jobs the controller accepted but no worker has started; each entry carries `jobId`, `workstreamId`, `submittedAt`, `ageSeconds`, `submittedBy`, `requiredLabels`, `state` (`SUBMITTED`, or `LOST` once the wait passes the configured threshold), and `description`. Pending jobs are never auto-failed |
+| GET | `/api/jobs/{jobId}` | -- | One job's most recent event, read from the job store first so a job is found from the moment it is accepted; carries the event fields plus `state` (`SUBMITTED`, `LOST`, `RUNNING`, `UNRESPONSIVE`, or the terminal status, derived with the same thresholds as the listings above), `submittedAt` when recorded, `phase` when recorded, and `workstreamId` (from the store for a job no notifier has seen yet). `LOST` is a label, not a terminal status: `LostJobRecovery` escalates such a job, and it may still start |
 | POST | `/api/jobs/{jobId}/heartbeat` | `{"node":"...","phase":"..."}` | Liveness heartbeat posted on a timer by the job's own harness (`HarnessHeartbeatSender`); records the heartbeat and worker node, and the phase when given |
 | POST | `/api/workstreams/{id}/messages` | `{"text":"..."}` | Post a message to the workstream's channel |
 | POST | `/api/workstreams/{id}/jobs/{jobId}/messages` | `{"text":"..."}` | Post a message to the job's thread |

@@ -43,7 +43,7 @@ _QA_SCRIPTS = [
 # The QA rounds running as pilots. A pilot participates in the shared backlog
 # gate like every QA round; promoting one to a full-cadence round means
 # removing it here.
-_PILOTS = ("flaky-qa", "concept-qa")
+_PILOTS = ("flaky-qa", "concept-qa", "generalization-qa")
 
 # The jobs that start planning rounds, which share the MAX_PROJECT_BRANCHES
 # limit and so must share one concurrency group.
@@ -210,6 +210,7 @@ class MasterAgentDispatchTests(unittest.TestCase):
             "coverage-qa": 2,
             "consolidation-qa": 2,
             "concept-qa": 5,
+            "generalization-qa": 5,
             "performance-qa": 2,
             "pdsl-qa": 5,
             "qa-retrospective": 7,
@@ -1142,6 +1143,78 @@ class MasterAgentDispatchTests(unittest.TestCase):
             primary)
         self.assertEqual({"runner": "claude", "model": "opus", "provider": "anthropic"},
                          primary)
+
+    def test_the_generalization_pilot_does_not_raise_the_open_pr_limit(self):
+        """The generalization round is a pilot like the flaky hunt and the
+        concept round: it is gated by the shared backlog limit like every QA
+        round and passes the shared value, and adding it did not raise
+        MAX_OPEN_PRS, which is the reviewer's capacity and not a count of
+        rounds."""
+        self.assertIn("generalization-qa", self.qa_jobs,
+                      "the generalization pilot must be a QA round")
+        self.assertEqual("14", self.workflow["env"]["MAX_OPEN_PRS"])
+        self.assertEqual(self.workflow["env"]["MAX_OPEN_PRS"],
+                         str(self.jobs["generalization-qa"]["with"]["max-open-prs"]))
+        gate = next(s for s in self.qa_jobs["generalization-qa"]["steps"]
+                    if "qa-cadence.sh" in s.get("run", ""))
+        self.assertEqual("true", gate["env"].get("CHECK_BACKLOG"))
+        full_cadence = [name for name in self.qa_jobs if name not in _PILOTS]
+        self.assertNotIn("generalization-qa", full_cadence)
+
+    def test_the_generalization_round_is_wired_like_every_qa_round(self):
+        """The shared per-round checks above iterate over the discovered QA
+        jobs; this names the generalization round so a discovery change cannot
+        drop it from them unnoticed. Its intake check precedes its gate, its
+        gate sets a PR grace window and reads its own interval override, its
+        archive step skips a forced run, and its workstream is registered
+        directly before the submission."""
+        job = self.qa_jobs["generalization-qa"]
+        steps = job["steps"]
+
+        def index(script):
+            return next(i for i, s in enumerate(steps) if script in s.get("run", ""))
+
+        self.assertLess(index("automated-intake.sh"), index("qa-cadence.sh"),
+                        "intake must be asked before the cadence gate")
+        gate = steps[index("qa-cadence.sh")]
+        self.assertEqual("qa/generalize-", job["env"]["BRANCH_PREFIX"])
+        self.assertGreater(int(gate["env"]["PR_GRACE_HOURS"]), 0)
+        self.assertEqual("${{ github.event.inputs.ignore_interval_generalization || 'false' }}",
+                         gate["env"]["IGNORE_INTERVAL"])
+        archive = steps[index("archive-stale-workstreams.sh")]
+        self.assertIn("steps.decide.outputs.reason != 'forced'", archive.get("if", ""))
+        self.assertEqual(index("register-workstream.sh") + 1, index("submit-agent-job.sh"))
+        self.assertEqual("generalization-qa",
+                         self.jobs["generalization-qa"]["concurrency"]["group"])
+        self.assertIn("generalization",
+                      self.workflow[_ON]["workflow_dispatch"]["inputs"]["agent"]["options"])
+
+    def test_the_generalization_round_is_a_test_locked_max_effort_round_with_its_own_template(self):
+        """A behavior-preserving generalization must not change what existing
+        tests assert, so the round carries the per-job test lock. Spotting the
+        coupling and choosing the smallest freeing change is synthesis a model
+        under-thinks, so it pins claude/opus at effort max as the retrospective
+        does. Its template is this repository's own, passed by path, and must
+        exist. An empty-handed round (every candidate rejected, with reasons) is
+        valid, so it sets no ENFORCE_CHANGES, and it needs no Metal, so it
+        carries no REQUIRED_LABELS."""
+        caller = self.jobs["generalization-qa"]
+        prompt = caller["with"]["prompt"]
+        self.assertEqual("tools/ci/prompts/generalization.txt", prompt)
+        self.assertTrue(os.path.isfile(os.path.join(_REPO_ROOT, prompt)))
+        submit = next(s for s in self.qa_jobs["generalization-qa"]["steps"]
+                      if "submit-agent-job.sh" in s.get("run", ""))
+        env = submit["env"]
+        self.assertEqual("true", env["PROTECT_TEST_FILES"])
+        self.assertEqual("false", env.get("ENFORCE_CHANGES", "false"))
+        self.assertEqual("", env.get("REQUIRED_LABELS", ""))
+        primary = json.loads(env["PHASE_CONFIGS"])["primary"]
+        self.assertEqual(
+            json.loads(self.jobs["qa-retrospective"]["with"]["phase-configs"])["primary"],
+            primary)
+        self.assertEqual(
+            {"runner": "claude", "model": "opus", "effort": "max", "provider": "anthropic"},
+            primary)
 
 
 if __name__ == "__main__":

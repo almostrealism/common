@@ -189,10 +189,7 @@ public class BranchBlock implements Block, Learning, Tracking {
 
 				@Override
 				public void setReceptor(Receptor<PackedCollection> r) {
-					if (cellWarnings && BranchBlock.this.downstream != null) {
-						warn("Replacing receptor");
-					}
-
+					Cell.warnReceptorReplacement(BranchBlock.this, BranchBlock.this.downstream);
 					BranchBlock.this.downstream = r;
 				}
 

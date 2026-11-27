@@ -19,11 +19,11 @@ _MANAGER_DIR = os.path.dirname(os.path.abspath(__file__))
 if _MANAGER_DIR not in sys.path:
     sys.path.insert(0, _MANAGER_DIR)
 
-from inference import Synthesis  # noqa: E402
 from manager_test_support import (  # noqa: E402
     server, _grant_all_scopes, _grant_scopes, _clear_scopes,
     _set_workspaces, _clear_workspaces, _reset_workspace_cache,
 )
+from inference import Synthesis  # noqa: E402
 
 
 class TestControllerHealth(unittest.TestCase):
@@ -813,6 +813,48 @@ class TestPerRequestTokenDecoding(unittest.TestCase):
                       called_path)
         self.assertNotIn("ws-STALE", called_path)
 
+@patch.object(server, "SHARED_SECRET", "test-secret")
+@patch.object(server, "_controller_post")
+class TestJobReportBlocked(unittest.TestCase):
+    """Tests for the ``job_report_blocked`` structured-block tool."""
+
+    def setUp(self):
+        _grant_all_scopes()
+
+    def test_posts_block_to_job_endpoint(self, mock_post):
+        """A valid report posts category and detail to the job's /blocked path."""
+        mock_post.return_value = {"ok": True}
+        token = server._mint_temp_token("ws-A", "job-7", ttl_seconds=60)
+        ctx = TestPerRequestTokenDecoding._fake_context_with_bearer(token)
+        with patch.object(server.mcp, "get_context", return_value=ctx):
+            result = server.job_report_blocked(
+                category="guardrail", detail="hook denied the edit")
+        self.assertTrue(result["ok"], msg=result.get("error"))
+        mock_post.assert_called_once()
+        path = mock_post.call_args[0][0]
+        body = mock_post.call_args[0][1]
+        self.assertIn("/api/workstreams/ws-A/jobs/job-7/blocked", path)
+        self.assertEqual(body["category"], "guardrail")
+        self.assertEqual(body["detail"], "hook denied the edit")
+
+    def test_rejects_unknown_category(self, mock_post):
+        """An out-of-set category is rejected without a controller round-trip."""
+        result = server.job_report_blocked(
+            category="bogus", detail="x", workstream_id="ws-A", job_id="job-7")
+        self.assertFalse(result["ok"])
+        self.assertIn("category", result["error"])
+        mock_post.assert_not_called()
+
+    def test_requires_a_resolvable_job(self, mock_post):
+        """With no job in the token context or arguments, the report is refused."""
+        server._set_token_context("", "")
+        with patch.object(server.mcp, "get_context",
+                          side_effect=LookupError("no active request")):
+            result = server.job_report_blocked(category="missing_resource", detail="x")
+        self.assertFalse(result["ok"])
+        mock_post.assert_not_called()
+
+
 class TestFindRecentPrByBranch(unittest.TestCase):
     """Unit tests for _find_recent_pr_by_branch GitHub API integration."""
 
@@ -1187,6 +1229,7 @@ class TestToolRegistration(unittest.TestCase):
             "workstream_submit_task",
             "workstream_register",
             "workstream_update_config",
+            "phase_config_explain",
             "workspace_update_config",
             "workstream_archive",
             "workstream_archive_many",
@@ -1206,6 +1249,8 @@ class TestToolRegistration(unittest.TestCase):
             "memory_store",
             "send_message",
             "await_message",
+            "mailbox_peek",
+            "job_report_blocked",
             "send_alert",
             "github_pr_find",
             "github_pr_review_comments",

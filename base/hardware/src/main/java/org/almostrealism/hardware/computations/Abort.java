@@ -175,7 +175,7 @@ public class Abort extends OperationComputationAdapter<MemoryData> implements Ex
 	 */
 	@Override
 	public Scope<Void> getScope(KernelStructureContext context) {
-		Scope<Void> scope = new Scope<>(getFunctionName(), getMetadata());
+		Scope<Void> scope = createScope(Scope::new);
 		scope.addCase(getArgument(0).reference(e(0)).greaterThan(e(0.0)), new Termination());
 		return scope;
 	}

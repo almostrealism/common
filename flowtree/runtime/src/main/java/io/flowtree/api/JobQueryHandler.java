@@ -19,6 +19,8 @@ package io.flowtree.api;
 import fi.iki.elonen.NanoHTTPD;
 import fi.iki.elonen.NanoHTTPD.Response;
 import io.flowtree.JsonFieldExtractor;
+import io.flowtree.controller.JobRecord;
+import io.flowtree.controller.JobStatsStore;
 import io.flowtree.jobs.JobCompletionEvent;
 import io.flowtree.slack.NotifierRegistry;
 import io.flowtree.slack.SlackNotifier;
@@ -98,26 +100,69 @@ public final class JobQueryHandler {
      * Handles {@code GET /api/jobs/{jobId}}.
      * Returns the most recent event for the specified job.
      *
+     * <p>The job is read from the controller's job store first, which records
+     * a job from the moment it is accepted, and from the notifiers' in-memory
+     * history only when the store does not know it (or none is configured). A
+     * job that is submitted but not yet started, or lost, therefore has a
+     * record here, as it does in the pending-job listing.</p>
+     *
+     * <p>Besides the event fields, the response carries the job's derived
+     * {@code state} ({@code SUBMITTED}, {@code LOST}, {@code RUNNING},
+     * {@code UNRESPONSIVE}, or the terminal status; see
+     * {@link StatsQueryHandler#derivedJob}), its {@code submittedAt} when
+     * recorded, and its {@code phase} when one is recorded. The derived state
+     * and the {@code workstreamId} of a job that has not finished are resolved
+     * together from one read of the store, which carries the workstream a job
+     * no notifier has seen yet.</p>
+     *
      * @param jobId the job identifier
      * @return JSON object for the job event, or 404 if not found
      */
     Response getJob(String jobId) {
-        JobCompletionEvent event = notifiers.findJob(jobId);
+        StatsQueryHandler statsHandler = stats != null ? stats.get() : null;
+        JobStatsStore store = statsHandler != null ? statsHandler.store() : null;
+
+        JobRecord record = store != null ? store.getJobRecord(jobId) : null;
+        JobCompletionEvent event = record != null ? record.event() : notifiers.findJob(jobId);
         if (event == null) {
             return NanoHTTPD.newFixedLengthResponse(Response.Status.NOT_FOUND,
                     "application/json", "{\"ok\":false,\"error\":\"Job not found\"}");
         }
+
+        StatsQueryHandler.DerivedJobView derived = statsHandler != null
+                ? statsHandler.derivedJob(record, event.getStatus(), Instant.now()) : null;
+
         String workstreamId = notifiers.findWorkstreamIdForJob(jobId);
+        if (workstreamId == null && derived != null) {
+            workstreamId = derived.workstreamId();
+        }
         String json = jobEventToJson(event, workstreamId);
 
-        StatsQueryHandler statsHandler = stats != null ? stats.get() : null;
-        String phase = statsHandler != null ? statsHandler.jobPhase(jobId) : null;
-        if (phase != null && !phase.isEmpty()) {
-            json = json.substring(0, json.length() - 1) + ",\"phase\":\""
-                    + JsonFieldExtractor.escapeJson(phase) + "\"}";
+        if (derived != null) {
+            json = withField(json, "state", derived.state());
+            if (record != null) {
+                Instant submittedAt = record.submittedAt();
+                json = withField(json, "submittedAt", submittedAt == null ? null : submittedAt.toString());
+                json = withField(json, "phase", record.phase());
+            }
         }
 
         return NanoHTTPD.newFixedLengthResponse(Response.Status.OK, "application/json", json);
+    }
+
+    /**
+     * Returns a JSON object with one more string field, or the object unchanged
+     * when the value is {@code null} or empty.
+     *
+     * @param json  a JSON object, ending in its closing brace
+     * @param name  the field name
+     * @param value the field value
+     * @return the object with the field added
+     */
+    private static String withField(String json, String name, String value) {
+        if (value == null || value.isEmpty()) return json;
+        return json.substring(0, json.length() - 1) + ",\"" + name + "\":\""
+                + JsonFieldExtractor.escapeJson(value) + "\"}";
     }
 
     /**
@@ -185,6 +230,14 @@ public final class JobQueryHandler {
         }
         if (event.getErrorMessage() != null) {
             j.append(",\"errorMessage\":\"").append(JsonFieldExtractor.escapeJson(event.getErrorMessage())).append("\"");
+        }
+        if (event.getBlockedCategory() != null) {
+            j.append(",\"blockedCategory\":\"")
+                    .append(JsonFieldExtractor.escapeJson(event.getBlockedCategory())).append("\"");
+            j.append(",\"blockedDetail\":\"")
+                    .append(JsonFieldExtractor.escapeJson(
+                            event.getBlockedDetail() == null ? "" : event.getBlockedDetail())).append("\"");
+            j.append(",\"blockedVerified\":").append(event.isBlockedVerified());
         }
         double totalCost = event.getTotalCostUsd();
         boolean costIncomplete = event.isCostIncomplete();

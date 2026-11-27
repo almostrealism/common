@@ -16,6 +16,8 @@
 
 package io.flowtree.controller;
 
+import io.flowtree.jobs.BlockReport;
+import io.flowtree.jobs.CodingAgentJobEvent;
 import io.flowtree.jobs.JobCompletionEvent;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
@@ -301,6 +303,69 @@ public class JobStatsStoreLifecycleTest extends TestSuiteBase {
         }
     }
 
+    /**
+     * A {@code BLOCKED} completion persists its structured category, detail, and
+     * verification flag, and they survive a close/reopen (the controller-restart
+     * case): without persistence a reopened store would reconstruct the base
+     * event whose block getters are all null.
+     */
+    @Test(timeout = 30000)
+    public void blockedJobPersistsCategoryDetailAndVerified() throws Exception {
+        File dir = Files.createTempDirectory("lifecycle-blocked").toFile();
+        dir.deleteOnExit();
+
+        JobStatsStore first = newStore(dir);
+        Instant submittedAt = Instant.parse("2026-08-22T12:00:00Z");
+        first.recordJobSubmitted("job-blk", "ws-1", "do the thing", null, null, submittedAt);
+        first.recordJobStarted("job-blk", "ws-1", "do the thing", "node-a", submittedAt.plusSeconds(60));
+        first.recordJobCompleted("ws-1", CodingAgentJobEvent.blocked("job-blk", "do the thing",
+                new BlockReport(BlockReport.MISSING_RESOURCE, "model file absent", true)));
+
+        JobCompletionEvent persisted = first.getJob("job-blk");
+        Assert.assertEquals(JobCompletionEvent.Status.BLOCKED, persisted.getStatus());
+        Assert.assertEquals("missing_resource", persisted.getBlockedCategory());
+        Assert.assertEquals("model file absent", persisted.getBlockedDetail());
+        assertTrue("the verified flag is persisted", persisted.isBlockedVerified());
+        first.close();
+
+        JobStatsStore second = newStore(dir);
+        try {
+            JobCompletionEvent reread = second.getJob("job-blk");
+            Assert.assertEquals("the block survives a reopen",
+                    JobCompletionEvent.Status.BLOCKED, reread.getStatus());
+            Assert.assertEquals("the category survives a reopen",
+                    "missing_resource", reread.getBlockedCategory());
+            Assert.assertEquals("the detail survives a reopen",
+                    "model file absent", reread.getBlockedDetail());
+            assertTrue("the verified flag survives a reopen", reread.isBlockedVerified());
+        } finally {
+            second.close();
+        }
+    }
+
+    /**
+     * An unverified guardrail block persists its {@code false} verification flag,
+     * so a reader can still tell an asserted block from a corroborated one.
+     */
+    @Test(timeout = 30000)
+    public void blockedJobPersistsUnverifiedFlag() throws Exception {
+        File dir = Files.createTempDirectory("lifecycle-blocked-unverified").toFile();
+        dir.deleteOnExit();
+        JobStatsStore store = newStore(dir);
+        try {
+            store.recordJobStarted("job-u", "ws-1", "job", "node-a", Instant.now());
+            store.recordJobCompleted("ws-1", CodingAgentJobEvent.blocked("job-u", "job",
+                    new BlockReport(BlockReport.GUARDRAIL, "claimed a hook denial", false)));
+
+            JobCompletionEvent persisted = store.getJob("job-u");
+            Assert.assertEquals(JobCompletionEvent.Status.BLOCKED, persisted.getStatus());
+            Assert.assertEquals("guardrail", persisted.getBlockedCategory());
+            Assert.assertFalse("an unverified claim stays unverified", persisted.isBlockedVerified());
+        } finally {
+            store.close();
+        }
+    }
+
     /** An existing database opens again without error and old rows read back (migration safety). */
     @Test(timeout = 30000)
     public void existingDatabaseReopensWithNewColumns() throws Exception {
@@ -352,6 +417,57 @@ public class JobStatsStoreLifecycleTest extends TestSuiteBase {
     }
 
     /**
+     * {@link JobStatsStore#getJobRecord} returns one consistent snapshot of a
+     * job's row: a {@code SUBMITTED} row carries a pending record (no active
+     * one), a {@code STARTED} row carries an active record (no pending one), a
+     * terminal row carries neither, and every snapshot reports the event,
+     * submission time and phase from that same read. An unknown or null id has
+     * no record.
+     */
+    @Test(timeout = 30000)
+    public void getJobRecordIsOneConsistentSnapshot() throws Exception {
+        File dir = Files.createTempDirectory("lifecycle-record").toFile();
+        dir.deleteOnExit();
+        JobStatsStore store = newStore(dir);
+        try {
+            Instant submittedAt = Instant.parse("2026-08-22T12:00:00Z");
+            store.recordJobSubmitted("job-1", "ws-1", "job", "submitter", null, submittedAt);
+
+            JobRecord submitted = store.getJobRecord("job-1");
+            Assert.assertNotNull("a submitted job has a record", submitted);
+            Assert.assertEquals(JobCompletionEvent.Status.SUBMITTED, submitted.event().getStatus());
+            Assert.assertNotNull("a submitted row carries its pending record", submitted.pending());
+            Assert.assertNull("a submitted row carries no active record", submitted.active());
+            Assert.assertEquals("ws-1", submitted.pending().workstreamId());
+            Assert.assertEquals(submittedAt, submitted.submittedAt());
+            Assert.assertNull("no phase has been recorded yet", submitted.phase());
+            Assert.assertNull("a submitted job has not started, so no started_at surfaces",
+                    submitted.event().getStartedAt());
+
+            store.recordJobStarted("job-1", "ws-1", "job", "node-a", submittedAt.plusSeconds(60));
+            store.recordPhase("job-1", "review");
+            JobRecord started = store.getJobRecord("job-1");
+            Assert.assertEquals(JobCompletionEvent.Status.STARTED, started.event().getStatus());
+            Assert.assertNull("a started row carries no pending record", started.pending());
+            Assert.assertNotNull("a started row carries its active record", started.active());
+            Assert.assertEquals("ws-1", started.active().workstreamId());
+            Assert.assertEquals("the submission time survives the start", submittedAt, started.submittedAt());
+            Assert.assertEquals("the recorded phase surfaces in the same snapshot", "review", started.phase());
+
+            store.recordJobCompleted("ws-1", JobCompletionEvent.success("job-1", "job"));
+            JobRecord done = store.getJobRecord("job-1");
+            Assert.assertEquals(JobCompletionEvent.Status.SUCCESS, done.event().getStatus());
+            Assert.assertNull("a finished job is neither pending", done.pending());
+            Assert.assertNull("a finished job is neither active", done.active());
+
+            Assert.assertNull("an unknown job has no record", store.getJobRecord("no-such-job"));
+            Assert.assertNull("a null id has no record", store.getJobRecord(null));
+        } finally {
+            store.close();
+        }
+    }
+
+    /**
      * Cancellation moves a pending or running job to {@code CANCELLED} with the
      * reason recorded, and takes it out of the pending and active views.
      */
@@ -382,6 +498,46 @@ public class JobStatsStoreLifecycleTest extends TestSuiteBase {
                     store.cancelIfInFlight("job-running", cancelledAt.plusSeconds(1), "again"));
             Assert.assertEquals("the first reason is kept", "pull request #7 merged",
                     store.getJob("job-running").getErrorMessage());
+        } finally {
+            store.close();
+        }
+    }
+
+    /**
+     * A job cancelled while still {@code SUBMITTED} never started, so its
+     * {@code started_at} column still holds the submission placeholder; the event
+     * read back must expose no {@code startedAt}, or a job that never ran would
+     * appear to have started at submission time. A job cancelled after a real
+     * start keeps that start time, proving the guard distinguishes the two.
+     */
+    @Test(timeout = 30000)
+    public void cancelledBeforeStartExposesNoStartedAt() throws Exception {
+        File dir = Files.createTempDirectory("lifecycle-cancel-nostart").toFile();
+        dir.deleteOnExit();
+        JobStatsStore store = newStore(dir);
+        try {
+            Instant submittedAt = Instant.parse("2026-08-22T12:00:00Z");
+            store.recordJobSubmitted("job-1", "ws-1", "job", null, null, submittedAt);
+            assertTrue("a pending job cancels",
+                    store.cancelIfInFlight("job-1", submittedAt.plusSeconds(120), "superseded"));
+
+            JobRecord record = store.getJobRecord("job-1");
+            Assert.assertEquals(JobCompletionEvent.Status.CANCELLED, record.event().getStatus());
+            Assert.assertNull("a job cancelled before it started exposes no startedAt",
+                    record.event().getStartedAt());
+            Assert.assertNull("getJob agrees the cancelled-never-started job has no startedAt",
+                    store.getJob("job-1").getStartedAt());
+
+            Instant realStart = submittedAt.plusSeconds(60);
+            store.recordJobSubmitted("job-2", "ws-1", "job", null, null, submittedAt);
+            store.recordJobStarted("job-2", "ws-1", "job", "node-a", realStart);
+            assertTrue("a running job cancels",
+                    store.cancelIfInFlight("job-2", submittedAt.plusSeconds(300), "superseded"));
+
+            JobCompletionEvent started = store.getJob("job-2");
+            Assert.assertEquals(JobCompletionEvent.Status.CANCELLED, started.getStatus());
+            Assert.assertEquals("a job cancelled after a real start keeps that start time",
+                    realStart, started.getStartedAt());
         } finally {
             store.close();
         }

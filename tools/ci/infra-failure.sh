@@ -16,7 +16,12 @@
 #
 #   - a dependency or plugin that would not resolve/download from a repository;
 #   - a dropped, refused or timed-out network connection, or a DNS failure;
-#   - a 5xx from a package, artifact or image host, or a registry rate limit;
+#   - a 5xx from a package, artifact or image host, or a registry rate limit —
+#     an HTTP 429 in the forms the tools print it: curl's and git's "The
+#     requested URL returned error: 429", Maven's "status code: 429" /
+#     "Too Many Requests (429)", and "HTTP 429" / "HTTP/1.1 429" / "HTTP/2 429"
+#     (only a 429 status, never a bare 4xx: a 401/403/404 can be the commit
+#     naming a wrong repository, artifact or credential);
 #   - a runner that shut down or lost contact with the server (a GitHub-hosted
 #     runner being reclaimed, a self-hosted runner losing its connection);
 #   - a full disk.
@@ -32,6 +37,13 @@
 #     line GitHub emits alongside it ("received a shutdown signal", "lost
 #     communication with the server"), which IS a signature below, so the
 #     ambiguous cancellation line is not needed and is not matched.
+#
+# A job log is matched with its ANSI colour codes stripped. GitHub wraps the
+# echoed step script in colour codes, and Maven and other tools colour their
+# own output, so a code can fall inside the text a signature looks for; and
+# `gh api` refuses outright to print a response containing escape sequences
+# unless told it may (--allow-escape-sequences). Without that flag every log
+# read fails, and a classifier that cannot read logs retries nothing.
 #
 # A log that cannot be read is NOT an infrastructure failure and NOT a
 # deterministic one: it is unknown. ci_infra_job_matches reports that third
@@ -57,7 +69,7 @@
 
 # Log lines that mark a failed job as an infrastructure failure; see the header.
 # Extended regular expression, matched case-insensitively.
-INFRA_SIGNATURES='Could not (find|resolve|transfer) artifact|Failed to (transfer|read artifact descriptor)|Could not resolve dependencies|Could not resolve host|Connection (reset|refused|timed out)|(connect|read) timed out|ETIMEDOUT|ECONNRESET|Temporary failure in name resolution|TLS handshake timeout|Failed to connect to [^ ]+ port|unable to access [^ ]+: (Could not resolve|Failed to connect|The requested URL returned error: 5)|RPC failed|The remote end hung up unexpectedly|(HTTP|status code:?) ?5[0-9][0-9]|(502 Bad Gateway|503 Service Unavailable|504 Gateway Time-?out)|too ?many ?requests|received a shutdown signal|lost communication with the server|No space left on device'
+INFRA_SIGNATURES='Could not (find|resolve|transfer) artifact|Failed to (transfer|read artifact descriptor)|Could not resolve dependencies|Could not resolve host|Connection (reset|refused|timed out)|(connect|read) timed out|ETIMEDOUT|ECONNRESET|Temporary failure in name resolution|TLS handshake timeout|Failed to connect to [^ ]+ port|unable to access [^ ]+: (Could not resolve|Failed to connect|The requested URL returned error: 5)|RPC failed|The remote end hung up unexpectedly|(HTTP(/[0-9.]+)?|status code:?) ?(5[0-9][0-9]|429([^0-9]|$))|The requested URL returned error: 429|(502 Bad Gateway|503 Service Unavailable|504 Gateway Time-?out)|too ?many ?requests|received a shutdown signal|lost communication with the server|No space left on device'
 
 # ci_infra_fetch_job_log <job-id>
 #   Print the job's log to stdout. Exit 0 when read, 1 when it could not be read
@@ -71,11 +83,16 @@ ci_infra_fetch_job_log() {
 
     local attempts="${CI_INFRA_LOG_ATTEMPTS:-6}"
     local delay="${CI_INFRA_LOG_RETRY_DELAY:-2}"
-    local try log err_file err
+    local try log err_file err help allow=""
     err_file="$(mktemp)"
+    # Older gh has neither the flag nor the refusal it lifts; see the header.
+    help=$(gh api --help 2>/dev/null || true)
+    case "$help" in
+        *--allow-escape-sequences*) allow="--allow-escape-sequences" ;;
+    esac
 
     for (( try = 1; try <= attempts; try++ )); do
-        if log=$(gh api "/repos/$REPO/actions/jobs/$job_id/logs" 2>"$err_file"); then
+        if log=$(gh api $allow "/repos/$REPO/actions/jobs/$job_id/logs" 2>"$err_file"); then
             rm -f "$err_file"
             printf '%s' "$log"
             return 0
@@ -96,6 +113,25 @@ ci_infra_fetch_job_log() {
     return 1
 }
 
+# ci_infra_strip_ansi
+#   Copy stdin to stdout without ANSI escape sequences (colour and other CSI
+#   codes), so a signature matches text a colour code was placed inside.
+ci_infra_strip_ansi() {
+    local esc
+    esc=$(printf '\033')
+    LC_ALL=C sed -E "s/${esc}\[[0-9;?]*[A-Za-z]//g"
+}
+
+# ci_infra_log_matches
+#   Exit 0 when the log on stdin shows an infrastructure failure, else 1. The
+#   stripped log is captured before grep reads it, for the SIGPIPE reason given
+#   at ci_infra_fetch_job_log.
+ci_infra_log_matches() {
+    local plain
+    plain=$(ci_infra_strip_ansi)
+    grep -Eiq "$INFRA_SIGNATURES" <<< "$plain"
+}
+
 # ci_infra_job_matches <job-id>
 #   Exit 0 when the job's log shows an infrastructure failure, 1 when it is
 #   readable and shows none (a deterministic failure), 2 when the log could not
@@ -103,7 +139,7 @@ ci_infra_fetch_job_log() {
 ci_infra_job_matches() {
     local log
     log=$(ci_infra_fetch_job_log "$1") || return 2
-    grep -Eiq "$INFRA_SIGNATURES" <<< "$log"
+    ci_infra_log_matches <<< "$log"
 }
 
 # When executed directly (not sourced), classify the log on stdin: print
@@ -111,7 +147,7 @@ ci_infra_job_matches() {
 # "deterministic" and exit 1. tools/tests/test-infra-classification.sh drives
 # this to check the signatures against real log samples without the GitHub API.
 if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
-    if grep -Eiq "$INFRA_SIGNATURES"; then
+    if ci_infra_log_matches; then
         echo infra
     else
         echo deterministic

@@ -81,6 +81,19 @@ public final class Clap2Config {
 	/** The epsilon of every RMS norm of both towers. */
 	public static final double NORM_EPSILON = 1e-6;
 
+	/**
+	 * The default length of the fixed window {@link Clap2AudioEncoder#encodeClip} compiles the
+	 * audio tower for, in seconds. The tower's activation memory grows with the window, and the
+	 * model card advises splitting long audio into windows of at most ten seconds.
+	 */
+	public static final int DEFAULT_WINDOW_SECONDS = 10;
+
+	/**
+	 * The fewest samples a clip or window may hold: one analysis window. The centered STFT
+	 * reflect-pads a clip by half a window on each side, which needs a clip longer than that.
+	 */
+	public static final int MIN_CLIP_SAMPLES = FFT_SIZE;
+
 	/** Token id that opens every caption. */
 	public static final int BOS_TOKEN = 50259;
 
@@ -123,6 +136,33 @@ public final class Clap2Config {
 	/** Number of token positions the text tower is compiled for. */
 	private final int maxTextLength;
 
+	/** Number of samples in the fixed window the audio tower is compiled for. */
+	private final int windowSamples;
+
+	/**
+	 * Creates a configuration with a window of {@link #DEFAULT_WINDOW_SECONDS}.
+	 *
+	 * @param audioWidth     width of the audio trunk
+	 * @param audioLayers    number of audio blocks
+	 * @param audioHeads     number of audio attention heads
+	 * @param audioInnerSize inner width of each audio feed-forward
+	 * @param textWidth      width of the text trunk
+	 * @param textLayers     number of text blocks
+	 * @param textHeads      number of text attention heads
+	 * @param textInnerSize  inner width of each text feed-forward
+	 * @param vocabularySize number of tokens in the vocabulary
+	 * @param embedDim       width of the shared embedding space
+	 * @param maxTextLength  number of token positions the text tower is compiled for
+	 * @throws IllegalArgumentException as {@link #Clap2Config(int, int, int, int, int, int, int, int,
+	 *                                  int, int, int, int)} does
+	 */
+	public Clap2Config(int audioWidth, int audioLayers, int audioHeads, int audioInnerSize,
+					   int textWidth, int textLayers, int textHeads, int textInnerSize,
+					   int vocabularySize, int embedDim, int maxTextLength) {
+		this(audioWidth, audioLayers, audioHeads, audioInnerSize, textWidth, textLayers, textHeads,
+				textInnerSize, vocabularySize, embedDim, maxTextLength, DEFAULT_WINDOW_SECONDS * SAMPLE_RATE);
+	}
+
 	/**
 	 * Creates a configuration.
 	 *
@@ -137,8 +177,10 @@ public final class Clap2Config {
 	 * @param vocabularySize number of tokens in the vocabulary
 	 * @param embedDim       width of the shared embedding space
 	 * @param maxTextLength  number of token positions the text tower is compiled for
+	 * @param windowSamples  number of samples in the fixed window the audio tower is compiled for
 	 * @throws IllegalArgumentException if a head count, width, layer count, inner size, vocabulary
-	 *                                  size, embedding width or text length is not positive, a
+	 *                                  size, embedding width or text length is not positive, the
+	 *                                  window is shorter than {@link #MIN_CLIP_SAMPLES}, a
 	 *                                  width does not divide
 	 *                                  into its heads, an audio head width is not a multiple of
 	 *                                  four (the axial rotary embedding gives each of its two axes a
@@ -147,7 +189,7 @@ public final class Clap2Config {
 	 */
 	public Clap2Config(int audioWidth, int audioLayers, int audioHeads, int audioInnerSize,
 					   int textWidth, int textLayers, int textHeads, int textInnerSize,
-					   int vocabularySize, int embedDim, int maxTextLength) {
+					   int vocabularySize, int embedDim, int maxTextLength, int windowSamples) {
 		if (audioHeads <= 0 || textHeads <= 0) {
 			throw new IllegalArgumentException("Head counts must be positive, but the audio tower has "
 					+ audioHeads + " and the text tower " + textHeads);
@@ -161,6 +203,10 @@ public final class Clap2Config {
 		requirePositive("vocabularySize", vocabularySize);
 		requirePositive("embedDim", embedDim);
 		requirePositive("maxTextLength", maxTextLength);
+		if (windowSamples < MIN_CLIP_SAMPLES) {
+			throw new IllegalArgumentException("windowSamples must be at least " + MIN_CLIP_SAMPLES
+					+ ", but is " + windowSamples);
+		}
 		if (audioWidth % audioHeads != 0 || (audioWidth / audioHeads) % 4 != 0) {
 			throw new IllegalArgumentException("Audio width " + audioWidth + " must divide into "
 					+ audioHeads + " heads whose width is a multiple of 4");
@@ -181,6 +227,7 @@ public final class Clap2Config {
 		this.vocabularySize = vocabularySize;
 		this.embedDim = embedDim;
 		this.maxTextLength = maxTextLength;
+		this.windowSamples = windowSamples;
 	}
 
 	/**
@@ -199,7 +246,8 @@ public final class Clap2Config {
 	/**
 	 * Reads the configuration of a checkpoint from its weights, compiling the text tower for
 	 * {@code maxTextLength} token positions (captions are short, so far fewer than the 256 the
-	 * model was trained with; padding is masked, so the length does not change any embedding).
+	 * model was trained with; padding is masked, so the length does not change any embedding), and
+	 * the audio tower's fixed window for {@link #DEFAULT_WINDOW_SECONDS}.
 	 *
 	 * @param weights       the weights, as the CLAP2 extraction script writes them
 	 * @param maxTextLength the number of token positions to compile the text tower for
@@ -207,6 +255,21 @@ public final class Clap2Config {
 	 * @throws IllegalArgumentException if a tensor or head count the configuration needs is missing
 	 */
 	public static Clap2Config of(StateDictionary weights, int maxTextLength) {
+		return of(weights, maxTextLength, DEFAULT_WINDOW_SECONDS * SAMPLE_RATE);
+	}
+
+	/**
+	 * Reads the configuration of a checkpoint from its weights, as {@link #of(StateDictionary, int)}
+	 * does, with the audio tower's fixed window set to {@code windowSamples}.
+	 *
+	 * @param weights       the weights, as the CLAP2 extraction script writes them
+	 * @param maxTextLength the number of token positions to compile the text tower for
+	 * @param windowSamples the number of samples in the fixed window of the audio tower
+	 * @return the configuration
+	 * @throws IllegalArgumentException if a tensor or head count the configuration needs is missing,
+	 *                                  or the window is shorter than {@link #MIN_CLIP_SAMPLES}
+	 */
+	public static Clap2Config of(StateDictionary weights, int maxTextLength, int windowSamples) {
 		PackedCollection patchEmbed = weights.require("audio.patch_embed.weight");
 		PackedCollection audioFc2 = weights.require("audio.blocks.0.mlp.fc2.weight");
 		PackedCollection tokenEmbedding = weights.require("text.token_embedding.weight");
@@ -226,7 +289,8 @@ public final class Clap2Config {
 				textW3.getShape().length(1),
 				tokenEmbedding.getShape().length(0),
 				projection.getShape().length(0),
-				maxTextLength);
+				maxTextLength,
+				windowSamples);
 	}
 
 	/**
@@ -342,4 +406,7 @@ public final class Clap2Config {
 
 	/** The number of token positions the text tower is compiled for. */
 	public int getMaxTextLength() { return maxTextLength; }
+
+	/** The number of samples in the fixed window the audio tower is compiled for. */
+	public int getWindowSamples() { return windowSamples; }
 }

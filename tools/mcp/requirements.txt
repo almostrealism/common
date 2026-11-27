@@ -1,8 +1,18 @@
-# Consolidated requirements for all AR MCP servers
+# Consolidated requirements for all AR MCP servers and their tests
 # Install with: pip install -r tools/mcp/requirements.txt
 #
-# Covers: ar-consultant, ar-memory, ar-test-runner, ar-jmx,
-#          ar-profile-analyzer, ar-github, ar-messages
+# This is the file to install. Each server's own requirements.txt is a subset
+# of it, kept for building that server alone (its Dockerfile or start.sh); a package a
+# server needs belongs here as well as there.
+#
+# Covers: ar-manager, ar-memory, ar-test-runner, ar-build-validator, ar-jmx,
+#         ar-profile-analyzer, ar-commit, the shared library in common/, and
+#         the Python tests of all of them.
+#
+# Python 3.10 through 3.14. CI runs 3.10. Python 3.15 cannot install this
+# file yet: fastembed needs onnxruntime, which publishes no 3.15 wheels, and
+# pip reports that as "ResolutionImpossible" on fastembed rather than naming
+# the interpreter. Use a 3.14 or older interpreter for the virtualenv.
 
 # Core MCP framework (all servers)
 # Held below 2.0.0: the 2.x SDK removes mcp.server.fastmcp, which every
@@ -15,12 +25,20 @@ fastembed>=0.2.0
 faiss-cpu>=1.7.0
 numpy
 
-# HTTP server (ar-memory HTTP API)
+# HTTP server (ar-memory HTTP API, ar-manager)
 starlette>=0.27.0
 uvicorn>=0.23.0
 
+# Imported directly by tests: httpx by the ar-manager transport tests, pytest
+# by the ar-jmx and ar-test-runner tests, pyyaml by the workstream-migration
+# and CI-tool tests under tools/ that run with this environment.
+httpx
+pytest
+pyyaml
+
 # Optional: MLX inference backend (Apple Silicon only)
-# Uncomment on macOS with Apple Silicon for local LLM in ar-consultant:
+# Uncomment on macOS with Apple Silicon for local LLM inference
+# (common/inference.py):
 # mlx>=0.4.0
 # mlx-lm>=0.4.0
 

@@ -230,6 +230,64 @@ public class ArrangementGenerationElitismTest extends TestSuiteBase {
 	}
 
 	/**
+	 * A population of two, with one elite and one child, ends the cycle with records for
+	 * the elite and for a genuinely new child. The non-elite parent's record must not
+	 * survive under its old genome id.
+	 *
+	 * <p>This reproduces the reported Arrange list defect. The non-elite parent was bred
+	 * from the elite in an earlier cycle, so every parameter lies within the breeding scale
+	 * of the elite's. The default breeder used to move each parameter by up to the whole
+	 * distance, so the child of that pair came out as an exact copy of the non-elite
+	 * parent. The copy had the parent's signature, so the record rebuild reused the parent's
+	 * record: the list kept the parent's row, id, duration and score every cycle, and the
+	 * population never moved on. The child is bred here by the optimizer's own breeder and
+	 * the records are rebuilt through the real breeding-complete hook. No audio is
+	 * rendered.</p>
+	 *
+	 * @throws Exception if the process cannot be prepared
+	 */
+	@Test(timeout = 120_000)
+	public void populationOfTwoRecordsTheBredChildNotTheReplacedParent() throws Exception {
+		withPreparedProcess("results/process-elite-pair.xml", (process, optimizer) -> {
+			ProjectedGenome elite = new ProjectedGenome(PackedCollection.of(0.400, 0.450, 0.500, 0.550));
+			// Bred from the elite earlier: within the smallest breeding scale of it everywhere.
+			ProjectedGenome parent = new ProjectedGenome(PackedCollection.of(0.404, 0.446, 0.503, 0.552));
+
+			GenomicNetwork eliteRecord = new GenomicNetwork(0, elite);
+			eliteRecord.setHealthScore(score("results/pair-elite.wav"));
+			GenomicNetwork parentRecord = new GenomicNetwork(1, parent);
+			parentRecord.setHealthScore(score("results/pair-parent.wav"));
+			process.setNetworks(List.of(eliteRecord, parentRecord));
+
+			// One elite, then one child bred from the pair, as PopulationOptimizer.iterate()
+			// assembles the next population.
+			List<Genome<PackedCollection>> next = new ArrayList<>(List.of(elite));
+			optimizer.breed(next, elite, parent);
+			Assert.assertEquals("The pair must breed one child beside the elite", 2, next.size());
+
+			optimizer.setPopulation(new AudioScenePopulation(process.getLocalScene(), next));
+			optimizer.breedingComplete();
+
+			List<GenomicNetwork> records = process.getNetworks();
+			Assert.assertEquals("The records must hold exactly the population's genomes",
+					next.size(), records.size());
+
+			for (int i = 0; i < next.size(); i++) {
+				Assert.assertEquals("Record " + i + " must carry the population's genome " + i,
+						next.get(i).signature(), records.get(i).getGenome().signature());
+			}
+
+			Assert.assertSame("The elite must keep its record", eliteRecord, records.get(0));
+			Assert.assertNotEquals("The bred child is a copy of the non-elite parent it replaced",
+					parent.signature(), records.get(1).getGenome().signature());
+			Assert.assertNotSame("The replaced parent's record must not stand in for the child",
+					parentRecord, records.get(1));
+			Assert.assertNull("The child's record must start unscored, not with the parent's score",
+					records.get(1).getHealthScore());
+		});
+	}
+
+	/**
 	 * A run persists its records in the optimizer's final, health-ordered population
 	 * order rather than the pre-scoring order the records were last rebuilt in. The
 	 * records start in pre-scoring order - the carried elite first, a stronger child

@@ -59,8 +59,9 @@ public class CudaMemoryProvider extends HardwareMemoryProvider<CudaMemory> {
 
 	/**
 	 * Whether released buffers no larger than {@link #maxCachedAllocation} are kept for reuse
-	 * rather than freed. On by default; set {@code AR_HARDWARE_ALLOCATION_CACHE} to {@code false}
-	 * to turn it off. Reuse avoids the cost of allocating and freeing native memory repeatedly
+	 * rather than freed. On by default; set {@code AR_HARDWARE_ALLOCATION_CACHE} to
+	 * {@code disabled} to turn it off (the flag accepts only {@code enabled} and
+	 * {@code disabled}; {@code false} is rejected at initialization). Reuse avoids the cost of allocating and freeing native memory repeatedly
 	 * (freeing synchronizes the device), which a workload such as a training loop pays on every
 	 * step, at the cost of holding memory against the reservation (freed when an allocation would
 	 * otherwise exceed it). When off, every released buffer is freed at once and every allocation
