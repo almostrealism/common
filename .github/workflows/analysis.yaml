@@ -4281,12 +4281,15 @@ jobs:
             # retries transient ones with backoff, so a 429 or a rate-limit page
             # can never be mistaken for the zip — the earlier `-sL` without `-f`
             # left the HTTP error body in the file and then tried to unzip it.
+            # No --retry-delay: a fixed delay turns off curl's doubling backoff
+            # (1s, 2s, 4s, ...), and a rate limit outlasts six tries 5s apart.
+            # curl also waits as long as a Retry-After header asks.
             JACOCO_VERSION=$(sed -n 's|.*<jacoco.version>\(.*\)</jacoco.version>.*|\1|p' pom.xml | head -n1)
             JACOCO_ZIP="${HOME}/.m2/repository/org/jacoco/jacoco/${JACOCO_VERSION}/jacoco-${JACOCO_VERSION}.zip"
             if [ ! -f "$JACOCO_ZIP" ]; then
               echo "jacoco-cli ${JACOCO_VERSION} not in the Maven cache; downloading from Maven Central"
               mkdir -p "$(dirname "$JACOCO_ZIP")"
-              curl -fsSL --retry 5 --retry-delay 5 --retry-all-errors --retry-max-time 120 \
+              curl -fsSL --retry 8 --retry-all-errors --retry-max-time 300 \
                 -o "$JACOCO_ZIP" \
                 "https://repo1.maven.org/maven2/org/jacoco/jacoco/${JACOCO_VERSION}/jacoco-${JACOCO_VERSION}.zip"
             else

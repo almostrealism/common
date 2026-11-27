@@ -380,9 +380,15 @@ that staged a request instead of retrying it.
 
 A failed job outside the long-running lanes is deterministic unless its log
 shows an infrastructure failure: a dependency or plugin that could not be
-downloaded, a dropped or timed-out connection, a 5xx from a package host, a
-runner that shut down or lost contact, or a full disk (`INFRA_SIGNATURES` in
-`tools/ci/infra-failure.sh`). The retry gate retries such a run up to the same
+downloaded, a dropped or timed-out connection, a 5xx or a 429 rate limit from a
+package host, a runner that shut down or lost contact, or a full disk
+(`INFRA_SIGNATURES` in `tools/ci/infra-failure.sh`). That covers the `analysis`
+job too: its coverage merge downloads jacoco-cli, and a rate-limited download
+there fails `analysis` and then `Test Checks`. Logs are matched with their ANSI
+colour codes stripped, and fetched with `gh api --allow-escape-sequences`: a
+current `gh` refuses to print a response containing escape sequences, and every
+GitHub job log has them, so without the flag no log could be read and nothing
+was retried. The retry gate retries such a run up to the same
 attempt limit. It never reaches an agent, because `auto-resolve` stages nothing
 when no test job failed, so a test run still failing on infrastructure at its
 last attempt is left for a person. One failed download in
@@ -390,7 +396,7 @@ last attempt is left for a person. One failed download in
 with neither a retry nor a remediation. A log that cannot be read is neither
 infrastructure nor deterministic but unknown: the fetch retries before giving
 up and reports a persistent failure as a `::warning::`, and an unreadable log
-on a `*-check` validator or the `build` job is retried while attempts remain
+on a `*-check` validator, the `build` job or the `analysis` job is retried while attempts remain
 rather than silently called deterministic (bounded by `MAX_ATTEMPTS`; the final
 attempt proceeds exactly as a deterministic failure would, so nothing is
 masked).
