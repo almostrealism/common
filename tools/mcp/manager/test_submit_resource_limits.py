@@ -68,9 +68,13 @@ class TestSubmitResourceLimits(unittest.TestCase):
         names = list(inspect.signature(server.workstream_submit_task).parameters)
         wall_clock = names.index("max_wall_clock_hours")
         self.assertEqual("sensitive_file_protection_enabled", names[wall_clock + 1])
-        self.assertEqual(names.index("self_notify") + 1,
+        # The legacy removed params (model/effort/default_runner/runners) keep
+        # their positions, so the new parameter must come after all of them --
+        # it is the last parameter, immediately after runners.
+        self.assertGreater(names.index("inactivity_timeout_seconds"), names.index("model"))
+        self.assertGreater(names.index("inactivity_timeout_seconds"), names.index("runners"))
+        self.assertEqual(names.index("runners") + 1,
                          names.index("inactivity_timeout_seconds"))
-        self.assertLess(names.index("inactivity_timeout_seconds"), names.index("model"))
 
 
 if __name__ == "__main__":

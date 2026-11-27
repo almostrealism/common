@@ -58,15 +58,17 @@ def workstream_submit_task(
     allow_commit_language: bool = False,
     collaborative: bool = False,
     self_notify: bool = False,
-    inactivity_timeout_seconds: Optional[int] = None,
     # Removed legacy config parameters (model / effort / default_runner /
     # runners). Declared without type hints so they stay out of the tool's
     # declared parameter schema while still being captured here for a clear
-    # rejection error — see _reject_removed_config_params.
+    # rejection error — see _reject_removed_config_params. They keep their
+    # original positions so an existing positional call still binds to them,
+    # which is why any genuinely new parameter is appended after them.
     model="",
     effort="",
     default_runner="",
     runners="",
+    inactivity_timeout_seconds: Optional[int] = None,
 ) -> dict:
     """Submit a coding task to a FlowTree agent.
 

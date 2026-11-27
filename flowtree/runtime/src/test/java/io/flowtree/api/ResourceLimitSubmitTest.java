@@ -108,6 +108,19 @@ public class ResourceLimitSubmitTest extends FlowTreeApiSubmitTestBase {
     }
 
     /**
+     * The request's own limits are validated before the availability checks, so
+     * a non-positive silence budget is still a 400 — not masked as "No agents
+     * connected" — when no agent is connected.
+     */
+    @Test(timeout = 15000)
+    public void nonPositiveSilenceBudgetIsRefusedWithNoAgents() throws IOException {
+        endpoint.setServer(new QueueCapturingServer(0));
+        HttpURLConnection conn = post(",\"inactivityTimeoutSeconds\":0");
+        assertEquals(400, conn.getResponseCode());
+        assertTrue(readErrorBody(conn).contains("inactivityTimeoutSeconds"));
+    }
+
+    /**
      * Submits to the registered workstream and parses a successful response.
      *
      * @param extraFields JSON members to append, each with a leading comma

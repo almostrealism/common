@@ -138,4 +138,25 @@ public class ResourceLimitOverridesTest extends TestSuiteBase {
         assertNull(new ResourceLimitOverrides("{\"inactivityTimeoutSeconds\":60}").validationError());
         assertNull(new ResourceLimitOverrides("{}").validationError());
     }
+
+    /**
+     * A same-named key nested in an earlier field must not be read in place of
+     * the top-level value: otherwise a request could hide a nested positive
+     * budget to slip a non-positive top-level one past validation, or a nested
+     * over-limit cap to steer clamping.
+     */
+    @Test(timeout = 30000)
+    public void nestedKeysDoNotSpoofTheTopLevelLimits() {
+        assertEquals("inactivityTimeoutSeconds must be positive",
+                new ResourceLimitOverrides(
+                        "{\"meta\":{\"inactivityTimeoutSeconds\":60},\"inactivityTimeoutSeconds\":0}")
+                        .validationError());
+
+        ResourceLimitOverrides overrides = apply(200, 20.0,
+                "{\"meta\":{\"maxTurns\":5000,\"maxBudgetUsd\":99.0},"
+                        + "\"maxTurns\":75,\"maxBudgetUsd\":4.25}");
+        assertEquals(75, factory.getMaxTurns());
+        assertEquals(4.25, factory.getMaxBudgetUsd(), 0.0);
+        assertTrue(overrides.getClamped().isEmpty());
+    }
 }

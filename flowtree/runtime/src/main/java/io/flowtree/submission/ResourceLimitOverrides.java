@@ -62,10 +62,10 @@ public final class ResourceLimitOverrides {
      * @param body the JSON submission body
      */
     public ResourceLimitOverrides(String body) {
-        this.maxTurns = JsonFieldExtractor.extractInt(body, "maxTurns");
-        this.maxBudgetUsd = JsonFieldExtractor.extractDouble(body, "maxBudgetUsd");
+        this.maxTurns = JsonFieldExtractor.getInt(body, "maxTurns", 0);
+        this.maxBudgetUsd = JsonFieldExtractor.getDouble(body, "maxBudgetUsd", 0.0);
         this.inactivityTimeoutSeconds = JsonFieldExtractor.hasField(body, "inactivityTimeoutSeconds")
-                ? Integer.valueOf(JsonFieldExtractor.extractInt(body, "inactivityTimeoutSeconds")) : null;
+                ? Integer.valueOf(JsonFieldExtractor.getInt(body, "inactivityTimeoutSeconds", 0)) : null;
     }
 
     /**

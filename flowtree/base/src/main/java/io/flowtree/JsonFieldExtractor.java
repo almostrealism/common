@@ -122,6 +122,68 @@ public final class JsonFieldExtractor {
 	}
 
 	/**
+	 * Returns the integer value of a top-level field, read from the parsed JSON
+	 * object rather than by scanning the raw text.
+	 *
+	 * <p>Unlike {@link #extractInt(String, String)}, which matches the first
+	 * {@code "field"} token anywhere in the raw string, this reads the field from
+	 * the top-level object, so a same-named key nested in an earlier field — or a
+	 * {@code "field":N} fragment inside another field's string value — cannot
+	 * change the result. Use it for a value whose integrity must not be spoofable
+	 * by request content, for the same reason {@link #getBoolean(String, String, boolean)}
+	 * exists. A top-level numeric string ({@code "field":"5"}) is accepted too.</p>
+	 *
+	 * @param json         the JSON object string
+	 * @param field        the field name
+	 * @param defaultValue the value returned when the input is not a JSON object,
+	 *                     the field is absent, or the field is not numeric
+	 * @return the field's value truncated to an {@code int}, or {@code defaultValue}
+	 */
+	public static int getInt(String json, String field, int defaultValue) {
+		Double value = topLevelNumber(json, field);
+		return value == null ? defaultValue : value.intValue();
+	}
+
+	/**
+	 * Returns the double value of a top-level field, read from the parsed JSON
+	 * object rather than by scanning the raw text. The numeric counterpart of
+	 * {@link #getInt(String, String, int)}; see it for why the raw-scan form is
+	 * spoofable and this one is not.
+	 *
+	 * @param json         the JSON object string
+	 * @param field        the field name
+	 * @param defaultValue the value returned when the input is not a JSON object,
+	 *                     the field is absent, or the field is not numeric
+	 * @return the field's value, or {@code defaultValue}
+	 */
+	public static double getDouble(String json, String field, double defaultValue) {
+		Double value = topLevelNumber(json, field);
+		return value == null ? defaultValue : value.doubleValue();
+	}
+
+	/**
+	 * Reads a numeric top-level field from the parsed JSON object, returning
+	 * {@code null} when the input is not a JSON object, the field is absent, or
+	 * the field's value is neither a number nor a numeric string. Shared backing
+	 * for {@link #getInt(String, String, int)} and {@link #getDouble(String, String, double)}.
+	 *
+	 * @param json  the JSON object string
+	 * @param field the field name
+	 * @return the numeric value, or {@code null}
+	 */
+	private static Double topLevelNumber(String json, String field) {
+		if (json == null) return null;
+		try {
+			JsonNode root = MAPPER.readTree(json);
+			if (root == null || !root.isObject()) return null;
+			JsonNode node = root.get(field);
+			return node == null ? null : numericValue(node);
+		} catch (Exception e) {
+			return null;
+		}
+	}
+
+	/**
 	 * Extracts a string field from a JSON string.
 	 * Handles JSON escape sequences including Unicode escapes.
 	 *

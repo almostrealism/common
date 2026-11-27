@@ -1008,6 +1008,12 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
                 + "\"skipped\":true,\"reason\":\"" + JsonFieldExtractor.escapeJson(remediationSkip) + "\"}");
         }
 
+        // Validate the request's own limits before the availability checks, so a
+        // non-positive silence budget is a 400 rather than being masked by the
+        // "No agents connected" response below.
+        ResourceLimitOverrides limits = new ResourceLimitOverrides(body);
+        if (limits.validationError() != null) return errorResponse(limits.validationError());
+
         if (server == null) {
             return errorResponse("No FlowTree server configured");
         }
@@ -1021,8 +1027,6 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         String repoUrl = bodyRepoUrl;
         String baseBranch = JsonFieldExtractor.extractString(body, "baseBranch");
         String jobDescription = JsonFieldExtractor.extractString(body, "description");
-        ResourceLimitOverrides limits = new ResourceLimitOverrides(body);
-        if (limits.validationError() != null) return errorResponse(limits.validationError());
         boolean protectTestFiles = JsonFieldExtractor.extractBoolean(body, "protectTestFiles");
         boolean enforceChanges = JsonFieldExtractor.extractBoolean(body, "enforceChanges");
         String deduplicationMode = JsonFieldExtractor.extractString(body, "deduplicationMode");
