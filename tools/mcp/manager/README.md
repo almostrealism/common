@@ -52,6 +52,7 @@ is a thin orchestration facade that:
 | `phase_config_explain` | read | Explain per-phase runner/model/effort/provider resolution and dry-run validate a submission |
 | `workspace_update_config` | write | Update workspace-level config (name, default channel, runner defaults) |
 | `send_message` | write | Send a Slack message |
+| `mailbox_peek` | read | Show a workstream's conversation without waiting or consuming it |
 | `job_report_blocked` | write | Report that the current job cannot proceed; ends it `BLOCKED` |
 
 ### Reporting a block

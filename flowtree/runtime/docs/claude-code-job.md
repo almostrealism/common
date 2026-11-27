@@ -558,6 +558,12 @@ waits out of successive bounded long polls:
   and the agent calls again. Returning is what proves the session is alive.
 - Own messages are excluded unless `include_own=True`.
 
+`mailbox_peek` (same module) is the read-only view for debugging a stalled conversation. It
+makes one `wait=0` read with no `exclude`, so it shows every sender's messages and returns at
+once. `since=-1` shows the most recent `limit` messages (default 20, capped at 200), and a
+non-negative `since` shows the first `limit` after it. Because readers hold their own cursor,
+a peek changes nothing that any later `await_message` returns.
+
 A job submitted with `collaborative=true` gets a **Collaboration Protocol** section in its
 prompt: announce readiness with `send_message`, then `await_message` and act on what comes
 back; on `timed_out`, wait again rather than exit or busy-work; start long-running work
