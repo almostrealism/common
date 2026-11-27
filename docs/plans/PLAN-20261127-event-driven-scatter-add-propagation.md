@@ -209,7 +209,8 @@ A reviewer can confirm the task is done when:
   starts, the approver should decide whether to block on it or to carry a
   minimal column view forward in this task (and fold it into ce31398a later).
 - **Metal node** for atomics generation, correctness under real concurrency, and
-  the benchmark (see below).
+  the benchmark (Success criteria 4). The workstream is pinned to macOS
+  (`requiredLabels platform: macos`) for exactly this reason.
 
 ## Open questions
 
