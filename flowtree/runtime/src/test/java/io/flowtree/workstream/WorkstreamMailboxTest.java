@@ -185,6 +185,66 @@ public class WorkstreamMailboxTest extends TestSuiteBase {
         assertTrue("read blocked for the full wait: " + elapsed, elapsed < 10000);
     }
 
+    /**
+     * A limited read stops at {@code limit} messages with its cursor on the
+     * last one delivered, so naming that cursor next resumes where it stopped,
+     * and {@code head} reports how far the mailbox goes.
+     */
+    @Test(timeout = 10000)
+    public void limitedReadResumesFromItsCursor() {
+        WorkstreamMailbox mailbox = new WorkstreamMailbox(WORKSTREAM, null);
+        for (int i = 1; i <= 5; i++) {
+            mailbox.append("m" + i, "job:a", "a", null);
+        }
+
+        WorkstreamMailbox.Delivery first = mailbox.read(0, null, 0, 2);
+        assertEquals(2, first.messages().size());
+        assertEquals("m1", first.messages().get(0).text());
+        assertEquals("m2", first.messages().get(1).text());
+        assertEquals(2, first.nextSince());
+        assertEquals(5, first.head());
+
+        WorkstreamMailbox.Delivery rest = mailbox.read(first.nextSince(), null, 0, 10);
+        assertEquals(3, rest.messages().size());
+        assertEquals("m3", rest.messages().get(0).text());
+        assertEquals(5, rest.nextSince());
+
+        assertEquals(5, mailbox.read(0, null, 0, WorkstreamMailbox.UNLIMITED).messages().size());
+        assertEquals(5, mailbox.read(0, null, 0, -3).messages().size());
+    }
+
+    /** Excluded senders do not count toward {@code limit}, and the cursor still passes them. */
+    @Test(timeout = 10000)
+    public void limitCountsOnlyDeliveredMessages() {
+        WorkstreamMailbox mailbox = new WorkstreamMailbox(WORKSTREAM, null);
+        mailbox.append("mine", "job:a", "a", null);
+        mailbox.append("theirs 1", "job:b", "b", null);
+        mailbox.append("mine again", "job:a", "a", null);
+        mailbox.append("theirs 2", "job:b", "b", null);
+
+        WorkstreamMailbox.Delivery delivery = mailbox.read(0, "job:a", 0, 1);
+        assertEquals(1, delivery.messages().size());
+        assertEquals("theirs 1", delivery.messages().get(0).text());
+        assertEquals(2, delivery.nextSince());
+
+        WorkstreamMailbox.Delivery next = mailbox.read(delivery.nextSince(), "job:a", 0, 1);
+        assertEquals("theirs 2", next.messages().get(0).text());
+        assertEquals(4, next.nextSince());
+    }
+
+    /** A cursor beyond the head is echoed as {@code nextSince}, but {@code head} stays true. */
+    @Test(timeout = 10000)
+    public void headIsReportedEvenForACursorBeyondIt() {
+        WorkstreamMailbox mailbox = new WorkstreamMailbox(WORKSTREAM, null);
+        mailbox.append("only", "job:a", "a", null);
+
+        WorkstreamMailbox.Delivery delivery = mailbox.read(100, null, 0);
+        assertTrue(delivery.messages().isEmpty());
+        assertEquals(100, delivery.nextSince());
+        assertEquals(1, delivery.head());
+        assertTrue(delivery.toJson().endsWith("\"head\":1,\"nextSince\":100}"));
+    }
+
     /** A read that nothing arrives for returns empty rather than failing. */
     @Test(timeout = 10000)
     public void waitElapsesToAnEmptyDelivery() {

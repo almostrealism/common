@@ -731,9 +731,14 @@ def mailbox_peek(
     Returns:
         Dictionary with ``ok``, ``messages`` (oldest first, each with
         ``seq``, ``createdAt``, ``sender`` and ``text``), ``latest_seq``
-        (the highest ``seq`` in the mailbox, ``0`` when it is empty) and
-        ``truncated`` (true when more messages matched than ``limit``
-        allowed), or ``ok=false`` with error details.
+        (the highest ``seq`` the mailbox has assigned, ``0`` when it never
+        held a message, and never the requested ``since`` echoed back) and
+        ``truncated`` (true when ``limit`` held back messages: newer ones
+        after a ``since`` view, older ones before the default tail view),
+        or ``ok=false`` with error details.
+
+        Only the messages shown cross the wire: ``limit`` is applied by the
+        controller, not after the whole conversation has been fetched.
     """
     server._require_scope("read")
 
@@ -745,24 +750,55 @@ def mailbox_peek(
     server._audit("mailbox_peek", workstream_id=effective_ws,
                   job_id=effective_job, since=since, limit=count)
 
+    mailbox = f"/api/workstreams/{quote(effective_ws, safe='')}/mailbox"
+    tail = int(since) < 0
     after = max(int(since), 0)
-    result = server._controller_get(
-        f"/api/workstreams/{quote(effective_ws, safe='')}/mailbox"
-        f"?since={after}&wait=0")
+    if tail:
+        # Seqs are assigned contiguously and only the oldest are pruned, so
+        # the last ``count`` messages are the ones after ``head - count``.
+        head = _mailbox_read(f"{mailbox}?since=-1&wait=0&limit=1")
+        if not head.get("ok"):
+            return head
+        after = max(head["head"] - count, 0)
+
+    result = _mailbox_read(f"{mailbox}?since={after}&wait=0&limit={count}")
+    if not result.get("ok"):
+        return result
+
+    # TODO(review): tail truncated is true when after > 0 even if retention already pruned every seq <= after.
+    return {
+        "ok": True,
+        "messages": result.get("messages", []),
+        "latest_seq": result["head"],
+        "truncated": (tail and after > 0) or result.get("nextSince", 0) < result["head"],
+    }
+
+
+def _mailbox_read(path: str) -> dict:
+    """Make one non-blocking mailbox read and check that it reports the head.
+
+    Args:
+        path: Controller path of the read, query string included.
+
+    Returns:
+        The controller's response when it succeeded and carries ``head``, or
+        ``ok=false`` with the reason otherwise. A controller that predates
+        ``head`` also ignores ``limit``, so its answer is refused rather than
+        shown as if it were bounded.
+    """
+    result = server._controller_get(path)
     if not result.get("ok"):
         return {
             "ok": False,
             "error": result.get("error", "Controller rejected the mailbox read"),
         }
-
-    messages = result.get("messages", [])
-    shown = messages[-count:] if int(since) < 0 else messages[:count]
-    return {
-        "ok": True,
-        "messages": shown,
-        "latest_seq": result.get("nextSince", after),
-        "truncated": len(shown) < len(messages),
-    }
+    if not isinstance(result.get("head"), int):
+        return {
+            "ok": False,
+            "error": ("The controller's mailbox read did not report head; it"
+                      " predates mailbox_peek and must be updated"),
+        }
+    return result
 
 
 def _conversation_reader(workstream_id: str):

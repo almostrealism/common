@@ -225,6 +225,31 @@ public class MailboxEndpointTest extends TestSuiteBase {
         assertEquals("second", messages.get(1).get("text").asText());
     }
 
+    /**
+     * {@code limit} bounds what the endpoint returns, the cursor resumes after
+     * the last message returned, and {@code head} reports the mailbox's end.
+     */
+    @Test(timeout = 10000)
+    public void testLimitBoundsTheReadAndHeadIsReported() throws Exception {
+        postMessage("{\"text\":\"first\",\"sender\":\"job:a\"}");
+        postMessage("{\"text\":\"second\",\"sender\":\"job:a\"}");
+        long last = postMessage("{\"text\":\"third\",\"sender\":\"job:a\"}").get("seq").asLong();
+
+        JsonNode first = getMailbox("since=0&limit=2");
+        assertEquals(2, first.get("messages").size());
+        assertEquals("second", first.get("messages").get(1).get("text").asText());
+        assertEquals(last, first.get("head").asLong());
+        assertTrue(first.get("nextSince").asLong() < last);
+
+        JsonNode rest = getMailbox("since=" + first.get("nextSince").asLong() + "&limit=2");
+        assertEquals(1, rest.get("messages").size());
+        assertEquals("third", rest.get("messages").get(0).get("text").asText());
+
+        assertEquals(3, getMailbox("since=0").get("messages").size());
+        assertEquals(3, getMailbox("since=0&limit=-5").get("messages").size());
+        assertEquals(last, getMailbox("since=" + (last + 50)).get("head").asLong());
+    }
+
     /** A read that already has something to deliver returns promptly rather than waiting out {@code wait}. */
     @Test(timeout = 10000)
     public void testReadWithAvailableMessageDoesNotWaitOutTheTimeout() throws Exception {

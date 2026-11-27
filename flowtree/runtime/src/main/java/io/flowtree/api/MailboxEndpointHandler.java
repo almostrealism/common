@@ -33,7 +33,7 @@ import java.util.function.Function;
  * {@code POST .../messages} lands in the same log this endpoint reads, so a
  * message is a notification to humans and a turn addressed to peers at once.</p>
  *
- * <p>Three query parameters shape a read:</p>
+ * <p>Four query parameters shape a read:</p>
  * <ul>
  *   <li>{@code since} — the highest {@code seq} the reader has already seen. A
  *       negative value (the default) starts from the current head, so a reader
@@ -45,7 +45,14 @@ import java.util.function.Function;
  *       in a round trip rather than at the end of a polling interval.</li>
  *   <li>{@code exclude} — a sender whose messages the reader does not want to
  *       hear back, which is how a participant avoids its own echo.</li>
+ *   <li>{@code limit} — the most messages to return. Absent (or below one)
+ *       means no bound. A limited read's {@code nextSince} is the last
+ *       {@code seq} returned, so naming it next resumes where it stopped.</li>
  * </ul>
+ *
+ * <p>The response carries {@code head}, the mailbox's highest {@code seq},
+ * beside {@code nextSince}, so a reader can tell whether a limited read held
+ * messages back without reading them.</p>
  *
  * @author Michael Murray
  * @see FlowTreeApiEndpoint
@@ -93,7 +100,9 @@ public final class MailboxEndpointHandler {
         WorkstreamMailbox.Delivery delivery = mailboxes.mailboxFor(workstreamId).read(
                 RequestParameters.number(session, "since", -1),
                 RequestParameters.first(session, "exclude", null),
-                (int) RequestParameters.number(session, "wait", 0));
+                (int) RequestParameters.number(session, "wait", 0),
+                (int) Math.max(Math.min(RequestParameters.number(session, "limit",
+                        WorkstreamMailbox.UNLIMITED), Integer.MAX_VALUE), WorkstreamMailbox.UNLIMITED));
 
         return NanoHTTPD.newFixedLengthResponse(Response.Status.OK,
                 "application/json", delivery.toJson());

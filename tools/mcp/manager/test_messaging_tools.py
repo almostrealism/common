@@ -190,28 +190,42 @@ class TestAwaitMessage(unittest.TestCase):
 class FakeMailbox:
     """Stands in for the controller's mailbox endpoint.
 
-    Answers ``GET .../mailbox?since=&wait=&exclude=`` the way
+    Answers ``GET .../mailbox?since=&wait=&exclude=&limit=`` the way
     ``WorkstreamMailbox.read`` does: a negative ``since`` starts at the head,
-    excluded senders are skipped but still advance ``nextSince``, and nothing
-    the reader asks for changes what the mailbox holds.
+    excluded senders are skipped but still advance ``nextSince``, a positive
+    ``limit`` stops collection with ``nextSince`` at the last message
+    delivered, ``head`` is the highest ``seq`` ever assigned, and nothing the
+    reader asks for changes what the mailbox holds.
     """
 
-    def __init__(self, messages):
+    def __init__(self, messages, head=None):
         self.messages = messages
+        self.assigned = head
         self.paths = []
+        self.served = 0
 
     def get(self, path, timeout=None):
         """Serve one mailbox read."""
         self.paths.append(path)
         query = dict(part.split("=", 1) for part in path.split("?", 1)[1].split("&") if part)
-        head = self.messages[-1]["seq"] if self.messages else 0
+        head = self.assigned if self.assigned is not None else (
+            self.messages[-1]["seq"] if self.messages else 0)
         since = int(query.get("since", "-1"))
+        limit = int(query.get("limit", "0"))
         cursor = head if since < 0 else since
         exclude = query.get("exclude", "").replace("%3A", ":")
-        after = [m for m in self.messages if m["seq"] > cursor]
-        shown = [m for m in after if m["sender"] != exclude]
-        return {"ok": True, "messages": shown,
-                "nextSince": max([cursor] + [m["seq"] for m in after])}
+        shown, next_since = [], cursor
+        for m in self.messages:
+            if 0 < limit <= len(shown):
+                break
+            if m["seq"] <= cursor:
+                continue
+            next_since = m["seq"]
+            if m["sender"] != exclude:
+                shown.append(m)
+        self.served += len(shown)
+        return {"ok": True, "messages": shown, "head": head,
+                "nextSince": max(next_since, cursor)}
 
 
 class TestMailboxPeek(unittest.TestCase):
@@ -269,6 +283,49 @@ class TestMailboxPeek(unittest.TestCase):
         result = server.mailbox_peek()
         self.assertEqual(result, {"ok": True, "messages": [], "latest_seq": 0,
                                   "truncated": False})
+
+    def test_since_beyond_the_head_reports_the_real_head(self):
+        """``latest_seq`` is the mailbox head, never the requested cursor echoed back."""
+        result = server.mailbox_peek(since=100)
+        self.assertEqual(result, {"ok": True, "messages": [], "latest_seq": 30,
+                                  "truncated": False})
+
+    def test_controller_bounds_the_read(self):
+        """Only the messages shown are fetched: ``limit`` reaches the controller."""
+        result = server.mailbox_peek()
+        self.assertEqual(len(result["messages"]), 20)
+        self.assertEqual(self.mailbox.served, 20)
+        self.assertTrue(all("limit=" in path for path in self.mailbox.paths))
+        self.assertIn("since=10&wait=0&limit=20", self.mailbox.paths[-1])
+
+        self.mailbox.served = 0
+        server.mailbox_peek(since=0, limit=5)
+        self.assertEqual(self.mailbox.served, 5)
+
+    def test_tail_shorter_than_limit_is_not_truncated(self):
+        """A conversation that fits in ``limit`` is shown whole and not marked truncated."""
+        result = server.mailbox_peek(limit=30)
+        self.assertEqual([m["seq"] for m in result["messages"]], list(range(1, 31)))
+        self.assertFalse(result["truncated"])
+        self.assertEqual(len(server.mailbox_peek(limit=29)["messages"]), 29)
+        self.assertTrue(server.mailbox_peek(limit=29)["truncated"])
+
+    def test_fully_pruned_mailbox_still_reports_its_head(self):
+        """When retention dropped every message, the head is still the last seq assigned."""
+        self.mailbox.messages = []
+        self.mailbox.assigned = 7
+        result = server.mailbox_peek()
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["messages"], [])
+        self.assertEqual(result["latest_seq"], 7)
+
+    def test_controller_without_head_is_refused(self):
+        """A controller that ignores ``limit`` is reported, not shown as a bounded read."""
+        with patch.object(server, "_controller_get",
+                          return_value={"ok": True, "messages": [], "nextSince": 0}):
+            result = server.mailbox_peek()
+        self.assertFalse(result["ok"])
+        self.assertIn("head", result["error"])
 
     def test_peek_does_not_change_what_await_message_returns(self):
         """A peek between two awaits leaves the second await's result unchanged."""
