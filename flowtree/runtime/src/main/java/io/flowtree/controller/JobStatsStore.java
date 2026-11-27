@@ -997,59 +997,6 @@ public class JobStatsStore extends ControllerDatabase {
     }
 
     /**
-     * Returns the pending record of one job, as {@link #getPendingJobs} lists it.
-     *
-     * <p>Keyed on the {@code job_id} primary key, so the cost is bounded rather
-     * than growing with the pending queue.</p>
-     *
-     * @param jobId the job identifier
-     * @return the job, or {@code null} when it is not pending or the store is
-     *         unavailable
-     */
-    public synchronized PendingJob getPendingJob(String jobId) {
-        if (!isOpen() || jobId == null) return null;
-
-        String sql = "SELECT job_id, workstream_id, submitted_at, submitted_by, "
-            + "required_labels, description "
-            + "FROM job_timing WHERE job_id = ? AND status = 'SUBMITTED' AND completed_at IS NULL";
-        try (PreparedStatement ps = connection().prepareStatement(sql)) {
-            ps.setString(1, jobId);
-            try (ResultSet rs = ps.executeQuery()) {
-                return rs.next() ? rowToPendingJob(rs) : null;
-            }
-        } catch (SQLException e) {
-            warn("Failed to query pending job: " + e.getMessage());
-            return null;
-        }
-    }
-
-    /**
-     * Returns the active record of one job, as {@link #getActiveJobs} lists it.
-     *
-     * <p>Keyed on the {@code job_id} primary key, so the cost is bounded rather
-     * than growing with the number of running jobs.</p>
-     *
-     * @param jobId the job identifier
-     * @return the job, or {@code null} when it is not running or the store is
-     *         unavailable
-     */
-    public synchronized ActiveJob getActiveJob(String jobId) {
-        if (!isOpen() || jobId == null) return null;
-
-        String sql = "SELECT job_id, workstream_id, started_at, heartbeat_at, description, node "
-            + "FROM job_timing WHERE job_id = ? AND status = 'STARTED' AND completed_at IS NULL";
-        try (PreparedStatement ps = connection().prepareStatement(sql)) {
-            ps.setString(1, jobId);
-            try (ResultSet rs = ps.executeQuery()) {
-                return rs.next() ? rowToActiveJob(rs) : null;
-            }
-        } catch (SQLException e) {
-            warn("Failed to query active job: " + e.getMessage());
-            return null;
-        }
-    }
-
-    /**
      * Returns the moment the controller accepted a job, as recorded by
      * {@link #recordJobSubmitted}.
      *
@@ -1164,6 +1111,47 @@ public class JobStatsStore extends ControllerDatabase {
     }
 
     /**
+     * Returns one consistent snapshot of a job's record — its event, its pending
+     * or active record, its submission time and its phase — from a single read,
+     * or {@code null} when the job is unknown or the store is unavailable.
+     *
+     * <p>A single-job lookup derives the job's event, its lifecycle state, the
+     * workstream that owns it, its submission time and its phase from this one
+     * row, so a transition between reads cannot make the response combine fields
+     * from different lifecycle states. The {@link JobRecord#pending()} record is
+     * built only for a {@code SUBMITTED} row and {@link JobRecord#active()} only
+     * for a {@code STARTED} one, matching {@link #getPendingJobs} and
+     * {@link #getActiveJobs}.</p>
+     *
+     * @param jobId the job identifier
+     * @return the snapshot, or {@code null} when the job is unknown or the store
+     *         is unavailable
+     */
+    public synchronized JobRecord getJobRecord(String jobId) {
+        if (!isOpen() || jobId == null) return null;
+
+        String sql = "SELECT * FROM job_timing WHERE job_id = ?";
+        try (PreparedStatement ps = connection().prepareStatement(sql)) {
+            ps.setString(1, jobId);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (!rs.next()) return null;
+                JobCompletionEvent.Status status = parseStatus(rs.getString("status"));
+                PendingJob pending = status == JobCompletionEvent.Status.SUBMITTED
+                        ? rowToPendingJob(rs) : null;
+                ActiveJob active = status == JobCompletionEvent.Status.STARTED
+                        ? rowToActiveJob(rs) : null;
+                Timestamp submitted = rs.getTimestamp("submitted_at");
+                Instant submittedAt = submitted == null ? null : submitted.toInstant();
+                String phase = rs.getString("phase");
+                return new JobRecord(rowToEvent(rs), pending, active, submittedAt, phase);
+            }
+        } catch (SQLException e) {
+            warn("Failed to query job record: " + e.getMessage());
+            return null;
+        }
+    }
+
+    /**
      * Constructs a {@link JobCompletionEvent} from the current row of a ResultSet.
      * Returns a best-effort reconstruction; Claude-specific fields default to zero/null.
      * Cost fields are populated from the per-runner and per-model cost tables so that
@@ -1189,12 +1177,7 @@ public class JobStatsStore extends ControllerDatabase {
         String pullRequestUrl = rs.getString("pull_request_url");
         String errorMessage = rs.getString("error_message");
 
-        JobCompletionEvent.Status status;
-        try {
-            status = JobCompletionEvent.Status.valueOf(statusStr);
-        } catch (IllegalArgumentException e) {
-            status = JobCompletionEvent.Status.STARTED;
-        }
+        JobCompletionEvent.Status status = parseStatus(statusStr);
 
         JobCompletionEvent event;
         if (status == JobCompletionEvent.Status.FAILED) {
@@ -1245,6 +1228,22 @@ public class JobStatsStore extends ControllerDatabase {
         event.setCostByModel(queryCostForJob(jobId, "job_model_cost", "model"));
 
         return event;
+    }
+
+    /**
+     * Parses a stored status string, defaulting to {@code STARTED} for a value
+     * that does not name a known status (a row left by an older schema or a
+     * partial write).
+     *
+     * @param statusStr the persisted status column value
+     * @return the parsed status, or {@code STARTED} when it is unrecognised
+     */
+    private static JobCompletionEvent.Status parseStatus(String statusStr) {
+        try {
+            return JobCompletionEvent.Status.valueOf(statusStr);
+        } catch (IllegalArgumentException e) {
+            return JobCompletionEvent.Status.STARTED;
+        }
     }
 
     /**

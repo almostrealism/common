@@ -33,6 +33,7 @@ import java.util.Map;
 import io.flowtree.controller.ActiveJob;
 import io.flowtree.controller.DailyAgentTime;
 import io.flowtree.controller.JobInterval;
+import io.flowtree.controller.JobRecord;
 import io.flowtree.controller.JobStatsStore;
 import io.flowtree.controller.PendingJob;
 import io.flowtree.controller.WeeklyStats;
@@ -149,17 +150,6 @@ class StatsQueryHandler {
     }
 
     /**
-     * Returns the phase most recently recorded for a job.
-     *
-     * @param jobId the job identifier
-     * @return the phase description, or {@code null} when none is recorded
-     *         or no store is configured
-     */
-    String jobPhase(String jobId) {
-        return statsStore == null ? null : statsStore.getJobPhase(jobId);
-    }
-
-    /**
      * Returns the store-derived enrichment of a single-job lookup — a job's
      * derived lifecycle state and, for a job that has not finished, the
      * workstream that owns it — resolved from a single read of the job's
@@ -182,36 +172,26 @@ class StatsQueryHandler {
      * is {@code null} for a finished job (whose workstream is known from
      * notifier history) and for a job the store does not know.</p>
      *
-     * @param jobId  the job identifier
+     * @param record the single-read snapshot of the job's row, or {@code null}
+     *               when the job is known only to notifier history
      * @param status the job's recorded status
      * @param now    the reference instant for the thresholds
      * @return the derived view; never {@code null}
      */
-    DerivedJobView derivedJob(String jobId, JobCompletionEvent.Status status, Instant now) {
+    DerivedJobView derivedJob(JobRecord record, JobCompletionEvent.Status status, Instant now) {
         if (status == JobCompletionEvent.Status.SUBMITTED) {
-            PendingJob pending = pendingJob(jobId);
+            PendingJob pending = record == null ? null : record.pending();
             return pending == null
                     ? new DerivedJobView(PendingJob.SUBMITTED, null)
                     : new DerivedJobView(pending.derivedState(lostThreshold, now), pending.workstreamId());
         } else if (status == JobCompletionEvent.Status.STARTED) {
-            ActiveJob active = activeJob(jobId);
+            ActiveJob active = record == null ? null : record.active();
             return active == null
                     ? new DerivedJobView(ActiveJob.RUNNING, null)
                     : new DerivedJobView(active.derivedState(silentThreshold, now), active.workstreamId());
         }
 
         return new DerivedJobView(status.name(), null);
-    }
-
-    /**
-     * Returns when the controller accepted a job.
-     *
-     * @param jobId the job identifier
-     * @return the submission time, or {@code null} when none is recorded or no
-     *         store is configured
-     */
-    Instant jobSubmittedAt(String jobId) {
-        return statsStore == null ? null : statsStore.getSubmittedAt(jobId);
     }
 
     /**
@@ -262,16 +242,6 @@ class StatsQueryHandler {
         String workstreamId() {
             return workstreamId;
         }
-    }
-
-    /** Returns the store's pending record for a job, or {@code null} when there is none. */
-    private PendingJob pendingJob(String jobId) {
-        return statsStore == null ? null : statsStore.getPendingJob(jobId);
-    }
-
-    /** Returns the store's active record for a job, or {@code null} when there is none. */
-    private ActiveJob activeJob(String jobId) {
-        return statsStore == null ? null : statsStore.getActiveJob(jobId);
     }
 
     /**

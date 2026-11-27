@@ -19,6 +19,7 @@ package io.flowtree.api;
 import fi.iki.elonen.NanoHTTPD;
 import fi.iki.elonen.NanoHTTPD.Response;
 import io.flowtree.JsonFieldExtractor;
+import io.flowtree.controller.JobRecord;
 import io.flowtree.controller.JobStatsStore;
 import io.flowtree.jobs.JobCompletionEvent;
 import io.flowtree.slack.NotifierRegistry;
@@ -121,15 +122,15 @@ public final class JobQueryHandler {
         StatsQueryHandler statsHandler = stats != null ? stats.get() : null;
         JobStatsStore store = statsHandler != null ? statsHandler.store() : null;
 
-        JobCompletionEvent event = store != null ? store.getJob(jobId) : null;
-        if (event == null) event = notifiers.findJob(jobId);
+        JobRecord record = store != null ? store.getJobRecord(jobId) : null;
+        JobCompletionEvent event = record != null ? record.event() : notifiers.findJob(jobId);
         if (event == null) {
             return NanoHTTPD.newFixedLengthResponse(Response.Status.NOT_FOUND,
                     "application/json", "{\"ok\":false,\"error\":\"Job not found\"}");
         }
 
         StatsQueryHandler.DerivedJobView derived = statsHandler != null
-                ? statsHandler.derivedJob(jobId, event.getStatus(), Instant.now()) : null;
+                ? statsHandler.derivedJob(record, event.getStatus(), Instant.now()) : null;
 
         String workstreamId = notifiers.findWorkstreamIdForJob(jobId);
         if (workstreamId == null && derived != null) {
@@ -139,9 +140,11 @@ public final class JobQueryHandler {
 
         if (derived != null) {
             json = withField(json, "state", derived.state());
-            Instant submittedAt = statsHandler.jobSubmittedAt(jobId);
-            json = withField(json, "submittedAt", submittedAt == null ? null : submittedAt.toString());
-            json = withField(json, "phase", statsHandler.jobPhase(jobId));
+            if (record != null) {
+                Instant submittedAt = record.submittedAt();
+                json = withField(json, "submittedAt", submittedAt == null ? null : submittedAt.toString());
+                json = withField(json, "phase", record.phase());
+            }
         }
 
         return NanoHTTPD.newFixedLengthResponse(Response.Status.OK, "application/json", json);
