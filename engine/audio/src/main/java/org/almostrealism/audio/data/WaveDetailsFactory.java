@@ -226,10 +226,16 @@ public class WaveDetailsFactory implements CodeFeatures {
 	 *       only needed as an intermediate step for autoencoder encoding.</li>
 	 * </ul>
 	 *
-	 * <p>Frequency data already present is kept, except that multi-channel audio
-	 * lacking features for the current feature model has its frequency data
-	 * recomputed: data stored before each channel was analyzed into its own block
-	 * is corrupt, and it is always older than the current model's features.</p>
+	 * <p>Frequency data already present is kept, except that multi-channel audio has
+	 * its frequency data recomputed when it lacks features for the current feature
+	 * model or its frequency data is in an older
+	 * {@link WaveDetails#FREQUENCY_LAYOUT_VERSION layout}: data stored before each
+	 * channel was analyzed into its own block is corrupt. A record whose features
+	 * are current but whose frequency data is not (analysed by a build that had the
+	 * features but not the layout fix) is repaired by this without being re-encoded.
+	 * Recomputing needs the real audio; frequency data that was itself synthesized
+	 * into audio is accepted as it is. Either way the details are left marked with
+	 * the current layout.</p>
 	 *
 	 * @param existing the WaveDetails to complete (modified in place)
 	 * @return the same WaveDetails instance with missing fields populated,
@@ -244,7 +250,8 @@ public class WaveDetailsFactory implements CodeFeatures {
 		// If no audio waveform is available but frequency data exists,
 		// synthesize audio via IFFT so that feature extraction can proceed.
 		// This is the normal path for spatial drawings.
-		if (existing.getData() == null && existing.getFreqData() != null) {
+		boolean synthesized = existing.getData() == null && existing.getFreqData() != null;
+		if (synthesized) {
 			new FrequencyToAudioConverter().convert(existing);
 		}
 
@@ -254,8 +261,10 @@ public class WaveDetailsFactory implements CodeFeatures {
 
 		boolean predatesFeatureModel = featureProvider != null &&
 				existing.getFeatures(featureProvider.getModelIdentifier()) == null;
+		boolean staleLayout = !synthesized && !existing.isFrequencyLayoutCurrent();
 
-		if (existing.getFreqFrameCount() <= 1 || (predatesFeatureModel && data.getChannelCount() > 1)) {
+		if (existing.getFreqFrameCount() <= 1
+				|| (data.getChannelCount() > 1 && (predatesFeatureModel || staleLayout))) {
 			PackedCollection fft = null;
 
 			for (int c = 0; c < data.getChannelCount(); c++) {
@@ -283,6 +292,10 @@ public class WaveDetailsFactory implements CodeFeatures {
 				existing.setFreqData(fft);
 			}
 		}
+
+		// Frequency data synthesized into audio cannot be recomputed from it, so it is
+		// accepted as it is; anything computed above is in the current layout.
+		existing.setFreqLayoutVersion(WaveDetails.FREQUENCY_LAYOUT_VERSION);
 
 		if (featureProvider != null) {
 			String modelId = featureProvider.getModelIdentifier();
