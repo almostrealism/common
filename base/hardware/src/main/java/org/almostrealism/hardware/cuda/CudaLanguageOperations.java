@@ -53,9 +53,15 @@ public class CudaLanguageOperations extends CLanguageOperations {
 	 *
 	 * <p>Renders the native {@code atomicAdd}, which CUDA provides for {@code float} and, on
 	 * devices of compute capability 6.0 and later, for {@code double}.</p>
+	 *
+	 * @throws UnsupportedOperationException if the precision is neither 32 nor 64 bits wide
 	 */
 	@Override
 	public String atomicAccumulation(String destination, String value) {
+		if (getPrecision().bytes() != 4 && getPrecision().bytes() != 8) {
+			throw new UnsupportedOperationException("CUDA has no atomic accumulation at " + getPrecision());
+		}
+
 		return "atomicAdd(&(" + destination + "), " + value + ")";
 	}
 

@@ -25,6 +25,7 @@ import io.almostrealism.collect.TraversalOrdering;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.ParallelProcess;
 import io.almostrealism.compute.Process;
+import io.almostrealism.compute.ProcessContext;
 import io.almostrealism.expression.DoubleConstant;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.NotEquals;
@@ -231,6 +232,20 @@ public class SegmentedScatterAddComputation extends OperationComputationAdapter<
 	 */
 	@Override
 	public boolean isFixedCount() { return true; }
+
+	/**
+	 * Always returns true: the scatter owns its kernel. Its loop has a data-dependent bound and
+	 * its atomic writes race with any other write of the destination in the same kernel, so when
+	 * a list containing it is optimized the scatter is isolated, and that list is then
+	 * dispatched as separate operations, in order, rather than fused into one kernel.
+	 *
+	 * @param context the process context
+	 * @return true
+	 */
+	@Override
+	public boolean isIsolationTarget(ProcessContext context) {
+		return true;
+	}
 
 	/**
 	 * {@inheritDoc}

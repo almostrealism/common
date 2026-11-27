@@ -451,14 +451,17 @@ public class Assignment<T extends MemoryData> extends OperationComputationAdapte
 	/**
 	 * Isolates the given process within this assignment's context.
 	 *
-	 * <p>Skips isolation for the destination process to preserve its structure.</p>
+	 * <p>Skips isolation for the destination process to preserve its structure, and for a value
+	 * that is {@link Algebraic#isZero(Object) zero}: materialising a buffer of zeros only to copy
+	 * it into the destination gains nothing over writing the constant inline, and a zeros
+	 * computation refuses to be isolated.</p>
 	 *
 	 * @param process the process to isolate
-	 * @return the isolated process, or unchanged if it's the destination
+	 * @return the isolated process, or unchanged if it's the destination or a zero value
 	 */
 	@Override
 	public Process<Process<?, ?>, Runnable> isolate(Process<Process<?, ?>, Runnable> process) {
-		if (process == (Producer) getInputs().get(0))
+		if (process == (Producer) getInputs().get(0) || Algebraic.isZero(process))
 			return process;
 
 		return super.isolate(process);

@@ -16,7 +16,10 @@
 
 package org.almostrealism.hardware.test;
 
+import io.almostrealism.compute.Process;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.hardware.OperationList;
 import org.almostrealism.hardware.computations.Assignment;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
@@ -81,6 +84,38 @@ public class AssignmentRunnerTest extends TestSuiteBase {
 
 			for (int i = 0; i < n; i++) {
 				assertEquals(src.toDouble(i), dst.toDouble(i));
+			}
+		}
+	}
+
+	/**
+	 * An assignment never isolates a zero value, which a zeros computation refuses, while it still
+	 * isolates a value that is not zero; and a list resetting a destination to zeros can be
+	 * optimized and run, leaving exactly zeros where stale values were.
+	 */
+	@Test(timeout = 60000)
+	public void zeroValueIsNotIsolated() {
+		int n = 16;
+
+		try (PackedCollection dst = new PackedCollection(n);
+			 PackedCollection src = new PackedCollection(n)) {
+			dst.fill(7.0);
+			src.fill(2.0);
+
+			CollectionProducer zeros = zeros(shape(n));
+			Assignment<PackedCollection> reset = a(p(dst), zeros);
+			Assert.assertSame(zeros, reset.isolate((Process) zeros));
+
+			CollectionProducer value = cp(src).add(1.0);
+			Assignment<PackedCollection> copy = a(p(dst), value);
+			Assert.assertNotSame(value, copy.isolate((Process) value));
+
+			OperationList op = new OperationList("Reset");
+			op.add(reset);
+			op.optimize().get().run();
+
+			for (int i = 0; i < n; i++) {
+				assertEquals(0.0, dst.toDouble(i));
 			}
 		}
 	}

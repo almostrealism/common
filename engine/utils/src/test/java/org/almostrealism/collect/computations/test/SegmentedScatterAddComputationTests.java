@@ -17,6 +17,8 @@
 package org.almostrealism.collect.computations.test;
 
 import io.almostrealism.compute.ComputeRequirement;
+import io.almostrealism.compute.ParallelProcess;
+import io.almostrealism.compute.ProcessContext;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.algebra.MatrixFeatures;
 import org.almostrealism.algebra.computations.SegmentedScatterAddComputation;
@@ -34,6 +36,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Random;
 import java.util.Set;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -314,7 +317,7 @@ public class SegmentedScatterAddComputationTests extends TestSuiteBase implement
 	 * @param operation the operation
 	 * @param backend   the backend
 	 */
-	private void run(OperationList operation, ComputeRequirement backend) {
+	private void run(Supplier<Runnable> operation, ComputeRequirement backend) {
 		Hardware.getLocalHardware().getComputer().pushRequirements(List.of(backend));
 
 		try {
@@ -514,6 +517,70 @@ public class SegmentedScatterAddComputationTests extends TestSuiteBase implement
 			assertEquals(2, product.size());
 			assertTrue(product.get(1) instanceof SegmentedScatterAddComputation);
 			assertEquals(30, ((SegmentedScatterAddComputation) product.get(1)).getCountLong());
+		}
+	}
+
+	/**
+	 * The scatter owns its kernel: it is an isolation target, so optimizing a compiling list
+	 * into which the product has been flattened isolates the scatter rather than fusing it with
+	 * the reset of the same destination.
+	 */
+	@Test(timeout = 60000)
+	public void scatterIsIsolationTarget() {
+		Random random = new Random(19);
+		Structure structure = Structure.random(random, 16, 16, 0.3);
+
+		try (Connectome w = new Connectome(structure);
+			 PackedCollection activity = activity(random, structure.cols(), 0.5);
+			 PackedCollection destination = new PackedCollection(structure.rows())) {
+			SegmentedScatterAddComputation scatter = scatterAdd(p(destination), cp(w.outgoing()), cp(activity));
+			assertTrue(scatter.isIsolationTarget(ProcessContext.base()));
+
+			OperationList parent = new OperationList("Compiling Parent");
+			parent.add(scatterProduct(p(destination), cp(w.outgoing()), cp(activity)));
+			OperationList flat = parent.flatten();
+			assertEquals(2, flat.size());
+			assertTrue("flattening inlines both steps into the compiling parent", flat.isComputation());
+
+			ParallelProcess<?, Runnable> optimized = flat.optimize();
+			assertTrue(optimized instanceof OperationList);
+			assertFalse("the optimized parent must not fuse the reset and the scatter",
+					((OperationList) optimized).isComputation());
+		}
+	}
+
+	/**
+	 * A square product (as many sources as targets, so the reset and the scatter have the same
+	 * kernel range and could otherwise be fused), flattened into a compiling parent and then
+	 * optimized, still resets its destination before scattering: a destination of stale values,
+	 * run twice, holds exactly the product after each run.
+	 */
+	@Test(timeout = 120000)
+	public void flattenedProductInCompilingParentIsCorrect() {
+		Random random = new Random(20);
+		Structure structure = Structure.random(random, 48, 48, 0.2);
+
+		try (Connectome w = new Connectome(structure);
+			 PackedCollection activity = activity(random, structure.cols(), 0.6)) {
+			double[] expected = w.times(activity.toArray(0, structure.cols()));
+
+			for (ComputeRequirement backend : backends()) {
+				try (PackedCollection destination = new PackedCollection(structure.rows())) {
+					destination.fill(-3.0);
+					OperationList parent = new OperationList("Compiling Parent");
+					parent.add(scatterProduct(p(destination), cp(w.outgoing()), cp(activity)));
+					Supplier<Runnable> step = parent.flatten().optimize();
+
+					for (int pass = 0; pass < 2; pass++) {
+						run(step, backend);
+						double[] result = destination.toArray(0, structure.rows());
+						for (int i = 0; i < expected.length; i++) {
+							assertEquals("target " + i + " after pass " + pass + " on " + backend,
+									expected[i], result[i]);
+						}
+					}
+				}
+			}
 		}
 	}
 

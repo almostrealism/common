@@ -250,8 +250,11 @@ public interface MatrixFeatures extends AlgebraFeatures {
 	 * members of an {@link OperationList} that does not compile: they are dispatched as two
 	 * operations, in order, so the scatter observes the reset as complete. They must not be fused
 	 * into one kernel, because the threads of a kernel are unordered and one could clear an element
-	 * after another had added into it; for that reason the returned list must not be
-	 * {@link OperationList#flatten() flattened} into a list that compiles.</p>
+	 * after another had added into it. The scatter is an
+	 * {@link SegmentedScatterAddComputation#isIsolationTarget isolation target}, so a list that
+	 * holds these two steps keeps them in separate kernels once it is optimized, even when the
+	 * returned list was {@link OperationList#flatten() flattened} into a list that compiles; such
+	 * a list must therefore be optimized before it is run.</p>
 	 *
 	 * @param destination the vector of {@code targets} elements that receives the product
 	 * @param matrix      the matrix of shape {@code (sources, targets)} whose ordering enumerates
@@ -264,8 +267,6 @@ public interface MatrixFeatures extends AlgebraFeatures {
 										 Producer<PackedCollection> matrix,
 										 Producer<PackedCollection> activity) {
 		SegmentedScatterAddComputation scatter = scatterAdd(destination, matrix, activity);
-
-		// TODO(review): reset/scatter ordering relies on no parent flatten(); flatten() inlines this list into a compiling parent
 		OperationList op = new OperationList("Scatter Product", false);
 		op.add(a("Reset Scatter Destination", destination, zeros(shape(destination))));
 		op.add(scatter);

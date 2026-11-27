@@ -202,7 +202,37 @@ public class LanguageOperationsTest extends TestSuiteBase {
 	public void atomicAccumulationIsRefusedWhereUnsupported() {
 		assertRefusesAtomic(new MetalLanguageOperations(Precision.FP64));
 		assertRefusesAtomic(new CJNILanguageOperations(Precision.FP16));
+		assertRefusesAtomic(new CudaLanguageOperations(Precision.FP16));
+		assertRefusesAtomic(new OpenCLLanguageOperations(Precision.FP16));
 		assertRefusesAtomic(new JavaScriptLanguageOperations());
+	}
+
+	/**
+	 * CUDA renders its native {@code atomicAdd} at double precision as well as single.
+	 */
+	@Test(timeout = 30000)
+	public void cudaAtomicAccumulationAtDoublePrecision() {
+		Assert.assertEquals("atomicAdd(&(out[i]), v)",
+				new CudaLanguageOperations(Precision.FP64).atomicAccumulation("out[i]", "v"));
+	}
+
+	/**
+	 * The OpenCL compare-and-swap loop reads the element without an atomic operation only once,
+	 * before the loop, and starts every retry from the value the failed swap returned, never by
+	 * dereferencing the element again.
+	 */
+	@Test(timeout = 30000)
+	public void openCLAtomicRetriesFromSwapResult() {
+		for (Precision precision : List.of(Precision.FP32, Precision.FP64)) {
+			String cl = new OpenCLLanguageOperations(precision).atomicAccumulation("out[i]", "v");
+			String loop = cl.substring(cl.indexOf("do {"));
+
+			Assert.assertEquals(cl, 1, cl.split("\\*ar_atomic_p;", -1).length - 1);
+			Assert.assertFalse(cl, loop.contains("*ar_atomic_p"));
+			Assert.assertTrue(cl, loop.contains("ar_atomic_o = ar_atomic_r;"));
+			Assert.assertTrue(cl, loop.contains("ar_atomic_r = "));
+			Assert.assertTrue(cl, loop.endsWith("while (ar_atomic_r != ar_atomic_o); }"));
+		}
 	}
 
 	/**

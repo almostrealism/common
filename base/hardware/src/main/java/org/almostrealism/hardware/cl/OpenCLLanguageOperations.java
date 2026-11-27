@@ -109,6 +109,10 @@ public class OpenCLLanguageOperations extends CLanguageOperations {
 	 * for 64-bit elements, which requires a device supporting
 	 * {@code cl_khr_int64_base_atomics}.</p>
 	 *
+	 * <p>The element is read without an atomic operation only once, before the loop. Each retry
+	 * starts from the value the failed compare-and-swap returned, which the swap read atomically,
+	 * so a stale or torn first read only costs one more iteration.</p>
+	 *
 	 * @throws UnsupportedOperationException if the precision is neither 32 nor 64 bits wide
 	 */
 	@Override
@@ -123,10 +127,11 @@ public class OpenCLLanguageOperations extends CLanguageOperations {
 		String swap = wide ? "atom_cmpxchg" : "atomic_cmpxchg";
 		return "{ volatile __global " + bits + " *ar_atomic_p = (volatile __global " + bits + " *) &(" +
 				destination + "); " + type + " ar_atomic_v = " + value + "; " +
-				bits + " ar_atomic_o, ar_atomic_n; " +
-				"do { ar_atomic_o = *ar_atomic_p; ar_atomic_n = as_" + bits + "(as_" + type +
-				"(ar_atomic_o) + ar_atomic_v); } " +
-				"while (" + swap + "(ar_atomic_p, ar_atomic_o, ar_atomic_n) != ar_atomic_o); }";
+				bits + " ar_atomic_r = *ar_atomic_p; " + bits + " ar_atomic_o; " +
+				"do { ar_atomic_o = ar_atomic_r; " +
+				"ar_atomic_r = " + swap + "(ar_atomic_p, ar_atomic_o, as_" + bits + "(as_" + type +
+				"(ar_atomic_o) + ar_atomic_v)); } " +
+				"while (ar_atomic_r != ar_atomic_o); }";
 	}
 
 	@Override
