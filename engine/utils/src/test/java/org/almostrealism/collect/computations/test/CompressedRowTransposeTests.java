@@ -17,6 +17,7 @@
 package org.almostrealism.collect.computations.test;
 
 import io.almostrealism.collect.TraversalOrdering;
+import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.ComputeRequirement;
 import org.almostrealism.algebra.MatrixFeatures;
 import org.almostrealism.algebra.computations.SegmentedWeightedSumComputation;
@@ -183,6 +184,39 @@ public class CompressedRowTransposeTests extends TestSuiteBase implements Matrix
 		try (PackedCollection values = integers(0, n).mod(3).add(c(1.0)).evaluate();
 			 PackedCollection g = integers(0, n).mod(11).evaluate()) {
 			PackedCollection matrix = new PackedCollection(shape(n, n), 0, values, 0, order);
+			PackedCollection transposed = order.transpose(matrix);
+			PackedCollection y = matmul(cp(transposed), cp(g)).evaluate();
+			assertEquals(n, y.getShape().getTotalSize());
+
+			double[] result = y.toArray();
+			for (int j = 0; j < n; j += 997) {
+				int i = rowOfColumn[j];
+				assertEquals("element " + j, (i % 3 + 1) * (i % 11), result[j]);
+			}
+		}
+	}
+
+	/**
+	 * A {@code 60000 × 60000} sparse matrix that owns its entries, built as
+	 * {@code new PackedCollection(new TraversalPolicy(order, n, n))} and filled with the cycle
+	 * {@code 1, 2, 3} so that entry {@code i} is {@code i % 3 + 1}, may be transposed: it is its
+	 * own root, so the entries must be read through a view bounded by its physical length rather
+	 * than by its logical length, which exceeds the range of an {@code int}.
+	 */
+	@Test(timeout = 120000)
+	public void transposeOfOwnedMatrixBeyondIntRange() {
+		int n = 60000;
+		int[] offsets = IntStream.rangeClosed(0, n).toArray();
+		int[] columns = IntStream.range(0, n).map(i -> (int) ((7L * i) % n)).toArray();
+		int[] rowOfColumn = new int[n];
+		for (int i = 0; i < n; i++) rowOfColumn[columns[i]] = i;
+
+		CompressedRowTraversalOrdering order = CompressedRowTraversalOrdering.of(n, offsets, columns);
+		try (PackedCollection matrix = new PackedCollection(new TraversalPolicy(order, n, n));
+			 PackedCollection g = integers(0, n).mod(11).evaluate()) {
+			assertEquals(n, matrix.getDelegatedLength());
+			matrix.fill(1.0, 2.0, 3.0);
+
 			PackedCollection transposed = order.transpose(matrix);
 			PackedCollection y = matmul(cp(transposed), cp(g)).evaluate();
 			assertEquals(n, y.getShape().getTotalSize());

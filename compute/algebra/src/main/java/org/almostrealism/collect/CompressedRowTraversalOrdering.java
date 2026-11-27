@@ -27,6 +27,7 @@ import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
 import org.almostrealism.collect.computations.DefaultTraversableExpressionComputation;
 import org.almostrealism.hardware.MemoryData;
+import org.almostrealism.hardware.mem.BytesView;
 
 import java.util.Arrays;
 import java.util.Optional;
@@ -333,10 +334,12 @@ public class CompressedRowTraversalOrdering implements TraversalOrdering, Orderi
 	 * producer, which read every logical element through this ordering and so give the dense
 	 * transpose.</p>
 	 *
-	 * <p>The entries are read from the backing memory that the given collection occupies,
-	 * starting at its absolute offset, rather than through the collection as a view, so that the
-	 * sparse matrix itself may be passed whatever its logical size: a matrix whose logical size
-	 * exceeds the range of an {@code int} has no {@code int} length to bound a view of it by.</p>
+	 * <p>The entries are read from the {@link io.almostrealism.code.Memory} that the given collection occupies, starting
+	 * at its absolute offset, through a view bounded by the physical length of the root that owns
+	 * that memory rather than through the collection or its root as a delegate. This means the
+	 * sparse matrix itself may be passed whatever its logical size, whether it is a view of a
+	 * separate collection of entries or owns its entries: a matrix whose logical size exceeds the
+	 * range of an {@code int} has no {@code int} length to bound a view of it by.</p>
 	 *
 	 * @param entries the entries of the matrix in the physical order of this ordering: the
 	 *                collection of entry values the sparse matrix reads, or the sparse matrix
@@ -373,10 +376,11 @@ public class CompressedRowTraversalOrdering implements TraversalOrdering, Orderi
 		CompressedRowTraversalOrdering order = of(rows, columnOffsets, entryRows);
 		PackedCollection reordered = new PackedCollection(Math.max(1, count));
 		if (count > 0) {
-			MemoryData memory = entries.getRootDelegate();
+			MemoryData root = entries.getRootDelegate();
+			MemoryData memory = new BytesView(root.getMem(), root.getOffset() + root.getDelegatedLength());
 			TraversalPolicy shape = new TraversalPolicy(count);
 			PackedCollection gathered = new PackedCollection(shape, 0, memory,
-					entries.getOffset() - memory.getOffset(), SplitIndexTraversalOrdering.of(permutation));
+					entries.getOffset(), SplitIndexTraversalOrdering.of(permutation));
 			new DefaultTraversableExpressionComputation("sparseTransposeEntries", shape,
 					args -> CollectionExpression.create(shape, args[1]::getValueAt),
 					CollectionFeatures.getInstance().cp(gathered)).get().into(reordered).evaluate();
