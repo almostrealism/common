@@ -466,6 +466,12 @@ public class IndexProjectionProducerComputation
 	 *       there.</li>
 	 * </ul>
 	 *
+	 * <p>The inputs after the projected collection only choose which position is read
+	 * (a {@link DynamicIndexProjectionProducerComputation} reads its index from them), and
+	 * a position is an integer, constant almost everywhere, so they contribute no
+	 * derivative even when they depend on {@code target}. The Jacobian of a projection
+	 * agrees: it differentiates only the collection.</p>
+	 *
 	 * @param target the producer with respect to which to differentiate
 	 * @param axis   {@link ReduceAxis#OUT} or {@link ReduceAxis#IN}
 	 * @param weight the weight of each entry along that axis, or null for ones

@@ -20,6 +20,7 @@ import io.almostrealism.compute.Process;
 import org.almostrealism.calculus.ReduceAxis;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.computations.DynamicIndexProjectionProducerComputation;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
@@ -161,6 +162,46 @@ public class ProjectionReducedDeltaTests extends TestSuiteBase {
 		CollectionProducer delta = target.subset(shape(2), 1).delta(target, ReduceAxis.OUT, cp(gradient));
 		double[] g = gradient.toArray();
 		assertMatches(new double[] { 0, g[0], g[1], 0, 0 }, evaluate(delta));
+	}
+
+	/**
+	 * A dynamic projection whose index input depends on the target, the selection of each
+	 * row's maximum, differentiates only the gathered values: its IN delta is the tangent
+	 * at each row's maximum, with no Jacobian formed, and its OUT delta places the weight
+	 * at that position.
+	 */
+	@Test(timeout = 60000)
+	public void dynamicSelectionByDependentIndex() {
+		PackedCollection input = new PackedCollection(shape(ROWS, COLS)).randnFill();
+		PackedCollection tangent = new PackedCollection(shape(ROWS, COLS)).randnFill();
+		PackedCollection gradient = new PackedCollection(shape(ROWS, 1)).randnFill();
+		CollectionProducer target = cp(input);
+		CollectionProducer rows = target.traverse(1);
+		CollectionProducer selected = new DynamicIndexProjectionProducerComputation("projectMax",
+				shape(rows).replace(shape(1)), (args, idx) -> args[2].getValueAt(idx).toInt(),
+				true, rows, indexOfMax(rows));
+
+		CollectionProducer in = selected.delta(target, ReduceAxis.IN, cp(tangent));
+		CollectionProducer out = selected.delta(target, ReduceAxis.OUT, cp(gradient));
+		assertReduced(in, ROWS * COLS);
+
+		double[] x = input.toArray();
+		double[] t = tangent.toArray();
+		double[] g = gradient.toArray();
+		double[] expectedIn = new double[ROWS];
+		double[] expectedOut = new double[ROWS * COLS];
+		for (int r = 0; r < ROWS; r++) {
+			int max = 0;
+			for (int c = 1; c < COLS; c++) {
+				if (x[r * COLS + c] > x[r * COLS + max]) max = c;
+			}
+
+			expectedIn[r] = t[r * COLS + max];
+			expectedOut[r * COLS + max] = g[r];
+		}
+
+		assertMatches(expectedIn, evaluate(in));
+		assertMatches(expectedOut, evaluate(out));
 	}
 
 	/**

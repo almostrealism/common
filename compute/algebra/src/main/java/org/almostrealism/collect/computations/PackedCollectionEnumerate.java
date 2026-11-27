@@ -440,15 +440,6 @@ public class PackedCollectionEnumerate
 	}
 
 	/**
-	 * Generates a new enumeration instance with the same configuration but different inputs.
-	 * This method is used by the framework to create optimized versions of the enumeration
-	 * with potentially transformed or optimized child processes.
-	 * 
-	 * @param children the list of child processes to use in the new instance
-	 * @return a new {@link PackedCollectionEnumerate} instance with the same configuration
-	 *         but using the provided child processes
-	 */
-	/**
 	 * Returns the inverse of this enumeration applied to {@code values} when this
 	 * enumeration is a permutation, or {@code null} when it is not.
 	 *
@@ -514,6 +505,15 @@ public class PackedCollectionEnumerate
 		return axis;
 	}
 
+	/**
+	 * Generates a new enumeration instance with the same configuration but different inputs.
+	 * This method is used by the framework to create optimized versions of the enumeration
+	 * with potentially transformed or optimized child processes.
+	 *
+	 * @param children the list of child processes to use in the new instance
+	 * @return a new {@link PackedCollectionEnumerate} instance with the same configuration
+	 *         but using the provided child processes
+	 */
 	@Override
 	public PackedCollectionEnumerate generate(List<Process<?, ?>> children) {
 		return copyConfigurationTo(new PackedCollectionEnumerate(subsetShape, strideShape,

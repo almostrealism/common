@@ -205,23 +205,6 @@ public class CollectionPermute
 	}
 
 	/**
-	 * Creates a new instance of CollectionPermute with the same permutation order
-	 * but using different child processes. This method is used internally by the
-	 * computation framework for process composition and optimization.
-	 * 
-	 * <p>The method expects exactly 2 children: the first is typically a destination
-	 * or output process, and the second is the input collection process that provides
-	 * the data to be permuted.</p>
-	 * 
-	 * @param children The list of child processes. Must contain exactly 2 processes,
-	 *                where the second process is the input collection producer.
-	 * @return A new CollectionPermute instance with the same order but new input
-	 * 
-	 * @throws UnsupportedOperationException if the number of children is not exactly 2
-	 * 
-	 * @see IndexProjectionProducerComputation#generate(List)
-	 */
-	/**
 	 * Returns the permutation by the inverse order applied to {@code values}, which
 	 * restores the dimension order of this permutation's input.
 	 *
@@ -238,6 +221,23 @@ public class CollectionPermute
 		return new CollectionPermute(values, inverse);
 	}
 
+	/**
+	 * Creates a new instance of CollectionPermute with the same permutation order
+	 * but using different child processes. This method is used internally by the
+	 * computation framework for process composition and optimization.
+	 * 
+	 * <p>The method expects exactly 2 children: the first is typically a destination
+	 * or output process, and the second is the input collection process that provides
+	 * the data to be permuted.</p>
+	 * 
+	 * @param children The list of child processes. Must contain exactly 2 processes,
+	 *                where the second process is the input collection producer.
+	 * @return A new CollectionPermute instance with the same order but new input
+	 * 
+	 * @throws UnsupportedOperationException if the number of children is not exactly 2
+	 * 
+	 * @see IndexProjectionProducerComputation#generate(List)
+	 */
 	@Override
 	public CollectionPermute generate(List<Process<?, ?>> children) {
 		if (getChildren().size() != 2) {
