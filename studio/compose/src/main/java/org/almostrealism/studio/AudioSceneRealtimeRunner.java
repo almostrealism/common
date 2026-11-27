@@ -26,6 +26,7 @@ import org.almostrealism.audio.Cells;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.heredity.TemporalCellular;
+import org.almostrealism.io.TimingMetric;
 import org.almostrealism.dsl.PdslLoader;
 import org.almostrealism.dsl.PdslNode;
 import org.almostrealism.model.Block;
@@ -141,6 +142,57 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 	 * feedback/delay stage. Wire-first default chosen to make the reverb tail audible.
 	 */
 	public static int pdslDelaySamples = 6500;
+
+	/**
+	 * Wall time of each construction step of the Block-forward PDSL runner, keyed by step:
+	 * {@link #BUILD_PREPARE_RENDER_BUFFERS}, {@link #BUILD_RENDER_OPS},
+	 * {@link #BUILD_PARSE_PDSL}, {@link #BUILD_ARGS}, {@link #BUILD_LAYER},
+	 * {@link #BUILD_MODEL_COMPILE} and {@link #BUILD_FIRST_FORWARD}. Each runner build adds
+	 * {@link #buildStepCount(String)} entries per step, so a caller attributes one build's cost by differencing
+	 * {@link org.almostrealism.io.MetricBase#getEntries()} before and after it. Durations are
+	 * measured in nanoseconds and stored (and so read back) in seconds.
+	 */
+	public static final TimingMetric buildTime = AudioScene.console.timing("pdslRunnerBuild");
+
+	/** {@link #buildTime} key for {@link AudioScene#prepareRenderBuffers}. */
+	public static final String BUILD_PREPARE_RENDER_BUFFERS = "prepareRenderBuffers";
+
+	/** {@link #buildTime} key for building the pattern render-ahead operation. */
+	public static final String BUILD_RENDER_OPS = "renderOps";
+
+	/** {@link #buildTime} key for parsing the mixdown PDSL program. */
+	public static final String BUILD_PARSE_PDSL = "parsePdsl";
+
+	/** {@link #buildTime} key for allocating the PDSL argument collections. */
+	public static final String BUILD_ARGS = "buildArgs";
+
+	/** {@link #buildTime} key for interpreting the PDSL layer into a {@link Block} graph. */
+	public static final String BUILD_LAYER = "buildLayer";
+
+	/** {@link #buildTime} key for {@link Model#compile(boolean)} of the mixdown block. */
+	public static final String BUILD_MODEL_COMPILE = "modelCompile";
+
+	/** {@link #buildTime} key for the throwaway forward pass that captures the output handle. */
+	public static final String BUILD_FIRST_FORWARD = "firstForward";
+
+	/**
+	 * The {@link #buildTime} steps performed once per stereo side rather than once per build:
+	 * each side has its own adapter arguments, layer, compiled model and handle-capturing forward.
+	 */
+	private static final List<String> BUILD_PER_SIDE_STEPS =
+			List.of(BUILD_ARGS, BUILD_LAYER, BUILD_MODEL_COMPILE, BUILD_FIRST_FORWARD);
+
+	/**
+	 * Returns how many {@link #buildTime} entries one PDSL runner build records for {@code step}:
+	 * one for the shared steps, and one per {@link ChannelInfo.StereoChannel stereo side} for
+	 * the steps each side repeats.
+	 *
+	 * @param step a {@code BUILD_*} step key
+	 * @return the number of entries a single build adds for that step
+	 */
+	public static int buildStepCount(String step) {
+		return BUILD_PER_SIDE_STEPS.contains(step) ? ChannelInfo.StereoChannel.values().length : 1;
+	}
 
 	/** The scene this runner drives. */
 	private final AudioScene<?> scene;
@@ -397,8 +449,9 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 		try {
 		// Pattern position follows the arrangement timeline, not the raw render
 		// cursor: the reset schedule wraps it to zero at each break, ahead of playback.
-		Supplier<Runnable> patternSetup = scene.prepareRenderBuffers(channels, bufferSize,
-				() -> (int) scene.getTimeManager().positionForFrame(renderFrame[0]));
+		Supplier<Runnable> patternSetup = buildTime.measure(BUILD_PREPARE_RENDER_BUFFERS,
+				() -> scene.prepareRenderBuffers(channels, bufferSize,
+						() -> (int) scene.getTimeManager().positionForFrame(renderFrame[0])));
 
 		boolean wetVoicing = MixdownManager.enableEfx;
 		// Rows one side's forward reads (MAIN+WET when efx is on, MAIN only when off); the
@@ -424,10 +477,11 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 		for (PatternAudioBuffer renderCell : scene.getRenderCells()) {
 			renderOps.add(renderCell.prepareBatch(false));
 		}
-		Runnable renderOp = renderOps.get();
+		Runnable renderOp = buildTime.measure(BUILD_RENDER_OPS, renderOps);
 
 		PdslLoader loader = new PdslLoader(AudioDspPrimitives::registerWith);
-		PdslNode.Program program = loader.parseResource(MIXDOWN_PDSL_RESOURCE);
+		PdslNode.Program program = buildTime.measure(BUILD_PARSE_PDSL,
+				() -> loader.parseResource(MIXDOWN_PDSL_RESOURCE));
 
 		// One complete mixdown per stereo side (see buildSide): LEFT reads the region's
 		// first rows, RIGHT the next, each with its own state and pan gain.
@@ -787,11 +841,12 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 							   int bufferSize, List<Runnable> rollback) {
 		MixdownManagerPdslAdapter adapter =
 				new MixdownManagerPdslAdapter(mixdown, efx, config, side);
-		Map<String, Object> args = adapter.buildArgsMap();
+		Map<String, Object> args = buildTime.measure(BUILD_ARGS, adapter::buildArgsMap);
 		CompiledModel compiled = compileMixdownModel(loader, program, layerName, shape, args);
 		rollback.add(compiled::destroy);
 		Supplier<Runnable> automationRefresh = adapter.automationRefresh(args);
-		PackedCollection output = compiled.forward(sideInput);
+		PackedCollection output = buildTime.measure(BUILD_FIRST_FORWARD,
+				() -> compiled.forward(sideInput));
 		return new PdslSide(adapter, args, compiled, automationRefresh, output, bufferSize);
 	}
 
@@ -817,9 +872,10 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 	private CompiledModel compileMixdownModel(PdslLoader loader, PdslNode.Program program,
 											  String layerName, TraversalPolicy inputShape,
 											  Map<String, Object> args) {
-		Block block = loader.buildLayer(program, layerName, inputShape, args);
+		Block block = buildTime.measure(BUILD_LAYER,
+				() -> loader.buildLayer(program, layerName, inputShape, args));
 		Model model = new Model(inputShape);
 		model.add(block);
-		return model.compile(false);
+		return buildTime.measure(BUILD_MODEL_COMPILE, () -> model.compile(false));
 	}
 }
