@@ -46,7 +46,8 @@ In scope:
    add their contributions into *data-dependent* output positions, with
    concurrent writes to the same position resolved by an atomic
    add. No backend generates atomics today, so this is new code generation
-   across the `LanguageOperations` backends (`base/hardware`, `base/code`).
+   across the `LanguageOperations` backends (`base/code`, `base/hardware`,
+   `base/hardware-js`).
 2. **An event-driven propagation computation** in `compute/algebra`
    (`org.almostrealism.algebra.computations`), beside
    `SegmentedWeightedSumComputation`, that takes a sparse connectivity matrix
@@ -119,7 +120,8 @@ generation lives in the `LanguageOperations` hierarchy
 (`base/code/.../io/almostrealism/lang/LanguageOperations.java` and its
 subclasses): `MetalLanguageOperations`, `OpenCLLanguageOperations`,
 `CudaLanguageOperations`, `CLanguageOperations`/`CJNILanguageOperations`
-(native), and `JavaScriptLanguageOperations`. The primitive must be expressed in
+(native, all in `base/hardware`), and `JavaScriptLanguageOperations` (in
+`base/hardware-js`, module `ar-hardware-js`). The primitive must be expressed in
 the expression/scope layer (`base/code`, `io.almostrealism.expression` /
 `io.almostrealism.scope`) as an atomic accumulate into a computed memory
 position, then rendered per backend:
@@ -225,7 +227,7 @@ A reviewer can confirm the task is done when:
    must at least produce correct results even if its performance characteristics
    differ.
 2. **OpenCL and Metal float-atomic availability.** Confirm the base OpenCL profile lacks a
-   native float atomic add and that a `atomic_cmpxchg` CAS loop is the intended
+   native float atomic add and that an `atomic_cmpxchg` CAS loop is the intended
    fallback, or whether an extension is assumed available. The same question
    applies to Metal: `atomic_float` is not available in every Metal Shading
    Language version, so the implementer should confirm the language version the
