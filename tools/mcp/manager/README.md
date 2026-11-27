@@ -753,7 +753,14 @@ answered directly with `nonexistent: true`.
 The snapshot index is built in the Dockerfile's `docs` stage before the prune
 (`tools/mcp/common/snapshot_index.py`) and records the commit it was built from,
 passed as the `CORPUS_COMMIT` build argument (`rebuild.sh` exports it; a build
-that omits it records `unknown`). `consult` returns it as `corpus`.
+that omits it records `unknown`). `consult` returns it as `corpus`. It also
+records when each file last changed in the last 90 days: `rebuild.sh` writes
+that `git log` to `tools/mcp/manager/snapshot-path-dates.txt` in the build
+context, because the context has no `.git`. A note naming a file (one the name
+resolves to unambiguously) that changed after the note was written is tier C,
+"names files changed since it was written". It may describe the file as it was,
+so it supplies history, not present fact. A build without that file records no
+dates, and then no note is demoted this way.
 
 Every consult returns a `conversation_id`, and passing it back continues the
 consult: a follow-up keeps the evidence IDs of earlier turns and sees their

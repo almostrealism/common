@@ -36,10 +36,15 @@ COPY scripts/ ./scripts/
 # prune (the tree it describes is gone afterwards) and is written to
 # /snapshot, outside /src, so the prune cannot delete it. .dockerignore
 # excludes .git/, so the commit arrives as a build argument; a build that
-# omits it records the explicit sentinel "unknown", never an empty value.
+# omits it records the explicit sentinel "unknown", never an empty value. For
+# the same reason rebuild.sh writes the recent `git log` into
+# tools/mcp/manager/snapshot-path-dates.txt (copied above with tools/), which
+# gives the index each file's last change date; without it none are recorded.
 ARG CORPUS_COMMIT=unknown
 RUN python3 tools/mcp/common/snapshot_index.py --root /src \
-        --commit "${CORPUS_COMMIT}" --out /snapshot/snapshot-index.json
+        --commit "${CORPUS_COMMIT}" \
+        --path-dates tools/mcp/manager/snapshot-path-dates.txt \
+        --out /snapshot/snapshot-index.json
 
 RUN find . -type f ! -name '*.md' ! -name '*.html' -delete \
     && find . -type d -empty -delete
