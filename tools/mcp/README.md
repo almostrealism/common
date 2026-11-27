@@ -88,7 +88,7 @@ For agents working on **this repo** (almostrealism/common), additional project-l
 | MCP Tool | Description |
 |---|---|
 | ~~ar-consultant~~ | **Retired** — `consult` now lives in ar-manager, which carries the documentation corpus and so works from any repository |
-| **ar-build-validator** | Static analysis: checkstyle, code policy, test timeouts, duplicate code, ErrorProne |
+| **ar-build-validator** | Static analysis: checkstyle, code policy, test timeouts, duplicate code, ErrorProne. Validates this repository by default, or any Maven checkout (such as a downstream consumer's sibling checkout) passed as `project` |
 | **ar-test-runner** | Async test execution with structured result parsing |
 | **ar-commit** | Checked commits: commits the staged change with the message in `commit.txt` once both pass the commit-message rules. The private-product-name check is skipped when the repository being committed is itself a configured private product (its `origin` remote name matches one of `AR_PRIVATE_PRODUCT_NAMES`, case-insensitively); all other checks still run |
 | **ar-jmx** | JVM memory diagnostics via JDK tools |
@@ -116,7 +116,7 @@ See `flowtree/runtime/src/main/resources/workstreams-example.yaml` for full conf
 | **ar-secrets** | [secrets/](secrets/) | Auto-pushed stdio server (delivered by the controller to every agent container) that renders workspace secrets into files on the agent's filesystem (see [SECRETS.md](SECRETS.md)) |
 | ~~ar-consultant~~ | [consultant/](consultant/) | **Retired.** Source retained for reference; not registered in `.mcp.json`. Its memory, documentation and Q&A tools moved to ar-manager |
 | **ar-memory** | [memory/](memory/) | Centralized HTTP memory service with embedding-based search |
-| **ar-build-validator** | [build-validator/](build-validator/) | Static analysis: checkstyle, code policy, test timeouts, duplicate code, ErrorProne |
+| **ar-build-validator** | [build-validator/](build-validator/) | Static analysis: checkstyle, code policy, test timeouts, duplicate code, ErrorProne. Validates this repository by default, or any Maven checkout (such as a downstream consumer's sibling checkout) passed as `project` |
 | **ar-test-runner** | [test-runner/](test-runner/) | Async test execution with structured result parsing |
 | **ar-commit** | [commit/](commit/) | Checked commits: refuses author attribution, private links, temporary identifiers and private product names, then commits and deletes `commit.txt`. The private-product-name check is skipped when the repository being committed is itself a configured private product (its `origin` remote name matches one of `AR_PRIVATE_PRODUCT_NAMES`, case-insensitively); all other checks still run |
 | **ar-jmx** | [jmx/](jmx/) | JVM memory diagnostics via JDK tools (jcmd, jstat, JFR) |
