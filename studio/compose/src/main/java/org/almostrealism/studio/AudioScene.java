@@ -1270,6 +1270,28 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 	}
 
 	/**
+	 * Creates a real-time runner for specific channels together with its live control
+	 * handle: a position window (looping and retargetable render position, with the
+	 * automation clock following it) and an optional per-runner render-ahead depth.
+	 *
+	 * <p>As with every runner on this scene, building one retires any earlier runner's
+	 * render stream and consolidated buffer, so two live runners need two scenes.</p>
+	 *
+	 * @param output     the audio output to write to
+	 * @param channels   channel indices to render, or null for all
+	 * @param bufferSize frames per buffer
+	 * @param options    the window and ring depth, or {@code null} for the defaults
+	 * @return the runner and its control handle
+	 * @see AudioSceneRealtimeRunner#create(MultiChannelAudioOutput, List, int, RealtimeRunnerOptions)
+	 */
+	public RealtimeRunner runnerRealTime(MultiChannelAudioOutput output,
+										 List<Integer> channels,
+										 int bufferSize,
+										 RealtimeRunnerOptions options) {
+		return new AudioSceneRealtimeRunner(this).create(output, channels, bufferSize, options);
+	}
+
+	/**
 	 * Renders the scene's <em>current</em> pattern content for a single channel
 	 * to a wav file, without assigning or deriving a genome.
 	 *

@@ -23,6 +23,9 @@ import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -396,6 +399,46 @@ public class PatternRenderStreamTest extends TestSuiteBase {
 						expected.getCause().getCause() instanceof IllegalStateException);
 			}
 			Assert.assertEquals("no render is attempted after the failure", SLOTS + 1, renders.get());
+		} finally {
+			stream.destroy();
+			workingInput.destroy();
+		}
+	}
+
+	/**
+	 * A stream restarted behind a {@link RealtimePositionWindow} whose start was moved renders
+	 * its first buffer at the window's start frame rather than at frame {@code 0}, and the
+	 * buffers after it advance from there and wrap at the loop length. This is the render
+	 * contract a live retarget relies on: {@code stop()} zeroes the cursor, and the window maps
+	 * that restart onto the chosen position.
+	 */
+	@Test(timeout = 60000)
+	public void restartBehindWindowRendersFirstBufferAtStartFrame() {
+		long[] renderFrame = new long[1];
+		double loopFrames = BUFFER_SIZE * 5.5;
+		RealtimePositionWindow window = new RealtimePositionWindow(0, loopFrames);
+		List<Long> positions = Collections.synchronizedList(new ArrayList<>());
+		PackedCollection workingInput = new PackedCollection(shape(1, BUFFER_SIZE));
+		PatternRenderStream stream = new PatternRenderStream(
+				() -> positions.add(window.position(renderFrame[0])), renderFrame,
+				workingInput, SLOTS, 1, BUFFER_SIZE);
+
+		try {
+			stream.start(SLOTS);
+			Assert.assertEquals("an unmoved window renders from position 0", 0L, (long) positions.get(0));
+
+			stream.stop();
+			positions.clear();
+			long startFrame = BUFFER_SIZE * 5L + 7;
+			window.setStartFrame(startFrame);
+			stream.start(SLOTS);
+
+			Assert.assertEquals("the first buffer after the restart is the window start",
+					startFrame, (long) positions.get(0));
+			long expectedSecond = (long) Math.floor((startFrame + BUFFER_SIZE) % loopFrames);
+			Assert.assertEquals("the next buffer wraps at the loop length",
+					expectedSecond, (long) positions.get(1));
+			Assert.assertTrue("the wrapped position is inside the loop", positions.get(1) < startFrame);
 		} finally {
 			stream.destroy();
 			workingInput.destroy();
