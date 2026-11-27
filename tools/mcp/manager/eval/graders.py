@@ -569,14 +569,16 @@ def validate_case(case: dict) -> list[str]:
                         and not _is_string_list(turn["keywords"]):
                     errors.append(
                         f"{cid}: turns[{i}] 'keywords' must be a list of strings")
-                if "scripted" in turn and (not isinstance(turn["scripted"], str)
-                                           or not turn["scripted"]):
-                    errors.append(
-                        f"{cid}: turns[{i}] 'scripted' must be a non-empty string")
+                for key in ("scripted", "revised"):
+                    if key in turn and (not isinstance(turn[key], str)
+                                        or not turn[key]):
+                        errors.append(
+                            f"{cid}: turns[{i}] {key!r} must be a non-empty "
+                            f"string")
 
     if "answerable" in case and not isinstance(case["answerable"], bool):
         errors.append(f"{cid}: 'answerable' must be a boolean")
-    for key in ("scripted", "observed_response", "memories", "now"):
+    for key in ("scripted", "revised", "observed_response", "memories", "now"):
         if key in case and (not isinstance(case[key], str) or not case[key]):
             errors.append(f"{cid}: {key!r} must be a non-empty string")
     for key in ("branch_states", "caller"):
