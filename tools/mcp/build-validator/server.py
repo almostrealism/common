@@ -367,7 +367,6 @@ class BuildValidator:
         """Main validation thread: build (if needed) then run each check."""
         output_file = run_dir / "output.txt"
         metadata = self._load_metadata(run_id)
-        project_root = config.project_root()
 
         needs_build = not config.skip_build and any(
             c in BUILD_REQUIRED_CHECKS for c in config.checks
@@ -377,6 +376,11 @@ class BuildValidator:
         needs_full_install = needs_build
 
         try:
+            # Resolve inside the try so a target validated in call_tool but
+            # since removed fails this run terminally, rather than escaping the
+            # worker and leaving the run reported as running until timeout.
+            project_root = config.project_root()
+
             # ── Step 1: Build ────────────────────────────────────────
             if needs_build:
                 if self._is_cancelled(run_id):

@@ -24,9 +24,11 @@ import importlib.util
 import json
 import sys
 import tempfile
+import threading
 import unittest
 from dataclasses import asdict
 from pathlib import Path
+from unittest import mock
 
 _SERVER_DIR = Path(__file__).resolve().parent
 _COMMON_DIR = _SERVER_DIR.parent / "common"
@@ -84,6 +86,60 @@ class BuildValidatorMetadataTest(unittest.TestCase):
         # Previously this raised JSONDecodeError; a corrupt run must now be
         # reported as not found rather than crashing the status call.
         self.assertIsNone(self.validator.get_status("bad"))
+
+    def test_worker_marks_run_failed_when_target_resolution_fails(self):
+        """A target removed after call_tool validated it fails the run terminally.
+
+        ``project_root()`` is re-resolved inside the worker. If the sibling
+        checkout has since vanished it raises, which must be caught and reported
+        as a ``failed`` run with the timeout timer cancelled -- not escape the
+        worker thread and leave the run reported as ``running`` until timeout.
+        """
+        run_dir = self._make_run("race")
+        (run_dir / "output.txt").write_text("")
+        self.validator._save_metadata("race", {
+            "run_id": "race", "status": "running",
+            "started_at": "2020-01-01T00:00:00",
+            "checks": [{"name": "checkstyle", "status": "pending"}],
+        })
+        timer = threading.Timer(3600, lambda: None)
+        timer.daemon = True
+        timer.start()
+        self.validator._timeout_timers["race"] = timer
+
+        config = server.ValidationConfig(
+            checks=["checkstyle"], project="/nonexistent/vanished/checkout")
+        self.validator._run_validation("race", config, run_dir)
+
+        self.assertEqual("failed", self.validator._load_metadata("race")["status"])
+        self.assertNotIn("race", self.validator._timeout_timers)
+        timer.cancel()
+
+    def test_subprocess_runs_in_the_target_project(self):
+        """Maven is launched with cwd set to the project being validated.
+
+        Threading the chosen root into the subprocess working directory is the
+        core of the generalization: a validation of a sibling checkout must run
+        Maven there, not in the repository the server ships in.
+        """
+        run_dir = self._make_run("cwd")
+        (run_dir / "output.txt").write_text("")
+        self.validator._save_metadata("cwd", {
+            "run_id": "cwd", "status": "running",
+            "started_at": "2020-01-01T00:00:00", "checks": []})
+        target = Path(self._tmp.name) / "downstream"
+        target.mkdir()
+
+        fake = mock.MagicMock()
+        fake.pid = 4321
+        fake.wait.return_value = 0
+        with mock.patch.object(server.subprocess, "Popen", return_value=fake) as popen:
+            exit_code = self.validator._run_subprocess(
+                ["mvn", "checkstyle:check", "-B"],
+                run_dir / "output.txt", "cwd", target)
+
+        self.assertEqual(0, exit_code)
+        self.assertEqual(target, popen.call_args.kwargs["cwd"])
 
     def test_cleanup_retires_oldest_runs(self):
         for i in range(server.MAX_RUNS + 5):
