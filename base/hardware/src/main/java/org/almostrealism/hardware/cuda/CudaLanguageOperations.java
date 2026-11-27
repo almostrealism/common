@@ -48,6 +48,17 @@ public class CudaLanguageOperations extends CLanguageOperations {
 		super(precision, false, false);
 	}
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Renders the native {@code atomicAdd}, which CUDA provides for {@code float} and, on
+	 * devices of compute capability 6.0 and later, for {@code double}.</p>
+	 */
+	@Override
+	public String atomicAccumulation(String destination, String value) {
+		return "atomicAdd(&(" + destination + "), " + value + ")";
+	}
+
 	@Override
 	public boolean isNumericBoolean() {
 		return false;

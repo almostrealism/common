@@ -189,6 +189,28 @@ public class MetalLanguageOperations extends CLanguageOperations {
 	}
 
 	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Renders the native {@code atomic_fetch_add_explicit} of the Metal Shading Language on an
+	 * {@code atomic_float} view of the element, with relaxed ordering: the addition only has to
+	 * be indivisible, not ordered against other memory operations of the kernel. Floating-point
+	 * atomics were introduced in Metal Shading Language 3.0, so a device whose compiler predates
+	 * it rejects the kernel when it is compiled rather than producing a lossy update.</p>
+	 *
+	 * @throws UnsupportedOperationException if the precision is not 32-bit, the only
+	 *         floating-point width Metal has atomics for
+	 */
+	@Override
+	public String atomicAccumulation(String destination, String value) {
+		if (getPrecision().bytes() != 4) {
+			throw new UnsupportedOperationException("Metal has no atomic accumulation at " + getPrecision());
+		}
+
+		return "metal::atomic_fetch_add_explicit((device metal::atomic_float *) &(" + destination + "), " +
+				value + ", metal::memory_order_relaxed)";
+	}
+
+	/**
 	 * Checks if booleans are represented as numeric types.
 	 *
 	 * @return Always false (Metal has native bool type)

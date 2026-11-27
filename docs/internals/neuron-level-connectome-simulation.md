@@ -103,6 +103,33 @@ layout, and how an ordered collection is read as a kernel input, are described i
 [Dynamic Indexing](dynamic-indexing.md#sparse-matrices-compressed-sparse-row-ordering); this page
 relies on them rather than re-deriving them.
 
+### Event-driven propagation
+
+The forward product visits every stored synapse each step, whether or not its presynaptic neuron
+fired. When few neurons spike, `MatrixFeatures.scatterProduct` computes the same vector from the
+spiking neurons alone: given the **source-major** matrix `transpose(W)`, whose rows list each
+presynaptic neuron's *outgoing* edges, it launches one kernel thread per presynaptic neuron, and
+each active one adds its outgoing weights into its targets.
+
+```java
+OperationList propagate = scatterProduct(p(input), cp(outgoing), spikes);  // outgoing = transpose(W)
+```
+
+Two firing neurons may share a target, so every addition is an atomic accumulation
+(`io.almostrealism.code.AtomicAccumulation`, rendered by each backend's
+`LanguageOperations.atomicAccumulation`: a native atomic add on Metal and CUDA, a compare-and-swap
+loop on OpenCL and in native code; a backend that cannot express one refuses). The returned list
+first resets `input` to zero in place and then scatters, as two separately dispatched operations,
+because a kernel cannot order one thread's reset before another thread's addition; it must not be
+flattened into a list that compiles. `scatterAdd` is the scatter alone, which adds into what the
+destination holds. The order of concurrent additions is undefined, so the result equals `W s`
+exactly when every partial sum is exactly representable — as it is for the integer weights and a
+binary spike vector while sums stay below `2^24` at FP32 — and to within rounding otherwise.
+Neither path is selected automatically: `matmul` always takes the forward product, and a caller
+that knows its activity is sparse chooses `scatterProduct`. On Metal, with 50,000 neurons and
+400 synapses each, the event-driven step is about five times faster at 0.1–1% activity and loses
+to the forward product once between a quarter and a half of the neurons fire.
+
 `NeuronConnectome` knows the file layout and nothing about dynamics. It owns the loaded tensors and
 the index collections of the ordering, exposes the body id and annotations of every neuron
 (`getBodyId`, `getType`, `getSide`, `indexOf`, `indicesOfType`), builds an input-set `mask(...)` over a chosen
@@ -375,6 +402,7 @@ percentile of at most 4.3% over every neuron above 10 Hz.
 | `domain/biology/src/main/java/org/almostrealism/biology/neuron/ExponentialSynapseNeurons.java` | The exact-exponential LIF neuron `Block` |
 | `domain/biology/src/main/java/org/almostrealism/biology/neuron/PoissonInput.java` | The reproducible Poisson-input `Block` |
 | `compute/algebra/src/main/java/org/almostrealism/collect/CompressedRowTraversalOrdering.java` | The compressed-sparse-row ordering the matrix and the drive carry |
+| `compute/algebra/src/main/java/org/almostrealism/algebra/computations/SegmentedScatterAddComputation.java` | The event-driven (scatter-add) propagation from the active presynaptic neurons |
 | `studio/bioscience/scripts/connectome_csr.py` | Reduces each dataset to the signed CSR safetensors form |
 | `studio/bioscience/scripts/brian2_reference.py` | The Brian2 cross-validation oracle |
 | `studio/bioscience/src/test/java/org/almostrealism/bioscience/connectome/test/NeuronLevelConnectomeSimulationExamplesTest.java` | The worked example of this page and its assertions |

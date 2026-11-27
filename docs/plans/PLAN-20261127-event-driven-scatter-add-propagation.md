@@ -1,7 +1,7 @@
 ---
-status: proposed
+status: completed
 created: 2026-11-27
-closed:
+closed: 2026-11-27
 tracker: [eb28f816-bb3c-4d8e-a4ca-f945aa1d3684]
 ---
 
@@ -9,7 +9,7 @@ tracker: [eb28f816-bb3c-4d8e-a4ca-f945aa1d3684]
 
 - **Tracker task:** eb28f816-bb3c-4d8e-a4ca-f945aa1d3684 — "Event-driven
   scatter-add propagation for sparse connectivity"
-- **Release:** Common 0.78
+- **Release:** the Common release under development (the version in the root `pom.xml`)
 - **Follow-up of:** 66b57639 (closed) — "Sparse matrix type and sparse
   matrix–vector product with a segmented reduction"
 
@@ -219,7 +219,7 @@ A reviewer can confirm the task is done when:
 
 ## Dependencies
 
-- **ce31398a — "Transposed (CSC) sparse matrix–vector product" (Common 0.78,
+- **ce31398a — "Transposed (CSC) sparse matrix–vector product" (same release,
   open, PR #1103, plan `docs/plans/PLAN-20261126-sparse-matrix-transpose-spmv.md`
   — on PR #1103's branch; not yet on `master`, so a reader on `master` will not
   find that file until #1103 merges).**
@@ -317,3 +317,73 @@ starts.
 genuinely new backend capability (atomic scatter-add across Metal/OpenCL/CUDA/
 native) that touches the expression/scope layer and every `LanguageOperations`
 backend, and on the CSC enumeration from a sibling task that is not yet landed.
+
+## Outcome
+
+Implemented on this branch; both pieces of the recommended split landed together.
+
+- **Primitive (A).** `AtomicAccumulation` (`base/code`, `io.almostrealism.code`) is a
+  `Statement` — deliberately not an `ExpressionAssignment`, so no assignment rewrite (such as
+  accumulator promotion) can treat the element as thread-owned. It renders through the new
+  `LanguageOperations.atomicAccumulation(destination, value)`, whose default *refuses*
+  (`UnsupportedOperationException`) rather than emitting a lossy read-modify-write:
+  - Metal: `metal::atomic_fetch_add_explicit` on a `device metal::atomic_float *` view, relaxed
+    order; FP32 only (Metal has no FP64), FP64 refused. Compiles and runs on the macOS node, so
+    the default Metal language version supports `atomic_float` there; a compiler predating
+    MSL 3.0 rejects the kernel at compile time rather than losing updates (Open question 2).
+  - CUDA: `atomicAdd` (float; double on compute capability 6.0+).
+  - OpenCL: CAS loop, `atomic_cmpxchg` on a `uint` view (FP32) or `atom_cmpxchg` on a `ulong`
+    view (FP64, requires `cl_khr_int64_base_atomics`); no float-atomic extension is assumed.
+  - Native C / JNI: the native kernel runs its global range on several host threads
+    (`CJNIPrintWriter` strides `global_id` by the parallelism), so a sequential `+=` is not safe
+    (Open question 1). It renders a CAS loop with the `__atomic` builtins on an integer view of
+    the element's width (32 or 64 bits); other widths are refused.
+  - JavaScript: refused (default) — the backend generates code only and has no concurrent
+    kernel execution to define an atomic against.
+- **Computation (B).** `SegmentedScatterAddComputation` (`compute/algebra`,
+  `org.almostrealism.algebra.computations`) is an operation that adds
+  `matrix[p] * activity[j]` into `destination[offset(p)]` for the entries of every source `j`
+  whose activity is non-zero. Its kernel range is the source count (`getCountLong`), not the
+  destination size. It takes the source-major matrix (rows are sources, i.e. `transpose(W)`)
+  directly, so it does not depend on ce31398a: a caller holding only `W` uses that task's
+  `transpose()` once it lands, and the tests build both CSR layouts from the same entries.
+  The activity is multiplied in, so the step is correct for any activity, not only binary.
+- **Public surface (Open question 5).** `MatrixFeatures.scatterAdd(destination, matrix,
+  activity)` returns the accumulating operation; `MatrixFeatures.scatterProduct(...)` returns the
+  product. Neither is chosen by `matmul`.
+- **Output reset (Open question 6).** `scatterProduct` is an `OperationList` constructed with
+  compilation disabled, holding an in-place `a(destination, zeros(...))` of the *same*
+  destination producer followed by the scatter. `isComputation()` is therefore false and the
+  two members are dispatched as separate operations, in order (`OperationListRunner`), so the
+  scatter observes the reset as complete and the two are never fused into one kernel. Remaining
+  gap: `OperationList.flatten()` of a *compiling* parent would inline the two members; that is
+  documented on `scatterProduct` and filed as a follow-up.
+- **Exactness (Open question 4).** Exact parity is claimed only when every partial sum is
+  exactly representable; the tests bound the weights to integers in `[-5, 4]` with binary
+  activity, so every partial sum is at most `5 * sources` in magnitude, far below `2^24`.
+  (The test weights are integers in `[-5, 4]` produced on the device; the weights of the
+  transpose are gathered from them by a product with a permutation matrix.)
+- **Compaction (Open question 3).** Not done; inactive threads return immediately.
+
+Tests (`engine/utils`):
+
+- `SegmentedScatterAddComputationTests`: exact parity against both the segmented-sum `matmul`
+  and a reference product, on CPU (JNI) and GPU (Metal), for square, tall and wide matrices,
+  very sparse/low-activity and dense/full-activity cases, each with an empty row, an empty
+  column and a full (very long) column; 8192 sources colliding on one target; reset of a reused
+  destination holding stale values over two passes; accumulation semantics of `scatterAdd`;
+  the two-operation structure and source-count kernel range; rejection of a dense matrix. A
+  mutation that rendered the C and Metal accumulation as a plain `dest = dest + v` failed the
+  collision and dense-parity tests.
+- `LanguageOperationsTest`: the rendering of every backend and the refusals.
+- `lowActivityBenchmark` (`@TestDepth(2)`, `skipLongTests`): 50,000 neurons × 400 synapses
+  (20M entries) on Metal. Per step, segmented sum vs event-driven:
+  0.1% active 4.53 ms vs 0.88 ms; 1% 4.84 vs 0.92; 10% 5.10 vs 1.56; 25% 4.34 vs 2.30;
+  50% 4.32 vs 4.95; 100% 4.78 vs 10.56 — the crossover lies between 25% and 50% activity.
+  At 2M entries both paths were dispatch-bound (about 1 ms), so the benchmark uses the
+  larger matrix.
+- Index exactness (Success criterion 5): positions and offsets are read through the bound
+  `CompressedRowTraversalOrdering`, i.e. its split integer-exact layout, exactly as the
+  forward product reads them; no new index arithmetic is introduced. The benchmark's matrix
+  stores 20M entries, so entry positions beyond `2^24` are read, and its results are checked
+  against the forward product at every fraction.

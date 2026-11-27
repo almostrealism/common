@@ -100,6 +100,35 @@ public class OpenCLLanguageOperations extends CLanguageOperations {
 		return super.nameForType(type);
 	}
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>The base OpenCL profile has no floating-point atomic add, so the update is a
+	 * compare-and-swap loop over the bits of the element: {@code atomic_cmpxchg} on a
+	 * {@code uint} view for 32-bit elements, and {@code atom_cmpxchg} on a {@code ulong} view
+	 * for 64-bit elements, which requires a device supporting
+	 * {@code cl_khr_int64_base_atomics}.</p>
+	 *
+	 * @throws UnsupportedOperationException if the precision is neither 32 nor 64 bits wide
+	 */
+	@Override
+	public String atomicAccumulation(String destination, String value) {
+		boolean wide = getPrecision().bytes() == 8;
+		if (!wide && getPrecision().bytes() != 4) {
+			throw new UnsupportedOperationException("No atomic accumulation at " + getPrecision());
+		}
+
+		String bits = wide ? "ulong" : "uint";
+		String type = getPrecision().typeName();
+		String swap = wide ? "atom_cmpxchg" : "atomic_cmpxchg";
+		return "{ volatile __global " + bits + " *ar_atomic_p = (volatile __global " + bits + " *) &(" +
+				destination + "); " + type + " ar_atomic_v = " + value + "; " +
+				bits + " ar_atomic_o, ar_atomic_n; " +
+				"do { ar_atomic_o = *ar_atomic_p; ar_atomic_n = as_" + bits + "(as_" + type +
+				"(ar_atomic_o) + ar_atomic_v); } " +
+				"while (" + swap + "(ar_atomic_p, ar_atomic_o, ar_atomic_n) != ar_atomic_o); }";
+	}
+
 	@Override
 	public String annotationForPhysicalScope(Accessibility access, PhysicalScope scope) {
 		String volatilePrefix = Hardware.getLocalHardware().isMemoryVolatile() ? "volatile " : "";

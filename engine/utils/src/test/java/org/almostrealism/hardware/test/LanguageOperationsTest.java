@@ -27,6 +27,7 @@ import org.almostrealism.c.CJNILanguageOperations;
 import org.almostrealism.c.CLanguageOperations;
 import org.almostrealism.hardware.cl.OpenCLLanguageOperations;
 import org.almostrealism.hardware.cuda.CudaLanguageOperations;
+import org.almostrealism.hardware.js.JavaScriptLanguageOperations;
 import org.almostrealism.hardware.metal.MetalLanguageOperations;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
@@ -158,6 +159,65 @@ public class LanguageOperationsTest extends TestSuiteBase {
 		Assert.assertEquals("ge(a, b)", Greater.of(a, b, true).getExpression(custom));
 		Assert.assertEquals("lt(a, b)", Less.of(a, b).getExpression(custom));
 		Assert.assertEquals("le(a, b)", Less.of(a, b, true).getExpression(custom));
+	}
+
+	/**
+	 * Each backend renders an atomic accumulation with the indivisible update its language
+	 * provides, never as a plain read-modify-write: a native atomic add on Metal and CUDA, and a
+	 * compare-and-swap loop over the bits of the element on OpenCL and in native C, with an
+	 * integer view as wide as the element at both single and double precision.
+	 */
+	@Test(timeout = 30000)
+	public void atomicAccumulationRendersAnAtomicUpdate() {
+		String metal = new MetalLanguageOperations(Precision.FP32).atomicAccumulation("out[i]", "v");
+		Assert.assertEquals("metal::atomic_fetch_add_explicit((device metal::atomic_float *) &(out[i]), v, "
+				+ "metal::memory_order_relaxed)", metal);
+
+		Assert.assertEquals("atomicAdd(&(out[i]), v)",
+				new CudaLanguageOperations(Precision.FP32).atomicAccumulation("out[i]", "v"));
+
+		String cl32 = new OpenCLLanguageOperations(Precision.FP32).atomicAccumulation("out[i]", "v");
+		Assert.assertTrue(cl32, cl32.contains("atomic_cmpxchg(ar_atomic_p") && cl32.contains("__global uint *"));
+		String cl64 = new OpenCLLanguageOperations(Precision.FP64).atomicAccumulation("out[i]", "v");
+		Assert.assertTrue(cl64, cl64.contains("atom_cmpxchg(ar_atomic_p") && cl64.contains("__global ulong *"));
+
+		for (LanguageOperations lang : List.of(new CJNILanguageOperations(Precision.FP32),
+				new CLanguageOperations(Precision.FP32, true, false))) {
+			String c = lang.atomicAccumulation("out[i]", "v");
+			Assert.assertTrue(c, c.contains("__atomic_compare_exchange_n") && c.contains("unsigned int *"));
+			Assert.assertTrue(c, c.contains("&(out[i])"));
+		}
+
+		String c64 = new CJNILanguageOperations(Precision.FP64).atomicAccumulation("out[i]", "v");
+		Assert.assertTrue(c64, c64.contains("unsigned long long *") && c64.contains("union { double f;"));
+	}
+
+	/**
+	 * A backend that cannot express an indivisible floating-point update refuses to render one
+	 * instead of rendering an update that could lose colliding additions: Metal has no 64-bit
+	 * floating-point atomics, native C has none for 16-bit elements, and a language that does not
+	 * define the operation at all refuses by default.
+	 */
+	@Test(timeout = 30000)
+	public void atomicAccumulationIsRefusedWhereUnsupported() {
+		assertRefusesAtomic(new MetalLanguageOperations(Precision.FP64));
+		assertRefusesAtomic(new CJNILanguageOperations(Precision.FP16));
+		assertRefusesAtomic(new JavaScriptLanguageOperations());
+	}
+
+	/**
+	 * Asserts that {@code lang} refuses to render an atomic accumulation.
+	 *
+	 * @param lang the backend to check
+	 */
+	private void assertRefusesAtomic(LanguageOperations lang) {
+		try {
+			lang.atomicAccumulation("out[i]", "v");
+			Assert.fail(lang.getClass().getSimpleName() + " should refuse an atomic accumulation at "
+					+ lang.getPrecision());
+		} catch (UnsupportedOperationException expected) {
+			Assert.assertNotNull(expected.getMessage());
+		}
 	}
 
 	/**

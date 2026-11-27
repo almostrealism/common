@@ -215,6 +215,42 @@ public class CLanguageOperations extends DefaultLanguageOperations {
 	}
 
 	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Native kernels run their global range on several host threads at once, so the update
+	 * is a compare-and-swap loop over the bits of the element, using the {@code __atomic}
+	 * builtins that both clang and gcc provide: the sum is retried until no other thread has
+	 * changed the element between its read and the swap.</p>
+	 *
+	 * @throws UnsupportedOperationException if the precision is neither 32 nor 64 bits wide
+	 */
+	@Override
+	public String atomicAccumulation(String destination, String value) {
+		String bits = atomicBitsType();
+		String type = getPrecision().typeName();
+		return "{ " + bits + " *ar_atomic_p = (" + bits + " *) &(" + destination + "); " +
+				type + " ar_atomic_v = " + value + "; " +
+				"union { " + type + " f; " + bits + " i; } ar_atomic_o, ar_atomic_n; " +
+				"ar_atomic_o.i = __atomic_load_n(ar_atomic_p, __ATOMIC_RELAXED); " +
+				"do { ar_atomic_n.f = ar_atomic_o.f + ar_atomic_v; } " +
+				"while (!__atomic_compare_exchange_n(ar_atomic_p, &ar_atomic_o.i, ar_atomic_n.i, " +
+				"0, __ATOMIC_RELAXED, __ATOMIC_RELAXED)); }";
+	}
+
+	/**
+	 * Returns the unsigned integer type with the same width as a floating-point element at the
+	 * precision of this language, through which a compare-and-swap of the element is performed.
+	 *
+	 * @return {@code unsigned int} for 32-bit elements, {@code unsigned long long} for 64-bit
+	 * @throws UnsupportedOperationException if the precision is neither 32 nor 64 bits wide
+	 */
+	protected String atomicBitsType() {
+		if (getPrecision().bytes() == 4) return "unsigned int";
+		if (getPrecision().bytes() == 8) return "unsigned long long";
+		throw new UnsupportedOperationException("No atomic accumulation at " + getPrecision());
+	}
+
+	/**
 	 * Returns the statement terminator for C code.
 	 *
 	 * @return the semicolon character

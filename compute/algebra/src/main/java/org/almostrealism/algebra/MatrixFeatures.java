@@ -24,9 +24,11 @@ import io.almostrealism.relation.Computable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.computations.DiagonalMatrixComputation;
 import org.almostrealism.algebra.computations.IdentityMatrixComputation;
+import org.almostrealism.algebra.computations.SegmentedScatterAddComputation;
 import org.almostrealism.algebra.computations.SegmentedWeightedSumComputation;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.hardware.OperationList;
 
 import java.util.Optional;
 import java.util.stream.IntStream;
@@ -209,6 +211,65 @@ public interface MatrixFeatures extends AlgebraFeatures {
 		return a.traverse(1).repeat(bShape.length(0))
 				.multiply(b.traverse(0).repeat(aShape.length(0)))
 				.traverse(2).sum();
+	}
+
+	/**
+	 * Returns the operation that adds the product of the transpose of a source-major sparse
+	 * matrix with an activity vector into a destination, visiting only the entries of the
+	 * sources whose activity is not zero (see {@link SegmentedScatterAddComputation}).
+	 *
+	 * <p>The operation accumulates: it adds into whatever the destination already holds. Use
+	 * {@link #scatterProduct(Producer, Producer, Producer)} to obtain the product alone.</p>
+	 *
+	 * @param destination the vector of {@code targets} elements accumulated into
+	 * @param matrix      the matrix of shape {@code (sources, targets)} whose ordering enumerates
+	 *                    its rows, row {@code j} listing the entries of source {@code j}
+	 * @param activity    the activity of each source
+	 * @return the scatter-add operation
+	 * @throws IllegalArgumentException if the operands do not describe a scatter-add
+	 */
+	default SegmentedScatterAddComputation scatterAdd(Producer<PackedCollection> destination,
+													  Producer<PackedCollection> matrix,
+													  Producer<PackedCollection> activity) {
+		return new SegmentedScatterAddComputation(destination, matrix, activity);
+	}
+
+	/**
+	 * Returns the operation that writes into a destination the product of the transpose of a
+	 * source-major sparse matrix with an activity vector, by resetting the destination to zero
+	 * and then {@link #scatterAdd(Producer, Producer, Producer) scattering} the entries of the
+	 * active sources into it.
+	 *
+	 * <p>For the connectome {@code W[post, pre]} and a vector of spikes, passing
+	 * {@code transpose(W)} as the matrix gives the same vector as {@code matmul(W, spikes)}, with
+	 * work proportional to the synapses of the neurons that fired rather than to every synapse.
+	 * This path is never chosen by {@link #matmul(Producer, Producer)}: a caller that knows its
+	 * activity is sparse selects it.</p>
+	 *
+	 * <p>The reset writes the exact memory of the destination in place, and the two steps are the
+	 * members of an {@link OperationList} that does not compile: they are dispatched as two
+	 * operations, in order, so the scatter observes the reset as complete. They must not be fused
+	 * into one kernel, because the threads of a kernel are unordered and one could clear an element
+	 * after another had added into it; for that reason the returned list must not be
+	 * {@link OperationList#flatten() flattened} into a list that compiles.</p>
+	 *
+	 * @param destination the vector of {@code targets} elements that receives the product
+	 * @param matrix      the matrix of shape {@code (sources, targets)} whose ordering enumerates
+	 *                    its rows
+	 * @param activity    the activity of each source
+	 * @return the operation computing the product into the destination
+	 * @throws IllegalArgumentException if the operands do not describe a scatter-add
+	 */
+	default OperationList scatterProduct(Producer<PackedCollection> destination,
+										 Producer<PackedCollection> matrix,
+										 Producer<PackedCollection> activity) {
+		SegmentedScatterAddComputation scatter = scatterAdd(destination, matrix, activity);
+
+		// TODO(review): reset/scatter ordering relies on no parent flatten(); flatten() inlines this list into a compiling parent
+		OperationList op = new OperationList("Scatter Product", false);
+		op.add(a("Reset Scatter Destination", destination, zeros(shape(destination))));
+		op.add(scatter);
+		return op;
 	}
 
 	/**
