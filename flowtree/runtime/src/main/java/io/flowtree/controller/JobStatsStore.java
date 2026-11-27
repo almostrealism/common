@@ -48,7 +48,6 @@ import io.flowtree.api.FlowTreeApiEndpoint;
  * @see SlackNotifier
  * @see FlowTreeApiEndpoint
  */
-// TODO(review): past the 1500-line recommendation; extract the job-record readers into a collaborator.
 public class JobStatsStore extends ControllerDatabase {
 
     /** DDL statement that creates the {@code job_timing} table if it does not yet exist. */

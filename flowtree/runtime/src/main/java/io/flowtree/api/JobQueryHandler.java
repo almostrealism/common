@@ -108,10 +108,11 @@ public final class JobQueryHandler {
      * <p>Besides the event fields, the response carries the job's derived
      * {@code state} ({@code SUBMITTED}, {@code LOST}, {@code RUNNING},
      * {@code UNRESPONSIVE}, or the terminal status; see
-     * {@link StatsQueryHandler#jobState}), its {@code submittedAt} when
-     * recorded, and its {@code phase} when one is recorded. The
-     * {@code workstreamId} of a job that has not finished comes from the store
-     * when no notifier has seen the job yet.</p>
+     * {@link StatsQueryHandler#derivedJob}), its {@code submittedAt} when
+     * recorded, and its {@code phase} when one is recorded. The derived state
+     * and the {@code workstreamId} of a job that has not finished are resolved
+     * together from one read of the store, which carries the workstream a job
+     * no notifier has seen yet.</p>
      *
      * @param jobId the job identifier
      * @return JSON object for the job event, or 404 if not found
@@ -127,14 +128,17 @@ public final class JobQueryHandler {
                     "application/json", "{\"ok\":false,\"error\":\"Job not found\"}");
         }
 
+        StatsQueryHandler.DerivedJobView derived = statsHandler != null
+                ? statsHandler.derivedJob(jobId, event.getStatus(), Instant.now()) : null;
+
         String workstreamId = notifiers.findWorkstreamIdForJob(jobId);
-        if (workstreamId == null && statsHandler != null) {
-            workstreamId = statsHandler.unfinishedJobWorkstreamId(jobId);
+        if (workstreamId == null && derived != null) {
+            workstreamId = derived.workstreamId();
         }
         String json = jobEventToJson(event, workstreamId);
 
-        if (statsHandler != null) {
-            json = withField(json, "state", statsHandler.jobState(jobId, event.getStatus(), Instant.now()));
+        if (derived != null) {
+            json = withField(json, "state", derived.state());
             Instant submittedAt = statsHandler.jobSubmittedAt(jobId);
             json = withField(json, "submittedAt", submittedAt == null ? null : submittedAt.toString());
             json = withField(json, "phase", statsHandler.jobPhase(jobId));

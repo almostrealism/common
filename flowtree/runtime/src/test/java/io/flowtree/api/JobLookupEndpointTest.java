@@ -130,6 +130,7 @@ public class JobLookupEndpointTest extends TestSuiteBase {
 
         JsonNode silent = get("/api/jobs/silent");
         assertEquals("UNRESPONSIVE", silent.get("state").asText());
+        assertEquals("ws-2", silent.get("workstreamId").asText());
         assertFalse("a job never recorded as submitted has no submission time", silent.has("submittedAt"));
     }
 
