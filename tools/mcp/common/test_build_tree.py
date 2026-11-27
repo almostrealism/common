@@ -122,6 +122,21 @@ class InFlightTests(unittest.TestCase):
                   config={"module": "audio-desktop", "project": "../elsewhere"})
         self.assertEqual([], self.find())
 
+    def test_home_relative_project_is_matched_after_expansion(self):
+        """A run recorded with a ``~`` project must conflict with that same tree.
+
+        The root is reconstructed the way the resolver expands it, so a second
+        run targeting the expanded home path sees the recorded one; without
+        expansion the record would read as ``<repo>/~/elsewhere`` and slip past.
+        """
+        write_run(self.validator, "bbb1",
+                  config={"checks": ["checkstyle"], "project": "~/elsewhere"})
+        expanded = Path("~/elsewhere").expanduser()
+        found = build_tree.in_flight(project_root=expanded,
+                                     run_directories=self.directories)
+        self.assertEqual(1, len(found))
+        self.assertEqual(str(expanded.resolve()), found[0].project_root)
+
     def test_summary_names_the_work(self):
         write_run(self.tester, "aaa1",
                   config={"module": "engine/utils",

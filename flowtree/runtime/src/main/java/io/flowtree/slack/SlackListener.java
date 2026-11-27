@@ -232,6 +232,31 @@ public class SlackListener implements ConsoleFeatures {
     }
 
     /**
+     * Returns the workstream of the channel a {@code /flowtree} command was
+     * invoked from, for a command that acts on it. When the channel has none,
+     * replies that this command needs one and how to create it, and returns
+     * {@code null}; the general commands ({@code stats}, {@code active},
+     * {@code default-channel}, help) never call this.
+     *
+     * @param command     the subcommand, named in the reply
+     * @param channelId   the Slack channel ID
+     * @param workspaceId the Slack team ID, or {@code null}
+     * @param ctx         the responder for the reply
+     * @return the channel's workstream, or {@code null} after replying
+     * @throws IOException if the reply cannot be sent
+     */
+    private Workstream workstreamFor(String command, String channelId, String workspaceId,
+                                     SlashCommandResponder ctx) throws IOException {
+        Workstream ws = findWorkstream(workspaceId, channelId);
+        if (ws == null) {
+            ctx.respond(":warning: No workstream configured for this channel, and `/flowtree "
+                + command + "` acts on this channel's workstream.\n"
+                + "Use `/flowtree setup <working-directory-or-repo-url> <branch>` to create one.");
+        }
+        return ws;
+    }
+
+    /**
      * Clears all registered workstreams from the channel map and every notifier.
      * Called by {@link FlowTreeController#reloadConfig()} before re-registering
      * so removed or relocated workstreams do not remain active after reload.
@@ -778,6 +803,7 @@ public class SlackListener implements ConsoleFeatures {
                     break;
                 default:
                     responder.respond(":information_source: *Flowtree Commands*\n"
+                        + "*In a workstream's channel* (they act on that workstream):\n"
                         + "  `/flowtree setup <directory> <branch>` \u2014 Set up a workstream for this channel\n"
                         + "  `/flowtree info` \u2014 Show workstream details\n"
                         + "  `/flowtree status` \u2014 Show agent status\n"
@@ -785,9 +811,11 @@ public class SlackListener implements ConsoleFeatures {
                         + "  `/flowtree cancel [job-id]` \u2014 Cancel a running job\n"
                         + "  `/flowtree config [key] [value]` \u2014 View or update settings\n"
                         + "  `/flowtree jobs` \u2014 List recent jobs\n"
-                        + "  `/flowtree stats [global]` \u2014 Show weekly job statistics\n"
-                        + "  `/flowtree active` \u2014 List workstreams active in the last 7 days\n"
                         + "  `/flowtree archive [keep-channel]` \u2014 Archive this channel's workstream\n"
+                        + "*Anywhere* (any channel or a DM with the app):\n"
+                        + "  `/flowtree stats [global]` \u2014 Weekly job statistics; this channel's "
+                        + "workstream if it has one, else all workstreams\n"
+                        + "  `/flowtree active` \u2014 List workstreams active in the last 7 days\n"
                         + "  `/flowtree default-channel <channel>` \u2014 Set the default fallback channel");
             }
         } catch (IOException e) {
@@ -919,12 +947,8 @@ public class SlackListener implements ConsoleFeatures {
      */
     private void handleInfoCommand(String channelId, SlashCommandResponder ctx,
                                     String workspaceId) throws IOException {
-        Workstream ws = findWorkstream(workspaceId, channelId);
-        if (ws == null) {
-            ctx.respond(":warning: No workstream configured for this channel.\n"
-                + "Use `/flowtree setup <working-directory-or-repo-url> <branch>` to create one.");
-            return;
-        }
+        Workstream ws = workstreamFor("info", channelId, workspaceId, ctx);
+        if (ws == null) return;
 
         StringBuilder sb = new StringBuilder();
         sb.append(":page_facing_up: *Workstream Details*\n");
@@ -966,12 +990,8 @@ public class SlackListener implements ConsoleFeatures {
      */
     private void handleSlashStatusCommand(String channelId, SlashCommandResponder ctx,
                                            String workspaceId) throws IOException {
-        Workstream ws = findWorkstream(workspaceId, channelId);
-        if (ws == null) {
-            ctx.respond(":warning: No workstream configured for this channel.\n"
-                + "Use `/flowtree setup <working-directory-or-repo-url> <branch>` to create one.");
-            return;
-        }
+        Workstream ws = workstreamFor("status", channelId, workspaceId, ctx);
+        if (ws == null) return;
 
         int connectedAgents = server != null ? server.getNodeGroup().getServers().length : 0;
 
@@ -1006,12 +1026,8 @@ public class SlackListener implements ConsoleFeatures {
             return;
         }
 
-        Workstream ws = findWorkstream(workspaceId, channelId);
-        if (ws == null) {
-            ctx.respond(":warning: No workstream configured for this channel.\n"
-                + "Use `/flowtree setup <working-directory-or-repo-url> <branch>` to create one.");
-            return;
-        }
+        Workstream ws = workstreamFor("task", channelId, workspaceId, ctx);
+        if (ws == null) return;
 
         boolean submitted = submitJob(ws, args.trim(), null, null);
         if (submitted) {
@@ -1033,12 +1049,8 @@ public class SlackListener implements ConsoleFeatures {
      */
     private void handleSlashCancelCommand(String channelId, SlashCommandResponder ctx,
                                            String workspaceId) throws IOException {
-        Workstream ws = findWorkstream(workspaceId, channelId);
-        if (ws == null) {
-            ctx.respond(":warning: No workstream configured for this channel.\n"
-                + "Use `/flowtree setup <working-directory-or-repo-url> <branch>` to create one.");
-            return;
-        }
+        Workstream ws = workstreamFor("cancel", channelId, workspaceId, ctx);
+        if (ws == null) return;
 
         ctx.respond(":construction: Job cancellation not yet implemented");
     }
@@ -1059,12 +1071,8 @@ public class SlackListener implements ConsoleFeatures {
      */
     private void handleSlashConfigCommand(String channelId, String args, SlashCommandResponder ctx,
                                            String workspaceId) throws IOException {
-        Workstream ws = findWorkstream(workspaceId, channelId);
-        if (ws == null) {
-            ctx.respond(":warning: No workstream configured for this channel.\n"
-                + "Use `/flowtree setup <working-directory-or-repo-url> <branch>` to create one.");
-            return;
-        }
+        Workstream ws = workstreamFor("config", channelId, workspaceId, ctx);
+        if (ws == null) return;
 
         if (args == null || args.trim().isEmpty()) {
             // Show all settings
@@ -1124,12 +1132,8 @@ public class SlackListener implements ConsoleFeatures {
      */
     private void handleSlashJobsCommand(String channelId, SlashCommandResponder ctx,
                                          String workspaceId) throws IOException {
-        Workstream ws = findWorkstream(workspaceId, channelId);
-        if (ws == null) {
-            ctx.respond(":warning: No workstream configured for this channel.\n"
-                + "Use `/flowtree setup <working-directory-or-repo-url> <branch>` to create one.");
-            return;
-        }
+        Workstream ws = workstreamFor("jobs", channelId, workspaceId, ctx);
+        if (ws == null) return;
 
         SlackNotifier wsNotifier = resolveNotifier(ws.getWorkspaceId());
         Map<String, JobCompletionEvent> jobs = wsNotifier.getRecentJobs(ws.getWorkstreamId());
@@ -1178,8 +1182,10 @@ public class SlackListener implements ConsoleFeatures {
     /**
      * Handles {@code /flowtree stats [global]}. Shows weekly job statistics.
      *
-     * <p>Without arguments, shows stats for the current channel's workstream.
-     * With {@code global}, shows stats across all workstreams.</p>
+     * <p>Without arguments, shows stats for the current channel's workstream,
+     * or across all workstreams when the channel has none, so the command works
+     * from any channel. With {@code global}, always shows stats across all
+     * workstreams.</p>
      *
      * <p>The stats store is global (shared across all workspaces), so the
      * primary notifier's store is used regardless of workspace.</p>
@@ -1200,16 +1206,9 @@ public class SlackListener implements ConsoleFeatures {
         }
 
         boolean global = "global".equalsIgnoreCase(args != null ? args.trim() : "");
+        Workstream ws = global ? null : findWorkstream(workspaceId, channelId);
 
-        if (!global) {
-            Workstream ws = findWorkstream(workspaceId, channelId);
-            if (ws == null) {
-                ctx.respond(":warning: No workstream configured for this channel.\n"
-                    + "Use `/flowtree setup <working-directory-or-repo-url> <branch>` to create one.\n"
-                    + "Or use `/flowtree stats global` for stats across all workstreams.");
-                return;
-            }
-
+        if (ws != null) {
             LocalDate today = LocalDate.now(ZoneId.of("UTC"));
             LocalDate thisWeekStart = today.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
             LocalDate lastWeekStart = thisWeekStart.minusWeeks(1);
@@ -1231,8 +1230,8 @@ public class SlackListener implements ConsoleFeatures {
 
             // Build workstream ID to channel name lookup
             Map<String, String> wsToChannel = new HashMap<>();
-            for (Workstream ws : channelToWorkstream.values()) {
-                wsToChannel.put(ws.getWorkstreamId(), ws.getChannelName());
+            for (Workstream each : channelToWorkstream.values()) {
+                wsToChannel.put(each.getWorkstreamId(), each.getChannelName());
             }
 
             StringBuilder sb = new StringBuilder();
@@ -1454,11 +1453,8 @@ public class SlackListener implements ConsoleFeatures {
     private void handleSlashArchiveCommand(String channelId, String args,
                                             SlashCommandResponder ctx,
                                             String workspaceId) throws IOException {
-        Workstream ws = findWorkstream(workspaceId, channelId);
-        if (ws == null) {
-            ctx.respond(":warning: No workstream configured for this channel.");
-            return;
-        }
+        Workstream ws = workstreamFor("archive", channelId, workspaceId, ctx);
+        if (ws == null) return;
         if (ws.isArchived()) {
             ctx.respond(":information_source: Workstream `"
                 + ws.getWorkstreamId() + "` is already archived.");
