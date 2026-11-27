@@ -55,6 +55,27 @@ class TestGitLogDates(unittest.TestCase):
             "tools/ci/README.md": "2026-10-01T09:00:00+00:00",
         })
 
+    def test_the_latest_author_date_wins_whatever_the_log_order(self):
+        # A rebased commit lists first (newest commit date) yet carries an
+        # older author date than a commit listed after it.
+        log = ("@2026-10-01T09:00:00+00:00\ntools/ci/README.md\n\n"
+               "@2026-10-15T09:00:00+02:00\ntools/ci/README.md\n\n"
+               "@2026-09-01T09:00:00Z\ntools/ci/README.md\n")
+        self.assertEqual(parse_git_log_dates(log)["dates"],
+                         {"tools/ci/README.md": "2026-10-15T09:00:00+02:00"})
+        index = _index(parse_git_log_dates(log))
+        self.assertEqual(index.changed_after(["tools/ci/README.md"], WRITTEN),
+                         ["tools/ci/README.md"])
+
+    def test_a_malformed_date_line_contributes_nothing(self):
+        log = ("@not-a-date\ndocs/README.md\n\n"
+               "@2026-10-01T09:00:00+00:00\ntools/ci/README.md\n")
+        self.assertEqual(parse_git_log_dates(log)["dates"],
+                         {"tools/ci/README.md": "2026-10-01T09:00:00+00:00"})
+
+    def test_empty_log_records_no_dates(self):
+        self.assertEqual(parse_git_log_dates("")["dates"], {})
+
     def test_the_window_covers_the_recency_window(self):
         self.assertGreaterEqual(PATH_DATES_WINDOW_DAYS, RECENCY_WINDOW_DAYS)
 

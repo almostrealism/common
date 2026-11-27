@@ -187,11 +187,14 @@ def script_signals(text: str) -> str:
 
 def parse_git_log_dates(text: str, since_days: int = PATH_DATES_WINDOW_DAYS) -> dict:
     """When each file last changed, read from ``git log --format=@%aI
-    --name-only`` output (newest commit first), as ``rebuild.sh`` writes it.
+    --name-only`` output, as ``rebuild.sh`` writes it.
 
     The author date is used because a rebase or a merge does not move it, so
     a note written after the work it describes is not mistaken for one the
-    work later invalidated.
+    work later invalidated. ``git log`` orders commits by commit date, not
+    author date, so each path keeps the latest author date among all the
+    commits that touched it rather than the first one listed. A commit line
+    whose date does not parse contributes nothing.
 
     Args:
         text: The log output: an ``@<ISO date>`` line per commit, followed by
@@ -202,15 +205,21 @@ def parse_git_log_dates(text: str, since_days: int = PATH_DATES_WINDOW_DAYS) -> 
     Returns:
         ``{"since_days": since_days, "dates": {path: ISO date}}``.
     """
-    dates: dict[str, str] = {}
-    current = ""
+    latest: dict[str, tuple[datetime, str]] = {}
+    current: Optional[tuple[datetime, str]] = None
     for line in text.splitlines():
         line = line.strip()
         if line.startswith("@"):
-            current = line[1:]
-        elif line and current:
-            dates.setdefault(line, current)
-    return {"since_days": since_days, "dates": dates}
+            try:
+                current = (_parse_iso(line[1:]), line[1:])
+            except ValueError:
+                current = None
+        elif line and current is not None:
+            seen = latest.get(line)
+            if seen is None or current[0] > seen[0]:
+                latest[line] = current
+    return {"since_days": since_days,
+            "dates": {path: stamp for path, (_, stamp) in latest.items()}}
 
 
 def build(root: str, commit: str = "unknown", built_at: str = "",
@@ -485,6 +494,7 @@ def _constant_fact(name: str, entry: dict) -> dict:
                      f"{entry['owner']}.{name} = {shown}"}
 
 
+# TODO(review): near-duplicate of consult_tiers.parse_time; consider sharing one ISO parser.
 def _parse_iso(value: str) -> datetime:
     """An ISO-8601 timestamp as an aware datetime (UTC when it has no zone)."""
     parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
