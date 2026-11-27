@@ -33,6 +33,13 @@ REHEARSAL_JOB_NAME = "Deploy rehearsal"
 #: The workflow file whose push runs carry the rehearsal.
 WORKFLOW_FILE = "analysis.yaml"
 
+#: The only branch whose push run the deploy accepts. A deploy ships a master
+#: commit, so the rehearsal that clears it must be master's own push run: GitHub
+#: returns a push run for every branch that carried the commit, and a feature
+#: branch's rehearsal must not satisfy the gate for a commit later fast-forwarded
+#: onto master whose master push run is missing or failed.
+DEPLOY_BRANCH = "master"
+
 
 def rehearsal_verdict(runs, jobs_of):
     """Decide whether a commit's rehearsal passed.
@@ -87,8 +94,8 @@ def main(argv):
     api = os.environ.get("GITHUB_API_URL", "https://api.github.com")
     base = "%s/repos/%s/actions" % (api, repo)
 
-    runs = _get("%s/workflows/%s/runs?event=push&head_sha=%s&per_page=20"
-                % (base, WORKFLOW_FILE, sha), token).get("workflow_runs", [])
+    runs = _get("%s/workflows/%s/runs?event=push&branch=%s&head_sha=%s&per_page=20"
+                % (base, WORKFLOW_FILE, DEPLOY_BRANCH, sha), token).get("workflow_runs", [])
 
     def jobs_of(run_id):
         return _get("%s/runs/%s/jobs?filter=latest&per_page=100" % (base, run_id),

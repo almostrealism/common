@@ -146,6 +146,61 @@ class RehearsalVerdictTest(unittest.TestCase):
         self.assertTrue(passed)
 
 
+class GateQueryTest(unittest.TestCase):
+    """``main`` looks up only master's push runs of the commit.
+
+    GitHub returns a push run for every branch that carried a commit, so a
+    successful ``Deploy rehearsal`` on a feature-branch push must not satisfy a
+    gate that exists to require master's own push run — the case of a commit
+    later fast-forwarded onto master whose master push run is missing or failed.
+    """
+
+    def setUp(self):
+        self.module = _load_gate()
+
+    def _run_main(self, sha, responses):
+        calls = []
+
+        def fake_get(url, token):
+            calls.append(url)
+            for fragment, payload in responses.items():
+                if fragment in url:
+                    return payload
+            return {}
+
+        original_get = self.module._get
+        original_env = {k: os.environ.get(k) for k in ("GITHUB_TOKEN", "GITHUB_REPOSITORY")}
+        self.module._get = fake_get
+        os.environ["GITHUB_TOKEN"] = "t"
+        os.environ["GITHUB_REPOSITORY"] = "almostrealism/common"
+        try:
+            code = self.module.main(["require_rehearsed_commit.py", sha])
+        finally:
+            self.module._get = original_get
+            for key, value in original_env.items():
+                if value is None:
+                    os.environ.pop(key, None)
+                else:
+                    os.environ[key] = value
+        return code, calls
+
+    def test_the_runs_query_is_restricted_to_master(self):
+        code, calls = self._run_main("abc123", {
+            "/runs?": {"workflow_runs": [{"id": 1, "run_number": 1}]},
+            "/runs/1/jobs": {"jobs": [{"name": "Deploy rehearsal", "conclusion": "success"}]},
+        })
+        self.assertEqual(code, 0)
+        runs_query = next(url for url in calls if "/runs?" in url)
+        self.assertIn("branch=%s" % self.module.DEPLOY_BRANCH, runs_query)
+        self.assertIn("event=push", runs_query)
+
+    def test_a_non_master_run_cannot_satisfy_the_gate(self):
+        code, _ = self._run_main("abc123", {
+            "/runs?": {"workflow_runs": []},
+        })
+        self.assertEqual(code, 1, "no master push run means the commit is unrehearsed")
+
+
 class RehearsalModeTest(unittest.TestCase):
     """``rebuild.sh --rehearse`` stops after the preflight, before any swap."""
 

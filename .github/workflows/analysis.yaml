@@ -2522,8 +2522,6 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
 
-      # TODO(review): confirm select-jdk (until now self-hosted-only) finds EXPECTED_JDK_MAJOR on the hosted ubuntu-24.04-arm image.
-
       # The deploy host (the native macOS ar-deploy runner) builds with its own
       # installed JDK, never actions/setup-java, so the rehearsal does the same:
       # it selects the JDK of the expected major the hosted image already ships
