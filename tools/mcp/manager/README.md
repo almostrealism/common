@@ -758,8 +758,9 @@ grounded-but-uncited sentence is not a warning, so fixing a flagged citation by
 dropping a marker instead of correcting it must not be rewarded with a lower
 warning count), and leaves every sentence the verifier did not flag unchanged
 (the model is shown only the flagged sentences and told to keep the rest as
-they are, so a revision may not rewrite or drop an unflagged, correctly cited
-sentence);
+they are, so a revision may not rewrite, drop, reorder or duplicate an
+unflagged, correctly cited sentence — those must survive in the draft's order
+and count);
 `citation_retry` in the response records the warning counts before and after
 and which answer was `kept`. Sentences that still fail are marked
 `[unsupported]` in the answer and listed in `citation_warnings`. A question naming a file the snapshot does not contain is

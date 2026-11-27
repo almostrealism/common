@@ -919,9 +919,15 @@ def _unflagged_sentences_survive(draft: dict, revision: dict, warnings: list) ->
     check it could be published and alter the answer beyond citation repair. A
     draft sentence counts as unflagged when its text is not among the flagged
     sentences the model was shown; each such sentence must reappear, whitespace
-    aside, among the revision's sentences. The comparison errs towards keeping
-    the draft: a merely reworded survivor is treated as altered, which only
-    rejects the revision — the safe direction.
+    aside, among the revision's sentences — in the draft's order and with its
+    multiplicity, since "keep every other sentence as it is" constrains position
+    and count too. The unflagged draft sentences must form an ordered
+    subsequence of the revision's sentences, each matched to a distinct revision
+    sentence, so a revision that reorders them (``C, fixed-B, A`` for a draft
+    ``A, bad-B, C``) or drops one of a repeated pair is rejected, while the
+    repaired flagged sentences, which no draft target matches, are passed over.
+    The comparison errs towards keeping the draft: a merely reworded survivor is
+    treated as altered, which only rejects the revision — the safe direction.
 
     Args:
         draft: The :meth:`ConsultTurn._verify` result for the draft.
@@ -930,16 +936,22 @@ def _unflagged_sentences_survive(draft: dict, revision: dict, warnings: list) ->
             shown to the model, each carrying the ``sentence`` text.
 
     Returns:
-        ``True`` when no unflagged draft sentence was altered or dropped.
+        ``True`` when every unflagged draft sentence survives, in order and
+        count, among the revision's sentences.
     """
     flagged = {w.get("sentence", "") for w in warnings}
-    kept = {_collapse_space(s.text) for s in revision["report"].sentences}
+    revised = [_collapse_space(s.text) for s in revision["report"].sentences]
+    cursor = 0
     for sentence in draft["report"].sentences:
         text = sentence.text.strip()
         if text in flagged:
             continue
-        if _collapse_space(text) not in kept:
+        target = _collapse_space(text)
+        while cursor < len(revised) and revised[cursor] != target:
+            cursor += 1
+        if cursor >= len(revised):
             return False
+        cursor += 1
     return True
 
 

@@ -681,6 +681,24 @@ class TestCitationRetry(_Pipeline):
         self.assertEqual(result["citation_retry"]["kept"], "revision")
         self.assertNotIn("revision_altered_unflagged", result["citation_retry"])
 
+    def test_a_revision_that_reorders_unflagged_sentences_is_not_kept(self):
+        # Two correctly cited, unflagged sentences and one flagged one. The
+        # revision repairs the flagged sentence but swaps the order of the two
+        # unflagged ones. Both still appear, so a set-membership check would
+        # pass them; "keep every other sentence as it is" constrains order too,
+        # so the ordered-subsequence guard catches the swap and keeps the draft.
+        draft = ("It rejects edits to base-branch tests [D1]. "
+                 "It blocks commits to protected files [D1]. It exits 3 [D1].\n"
+                 "BASIS: documentation\nCONFLICTS: none")
+        revision = ("It blocks commits to protected files [D1]. "
+                    "It rejects edits to base-branch tests [D1]. It exits 3 [I1].\n"
+                    "BASIS: documentation\nCONFLICTS: none")
+        result, _ = self.run_with(draft, Synthesis(revision, "fake"))
+        self.assertEqual(result["citation_retry"]["kept"], "draft")
+        self.assertEqual(result["citation_retry"]["warnings_after"], 0)
+        self.assertTrue(result["citation_retry"]["revision_altered_unflagged"])
+        self.assertEqual(len(result["citation_warnings"]), 1)
+
     def verify_calls(self, draft, revision=None):
         """Run a consult and return how many times the verifier ran."""
         with patch.object(consult_engine, "verify",
