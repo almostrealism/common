@@ -720,6 +720,13 @@ if [ "${AGENTS_ONLY}" = false ]; then
     CORPUS_COMMIT="$(git rev-parse HEAD 2>/dev/null || true)"
   fi
   export CORPUS_COMMIT
+  # The snapshot index also records when each file last changed, so consult
+  # can treat a note about a since-rewritten file as history. The window must
+  # equal PATH_DATES_WINDOW_DAYS in snapshot_index.py (test_dockerfile_packaging
+  # checks it); outside a checkout the file is empty and no dates are recorded.
+  PATH_DATES_FILE="tools/mcp/manager/snapshot-path-dates.txt"
+  git log --since=90.days.ago --format=@%aI --name-only --no-renames \
+    > "${PATH_DATES_FILE}" 2>/dev/null || : > "${PATH_DATES_FILE}"
   # Build only. Nothing running is stopped until every image of this deploy
   # (the agent pool's too) has been built and the new controller images have
   # passed the preflight — see "Swap" below.

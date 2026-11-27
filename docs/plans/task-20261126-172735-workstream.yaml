@@ -1,0 +1,6 @@
+# The throughput benchmark runs the whole MaleCNS connectome step. The converted CSR
+# dataset lives on the shared macOS model directory, and Metal is one of the required
+# backends; a whole-connectome spiking run needs the Metal backend to finish in
+# reasonable wall-clock time. So the implementation must run on a macOS node.
+requiredLabels:
+  platform: macos

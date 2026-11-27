@@ -776,6 +776,7 @@ public class AudioLibraryPersistence {
 				.setFreqBinCount(details.getFreqBinCount())
 				.setFreqChannelCount(details.getFreqChannelCount())
 				.setFreqFrameCount(details.getFreqFrameCount())
+				.setFreqLayoutVersion(details.getFreqLayoutVersion())
 				.setFreqData(CollectionEncoder.encode(details.getFreqData(), Precision.FP32))
 				.setFeatureSampleRate(details.getLegacyFeatureSampleRate())
 				.setFeatureBinCount(details.getLegacyFeatureBinCount())
@@ -871,6 +872,7 @@ public class AudioLibraryPersistence {
 		details.setFreqBinCount(data.getFreqBinCount());
 		details.setFreqChannelCount(data.getFreqChannelCount());
 		details.setFreqFrameCount(data.getFreqFrameCount());
+		details.setFreqLayoutVersion(data.getFreqLayoutVersion());
 		details.setFreqData(CollectionEncoder.decode(data.getFreqData()));
 		details.setFeatureSampleRate(data.getFeatureSampleRate());
 		details.setFeatureBinCount(data.getFeatureBinCount());

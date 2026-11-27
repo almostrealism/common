@@ -88,13 +88,15 @@ public class WaveDetailsFactoryTest extends TestSuiteBase {
 	}
 
 	/**
-	 * A record that already has features for the current model was analyzed after
-	 * the channel layout was corrected, so its frequency data is kept as it is.
+	 * A record that already has features for the current model and records that its
+	 * frequency data was analyzed in the current channel layout keeps its frequency
+	 * data as it is.
 	 */
 	@Test(timeout = 120000)
 	public void frequencyDataIsKeptWhenTheCurrentModelHasFeatures() {
 		WaveDetails details = stereoDetails();
 		storeStaleFrequencyData(details);
+		details.setFreqLayoutVersion(WaveDetails.FREQUENCY_LAYOUT_VERSION);
 		details.putFeatures(new WaveFeatures(MODEL, 1.0, 1, 8, 4, new PackedCollection(4, 8)));
 		PackedCollection stored = details.getFreqData();
 
@@ -104,6 +106,55 @@ public class WaveDetailsFactoryTest extends TestSuiteBase {
 
 		Assert.assertSame("Frequency data was recomputed", stored, details.getFreqData());
 		Assert.assertEquals(STALE_FRAMES, details.getFreqFrameCount());
+	}
+
+	/**
+	 * A record that has features for the current model but frequency data in the old
+	 * layout (analysed by a build that had the features but not the layout fix) has its
+	 * frequency data recomputed from the audio, without its features being recomputed,
+	 * and is then marked with the current layout.
+	 */
+	@Test(timeout = 120000)
+	public void currentFeaturesWithAnOldLayoutAreRepairedWithoutReencoding() {
+		WaveDetails details = stereoDetails();
+		storeStaleFrequencyData(details);
+		WaveFeatures features = new WaveFeatures(MODEL, 1.0, 1, 8, 4, new PackedCollection(4, 8));
+		details.putFeatures(features);
+		Assert.assertFalse(details.isFrequencyLayoutCurrent());
+
+		WaveDetailsFactory factory = new WaveDetailsFactory(SAMPLE_RATE);
+		factory.setFeatureProvider(new FixedFeatureProvider());
+		factory.forExisting(details);
+
+		Assert.assertSame("Features were recomputed", features, details.getFeatures(MODEL));
+		Assert.assertNotEquals("Stale frequency data was kept", STALE_FRAMES, details.getFreqFrameCount());
+		assertLeftToneRightSilence(details);
+		Assert.assertEquals(WaveDetails.FREQUENCY_LAYOUT_VERSION, details.getFreqLayoutVersion());
+		Assert.assertTrue(details.isFrequencyLayoutCurrent());
+	}
+
+	/**
+	 * Only multi-channel frequency data has had more than one layout: single-channel
+	 * data is current whatever version it records, and multi-channel data is current
+	 * only when its version equals the {@link WaveDetails#FREQUENCY_LAYOUT_VERSION} this
+	 * build understands. An older version is stale, and an unknown newer one, which this
+	 * build cannot read, is treated as stale too rather than trusted.
+	 */
+	@Test(timeout = 30000)
+	public void onlyMultiChannelDataCanBeInAnOldLayout() {
+		WaveDetails mono = new WaveDetails("mono", SAMPLE_RATE);
+		mono.setFreqChannelCount(1);
+		Assert.assertTrue(mono.isFrequencyLayoutCurrent());
+		mono.setFreqLayoutVersion(WaveDetails.FREQUENCY_LAYOUT_VERSION + 1);
+		Assert.assertTrue("Single-channel data is current at any version", mono.isFrequencyLayoutCurrent());
+
+		WaveDetails stereo = new WaveDetails("stereo", SAMPLE_RATE);
+		stereo.setFreqChannelCount(2);
+		Assert.assertFalse(stereo.isFrequencyLayoutCurrent());
+		stereo.setFreqLayoutVersion(WaveDetails.FREQUENCY_LAYOUT_VERSION);
+		Assert.assertTrue(stereo.isFrequencyLayoutCurrent());
+		stereo.setFreqLayoutVersion(WaveDetails.FREQUENCY_LAYOUT_VERSION + 1);
+		Assert.assertFalse("An unknown newer layout is not trusted", stereo.isFrequencyLayoutCurrent());
 	}
 
 	/**

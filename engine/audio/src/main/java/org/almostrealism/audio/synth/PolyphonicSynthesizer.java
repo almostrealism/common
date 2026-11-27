@@ -28,6 +28,7 @@ import org.almostrealism.graph.SummationCell;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.time.Frequency;
 
+import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.lifecycle.Setup;
 
 import java.util.ArrayList;
@@ -73,7 +74,7 @@ import java.util.function.Supplier;
  * @see VoiceAllocator
  * @see SummationCell
  */
-public class PolyphonicSynthesizer extends SummationCell implements Setup {
+public class PolyphonicSynthesizer extends SummationCell implements Setup, Destroyable {
 
 	/** Voice allocator that manages voice assignment and stealing across the voice pool. */
 	private final VoiceAllocator allocator;
@@ -118,6 +119,14 @@ public class PolyphonicSynthesizer extends SummationCell implements Setup {
 
 	/** Tremolo modulation depth as a fraction of amplitude (0–1). */
 	private double tremoloDepth;  // 0-1 amplitude modulation
+
+	/**
+	 * LFOs detached by {@link #clearVibrato()} / {@link #clearTremolo()} that this synthesizer still
+	 * owns and destroys in {@link #destroy()}. An LFO's device buffers are captured by reference into
+	 * any {@link #tick()} already compiled while it was active, so destruction is deferred to the end
+	 * of this synthesizer's own lifecycle rather than performed from the user-facing clear controls.
+	 */
+	private final List<LFO> retiredModulators = new ArrayList<>();
 
 	/**
 	 * Creates a polyphonic synthesizer with the specified number of voices.
@@ -194,6 +203,17 @@ public class PolyphonicSynthesizer extends SummationCell implements Setup {
 	 */
 	public VoiceAllocator getAllocator() {
 		return allocator;
+	}
+
+	/**
+	 * Returns the voice at {@code index} in the voice pool, the one the {@link #getAllocator()
+	 * allocator} assigns that index to.
+	 *
+	 * @param index the voice index, from zero to {@link #getMaxVoices()} exclusive
+	 * @return the voice
+	 */
+	public AudioSynthesizer getVoice(int index) {
+		return voices.get(index);
 	}
 
 	/**
@@ -348,8 +368,13 @@ public class PolyphonicSynthesizer extends SummationCell implements Setup {
 
 	/**
 	 * Disables vibrato.
+	 * <p>
+	 * The LFO's device buffers may already be referenced by a previously compiled {@link #tick()},
+	 * so the LFO is retained for destruction in {@link #destroy()} rather than freed here; see
+	 * {@link #retiredModulators}.
 	 */
 	public void clearVibrato() {
+		retireModulator(vibratoLFO);
 		this.vibratoLFO = null;
 		this.vibratoDepth = 0;
 	}
@@ -371,10 +396,53 @@ public class PolyphonicSynthesizer extends SummationCell implements Setup {
 
 	/**
 	 * Disables tremolo.
+	 * <p>
+	 * The LFO's device buffers may already be referenced by a previously compiled {@link #tick()},
+	 * so the LFO is retained for destruction in {@link #destroy()} rather than freed here; see
+	 * {@link #retiredModulators}.
 	 */
 	public void clearTremolo() {
+		retireModulator(tremoloLFO);
 		this.tremoloLFO = null;
 		this.tremoloDepth = 0;
+	}
+
+	/**
+	 * Retains {@code lfo} for destruction in {@link #destroy()}, if it is non-null. A detached LFO is
+	 * not destroyed immediately because a {@link #tick()} compiled while it was active still
+	 * references its device buffers by reference; destroying it would leave that tick reading freed
+	 * native memory.
+	 *
+	 * @param lfo the LFO being detached from active modulation, or null
+	 */
+	private void retireModulator(LFO lfo) {
+		if (lfo != null) {
+			retiredModulators.add(lfo);
+		}
+	}
+
+	/**
+	 * Returns the vibrato depth a tick that captured {@code captured} applies: the current depth
+	 * while {@code captured} is still the active vibrato LFO, and zero once it has been cleared or
+	 * replaced, so a tick compiled before the change does not modulate from a retired LFO.
+	 *
+	 * @param captured the vibrato LFO a compiled tick was built with
+	 * @return the depth in semitones to apply
+	 */
+	private double vibratoDepthFor(LFO captured) {
+		return vibratoLFO == captured ? vibratoDepth : 0;
+	}
+
+	/**
+	 * Returns the tremolo depth a tick that captured {@code captured} applies: the current depth
+	 * while {@code captured} is still the active tremolo LFO, and zero once it has been cleared or
+	 * replaced, so a tick compiled before the change does not modulate from a retired LFO.
+	 *
+	 * @param captured the tremolo LFO a compiled tick was built with
+	 * @return the depth, as a fraction of amplitude, to apply
+	 */
+	private double tremoloDepthFor(LFO captured) {
+		return tremoloLFO == captured ? tremoloDepth : 0;
 	}
 
 	/**
@@ -389,6 +457,34 @@ public class PolyphonicSynthesizer extends SummationCell implements Setup {
 	 */
 	public LFO getTremoloLFO() {
 		return tremoloLFO;
+	}
+
+	/**
+	 * Releases the device resources of every LFO this synthesizer created &mdash; the active vibrato
+	 * and tremolo LFOs together with any {@link #retiredModulators retired} by {@link #clearVibrato()}
+	 * or {@link #clearTremolo()}. Because an LFO's buffers are captured by reference into any
+	 * {@link #tick()} compiled while it was active, destruction is owned by this lifecycle method
+	 * rather than the clear controls: callers must release (destroy) any ticks built from this
+	 * synthesizer before destroying it, so no compiled operation is left bound to the freed
+	 * buffers. Every release is attempted even if an earlier one fails.
+	 * <p>
+	 * Only the LFOs are released here; the voices and the inherited cell state are not yet
+	 * destroyable and are reclaimed with the synthesizer itself.
+	 */
+	@Override
+	public void destroy() {
+		retireModulator(vibratoLFO);
+		retireModulator(tremoloLFO);
+		vibratoLFO = null;
+		tremoloLFO = null;
+		vibratoDepth = 0;
+		tremoloDepth = 0;
+
+		List<Runnable> releases = new ArrayList<>();
+		retiredModulators.forEach(lfo -> releases.add(lfo::destroy));
+		retiredModulators.clear();
+
+		Destroyable.releaseAll(releases);
 	}
 
 	// ========== Note Control Methods ==========
@@ -503,18 +599,29 @@ public class PolyphonicSynthesizer extends SummationCell implements Setup {
 	 *   <li>Forwards the accumulated audio to the receptor (via super.tick())</li>
 	 * </ol>
 	 *
+	 * <p>
+	 * The vibrato and tremolo LFOs active when this method is called are captured by the returned
+	 * operation, while the modulation depths are read each time it runs, and only while the LFO
+	 * the operation captured is still the active one. A tick compiled before
+	 * {@link #clearVibrato()} or {@link #clearTremolo()} therefore keeps using the retired LFO
+	 * (which stays alive until {@link #destroy()}) with a depth of zero, so it applies no
+	 * modulation rather than dereferencing the cleared field &mdash; even after modulation is
+	 * enabled again with a new LFO, which that older tick does not advance.
+	 *
 	 * @return operation that processes one sample frame
 	 */
 	@Override
 	public Supplier<Runnable> tick() {
 		OperationList tick = new OperationList("PolyphonicSynthesizer Tick");
+		final LFO vibrato = vibratoLFO;
+		final LFO tremolo = tremoloLFO;
 
 		// Tick LFOs
-		if (vibratoLFO != null) {
-			tick.add(vibratoLFO.tick());
+		if (vibrato != null) {
+			tick.add(vibrato.tick());
 		}
-		if (tremoloLFO != null) {
-			tick.add(tremoloLFO.tick());
+		if (tremolo != null) {
+			tick.add(tremolo.tick());
 		}
 
 		// Process all voices
@@ -523,12 +630,12 @@ public class PolyphonicSynthesizer extends SummationCell implements Setup {
 			final AudioSynthesizer voice = voices.get(i);
 
 			// Apply modulation at runtime (only if voice is active)
-			if (vibratoLFO != null && vibratoDepth > 0) {
+			if (vibrato != null && vibratoDepth > 0) {
 				tick.add(() -> () -> {
 					VoiceState state = allocator.getVoice(voiceIndex);
 					if (state.isActive()) {
-						double lfoValue = vibratoLFO.getValue();
-						double semitoneOffset = lfoValue * vibratoDepth;
+						double lfoValue = vibrato.getValue();
+						double semitoneOffset = lfoValue * vibratoDepthFor(vibrato);
 						double pitchMultiplier = Math.pow(2.0, semitoneOffset / 12.0);
 						Frequency baseFreq = tuning.getTone(state.getMidiNote(),
 							KeyNumbering.MIDI);
@@ -537,12 +644,12 @@ public class PolyphonicSynthesizer extends SummationCell implements Setup {
 				});
 			}
 
-			if (tremoloLFO != null && tremoloDepth > 0) {
+			if (tremolo != null && tremoloDepth > 0) {
 				tick.add(() -> () -> {
 					VoiceState state = allocator.getVoice(voiceIndex);
 					if (state.isActive()) {
-						double lfoValue = tremoloLFO.getValue();
-						double modulation = 1.0 - (tremoloDepth * (1.0 - (lfoValue + 1.0) / 2.0));
+						double lfoValue = tremolo.getValue();
+						double modulation = 1.0 - (tremoloDepthFor(tremolo) * (1.0 - (lfoValue + 1.0) / 2.0));
 						voice.setVelocity(state.getVelocity() * modulation);
 					}
 				});
