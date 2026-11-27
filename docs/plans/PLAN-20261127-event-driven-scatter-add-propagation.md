@@ -200,7 +200,9 @@ A reviewer can confirm the task is done when:
 ## Dependencies
 
 - **ce31398a — "Transposed (CSC) sparse matrix–vector product" (Common 0.78,
-  open, PR #1103, plan `docs/plans/PLAN-20261126-sparse-matrix-transpose-spmv.md`).**
+  open, PR #1103, plan `docs/plans/PLAN-20261126-sparse-matrix-transpose-spmv.md`
+  — on PR #1103's branch; not yet on `master`, so a reader on `master` will not
+  find that file until #1103 merges).**
   The event-driven step reads each active presynaptic neuron's *outgoing* edges,
   which is the column (CSC) enumeration of the CSR connectome. ce31398a delivers
   `transpose()` on `CompressedRowTraversalOrdering` producing `Wᵀ` as a
