@@ -21,9 +21,12 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import fi.iki.elonen.NanoHTTPD;
 import fi.iki.elonen.NanoHTTPD.Response;
 import io.flowtree.JsonFieldExtractor;
+import io.flowtree.Server;
 import io.flowtree.jobs.agent.AgentCapabilities;
 import io.flowtree.jobs.agent.AgentRunnerRegistry;
 import io.flowtree.jobs.agent.Phase;
+import io.flowtree.msg.NodeProxy;
+import io.flowtree.node.NodeGroup;
 
 /**
  * Handles {@code GET /api/agents} requests for {@link FlowTreeApiEndpoint}.
@@ -32,12 +35,15 @@ import io.flowtree.jobs.agent.Phase;
  * ({@link AgentRunnerRegistry}) and their {@link AgentCapabilities},
  * every {@link Phase} entry, the model identifiers the built-in default
  * runner advertises through its {@link AgentCapabilities#supportedModels()},
- * and the name of that default runner. Each runner's capabilities and each
- * phase describe themselves ({@link AgentCapabilities#toJson()},
- * {@link Phase#toJson()}); this handler only assembles the document.
- * This metadata is read-only and is what MCP clients use to populate
- * runner / phase / model pickers before submitting a job or configuring
- * a workstream.</p>
+ * the name of that default runner, and the connected {@code nodes} with the
+ * {@link io.flowtree.node.NodeStatusReport routing status} (labels and busy
+ * state) each last reported. Each runner's capabilities, each phase, and each
+ * node describe themselves ({@link AgentCapabilities#toJson()},
+ * {@link Phase#toJson()}, {@link io.flowtree.msg.NodeProxy#toJson()});
+ * this handler only assembles the document. This metadata is read-only and is
+ * what MCP clients use to populate runner / phase / model pickers, and to tell
+ * where a job with given {@code requiredLabels} would land, before submitting a
+ * job or configuring a workstream.</p>
  *
  * @author Michael Murray
  * @see FlowTreeApiEndpoint
@@ -48,10 +54,13 @@ class AgentsQueryHandler {
     /**
      * Handles a {@code GET /api/agents} request.
      *
+     * @param server  the local FlowTree server whose connected peers are enumerated as
+     *                {@code nodes}, or {@code null} when none is configured (then
+     *                {@code nodes} is empty).
      * @return an HTTP response containing {@code ok}, {@code runners},
-     *         {@code phases}, {@code models}, and {@code defaultRunner}
+     *         {@code phases}, {@code models}, {@code defaultRunner}, and {@code nodes}
      */
-    Response handle() {
+    Response handle(Server server) {
         ObjectNode json = JsonFieldExtractor.MAPPER.createObjectNode();
         json.put("ok", true);
         ArrayNode runners = json.putArray("runners");
@@ -68,6 +77,13 @@ class AgentsQueryHandler {
         AgentRunnerRegistry.get(AgentRunnerRegistry.CLAUDE).capabilities()
                 .supportedModels().forEach(models::add);
         json.put("defaultRunner", AgentRunnerRegistry.CLAUDE);
+        ArrayNode nodes = json.putArray("nodes");
+        NodeGroup group = server == null ? null : server.getNodeGroup();
+        if (group != null) {
+            for (NodeProxy peer : group.getServers()) {
+                nodes.add(peer.toJson());
+            }
+        }
         return NanoHTTPD.newFixedLengthResponse(Response.Status.OK, "application/json", json.toString());
     }
 }

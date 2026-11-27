@@ -100,6 +100,21 @@ public class AgentsEndpointTest extends TestSuiteBase {
         assertTrue("Response must contain 'phases' field", root.has("phases"));
         assertTrue("Response must contain 'models' field", root.has("models"));
         assertTrue("Response must contain 'defaultRunner' field", root.has("defaultRunner"));
+        assertTrue("Response must contain 'nodes' field", root.has("nodes"));
+    }
+
+    /**
+     * GET /api/agents assembles a {@code nodes} array from the connected peers. With no server
+     * configured on this endpoint, the handler takes the null-safe path and the array is empty
+     * rather than absent, so a client can always iterate it.
+     */
+    @Test(timeout = 10000)
+    public void testResponseContainsNodesArray() throws Exception {
+        JsonNode root = getAgentsJson();
+        JsonNode nodes = root.get("nodes");
+        assertNotNull("nodes must be present", nodes);
+        assertTrue("nodes must be an array", nodes.isArray());
+        assertEquals("no server configured means no connected nodes", 0, nodes.size());
     }
 
     /** GET /api/agents runners list contains both claude and opencode. */

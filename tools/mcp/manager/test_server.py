@@ -131,6 +131,59 @@ class TestAgentOptions(unittest.TestCase):
             server.agent_options()
 
     @patch.object(server, "_controller_get")
+    def test_surfaces_node_labels_and_busy_state(self, mock_get):
+        """agent_options passes through the per-node labels and busy state.
+
+        A node reports ``busy`` as a boolean and ``labels`` as an object; a node
+        running an older build reports neither, which the controller renders as
+        ``null`` (unknown) rather than as an idle, unlabelled node. The tool must
+        surface all three cases unchanged.
+        """
+        _grant_all_scopes()
+        mock_get.return_value = {
+            "ok": True,
+            "runners": [],
+            "phases": [],
+            "models": [],
+            "defaultRunner": "claude",
+            "nodes": [
+                {
+                    "address": "/10.0.0.2",
+                    "busy": False,
+                    "labels": {"platform": "linux", "hostname": "halo"},
+                },
+                {
+                    "address": "/10.0.0.3",
+                    "busy": True,
+                    "labels": {},
+                },
+                {
+                    "address": "/10.0.0.4",
+                    "busy": None,
+                    "labels": None,
+                },
+            ],
+        }
+        result = server.agent_options()
+        mock_get.assert_called_once_with("/api/agents")
+        nodes = result["nodes"]
+        self.assertEqual(len(nodes), 3)
+
+        idle = nodes[0]
+        self.assertEqual(idle["address"], "/10.0.0.2")
+        self.assertFalse(idle["busy"])
+        self.assertEqual(idle["labels"]["platform"], "linux")
+        self.assertEqual(idle["labels"]["hostname"], "halo")
+
+        busy = nodes[1]
+        self.assertTrue(busy["busy"])
+        self.assertEqual(busy["labels"], {})
+
+        unknown = nodes[2]
+        self.assertIsNone(unknown["busy"])
+        self.assertIsNone(unknown["labels"])
+
+    @patch.object(server, "_controller_get")
     def test_phase_list_wired_correctly(self, mock_get):
         """Phases list in response must contain name and description keys."""
         _grant_all_scopes()
