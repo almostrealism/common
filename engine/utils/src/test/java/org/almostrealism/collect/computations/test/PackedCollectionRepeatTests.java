@@ -309,4 +309,67 @@ public class PackedCollectionRepeatTests extends TestSuiteBase {
 			}
 		}
 	}
+
+	/** Length of the short vector repeated past the single-precision integer range. */
+	private static final int SHORT_LENGTH = 13;
+
+	/** Repetitions that take {@link #SHORT_LENGTH} elements past 2^24 in total. */
+	private static final int MANY_REPETITIONS = (1 << 24) / SHORT_LENGTH + 4096;
+
+	/**
+	 * A short vector repeated into more than 2^24 elements reads back as {@code i % length}
+	 * at every flat index, past the point where a single-precision value can no longer hold
+	 * every integer. The vector is repeated whole whether it is a materialized collection, a
+	 * computed producer, or {@code integers(0, n)} traversed as one item with
+	 * {@code traverse(0)}.
+	 */
+	@Test(timeout = 300000)
+	public void repeatOfAVectorBeyondSinglePrecisionRange() {
+		int total = SHORT_LENGTH * MANY_REPETITIONS;
+		Assert.assertTrue(total > (1 << 24));
+
+		PackedCollection vector = integers(0, SHORT_LENGTH).evaluate();
+		assertRepeatsWhole(cp(vector).repeat(MANY_REPETITIONS).reshape(shape(total, 1)).evaluate());
+		assertRepeatsWhole(cp(vector).multiply(1.0).repeat(MANY_REPETITIONS)
+				.reshape(shape(total, 1)).evaluate());
+		assertRepeatsWhole(integers(0, SHORT_LENGTH).traverse(0).repeat(MANY_REPETITIONS)
+				.reshape(shape(total, 1)).evaluate());
+	}
+
+	/**
+	 * {@code integers(0, n)} traverses each of its elements, so {@code repeat(q)} repeats each
+	 * element {@code q} times in a {@code (n, q)} result whose flat index {@code i} holds
+	 * {@code i / q}, not the whole vector. This holds exactly past 2^24 elements as well.
+	 */
+	@Test(timeout = 300000)
+	public void repeatOfAnElementTraversalRepeatsEachElement() {
+		int total = SHORT_LENGTH * MANY_REPETITIONS;
+
+		PackedCollection out = integers(0, SHORT_LENGTH).repeat(MANY_REPETITIONS).evaluate();
+		Assert.assertEquals(total, out.getShape().getTotalSize());
+		Assert.assertEquals(SHORT_LENGTH, out.getShape().length(0));
+
+		double[] values = out.toArray();
+		for (int i = 0; i < total; i++) {
+			if (values[i] != i / MANY_REPETITIONS) {
+				Assert.fail("Index " + i + " read " + values[i] + ", expected " + (i / MANY_REPETITIONS));
+			}
+		}
+	}
+
+	/**
+	 * Asserts that every flat index {@code i} of a repeat of the {@link #SHORT_LENGTH}-element
+	 * vector {@code 0, 1, ...} holds {@code i % SHORT_LENGTH}.
+	 *
+	 * @param repeated the evaluated repeat
+	 */
+	private static void assertRepeatsWhole(PackedCollection repeated) {
+		double[] values = repeated.toArray();
+		Assert.assertEquals((long) SHORT_LENGTH * MANY_REPETITIONS, values.length);
+		for (int i = 0; i < values.length; i++) {
+			if (values[i] != i % SHORT_LENGTH) {
+				Assert.fail("Index " + i + " read " + values[i] + ", expected " + (i % SHORT_LENGTH));
+			}
+		}
+	}
 }
