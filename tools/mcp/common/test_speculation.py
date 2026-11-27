@@ -71,6 +71,7 @@ def _load_validate_responses():
 evaluate_dataset = _load("../manager/eval/qc/evaluate_dataset.py", "evaluate_dataset")
 validate_responses = _load_validate_responses()
 analyze_history = _load("../manager/eval/qc/analyze_history.py", "analyze_history")
+judge_answers = _load("../manager/eval/qc/judge_answers.py", "judge_answers")
 common_inference = _load("inference.py", "common_inference_under_test")
 
 SCRIPTS = {
@@ -143,6 +144,53 @@ class EvaluateDatasetNullResponseTest(unittest.TestCase):
         self.assertFalse(result["goal3_other_failure"]["speculation_detected"])
         self.assertFalse(result["goal3_other_failure"]["is_verbose"])
         self.assertEqual("", result["response_preview"])
+
+
+class ValidateResponsesScopeTest(unittest.TestCase):
+    """``run_question`` seeds the memory-read scope ``consult`` requires.
+
+    ar-manager's ``consult`` begins with ``_require_scope("memory-read")``,
+    so a standalone QC process — which carries no request token — must
+    establish that scope before each call, or every question fails with a
+    ``PermissionError`` caught as a validation error. This pins that
+    ``run_question`` seeds the scope first and does so before invoking
+    ``consult``.
+    """
+
+    def test_run_question_seeds_scope_before_consult(self):
+        calls = []
+        validate_responses.server._set_scopes = (
+            lambda scopes, label="": calls.append(("scope", list(scopes), label))
+        )
+
+        def recording_consult(question, keywords):
+            calls.append(("consult", question, keywords))
+            return {"answer": "grounded answer", "sources": ["a", "b"]}
+
+        with patch.object(validate_responses, "consult", recording_consult):
+            result = validate_responses.run_question("how does X work?", ["X"])
+
+        self.assertEqual(2, len(calls))
+        self.assertEqual(("scope", ["memory-read"], "qc"), calls[0])
+        self.assertEqual("consult", calls[1][0])
+        self.assertEqual("grounded answer", result["response"])
+        self.assertEqual(2, result["doc_chunks_found"])
+        self.assertNotIn("error", result)
+
+
+class JudgeAnswersUrlConstantsTest(unittest.TestCase):
+    """The judge backends dereference module-level URL constants.
+
+    ``call_anthropic`` and ``call_local`` read ``_ANTHROPIC_URL`` and
+    ``_DEFAULT_LOCAL_URL``; relocating the script once dropped both, which
+    turned every judge call into a ``NameError``. This pins that the
+    constants exist and are usable URLs.
+    """
+
+    def test_url_constants_are_defined(self):
+        self.assertEqual("https://api.anthropic.com/v1/messages",
+                         judge_answers._ANTHROPIC_URL)
+        self.assertIsInstance(judge_answers._DEFAULT_LOCAL_URL, str)
 
 
 if __name__ == "__main__":

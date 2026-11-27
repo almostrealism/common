@@ -27,6 +27,7 @@ sys.path.insert(1, str(Path(__file__).parents[3] / "common"))
 from inference import has_speculation
 
 try:
+    import server
     from server import consult
     from inference import SYSTEM_PROMPT
     CONSULTANT_AVAILABLE = True
@@ -46,6 +47,10 @@ def run_question(question: str, keywords: list[str]) -> dict:
         }
 
     try:
+        # consult enforces the memory-read scope the auth middleware would
+        # normally establish per request; seed it for this in-process call,
+        # mirroring tools/mcp/manager/eval/run_consult_eval.py.
+        server._set_scopes(["memory-read"], label="qc")
         start = time.time()
         result = consult(question=question, keywords=keywords)
         elapsed = time.time() - start

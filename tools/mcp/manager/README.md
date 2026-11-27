@@ -599,7 +599,7 @@ Native inference on Apple Silicon using MLX-LM. No separate server needed, but t
 #### Installation
 
 ```bash
-pip install mlx>=0.4.0 mlx-lm>=0.4.0
+pip install 'mlx>=0.4.0' 'mlx-lm>=0.4.0'
 ```
 
 #### Configuration

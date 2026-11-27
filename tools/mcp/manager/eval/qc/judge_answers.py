@@ -45,6 +45,11 @@ import urllib.error
 # like-for-like.
 import random
 
+_DEFAULT_LOCAL_URL = os.environ.get(
+    "AR_CONSULTANT_LLAMACPP_URL", "http://host.docker.internal:8084"
+)
+_ANTHROPIC_URL = "https://api.anthropic.com/v1/messages"
+
 JUDGE_SYSTEM = (
     "You are a strict evaluator of a documentation assistant for a large "
     "Java/native ML codebase. You are given a QUESTION, the exact "
