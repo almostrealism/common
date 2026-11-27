@@ -531,7 +531,12 @@ final class WorkstreamRegistrationHandler {
      * settles the review loop and then stalls in {@code ci: auto-review} with
      * no test run ever started. The controller is the single chokepoint every
      * registration passes through, so defaulting here closes the gap for any
-     * client that omits the field. The default is gated on a {@code repoUrl}
+     * client that omits the field when a workstream is first created. An
+     * already-registered workstream — matched by {@code (branch, repo)} or as a
+     * dependent repo above — is returned before this point and keeps whatever
+     * trigger it already has; repairing one that was registered without a
+     * trigger is left to the path that re-applies it on update. The default is
+     * gated on a {@code repoUrl}
      * because a workstream with no repository runs no CI; an operator who
      * truly wants none clears it with an empty {@code settledCiTrigger} on the
      * update endpoint, which this create path does not reach.</p>
