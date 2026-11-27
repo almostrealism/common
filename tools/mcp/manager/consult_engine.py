@@ -549,6 +549,7 @@ class ConsultTurn:
             return result
 
         history = self.conversation.history() if self.conversation else None
+        # TODO(review): history and _verify of the kept text are recomputed; reuse the earlier results.
         text = self._revised(llm, synthesis.text, history or None, result)
         cited = self._post_process(text, result, keyword_guidance)
         self._finish(result, cited)
@@ -560,9 +561,10 @@ class ConsultTurn:
         one revision, which the model writes from the same evidence with the
         flagged sentences and reasons in front of it.
 
-        The revision is kept only when it has fewer warnings than the draft
-        and does not abstain where the draft answered, so a retry cannot turn
-        an answer into a refusal. There is at most one retry; a backend
+        The revision is kept only when it has fewer warnings than the draft,
+        does not abstain where the draft answered, and keeps the ``BASIS:`` /
+        ``CONFLICTS:`` trailer the draft had, so a retry cannot turn an answer
+        into a refusal or a malformed response. There is at most one retry; a backend
         without ``revise``, or a revision that fails, keeps the draft. When
         a retry runs, ``citation_retry`` in *result* says what it found.
 
@@ -591,7 +593,11 @@ class ConsultTurn:
         revision = self._verify(synthesis.text)
         record["warnings_after"] = len(revision["report"].warnings)
         record["revision_abstained"] = revision["abstained"]
-        if revision["abstained"] or record["warnings_after"] >= len(warnings):
+        lost_trailer = draft["trailer_present"] and not revision["trailer_present"]
+        if lost_trailer:
+            record["revision_trailer_missing"] = True
+        if revision["abstained"] or lost_trailer \
+                or record["warnings_after"] >= len(warnings):
             return text
         record["kept"] = "revision"
         return synthesis.text

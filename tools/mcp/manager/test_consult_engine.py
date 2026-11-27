@@ -477,10 +477,6 @@ class TestHedgeWhenSupportIsGone(_Pipeline):
         self.assertNotIn(consult_engine.HEDGE_SENTENCE, result["answer"])
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class TestCitationRetry(_Pipeline):
     """One revision when the verifier flags sentences: kept only when it has
     fewer warnings and does not abstain where the draft answered."""
@@ -542,3 +538,20 @@ class TestCitationRetry(_Pipeline):
         result, _ = self.run_with(self.BAD, has_revise=False)
         self.assertNotIn("citation_retry", result)
         self.assertEqual(len(result["citation_warnings"]), 1)
+
+    def test_a_revision_that_drops_the_trailer_is_not_kept(self):
+        fixed_body = "It rejects edits to base-branch tests [D1]. It exits 3 [I1]."
+        result, _ = self.run_with(self.BAD, Synthesis(fixed_body, "fake"))
+        self.assertEqual(result["citation_retry"]["kept"], "draft")
+        self.assertEqual(result["citation_retry"]["warnings_after"], 0)
+        self.assertTrue(result["citation_retry"]["revision_trailer_missing"])
+        self.assertNotIn("trailer missing", result.get("format_warnings", []))
+        self.assertEqual(len(result["citation_warnings"]), 1)
+
+    def test_a_kept_revision_records_no_trailer_loss(self):
+        result, _ = self.run_with(self.BAD, Synthesis(self.GOOD, "fake"))
+        self.assertNotIn("revision_trailer_missing", result["citation_retry"])
+
+
+if __name__ == "__main__":
+    unittest.main()
