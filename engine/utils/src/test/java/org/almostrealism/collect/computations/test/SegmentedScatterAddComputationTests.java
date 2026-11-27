@@ -30,6 +30,7 @@ import org.almostrealism.hardware.OperationList;
 import org.almostrealism.util.TestDepth;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
+import org.junit.Assume;
 import org.junit.Test;
 
 import java.util.ArrayList;
@@ -629,17 +630,15 @@ public class SegmentedScatterAddComputationTests extends TestSuiteBase implement
 	 *
 	 * <p>The benchmark measures the Metal kernels: both products are compiled and run with
 	 * {@link ComputeRequirement#MTL} required, so the timing comparison never measures whichever
-	 * backend the default selection policy would pick. A host without Metal cannot run it.</p>
+	 * backend the default selection policy would pick. A host without Metal cannot run it, and
+	 * reports the benchmark as skipped rather than passed.</p>
 	 */
 	@Test(timeout = 1200000)
 	@TestDepth(2)
 	public void lowActivityBenchmark() {
 		if (skipLongTests) return;
-		// TODO(review): this backend probe reports a pass, not a skip, on non-Metal lanes; confirm the owner wants that
-		if (!Hardware.getLocalHardware().isAvailable(ComputeRequirement.MTL)) {
-			log("skipping, Metal is not available");
-			return;
-		}
+		Assume.assumeTrue("the benchmark measures the Metal kernels and Metal is not available",
+				Hardware.getLocalHardware().isAvailable(ComputeRequirement.MTL));
 
 		Hardware.getLocalHardware().getComputer().pushRequirements(List.of(ComputeRequirement.MTL));
 
