@@ -157,6 +157,22 @@ public class ResourceLimitSubmitTest extends FlowTreeApiSubmitTestBase {
     }
 
     /**
+     * An invalid resource limit is a 400 even when the automated-job gate is
+     * closed: a submission marked {@code automated} with a non-positive silence
+     * budget is refused for the bad limit rather than masked by the gate's
+     * {@code ok:false} HTTP-200 rejection, and nothing is queued.
+     */
+    @Test(timeout = 15000)
+    public void invalidLimitIsRefusedBeforeTheAutomatedGate() throws IOException {
+        endpoint.setAcceptAutomatedJobs(false);
+
+        HttpURLConnection conn = post(",\"automated\":true,\"inactivityTimeoutSeconds\":0");
+        assertEquals(400, conn.getResponseCode());
+        assertTrue(readErrorBody(conn).contains("inactivityTimeoutSeconds"));
+        assertTrue("nothing may be queued for a refused submission", server.queued.isEmpty());
+    }
+
+    /**
      * Submits to the registered workstream and parses a successful response.
      *
      * @param extraFields JSON members to append, each with a leading comma

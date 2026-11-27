@@ -925,6 +925,13 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
             return errorResponse("selfNotify is only supported for shell-command jobs (jobType=shell)");
         }
 
+        // Validate the request's own resource limits before the automated-job
+        // gate, resolution, and the skip/accept paths below, so an invalid limit
+        // is always a 400 rather than masked by an earlier path. See applyTo below.
+        ResourceLimitOverrides limits = new ResourceLimitOverrides(body);
+        String limitsError = limits.validationError();
+        if (limitsError != null) return errorResponse(limitsError);
+
         // Reject automated jobs when the gate is closed
         boolean automated = JsonFieldExtractor.extractBoolean(body, "automated");
         if (automated && !acceptAutomatedJobs) {
@@ -934,13 +941,6 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
             return newFixedLengthResponse(Response.Status.OK,
                     "application/json", json);
         }
-
-        // Validate the request's own resource limits before resolution and the
-        // skip/accept paths below, so an invalid limit is always a 400 rather
-        // than masked by a skip or availability response. See applyTo below.
-        ResourceLimitOverrides limits = new ResourceLimitOverrides(body);
-        String limitsError = limits.validationError();
-        if (limitsError != null) return errorResponse(limitsError);
 
         // Workstream resolution: explicit ID wins, then branch/repo, then path
         // ID, and finally — when the caller opted in with
