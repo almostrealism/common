@@ -367,7 +367,10 @@ public class CompiledModel implements Destroyable, CodeFeatures {
 	 * {@link OperationList#enableAutomaticOptimization} is on, because that flag lets compiling a
 	 * list regroup it after the analysis. A model compiled this way cannot be compiled again: a
 	 * later push of a layer whose output is shared throws. The returned model owns the pool; a
-	 * compile that throws releases it before the exception propagates.</p>
+	 * compile that throws releases it before the exception propagates, and also restores the
+	 * receptors this compile attached to the last forward cell and, when the input gradient is
+	 * returned, to the first backward cell, releasing the output buffers they wrote into, so the
+	 * model can be compiled again without running the failed compile's receivers.</p>
 	 *
 	 * @param model          the model to compile
 	 * @param backprop       {@code true} to compile the backward pass
@@ -404,10 +407,12 @@ public class CompiledModel implements Destroyable, CodeFeatures {
 		}
 
 		PackedCollection gradOut;
+		Cell<PackedCollection> firstBackward = returnGradient ? model.firstBlock().getBackward() : null;
+		Receptor<PackedCollection> existingBackwardReceptor = returnGradient ? firstBackward.getReceptor() : null;
 
 		if (returnGradient) {
 			gradOut = new PackedCollection(model.firstBlock().getInputShape());
-			model.firstBlock().getBackward().setReceptor(out ->
+			firstBackward.setReceptor(out ->
 					Ops.o().a("Model Backward Output", Ops.o().p(gradOut), out));
 		} else {
 			gradOut = null;
@@ -459,6 +464,14 @@ public class CompiledModel implements Destroyable, CodeFeatures {
 			return compiled;
 		} catch (RuntimeException | Error e) {
 			if (layerOutputs != null) layerOutputs.destroy();
+			lastForward.setReceptor(existingReceptor);
+			output.destroy();
+
+			if (returnGradient) {
+				firstBackward.setReceptor(existingBackwardReceptor);
+				gradOut.destroy();
+			}
+
 			throw e;
 		}
 	}

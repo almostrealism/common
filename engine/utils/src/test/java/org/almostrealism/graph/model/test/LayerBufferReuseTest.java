@@ -472,6 +472,7 @@ public class LayerBufferReuseTest extends TestSuiteBase {
 			return Process.of(compile, in);
 		};
 		layers.get(1).andThen(failsWhenCompiled);
+		Receptor<PackedCollection> receptorBeforeCompile = model.lastBlock().getForward().getReceptor();
 
 		try {
 			compile(model, true);
@@ -479,6 +480,9 @@ public class LayerBufferReuseTest extends TestSuiteBase {
 		} catch (IllegalStateException e) {
 			Assert.assertEquals("compile failed", e.getMessage());
 		}
+
+		Assert.assertSame("a failed compile must restore the receptor of the last forward cell",
+				receptorBeforeCompile, model.lastBlock().getForward().getReceptor());
 
 		LayerOutputPool failed = pools.get(0);
 		Assert.assertNull(failed.getFallbackReason(), failed.getFallbackReason());
