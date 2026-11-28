@@ -237,6 +237,63 @@ public class ProtobufDiskStoreTest extends TestSuiteBase {
 	}
 
 	/**
+	 * When the hot set moves to batches that are not cached while the cache is
+	 * full, repeated lookups in those batches admit them, so the cache follows
+	 * the new hot set instead of reading each record on its own indefinitely.
+	 */
+	@Test(timeout = 30000)
+	public void fullCacheAdmitsShiftedHotSet() {
+		int batchSize = 1024;
+		long maxMemory = 4096;
+		int maxBatches = (int) (maxMemory / batchSize);
+		int totalRecords = 60;
+		String payload = makePayload('H', 200);
+
+		try (ProtobufDiskStore<TestRecordProto.TestRecord> store = new ProtobufDiskStore<>(
+				tempDir, TestRecordProto.TestRecord.parser(), maxMemory, batchSize)) {
+			for (int i = 0; i < totalRecords; i++) {
+				store.put("rec-" + i, makeRecord("rec-" + i, payload + "-" + i, i));
+			}
+		}
+
+		try (ProtobufDiskStore<TestRecordProto.TestRecord> store = new ProtobufDiskStore<>(
+				tempDir, TestRecordProto.TestRecord.parser(), maxMemory, batchSize)) {
+			for (int pass = 0; pass < 3; pass++) {
+				for (int i = 0; i < 20; i++) {
+					Assert.assertEquals("rec-" + i, store.get("rec-" + i).getId());
+				}
+			}
+			Assert.assertEquals("the first hot set fills the cache",
+					maxBatches, store.getCachedBatchCount());
+
+			AtomicInteger loadCount = new AtomicInteger(0);
+			store.setLoadListener(batchId -> loadCount.incrementAndGet());
+
+			for (int pass = 0; pass < 3; pass++) {
+				for (int i = 40; i < 48; i++) {
+					TestRecordProto.TestRecord value = store.get("rec-" + i);
+					Assert.assertEquals("rec-" + i, value.getId());
+					Assert.assertEquals(payload + "-" + i, value.getContent());
+					Assert.assertEquals(i, value.getValue());
+				}
+			}
+
+			int shiftLoads = loadCount.get();
+			Assert.assertTrue("the shifted hot set should be admitted, loads=" + shiftLoads,
+					shiftLoads >= 1);
+			Assert.assertTrue("admitting the hot set should not thrash, loads=" + shiftLoads,
+					shiftLoads <= maxBatches);
+
+			loadCount.set(0);
+			for (int i = 40; i < 48; i++) {
+				Assert.assertEquals("rec-" + i, store.get("rec-" + i).getId());
+			}
+			Assert.assertEquals("the admitted hot set is served from the cache", 0, loadCount.get());
+			Assert.assertTrue(store.getCachedBatchCount() <= maxBatches);
+		}
+	}
+
+	/**
 	 * Insert N records, pairwise scan, verify exactly N*(N-1)/2
 	 * pairs visited.
 	 */

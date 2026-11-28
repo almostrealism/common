@@ -126,6 +126,27 @@ public class ProtobufDiskStore<T extends Message> implements DiskStore<T> {
 	/** LRU-like cache of recently accessed deserialized batches, keyed by batch ID. */
 	private final FrequencyCache<Integer, ParsedBatch<T>> batchCache;
 
+	/**
+	 * Number of single-record reads of one uncached batch, within one
+	 * {@linkplain #admissionWindow admission window}, after which a full cache
+	 * admits that batch.
+	 */
+	private static final int ADMISSION_MISSES = 4;
+
+	/**
+	 * Number of single-record reads after which {@link #missCounts} is reset:
+	 * the cache capacity times {@link #ADMISSION_MISSES}. A batch reaches the
+	 * admission threshold within a window only if it draws at least its share
+	 * of the reads that a cache-sized hot set would draw.
+	 */
+	private final int admissionWindow;
+
+	/** Single-record reads of each uncached batch in the current admission window. */
+	private final Map<Integer, Integer> missCounts;
+
+	/** Single-record reads in the current admission window, across all batches. */
+	private int windowMisses;
+
 	/** Monotonically increasing counter used to assign unique batch file IDs. */
 	private final AtomicInteger nextBatchId;
 
@@ -199,6 +220,8 @@ public class ProtobufDiskStore<T extends Message> implements DiskStore<T> {
 
 		int cacheCapacity = Math.max(2, (int) (maxMemoryBytes / targetBatchSize));
 		this.batchCache = new FrequencyCache<>(cacheCapacity, 0.3);
+		this.admissionWindow = cacheCapacity * ADMISSION_MISSES;
+		this.missCounts = new HashMap<>();
 
 		Diskstore.DiskStoreIndex savedIndex = loadIndexFromDisk();
 		if (savedIndex != null) {
@@ -472,6 +495,14 @@ public class ProtobufDiskStore<T extends Message> implements DiskStore<T> {
 	 * would evict a batch to make room. Without this, looking up records spread
 	 * over more batches than the memory budget holds parses a whole batch file
 	 * for almost every record.</p>
+	 *
+	 * <p>So that a full cache still follows a hot set that moves to other
+	 * batches, an uncached batch is admitted (loaded, evicting a cached one)
+	 * once {@link #ADMISSION_MISSES} of its records have been read on their own
+	 * within one admission window of {@code capacity * ADMISSION_MISSES}
+	 * single-record reads. Reads scattered over many more batches than the
+	 * cache holds rarely concentrate that much on one batch, so they do not
+	 * churn the cache.</p>
 	 */
 	@Override
 	public synchronized T get(String id) {
@@ -489,8 +520,8 @@ public class ProtobufDiskStore<T extends Message> implements DiskStore<T> {
 			return null;
 		}
 
-		// TODO(review): once full, reads never admit a new batch, so the cache stops adapting to a shifted hot set; consider admitting on repeated misses.
-		if (batchCache.isFull() && !batchCache.containsKey(pointer.batchId)) {
+		if (batchCache.isFull() && !batchCache.containsKey(pointer.batchId)
+				&& !admitAfterMiss(pointer.batchId)) {
 			return readRecord(pointer);
 		}
 
@@ -598,6 +629,7 @@ public class ProtobufDiskStore<T extends Message> implements DiskStore<T> {
 			batchCache.evict(id);
 		}
 		index.clear();
+		missCounts.clear();
 	}
 
 	/**
@@ -838,6 +870,32 @@ public class ProtobufDiskStore<T extends Message> implements DiskStore<T> {
 		ParsedBatch<T> parsed = new ParsedBatch<>(batchId, records);
 		batchCache.put(batchId, parsed);
 		return parsed;
+	}
+
+	/**
+	 * Record a lookup that missed the full cache in the given batch, and decide
+	 * whether that batch should now be admitted. It is admitted when this is its
+	 * {@link #ADMISSION_MISSES}th miss in the current admission window; its count
+	 * is then dropped. Every {@link #admissionWindow} misses all counts are
+	 * reset, so only misses concentrated in time admit a batch.
+	 *
+	 * @param batchId the batch of the record being looked up
+	 * @return {@code true} if the batch should be loaded into the cache
+	 */
+	private boolean admitAfterMiss(int batchId) {
+		int misses = missCounts.merge(batchId, 1, Integer::sum);
+		boolean admit = misses >= ADMISSION_MISSES;
+		if (admit) {
+			missCounts.remove(batchId);
+		}
+
+		windowMisses++;
+		if (windowMisses >= admissionWindow) {
+			missCounts.clear();
+			windowMisses = 0;
+		}
+
+		return admit;
 	}
 
 	/**
