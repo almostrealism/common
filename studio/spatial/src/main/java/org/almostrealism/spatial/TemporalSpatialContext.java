@@ -77,7 +77,10 @@ public class TemporalSpatialContext implements ConsoleFeatures {
 	/** Whether zoom scaling is applied to the time axis. */
 	private boolean zoom;
 
-	/** The total duration of the content being visualized, in seconds. */
+	/**
+	 * The total duration of the content being visualized, in this context's time
+	 * units (seconds only when the temporal scale is {@code 1}).
+	 */
 	private double duration;
 
 	/** Supplier for the time scaling factor applied to the X-axis. */
@@ -105,6 +108,17 @@ public class TemporalSpatialContext implements ConsoleFeatures {
 	}
 
 	/**
+	 * Returns whether this context maps frequency to the Y-axis, rather than
+	 * channel. Only in this mode can {@link #inverse(Vector)} recover a
+	 * frequency from a position.
+	 *
+	 * @return {@code true} in spatial frequency mode
+	 */
+	public boolean isSpatialFrequency() {
+		return spatialFrequency;
+	}
+
+	/**
 	 * Returns whether zoom is enabled for time axis scaling.
 	 *
 	 * @return {@code true} if zoom is enabled
@@ -129,7 +143,8 @@ public class TemporalSpatialContext implements ConsoleFeatures {
 	/**
 	 * Returns the total duration of the content being visualized.
 	 *
-	 * @return the duration in seconds
+	 * @return the duration in this context's time units (seconds only when the
+	 *         temporal scale is {@code 1}; see {@link #getTimeToSeconds()})
 	 */
 	public double getDuration() {
 		return duration;
@@ -142,10 +157,26 @@ public class TemporalSpatialContext implements ConsoleFeatures {
 	 * Setting the duration will cause spatial elements to be regenerated
 	 * on the next call to {@link SpatialTimeseries#elements(TemporalSpatialContext)}.</p>
 	 *
-	 * @param duration the duration in seconds
+	 * @param duration the duration in this context's time units (seconds only when
+	 *                 the temporal scale is {@code 1}; see {@link #setDurationSeconds(double)})
 	 */
 	public void setDuration(double duration) {
 		this.duration = duration;
+	}
+
+	/**
+	 * Sets the total duration of the content being visualized from a number of
+	 * seconds, so that span fills the full width of the view when zoom is enabled.
+	 *
+	 * <p>{@link #setDuration(double)} takes this context's own time units, which
+	 * are seconds only when the temporal scale is {@code 1} (in the arrangement
+	 * they are measures). Passing seconds there would fit the wrong span; this
+	 * converts them with {@link #getSecondsToTime()} first.</p>
+	 *
+	 * @param seconds the number of seconds the view should span
+	 */
+	public void setDurationSeconds(double seconds) {
+		setDuration(getSecondsToTime().applyAsDouble(seconds));
 	}
 
 	/**

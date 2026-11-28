@@ -19,13 +19,15 @@ package org.almostrealism.audio.data;
 import io.almostrealism.relation.Tree;
 import org.almostrealism.audio.AudioLibrary;
 
+import java.io.File;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -38,14 +40,21 @@ import java.util.stream.Collectors;
  * similarity, useful for sample selection, recommendation, and interpolation.
  * <p>
  * To avoid cycles and repetition in the tree, each node excludes certain samples
- * when computing its children. Specifically, each child excludes its parent and
- * all of its siblings, ensuring that navigating deeper in the tree reveals new
- * samples rather than cycling through the same set. This means two nodes representing
- * the same audio sample may have different children depending on the path taken to
- * reach them.
+ * when computing its children. Specifically, each child excludes everything its
+ * parent excludes, its parent and all of its siblings, ensuring that navigating
+ * deeper in the tree reveals new samples rather than cycling through the same set.
+ * This means two nodes representing the same audio sample may have different
+ * children depending on the path taken to reach them.
  * <p>
- * Similarity scores are computed by the {@link AudioLibrary#getSimilarities(WaveDetails)}
- * method, typically based on audio features like spectral characteristics.
+ * Within one node's children each file appears once, and a sound saved under
+ * several paths (which gives it several content identifiers, and so several
+ * records) is listed once, under the first of its paths to rank.
+ * <p>
+ * Similarity scores are computed by
+ * {@link AudioLibrary#getNearestSimilarities(WaveDetails, int, Set)}, which scores
+ * the nearest items rather than the whole library, so that a node's children
+ * can be computed interactively for a library larger than memory. Children are
+ * resolved to files through the library's identifier index.
  * <p>
  * Example usage:
  * <pre>
@@ -67,6 +76,18 @@ public class WaveDetailsNode implements Tree<WaveDetailsNode> {
 	private static final Comparator<Map.Entry<String, Double>> comparator =
 			Map.Entry.<String, Double>comparingByValue().reversed();
 
+	/** Fewest nearest items scored when computing a node's children. */
+	private static final int MIN_CANDIDATES = 100;
+
+	/** Nearest items scored per child the node may list. */
+	private static final int CANDIDATES_PER_CHILD = 5;
+
+	/**
+	 * Largest difference between two similarity scores for records of the
+	 * same name to be taken as the same sound.
+	 */
+	private static final double SAME_SOUND_TOLERANCE = 1e-5;
+
 	/**
 	 * The audio library containing all available samples and similarity data.
 	 */
@@ -85,7 +106,7 @@ public class WaveDetailsNode implements Tree<WaveDetailsNode> {
 	/**
 	 * Set of sample identifiers to exclude when computing children.
 	 * This prevents cycles and ensures navigation reveals new samples.
-	 * Typically contains the parent and sibling identifiers.
+	 * Typically contains the ancestors and their siblings.
 	 */
 	private final Set<String> excludedIdentifiers;
 
@@ -101,16 +122,17 @@ public class WaveDetailsNode implements Tree<WaveDetailsNode> {
 	private List<WaveDetailsNode> children;
 
 	/**
-	 * Creates a node for the audio sample identified by the given key.
+	 * Creates a node for the audio file at the given path.
 	 * <p>
 	 * The {@link WaveDetails} are retrieved from the library synchronously.
-	 * No samples are excluded from children.
+	 * No samples are excluded from children, and other copies of this file's
+	 * sound are not listed among them.
 	 *
 	 * @param library the audio library containing the sample
-	 * @param key     the unique identifier for the audio sample
+	 * @param key     the path of the audio file
 	 */
 	public WaveDetailsNode(AudioLibrary library, String key) {
-		this(library, library.getDetailsForFileAwait(key, false));
+		this(library, library.getDetailsForFileAwait(key, false), key, 20, Collections.emptySet());
 	}
 
 	/**
@@ -206,36 +228,54 @@ public class WaveDetailsNode implements Tree<WaveDetailsNode> {
 	 * <p>
 	 * This method:
 	 * <ol>
-	 *   <li>Retrieves similarity scores from {@link AudioLibrary#getSimilarities(WaveDetails)}</li>
+	 *   <li>Retrieves similarity scores for the nearest items from
+	 *       {@link AudioLibrary#getNearestSimilarities(WaveDetails, int, Set)}</li>
 	 *   <li>Filters out any samples in the exclusion set</li>
 	 *   <li>Sorts samples by similarity (highest first)</li>
+	 *   <li>Skips samples with no file in the library, files already listed, and
+	 *       other copies of a sound already listed (or of this node's own file)</li>
 	 *   <li>Selects the top {@link #childLimit} matches</li>
-	 *   <li>Creates child nodes with exclusions set to this node plus all siblings</li>
+	 *   <li>Creates child nodes whose exclusions are this node's exclusions,
+	 *       this node and all siblings</li>
 	 * </ol>
 	 * <p>
 	 * This method can be called multiple times to update the children based on
 	 * changes to the library's similarity data.
 	 */
 	protected void refreshChildren() {
-		// Get similarities and filter out excluded identifiers
-		List<WaveDetailsNode> nodes = library.getSimilarities(details).entrySet().stream()
-				.filter(e -> !excludedIdentifiers.contains(e.getKey()))
-				.sorted(comparator)
-				.map(Map.Entry::getKey)
-				.map(library::get)
-				.map(d -> {
-					String path = pathForIdentifier(d.getIdentifier());
-					if (path == null) return null;
+		Set<String> excluded = excludedIdentifiers == null ? Collections.emptySet() : excludedIdentifiers;
+		Map<String, Double> similarities = library.getNearestSimilarities(details,
+				Math.max(MIN_CANDIDATES, CANDIDATES_PER_CHILD * childLimit), excluded);
 
-					return new WaveDetailsNode(library, d, path, childLimit, null);
-				})
-				.filter(Objects::nonNull)
-				.limit(childLimit)
-				.toList();
+		PathResolver paths = new PathResolver();
+		Set<String> listedPaths = new HashSet<>();
+		List<ListedSound> listedSounds = new ArrayList<>();
+		if (resourcePath != null) listedSounds.add(ListedSound.of(resourcePath, 1.0));
 
-		// Build exclusion set for children: this node + all siblings,
-		// and create children which respect the relevant exclusions
-		Set<String> childExclusions = new HashSet<>();
+		List<WaveDetailsNode> nodes = new ArrayList<>();
+		for (Map.Entry<String, Double> entry : similarities.entrySet().stream().sorted(comparator).toList()) {
+			if (nodes.size() >= childLimit) break;
+			if (excluded.contains(entry.getKey())) continue;
+
+			String path = paths.pathFor(entry.getKey());
+			if (path == null || !listedPaths.add(path)) continue;
+
+			// The same sound saved under another path has its own identifier, and
+			// so its own record, but it is the same file as far as the user can tell
+			ListedSound sound = ListedSound.of(path, entry.getValue());
+			if (listedSounds.stream().anyMatch(sound::sameAs)) continue;
+
+			WaveDetails d = library.get(entry.getKey());
+			if (d == null) continue;
+
+			listedSounds.add(sound);
+			nodes.add(new WaveDetailsNode(library, d, path, childLimit, null));
+		}
+
+		// Build exclusion set for children: everything this node excludes (its
+		// ancestors and their siblings), this node, and all of its children, so
+		// that a deeper column never repeats a sound already shown to its left
+		Set<String> childExclusions = new HashSet<>(excluded);
 		childExclusions.add(details.getIdentifier());
 		nodes.stream()
 				.map(WaveDetailsNode::getDetails)
@@ -247,19 +287,68 @@ public class WaveDetailsNode implements Tree<WaveDetailsNode> {
 	}
 
 	/**
-	 * Returns the resource path for the given identifier, or {@code null} if the provider
-	 * is not a {@link FileWaveDataProvider}.
+	 * Resolves content identifiers to file paths through the library's
+	 * identifier index, so that resolving a column of children does not walk
+	 * the library tree once per child.
 	 *
-	 * @param identifier the content identifier to resolve
-	 * @return the file path for the identifier, or {@code null}
+	 * <p>An identifier the index cannot resolve (the index is absent, or was
+	 * built before the file appeared) triggers one re-index of the tree per
+	 * resolver, after which misses are final: the item has no file in the
+	 * library, and is skipped.</p>
 	 */
-	protected String pathForIdentifier(String identifier) {
-		WaveDataProvider provider = library.find(identifier);
-		if (provider instanceof FileWaveDataProvider) {
-			return ((FileWaveDataProvider) provider).getResourcePath();
+	private final class PathResolver {
+		/** Whether this resolver has already re-indexed the tree. */
+		private boolean reindexed;
+
+		/**
+		 * Returns the path of the file holding the given content.
+		 *
+		 * @param identifier the content identifier
+		 * @return the file path, or {@code null} if no file in the library holds it
+		 */
+		String pathFor(String identifier) {
+			File file = library.indexedFileFor(identifier);
+
+			if (file == null && !reindexed) {
+				reindexed = true;
+				library.indexFiles();
+				file = library.indexedFileFor(identifier);
+			}
+
+			return file == null ? null : file.getPath();
+		}
+	}
+
+	/**
+	 * A sound already listed in a column, identified as the user sees it: by
+	 * its file name, together with its similarity to the column's query. Two
+	 * records with the same name and the same similarity hold the same audio
+	 * (identical features give identical scores), however their bytes differ.
+	 *
+	 * @param name       the file name
+	 * @param similarity the similarity to the column's query
+	 */
+	private record ListedSound(String name, double similarity) {
+		/**
+		 * Creates the entry for the file at the given path.
+		 *
+		 * @param path       the file path
+		 * @param similarity the similarity to the column's query
+		 * @return the entry
+		 */
+		static ListedSound of(String path, double similarity) {
+			return new ListedSound(new File(path).getName().toLowerCase(Locale.ROOT), similarity);
 		}
 
-		return null;
+		/**
+		 * Returns whether this and the given entry are the same sound.
+		 *
+		 * @param other the other entry
+		 * @return true if both have the same name and the same similarity
+		 */
+		boolean sameAs(ListedSound other) {
+			return name.equals(other.name) && Math.abs(similarity - other.similarity) < SAME_SOUND_TOLERANCE;
+		}
 	}
 
 	/**

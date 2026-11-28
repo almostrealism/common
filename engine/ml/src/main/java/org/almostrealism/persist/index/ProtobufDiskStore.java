@@ -405,6 +405,40 @@ public class ProtobufDiskStore<T extends Message> implements DiskStore<T> {
 
 	@Override
 	public List<SearchResult<T>> search(PackedCollection queryVector, int topK) {
+		List<HnswIndex.IdScore> candidates = searchIdentifiers(queryVector, topK);
+		List<SearchResult<T>> results = new ArrayList<>(candidates.size());
+
+		for (HnswIndex.IdScore candidate : candidates) {
+			T record = get(candidate.id);
+			if (record != null) {
+				results.add(new SearchResult<>(candidate.id, record, candidate.score));
+			}
+		}
+
+		results.sort(Comparator.comparingDouble(
+				(SearchResult<T> r) -> r.getSimilarity()).reversed());
+		return results;
+	}
+
+	/**
+	 * Searches the vector index like {@link #search}, but returns only the
+	 * identifiers and scores, without loading any record.
+	 *
+	 * <p>Loading a record parses the whole batch file holding it, so for a
+	 * store larger than its memory budget a search that loads every result
+	 * costs a batch parse per result. A caller that needs only which records
+	 * are nearest (and may then load just the few it uses) should search here.</p>
+	 *
+	 * <p>Identifiers still in the vector index but no longer stored are left
+	 * out, as {@link #search} leaves them out. A query whose dimension differs
+	 * from the indexed vectors' matches nothing.</p>
+	 *
+	 * @param queryVector the query embedding vector
+	 * @param topK        maximum number of results
+	 * @return the nearest stored identifiers with their scores, ordered by
+	 *         descending similarity
+	 */
+	public List<HnswIndex.IdScore> searchIdentifiers(PackedCollection queryVector, int topK) {
 		List<HnswIndex.IdScore> candidates;
 		synchronized (hnswLock) {
 			// A query of another dimensionality comes from another model than the
@@ -418,18 +452,13 @@ public class ProtobufDiskStore<T extends Message> implements DiskStore<T> {
 			candidates = hnswIndex.search(queryVector, topK);
 		}
 
-		List<SearchResult<T>> results = new ArrayList<>(candidates.size());
-
+		List<HnswIndex.IdScore> stored = new ArrayList<>(candidates.size());
 		for (HnswIndex.IdScore candidate : candidates) {
-			T record = get(candidate.id);
-			if (record != null) {
-				results.add(new SearchResult<>(candidate.id, record, candidate.score));
-			}
+			if (containsKey(candidate.id)) stored.add(candidate);
 		}
 
-		results.sort(Comparator.comparingDouble(
-				(SearchResult<T> r) -> r.getSimilarity()).reversed());
-		return results;
+		stored.sort(Comparator.comparingDouble((HnswIndex.IdScore c) -> c.score).reversed());
+		return stored;
 	}
 
 	@Override

@@ -26,6 +26,7 @@ import org.junit.Test;
 
 import java.util.List;
 import java.util.Random;
+import java.util.function.IntFunction;
 
 /**
  * Pins the values {@link WaveDetailsFactory} reports as feature similarity, which
@@ -83,5 +84,99 @@ public class WaveDetailsSimilarityTest extends TestSuiteBase {
 			Assert.assertEquals("batched rescaled similarity " + label, 1.0, batch[1], 1e-4);
 			Assert.assertEquals("batched and pairwise agree " + label, unrelated, batch[2], 1e-4);
 		}
+	}
+
+	/** Frames of features per clip in {@link #oneShotsAndLoopsStaySeparate}, as for a fixed-length clip. */
+	private static final int CLIP_FRAMES = 184;
+
+	/** Bins per feature frame in {@link #oneShotsAndLoopsStaySeparate}. */
+	private static final int CLIP_BINS = 32;
+
+	/** Feature frames per second in {@link #oneShotsAndLoopsStaySeparate}. */
+	private static final double CLIP_RATE = 10.0;
+
+	/**
+	 * A short drum hit compared with another hit, a drum loop and a sustained
+	 * tone, using features shaped like the ones the library's feature model
+	 * produces: every clip is padded to a fixed length, so the frames after a
+	 * sound ends hold the features of silence, and those are close to the
+	 * features of the quiet frames between a loop's hits.
+	 *
+	 * <p>A hit lasts three frames; the loop and the tone last over forty. A hit
+	 * must rank another hit above the loop and the tone, and the loop must rank
+	 * another loop above the hits: the frames where only the longer sound is
+	 * sounding say nothing in favor of the match.</p>
+	 */
+	@Test(timeout = 120000)
+	public void oneShotsAndLoopsStaySeparate() {
+		Random random = new Random(5);
+		double[] silence = direction(random);
+		double[] drum = direction(random);
+		double[] tone = direction(random);
+
+		WaveDetails hitA = clip("hitA", 3, random, silence, f -> drum, 0.8);
+		WaveDetails hitB = clip("hitB", 3, random, silence, f -> drum, 0.8);
+		WaveDetails loopA = clip("loopA", 44, random, silence, f -> f % 4 == 0 ? drum : silence, 0.5);
+		WaveDetails loopB = clip("loopB", 44, random, silence, f -> f % 4 == 0 ? drum : silence, 0.5);
+		WaveDetails sustained = clip("tone", 40, random, silence, f -> tone, 0.3);
+
+		WaveDetailsFactory factory = new WaveDetailsFactory(SAMPLE_RATE);
+		double hits = factory.similarity(hitA, hitB);
+		double hitToLoop = factory.similarity(hitA, loopA);
+		double hitToTone = factory.similarity(hitA, sustained);
+		double loops = factory.similarity(loopA, loopB);
+		double loopToHit = factory.similarity(loopA, hitB);
+		log("hit-hit " + hits + ", hit-loop " + hitToLoop + ", hit-tone " + hitToTone +
+				", loop-loop " + loops + ", loop-hit " + loopToHit);
+
+		Assert.assertTrue("a hit ranks a hit above a loop", hits > hitToLoop);
+		Assert.assertTrue("a hit ranks a hit above a sustained tone", hits > hitToTone);
+		Assert.assertTrue("a loop ranks a loop above a hit", loops > loopToHit);
+
+		double[] batch = factory.batchSimilarity(hitA, List.of(hitB, loopA, sustained));
+		Assert.assertEquals("batched and pairwise agree for a hit", hits, batch[0], 1e-4);
+		Assert.assertEquals("batched and pairwise agree for a loop", hitToLoop, batch[1], 1e-4);
+		Assert.assertEquals("batched and pairwise agree for a tone", hitToTone, batch[2], 1e-4);
+	}
+
+	/** Returns a random unit vector of {@link #CLIP_BINS} values. */
+	private static double[] direction(Random random) {
+		double[] v = new double[CLIP_BINS];
+		double norm = 0;
+		for (int i = 0; i < v.length; i++) {
+			v[i] = random.nextGaussian();
+			norm += v[i] * v[i];
+		}
+
+		norm = Math.sqrt(norm);
+		for (int i = 0; i < v.length; i++) v[i] /= norm;
+		return v;
+	}
+
+	/**
+	 * Builds an item sounding for {@code sounding} frames of a fixed-length clip:
+	 * each sounding frame is the given frame's direction plus noise, and every
+	 * frame after the sound ends is the silence direction plus a little noise.
+	 */
+	private static WaveDetails clip(String identifier, int sounding, Random random, double[] silence,
+									IntFunction<double[]> frame, double noise) {
+		double[] values = new double[CLIP_FRAMES * CLIP_BINS];
+		for (int f = 0; f < CLIP_FRAMES; f++) {
+			double[] center = f < sounding ? frame.apply(f) : silence;
+			double scale = (f < sounding ? noise : 0.05) / Math.sqrt(CLIP_BINS);
+			for (int b = 0; b < CLIP_BINS; b++) {
+				values[f * CLIP_BINS + b] = center[b] + scale * random.nextGaussian();
+			}
+		}
+
+		PackedCollection features = new PackedCollection(CLIP_FRAMES, CLIP_BINS);
+		features.set(0, values);
+
+		WaveDetails details = new WaveDetails(identifier, SAMPLE_RATE);
+		details.setSampleRate(SAMPLE_RATE);
+		details.setFrameCount((int) (SAMPLE_RATE * (sounding - 0.5) / CLIP_RATE));
+		details.putFeatures(new WaveFeatures("model", CLIP_RATE, 1, CLIP_BINS, CLIP_FRAMES, features));
+		details.setActiveModelIdentifier("model");
+		return details;
 	}
 }
