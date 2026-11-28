@@ -1066,6 +1066,7 @@ public class PackedCollection extends MemoryDataAdapter
 			return this;
 		}
 
+		// TODO(review): any differing ordering now replaces this one instead of composing with it; confirm intended
 		boolean physical = shape.getOrder() != null && getDelegateOrdering() != null;
 		boolean owned = getDelegate() == null;
 		MemoryData target = !physical ? this : owned ? new BytesView(getMem(), getOffset() + getDelegatedLength()) : getDelegate();
