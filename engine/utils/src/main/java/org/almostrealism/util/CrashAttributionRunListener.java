@@ -38,6 +38,12 @@ import org.junit.runner.notification.RunListener;
  * was running, and a crash after a {@code testFinished=} with no following {@code testStarted=}
  * identifies it as an asynchronous fault that outlived its test.</p>
  *
+ * <p>The breadcrumb reaches standard output through the root {@link org.almostrealism.io.Console}'s
+ * default forwarding, which is active unless {@code AR_IO_SYSOUT=false} suppresses it. The Utils
+ * CPU-lane this diagnostic targets runs with that forwarding enabled (the default), so the
+ * breadcrumb lands in the captured fork log there; a run that explicitly disables console output
+ * forgoes this attribution along with all other console output.</p>
+ *
  * <p>It is registered as a Surefire {@code listener} in the {@code engine/utils} module's
  * {@code pom.xml}; it is pure diagnostics and changes nothing about how tests run.</p>
  *
