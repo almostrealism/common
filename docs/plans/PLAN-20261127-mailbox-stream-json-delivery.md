@@ -172,9 +172,11 @@ Thread it through, in one change:
 (used today by `OpencodeRunner#controllerSecretLookup`), so the pump has everything it
 needs to read the mailbox without new request fields beyond the flag itself.
 
-**File-length pressure.** `CodingAgentJob`, `CodingAgentJobFactory` and
-`FlowTreeApiEndpoint` are each within ~10 lines of the 1600-line Checkstyle cap
-(`CodingAgentJob` is 1592 at this writing). Adding a field + accessors will cross it. Per
+**File-length pressure.** `CodingAgentJob` (1592 lines at this writing) and
+`CodingAgentJobFactory` (1590) sit within ~10 lines of the 1600-line Checkstyle cap, so
+adding a field + accessors crosses it. `FlowTreeApiEndpoint` (1577) has a little more
+headroom — about two dozen lines — but the submit decode + echo pushes it the same way and
+it should be treated as under the same pressure. Per
 `flowtree/CLAUDE.md`, the refactor is **in scope for this change**, not a follow-up: extract
 a cohesive collaborator the way `PhaseRunnerConfig`/`RestartGovernor`/`GitJobConfig` were
 (a `MailboxDeliveryConfig` is the natural unit — it can also own the knobs in §9's open
