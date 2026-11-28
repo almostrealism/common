@@ -141,16 +141,21 @@ public class CollectionVariable<T extends Collection<Double, ? extends Collectio
 
 	/**
 	 * Returns the {@link #getProducerDelegate() producer delegate} as a
-	 * {@link TraversableExpression}, if it is one. When it is, the values of this
-	 * variable are defined by that expression rather than by references to this
-	 * variable's own memory.
+	 * {@link TraversableExpression}, if it is one and it
+	 * {@link TraversableExpression#isTraversable() is traversable}. When it is, the values of
+	 * this variable are defined by that expression rather than by references to this
+	 * variable's own memory. A producer that reports it is not traversable (such as a view that
+	 * reads its memory in an order its own elements cannot express) is read from memory.
 	 *
 	 * @return the traversable producer delegate, or {@code null} if the values of this
 	 *         variable are references to its own memory
 	 */
 	public TraversableExpression<Double> getTraversableProducer() {
 		Supplier<?> producer = getProducerDelegate();
-		return producer instanceof TraversableExpression ? (TraversableExpression<Double>) producer : null;
+		if (!(producer instanceof TraversableExpression)) return null;
+
+		TraversableExpression<Double> traversable = (TraversableExpression<Double>) producer;
+		return traversable.isTraversable() ? traversable : null;
 	}
 
 	/**

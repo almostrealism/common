@@ -11,6 +11,31 @@ tracker: [ce31398a-93de-4294-9a7b-1087d52258c1]
 *Transposed (CSC) sparse matrix–vector product for SparseMatrix*
 **Release:** the release under development (the version in the root `pom.xml`)
 
+## Revision after review (supersedes Scope/Approach below)
+
+The first implementation, `CompressedRowTraversalOrdering.transpose(PackedCollection entries)`,
+was rejected in review (PR #1103): it exposed the CSR machinery to callers, computed on the
+host and copied the entries with an eager gather kernel, and left `cp(A).transpose()`, the call
+users actually make, untouched. It is removed. The delivered design is:
+
+- `TraversalOrdering.transpose(int rows, int cols)` (default empty) lets an ordering describe the
+  transpose of the matrix it orders over the **same physical positions**.
+- `CompressedRowTraversalOrdering.transpose()` returns that ordering: a CSR ordering of `Aᵀ` that
+  carries the physical position of each member (`OrderingSegments.position(member)`, identity by
+  default), so no entry is copied or reordered. The CSC index metadata is derived once from the
+  host copy of the index arrays and cached on the ordering. The values are never read.
+- `CollectionProducer.transpose()` uses the ordering's transpose when one exists, returning a
+  lazy reshape view of the same producer, so `matmul(cp(A).transpose(), g)` reaches
+  `SegmentedWeightedSumComputation` (which now reads `reference(position(member))`) with no API
+  change for callers.
+- Supporting fixes: `ReshapeProducer` binds an ordering of its own explicit shape to the kernel
+  arguments, and `PackedCollection.reshape` to a differently-ordered shape views the physical
+  memory instead of composing both orderings (and no longer returns `this` for a square
+  transpose, since shape equality ignores the ordering).
+
+Open question 2 (lazy vs. materialised entries) is resolved as "neither": the entries stay where
+they are.
+
 ## Motivation
 
 The forward sparse product `y = A·x` is already compiled to a single kernel that visits

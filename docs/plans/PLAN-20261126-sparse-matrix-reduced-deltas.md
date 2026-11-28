@@ -227,13 +227,13 @@ delta.
 ## Implementation notes
 
 - The branch is based on `ce31398a` by merging its branch (PR #1103), as *Dependencies* allows.
-- **Open question 3 (how the input delta gets the transpose).** It does not call
-  `CompressedRowTraversalOrdering.transpose(entries)`. That method copies the entry values at the
-  moment it is called, so a gradient built on it would go stale once a trained sparse weight
-  changes. `TraversalOrdering.transposed(segmentLength)` is used instead. It returns the CSR
-  ordering of `Aᵀ` over the *same* memory, together with a split-layout index of entry positions
-  (`OrderingSegments.position`). The input delta is then a `SegmentedWeightedSumComputation` that
-  reads the matrix producer in place. `transpose(entries)` reuses the same counting sort.
+- **Open question 3 (how the input delta gets the transpose).** After the owner's review of
+  PR #1103 and PR #1104, there is no CSR-specific transpose API. The input delta is the product of
+  the ordinary `CollectionProducer.transpose()` of the matrix with `g`. For a CSR ordering that
+  transpose dispatches through `TraversalOrdering.transpose(rows, cols)` to
+  `CompressedRowTraversalOrdering.transpose()`, a CSR ordering of `Aᵀ` over the *same* memory
+  (each member's physical position through `OrderingSegments.position`), so the delta is a
+  `SegmentedWeightedSumComputation` that reads the matrix producer in place and copies nothing.
 - **Open question 4 (per-entry row accessor).** `TraversalOrdering.memberSegments(segmentLength)`
   gives a split-layout `SplitIndexTraversalOrdering` holding the row of each entry. The values
   delta is a new `SegmentedOuterProductComputation` (a sampled dense–dense product). Its output

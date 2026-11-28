@@ -159,22 +159,22 @@ public interface TraversalOrdering extends IndexSet, Signature {
 	}
 
 	/**
-	 * Returns an ordering through which the same memory reads as the transpose of the matrix
-	 * this ordering lays out, when its rows are the {@link #segments(int) segments} of the given
-	 * length. The memory is not reordered: the transposed ordering enumerates the members of each
-	 * column of this matrix as one of its own segments, and its
-	 * {@link OrderingSegments#position(Expression) positions} locate each member where this
-	 * ordering stores it. A product with the transpose, such as the gradient of a product with
-	 * this matrix, is then a reduction of each segment of the transposed ordering over the same
-	 * memory, and reflects any later change to the values stored there.
+	 * Returns an ordering that reads the {@code (cols, rows)} transpose of the {@code (rows, cols)}
+	 * matrix this ordering describes from the same physical positions, if this ordering can
+	 * describe the transpose structurally. A collection whose shape carries this ordering is then
+	 * transposed without moving any of its elements: the transpose is its memory read through the
+	 * returned ordering, and a computation that needs only the members of each row of the
+	 * transpose finds them through the {@link #segments(int) segments} of the returned ordering
+	 * rather than by reading every logical element.
 	 *
-	 * <p>The default returns empty.</p>
+	 * <p>The default returns empty, in which case a transpose reads every logical element through
+	 * {@link #indexOf(Expression)}, which remains correct.</p>
 	 *
-	 * @param segmentLength the number of consecutive logical indices in each row
-	 * @return the ordering of the transpose, whose segments have the length of the number of
-	 *         rows, or empty if this ordering cannot form it
+	 * @param rows the number of rows of the matrix this ordering describes
+	 * @param cols the number of columns of the matrix this ordering describes
+	 * @return the ordering of the transpose, or empty if this ordering cannot describe it
 	 */
-	default Optional<TraversalOrdering> transposed(int segmentLength) {
+	default Optional<TraversalOrdering> transpose(int rows, int cols) {
 		return Optional.empty();
 	}
 

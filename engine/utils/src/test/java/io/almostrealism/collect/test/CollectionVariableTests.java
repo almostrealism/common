@@ -150,6 +150,29 @@ public class CollectionVariableTests extends TestSuiteBase implements Expression
 	}
 
 	/**
+	 * A variable whose producer is a {@link io.almostrealism.collect.TraversableExpression} that
+	 * reports it is not traversable has no traversable producer, so its elements are read from
+	 * its own memory and the producer is never asked for an expression.
+	 */
+	@Test(timeout = 30000)
+	public void nonTraversableProducerIsReadFromMemory() {
+		PassThroughProducer<?> input = new PassThroughProducer<>(new TraversalPolicy(4, 2), 0) {
+			@Override
+			public boolean isTraversable() { return false; }
+
+			@Override
+			public Expression getValueAt(Expression index) {
+				throw new UnsupportedOperationException();
+			}
+		};
+
+		CollectionVariable<?> variable = new CollectionVariable("v", input.getShape(), (Supplier) input);
+		Assert.assertNull(variable.getTraversableProducer());
+		Assert.assertEquals(OptionalInt.of(3), referencedPosition(variable.getValueAt(e(3))));
+		Assert.assertFalse(variable.isReferencedBy(e(1.0)));
+	}
+
+	/**
 	 * A variable whose values are references to its own memory is referenced exactly by
 	 * expressions that contain such a reference, so that a product with an independent
 	 * operand differentiates to a diagonal; a variable defined by a traversable producer
