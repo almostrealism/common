@@ -187,6 +187,16 @@ class MatchedControlTest(unittest.TestCase):
         with self.assertRaises(SystemExit):
             male_cns_cell_types.matched_control([0], ["cb_sensory"], ["gustatory"], [10])
 
+    def test_experiment_drives_grns_and_their_control(self):
+        # One candidate per GRN type: only type 4 + i is within 20% of GRN type i.
+        names = ["LB3a", "LB3b", "LB3c", "LB3d", "ca", "cb", "cc", "cd", "MN9"]
+        superclasses = ["cb_sensory"] * 8 + ["cb_motor"]
+        classes = ["gustatory"] * 4 + ["mechanosensory"] * 4 + [""]
+        out = [100, 200, 400, 800, 110, 210, 410, 810, 100]
+        driven = male_cns_cell_types.experiment_driven(names, superclasses, classes, out)
+        self.assertEqual({"baseline": [], "grn": ["LB3a", "LB3b", "LB3c", "LB3d"],
+                          "control": ["ca", "cb", "cc", "cd"]}, driven)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -18,7 +18,6 @@ package org.almostrealism.bioscience.connectome.test;
 
 import com.google.gson.JsonObject;
 import io.almostrealism.compute.ComputeRequirement;
-import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.graph.RatePopulation;
 import org.almostrealism.bioscience.connectome.CellTypeConnectome;
 import org.almostrealism.ml.StateDictionary;
@@ -70,17 +69,6 @@ public class CellTypeRateModelTest extends CellTypeRateChecks {
 
 	/** The manifest of the rate reference. */
 	private static final String RATES_MANIFEST = "manifest.json";
-
-	/**
-	 * The MaleCNS types taken as the sugar-sensing gustatory receptor neurons: the labellar
-	 * bristle types that MaleCNS matches to the FlyWire type {@code LB3}. They are chosen because
-	 * their multi-hop signed path to MN9 is the most excitatory among the labellar types, as
-	 * expected of sugar GRNs, whose activation drives proboscis extension.
-	 */
-	private static final List<String> SUGAR_GRNS = List.of("LB3a", "LB3b", "LB3c", "LB3d");
-
-	/** The seed used to choose the control types. */
-	private static final long CONTROL_SEED = 20261026L;
 
 	/**
 	 * Loads the cell-type matrix from the directory {@link CellTypeConnectomeTest} reads, failing
@@ -178,8 +166,9 @@ public class CellTypeRateModelTest extends CellTypeRateChecks {
 	}
 
 	/**
-	 * Chooses, for each GRN type, a sensory non-gustatory type (not already chosen) whose outgoing
-	 * synapse count is within 20% of the GRN type's.
+	 * Chooses, for each GRN type, one of its {@link #controlCandidates} (a sensory non-gustatory
+	 * type whose outgoing synapse count is within 20% of the GRN type's) that is not already
+	 * chosen.
 	 *
 	 * @param connectome the loaded connectome
 	 * @param grns       the GRN type indices
@@ -187,14 +176,9 @@ public class CellTypeRateModelTest extends CellTypeRateChecks {
 	 */
 	private int[] matchedControl(CellTypeConnectome connectome, int[] grns) {
 		Random random = new Random(CONTROL_SEED);
-		PackedCollection out = connectome.getOutSynapses();
 		List<Integer> chosen = new ArrayList<>();
 		for (int grn : grns) {
-			double target = out.toDouble(grn);
-			int[] candidates = IntStream.range(0, connectome.getTypeCount())
-					.filter(i -> connectome.getSuperclass(i).contains("sensory"))
-					.filter(i -> !"gustatory".equals(connectome.getTypeClass(i)))
-					.filter(i -> Math.abs(out.toDouble(i) - target) <= 0.2 * target)
+			int[] candidates = IntStream.of(controlCandidates(connectome, grn))
 					.filter(i -> !chosen.contains(i))
 					.toArray();
 			assertTrue("no control candidate for " + connectome.getTypeNames().get(grn), candidates.length > 0);
@@ -212,6 +196,12 @@ public class CellTypeRateModelTest extends CellTypeRateChecks {
 	 * the full-matrix result the committed sugar circuit ({@link CellTypeSugarCircuitTest}) is
 	 * traced to, so this closes the chain from the full matrix to that pipeline test.
 	 *
+	 * <p>The reference is not trusted to describe this experiment. Before any run, its driven
+	 * sets must be the ones this class defines: no type for the baseline, {@link #SUGAR_GRNS}
+	 * for the GRN run, and for the control exactly the types {@link #matchedControl} draws. They
+	 * must also be the driven sets the committed circuit records, whose matrix checksum and
+	 * full-matrix MN9 rates must be this reference's, the latter reached by the platform too.</p>
+	 *
 	 * <p>The reference lives outside the repository, in the directory named by
 	 * {@value #RATES_PROPERTY} (by default {@value #DEFAULT_RATES_DIRECTORY}); a missing reference
 	 * fails the test on every host.</p>
@@ -227,23 +217,33 @@ public class CellTypeRateModelTest extends CellTypeRateChecks {
 		int steps = 1000;
 		File directory = requireResourceIn(RATES_PROPERTY, DEFAULT_RATES_DIRECTORY, RATES_MANIFEST,
 				ComputeRequirement.GPU, ComputeRequirement.CPU);
-		JsonObject driven = NeuronConnectomeChecks.json(directory, RATES_MANIFEST)
-				.getAsJsonObject().getAsJsonObject("driven");
+		JsonObject manifest = NeuronConnectomeChecks.json(directory, RATES_MANIFEST).getAsJsonObject();
+		JsonObject driven = manifest.getAsJsonObject("driven");
+		JsonObject circuit = NeuronConnectomeChecks.json(sugarCircuit(), SUGAR_CIRCUIT_REFERENCE_FILE).getAsJsonObject();
+		JsonObject circuitFull = circuit.getAsJsonObject("full_matrix");
 
 		try (CellTypeConnectome connectome = loadConnectome();
 			 RatePopulation population = population(connectome);
 			 StateDictionary reference = new StateDictionary(directory.getPath())) {
 			int mn9 = connectome.indexOf(MN9);
-			// TODO(review): assert the manifest's control names equal matchedControl(connectome, grns) so the port cannot drift silently
+			assertDrivenSets(connectome, driven);
+			assertEquals(names(connectome, matchedControl(connectome, indices(connectome, SUGAR_GRNS))),
+					names(driven.getAsJsonArray("control")));
+			assertEquals(driven, circuit.getAsJsonObject("driven"));
+			assertEquals(manifest.get("matrix_sha256").getAsString(), circuitFull.get("matrix_sha256").getAsString());
+
 			SimulationRunner runner = new SimulationRunner(population, DT);
 			for (String run : List.of("baseline", "grn", "control")) {
 				double[] expected = reference.require(run + "_final").toArray();
-				double[] actual = responseRates(runner, population, indices(connectome, driven.getAsJsonArray(run)), steps);
+				double[] actual = responseRates(runner, population,
+						indices(connectome, names(driven.getAsJsonArray(run))), steps);
 				double difference = maxDifference(expected, actual);
 				log("backend=" + backend() + " run=" + run + " mn9Expected=" + expected[mn9]
 						+ " mn9Actual=" + actual[mn9] + " maxDifference=" + difference);
 				assertEquals(run, expected[mn9], actual[mn9], RATE_ALLOWANCE);
 				assertTrue(run + " differs by " + difference, difference <= RATE_ALLOWANCE);
+				assertEquals(run, circuitFull.getAsJsonObject("mn9_final").get(run).getAsDouble(),
+						actual[mn9], RATE_ALLOWANCE);
 			}
 
 			runner.destroy();

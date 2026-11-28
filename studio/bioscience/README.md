@@ -102,10 +102,15 @@ under the pipeline profile in the `Run Bioscience Tests` step of every media lan
   every kept type's FP64 rate in both driven runs, and its README the cut's deviation.
   `CellTypeSugarCircuitTest` checks the spot checks and requires `RatePopulation`, stepped by
   `SimulationRunner`, to reach every recorded rate within 1e-2 and to keep at least 90% of the
-  margin; the baseline must stay exactly zero.
+  margin; the baseline must stay exactly zero. It reads the driven types from the fixture but
+  requires them to be the experiment's: nothing in the baseline, `LB3a`–`LB3d` in the GRN run, and
+  one distinct sensory, non-gustatory type within 20% of each GRN type's outgoing synapses as the
+  control.
   `CellTypeRateModelTest.matchesRateReference` closes the trace on the full matrix: it requires
   the platform's full-matrix runs to reach the rates the `rates` mode recorded, within the same
-  allowance. Measured on a Mac Studio, the largest difference from the FP64 rates over every type
+  allowance. It does not take the reference's word for what was driven: the control must be the
+  set the Java test draws, and the reference's driven types, matrix checksum and MN9 rates must be
+  the ones the committed circuit records. Measured on a Mac Studio, the largest difference from the FP64 rates over every type
   is 1.2e-4 on the circuit in FP32 (native and Metal) and 1.1e-13 on native FP64, and on the full
   matrix 1.2e-3 on Metal and 1.1e-12 on native FP64.
 - The tests on the full datasets (`NeuronConnectomeDatasetTest`, `ConnectomeNetworkDatasetTest`,
@@ -178,8 +183,8 @@ settled.
 Unlike the `domain/` modules, this module has test sources of its own, in
 `org.almostrealism.bioscience.connectome.test`:
 
-- `CellTypeConnectomeLoadTest` loads a small synthetic directory written in the script's layout.
-  It needs no external data.
+- `CellTypeConnectomeLoadTest` loads a small synthetic directory written in the script's layout,
+  as a safetensors file and as the text layout a committed fixture uses. It needs no external data.
 - `CellTypeSugarCircuitTest` runs the rate model's sugar experiment on the committed cell-type
   sugar circuit, the scaled-down counterpart of `CellTypeRateModelTest`. It runs in CI.
 - `NeuronConnectomeTest`, `ConnectomeNetworkTest` and `NeuronLevelConnectomeSimulationExamplesTest`
