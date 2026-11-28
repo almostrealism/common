@@ -299,9 +299,9 @@ public class MetalMemoryProvider extends HardwareMemoryProvider<MetalMemory> {
 	 *
 	 * <p>Copies as-is for FP64, converts to float for FP32/FP16. The conversion writes
 	 * directly into the off-heap transfer buffer, so no heap array of {@code length}
-	 * elements is allocated; every chunk of a host copy (see
-	 * {@link #setMemInChunks(Memory, int, Memory, int, int)}) passes through here, and a
-	 * per-call {@code float[]} at that chunk size is a G1 humongous object.</p>
+	 * elements is allocated. Every chunk of a host copy (see
+	 * {@link #setMemInChunks(Memory, int, Memory, int, int)}) passes through here, so
+	 * the heap cost of a copy stays constant regardless of how many chunks it has.</p>
 	 *
 	 * @param mem The destination {@link MetalMemory}
 	 * @param offset Starting offset in destination (in elements)
