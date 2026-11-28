@@ -192,6 +192,43 @@ public class StagingSkipRuleTest extends TestSuiteBase {
     }
 
     /**
+     * An unbypassable marker is matched only against the trailing reason, never
+     * against the path: a path that literally contains {@code (binary file)}
+     * but whose actual reason is actionable (a new type the audit refused) must
+     * stay agent-fixable, not be retired as environment-determined.
+     */
+    @Test(timeout = 30000)
+    public void classifyAgentFixableWhenMarkerAppearsOnlyInsideThePath() {
+        StubJob job = new StubJob(withSkip(
+                "docs/(binary file)/Notes.java (unresolved new type: Notes)"));
+        assertFalse("A marker inside the path must not be read as the skip reason",
+                new StagingSkipRule().classifyViolation(job).isEnvironmentDetermined());
+    }
+
+    /**
+     * The reason is parsed correctly even when it contains its own parentheses
+     * (as a protected test-method skip does), so such a skip stays agent-fixable
+     * rather than being misread by a naive match on the last parenthesis.
+     */
+    @Test(timeout = 30000)
+    public void classifyAgentFixableWhenReasonContainsParentheses() {
+        StubJob job = new StubJob(withSkip(
+                "src/test/java/FooTest.java (protected - existing test method(s) changed: testFoo)"));
+        assertFalse(new StagingSkipRule().classifyViolation(job).isEnvironmentDetermined());
+    }
+
+    /**
+     * A size-limit skip ({@code exceeds <size>}) is unbypassable even when the
+     * path contains parentheses, so a tree of only such skips is
+     * environment-determined.
+     */
+    @Test(timeout = 30000)
+    public void classifyEnvironmentDeterminedForExceedsReasonWithParenthesesInPath() {
+        StubJob job = new StubJob(withSkip("assets/(large)/model.bin (exceeds 5 MB)"));
+        assertTrue(new StagingSkipRule().classifyViolation(job).isEnvironmentDetermined());
+    }
+
+    /**
      * End-to-end through {@link CodingAgentJob#runEnforcementRules()}: a
      * skip during the first preview must trigger a correction session that
      * names the skipped file, and once the "agent" (the stub) resolves it,

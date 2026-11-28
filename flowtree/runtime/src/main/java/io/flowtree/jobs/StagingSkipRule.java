@@ -130,16 +130,39 @@ class StagingSkipRule implements EnforcementRule {
     /**
      * Returns whether a {@code "path (reason)"} skip entry names a guardrail
      * the agent cannot work around within this job. The markers mirror the
-     * reasons {@link FileStager} records when it rejects a file outright.
+     * reasons {@link FileStager} records when it rejects a file outright, and
+     * are matched against the entry's trailing reason alone — a path that
+     * happens to contain one of these words (for example {@code
+     * docs/(binary file)/notes.txt}) is not mistaken for the guardrail that
+     * rejected it.
      *
      * @param skipEntry a reportable skip entry in {@code "path (reason)"} form
      * @return {@code true} when the agent has no way to get this file committed
      */
-    private boolean isUnbypassableGuardrail(String skipEntry) {
-        return skipEntry.contains("(excluded pattern)")
-                || skipEntry.contains("(protected - CI/workflow file)")
-                || skipEntry.contains("(binary file)")
-                || skipEntry.contains("(exceeds ");
+    private static boolean isUnbypassableGuardrail(String skipEntry) {
+        String reason = trailingReason(skipEntry);
+        return reason.equals("excluded pattern")
+                || reason.equals("protected - CI/workflow file")
+                || reason.equals("binary file")
+                || reason.startsWith("exceeds ");
+    }
+
+    /**
+     * Extracts the reason from a {@code "path (reason)"} skip entry: the text
+     * {@link FileStager} appends as {@code " (" + reason + ")"}. The appended
+     * group is located by its {@code " ("} delimiter and the closing {@code ")"}
+     * at the end of the entry, so a path containing its own parentheses — even
+     * a reason that itself contains them, such as {@code method(s)} — is parsed
+     * correctly.
+     *
+     * @param skipEntry a skip entry in {@code "path (reason)"} form
+     * @return the reason text without its surrounding parentheses, or {@code ""}
+     *         when the entry does not carry an appended reason
+     */
+    private static String trailingReason(String skipEntry) {
+        int delim = skipEntry.lastIndexOf(" (");
+        if (delim < 0 || !skipEntry.endsWith(")")) return "";
+        return skipEntry.substring(delim + 2, skipEntry.length() - 1);
     }
 
     /**

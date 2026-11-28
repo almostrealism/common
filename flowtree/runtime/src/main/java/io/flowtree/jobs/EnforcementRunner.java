@@ -229,20 +229,20 @@ class EnforcementRunner implements ConsoleFeatures {
 
                 log("Enforcement rule '" + ruleName + "': violation detected");
 
-                // An environment-determined violation gets zero retries; see classifyViolation.
+                // Re-evaluated before every attempt (loop foot); environment-determined
+                // means zero further retries. See classifyViolation.
                 ViolationClassification classification = rule.classifyViolation(job);
 
                 // Correction attempts in a single pass are bounded by the rule's own cap
                 // and the absolute safety ceiling, whichever is smaller. When the rule's
                 // cap exceeds the ceiling, the ceiling is what stops the pass — and in that
                 // case the rule is retired afterwards so it cannot re-enter and run away.
-                int ruleCap = classification.isEnvironmentDetermined()
-                        ? 0
-                        : Math.min(rule.getMaxRetries(), CodingAgentJob.DEFAULT_MAX_RULE_ENTRIES);
+                int ruleCap = Math.min(rule.getMaxRetries(), CodingAgentJob.DEFAULT_MAX_RULE_ENTRIES);
                 boolean ceilingLimited = rule.getMaxRetries() > CodingAgentJob.DEFAULT_MAX_RULE_ENTRIES;
                 int attempts = 0;
                 int noProgressAttempts = 0;
-                while (attempts < ruleCap
+                while (!classification.isEnvironmentDetermined()
+                        && attempts < ruleCap
                         && noProgressAttempts < MAX_NO_PROGRESS_ATTEMPTS
                         && rule.isViolated(job)
                         && !job.hasAgentCommitted()
@@ -288,11 +288,14 @@ class EnforcementRunner implements ConsoleFeatures {
                     if (job.hasAgentCommitted()) break;
                     noProgressAttempts = treeBefore != null && treeBefore.equals(workingTreeFingerprint(rule))
                             ? noProgressAttempts + 1 : 0;
+                    // Re-classify while still violated, so a correction that made the
+                    // remaining violation environment-determined stops the loop.
+                    if (rule.isViolated(job)) classification = rule.classifyViolation(job);
                 }
 
                 if (!job.hasAgentCommitted() && rule.isViolated(job)) {
                     boolean stalled = noProgressAttempts >= MAX_NO_PROGRESS_ATTEMPTS;
-                    if (stalled || attempts >= ruleCap) {
+                    if (classification.isEnvironmentDetermined() || stalled || attempts >= ruleCap) {
                         String reason;
                         boolean retireForGood;
                         if (classification.isEnvironmentDetermined()) {

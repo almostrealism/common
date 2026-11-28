@@ -116,6 +116,62 @@ public class EnforcementRunnerViolationClassificationTest extends TestSuiteBase 
     }
 
     /**
+     * A violation that starts agent-fixable but becomes environment-determined
+     * after a correction must stop being retried the moment it does: the runner
+     * re-evaluates the classification before every attempt, so it spends exactly
+     * the one session that changed the situation and then retires the rule with
+     * the environment-determined reason — it does not burn the rest of the cap
+     * re-asking a question whose answer can no longer change.
+     */
+    @Test(timeout = 30000)
+    public void classificationIsReevaluatedSoARuleThatTurnsEnvironmentDeterminedStops() {
+        AtomicInteger corrections = new AtomicInteger();
+
+        EnforcementRule rule = new EnforcementRule() {
+            private boolean corrected = false;
+
+            @Override public String getName() { return "turns-environment-determined"; }
+            @Override public boolean isViolated(CodingAgentJob job) { return true; }
+            @Override public String buildCorrectionPrompt(CodingAgentJob job) { return "try once"; }
+            @Override public int getMaxRetries() { return 3; }
+            @Override public void onCorrectionAttempted(CodingAgentJob job) { corrected = true; }
+
+            @Override
+            public ViolationClassification classifyViolation(CodingAgentJob job) {
+                return corrected
+                        ? ViolationClassification.environmentDetermined(
+                                "the correction moved the change into a binary file")
+                        : ViolationClassification.agentFixable();
+            }
+        };
+
+        CodingAgentJob job = new CodingAgentJob("reclassify-1", "Do the work") {
+            @Override
+            protected void runCorrectionSession(String correctionPrompt, String activity) {
+                corrections.incrementAndGet();
+            }
+        };
+        job.setWorkingDirectory(tempDir.toString());
+        job.setEnforceOrganizationalPlacement(false);
+        job.addEnforcementRule(rule);
+
+        job.runEnforcementRules();
+
+        assertEquals("Exactly one correction should run before the violation turns"
+                + " environment-determined", 1, corrections.get());
+
+        CodingAgentJobEvent event = job.createEvent(null);
+        String message = event.getErrorMessage();
+        assertNotNull("The retirement reason must be recorded on the completion event", message);
+        assertTrue("The event must name the retired rule: " + message,
+                message.contains("turns-environment-determined"));
+        assertTrue("The event must say the violation became environment-determined: " + message,
+                message.contains("environment-determined"));
+        assertTrue("The event must carry the rule's reason: " + message,
+                message.contains("binary file"));
+    }
+
+    /**
      * The control: a rule that does not override the classification keeps the
      * agent-fixable default, so it is still retried — the opposite of the
      * environment-determined rule above, which runs no correction session at
