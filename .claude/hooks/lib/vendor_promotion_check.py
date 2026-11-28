@@ -57,13 +57,30 @@ from private_url_check import CLAUDE_AI_LINK, SESSION_ID
 #: The claude.ai document connector's tools that write to the vendor's service.
 VENDOR_DOCUMENT_WRITE = re.compile(r"^mcp__.*Claude_Docs__(?:batch|create|update)$")
 
-#: Attribution lines: trailers and credits that name the agent or its vendor.
+#: A comment leader or decoration an attribution may hide behind: any run of
+#: non-letter characters at the start of a line (``//``, ``<!--``, ``#``, ``*``,
+#: ``\U0001F916``, whitespace), so a credit in a code comment or a document is
+#: caught, not only one that begins the line. Mirrors AuthorAttribution's
+#: ``[^\p{L}]*`` anchor in flowtree/runtime.
+_LEADER = r"[^A-Za-z\n]*"
+
+#: The vendor names an attribution in this project's files must not credit.
+_VENDOR = r"(?:claude|anthropic)"
+
+#: Attribution lines: a ``Claude-Session:`` trailer, a ``...-By:`` trailer that
+#: names the vendor, or a tool-credit line that names the vendor. The verb and
+#: vendor vocabulary follows AuthorAttribution in flowtree/runtime so a credit
+#: it rejects in a commit message is rejected here in a file too: ``Created by
+#: Claude Code`` and ``Generated with Anthropic`` are refused, not only
+#: ``Generated with Claude``.
+# TODO(review): the unbounded ``[^\n]*`` before the vendor can false-positive on a line that begins with a credit verb and only mentions claude (e.g. a CLAUDE.md reference) later; consider bounding the vendor to the credit clause.
 ATTRIBUTION_LINE = re.compile(
-    r"^[ \t]*(?:"
+    r"^" + _LEADER + r"(?:"
     r"Claude-Session:[ \t]*\S"
-    r"|Co-Authored-By:[^\n]*(?:claude|anthropic)"
-    r"|(?:\U0001F916[ \t]*)?Generated (?:with|by) \[?Claude(?: Code)?\b"
-    r")", re.I | re.M)
+    r"|(?:co[- ]?)?(?:authored|written|assisted)[- ]?by[ \t]*:[^\n]*" + _VENDOR
+    + r"|(?:generated|created|authored|produced|written|assisted)[- ]?(?:with|by)\b[^\n]*\b"
+    + _VENDOR + r"\b"
+    + r")", re.I | re.M)
 
 #: Directory names under which a file is a test source.
 TEST_DIRECTORIES = {"test", "tests", "__tests__"}

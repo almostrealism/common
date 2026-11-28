@@ -69,8 +69,20 @@ class FileEditTests(unittest.TestCase):
                      "Co-Authored-By: Claude <noreply@anthropic.com>",
                      "co-authored-by: Claude Opus",
                      "Generated with [Claude Code](https://claude.com/claude-code)",
-                     "\U0001F916 Generated with Claude Code"):
+                     "\U0001F916 Generated with Claude Code",
+                     "Created by Claude Code",
+                     "Generated with Anthropic",
+                     "Assisted-By: Claude",
+                     "Produced by Claude"):
             self.assertAction(write("docs/notes.md", "Summary\n\n" + line + "\n"), "block")
+
+    def test_attribution_inside_a_comment_is_blocked(self):
+        """A credit hidden behind a comment leader is still a promotion route."""
+        for path, line in ((".claude/x.java", "// Generated with Claude Code"),
+                           ("docs/page.html", "<!-- Claude-Session: 01AbCd -->"),
+                           ("scripts/x.py", "# Created by Claude"),
+                           ("src/main/java/A.java", " * Co-Authored-By: Claude")):
+            self.assertAction(write(path, "body\n" + line + "\n"), "block")
 
     def test_multiedit_is_checked_edit_by_edit(self):
         payload = {"tool_name": "MultiEdit", "tool_input": {
