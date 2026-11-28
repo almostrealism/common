@@ -366,6 +366,48 @@ public class JobStatsStoreLifecycleTest extends TestSuiteBase {
         }
     }
 
+    /**
+     * A {@code SUCCESS} completion that carries a diagnostic {@code error_message}
+     * — enforcement-rule retirement reasons, folded onto the event at completion
+     * — keeps that message when the job is read back, including after a
+     * close/reopen (the controller-restart case). Without the restore in
+     * {@code rowToEvent} the {@code SUCCESS} factory takes no message and the
+     * reasons the feature exists to surface would vanish on reload.
+     */
+    @Test(timeout = 30000)
+    public void successJobPreservesDiagnosticErrorMessageAcrossReload() throws Exception {
+        File dir = Files.createTempDirectory("lifecycle-success-msg").toFile();
+        dir.deleteOnExit();
+
+        String retirement = "Enforcement rule 'staging-skip' retired: violation is "
+                + "environment-determined and was not retried — every changed file was "
+                + "rejected by a staging guardrail this job cannot bypass";
+
+        JobStatsStore first = newStore(dir);
+        Instant submittedAt = Instant.parse("2026-08-22T12:00:00Z");
+        first.recordJobStarted("job-ok", "ws-1", "do the thing", "node-a", submittedAt.plusSeconds(60));
+        JobCompletionEvent success = JobCompletionEvent.success("job-ok", "do the thing");
+        success.setErrorMessage(retirement);
+        first.recordJobCompleted("ws-1", success);
+
+        JobCompletionEvent persisted = first.getJob("job-ok");
+        Assert.assertEquals(JobCompletionEvent.Status.SUCCESS, persisted.getStatus());
+        Assert.assertEquals("a SUCCESS row keeps its diagnostic message on read-back",
+                retirement, persisted.getErrorMessage());
+        first.close();
+
+        JobStatsStore second = newStore(dir);
+        try {
+            JobCompletionEvent reread = second.getJob("job-ok");
+            Assert.assertEquals("the status survives a reopen",
+                    JobCompletionEvent.Status.SUCCESS, reread.getStatus());
+            Assert.assertEquals("the diagnostic message survives a reopen",
+                    retirement, reread.getErrorMessage());
+        } finally {
+            second.close();
+        }
+    }
+
     /** An existing database opens again without error and old rows read back (migration safety). */
     @Test(timeout = 30000)
     public void existingDatabaseReopensWithNewColumns() throws Exception {
