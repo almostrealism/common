@@ -32,6 +32,7 @@ import org.almostrealism.audio.similarity.AudioSimilarityGraph;
 import org.almostrealism.audio.similarity.IncrementalSimilarityComputation;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.audio.similarity.PrototypeIndexData;
+import org.almostrealism.audio.similarity.SimilaritySearch;
 import org.almostrealism.concurrent.SuspendableThreadPoolExecutor;
 import org.almostrealism.io.ConsoleFeatures;
 
@@ -1136,6 +1137,20 @@ public class AudioLibrary implements ConsoleFeatures {
 	}
 
 	/**
+	 * Returns similarity scores between the given details and the items most likely
+	 * to be the most similar to it, scoring only the nearest items when the store's
+	 * nearest-neighbor index allows (see {@link SimilaritySearch#nearest}).
+	 *
+	 * @param details    the details to find matches for
+	 * @param candidates how many nearest items to score
+	 * @param excluded   identifiers of items to leave out
+	 * @return a map from item identifiers to similarity scores
+	 */
+	public Map<String, Double> getNearestSimilarities(WaveDetails details, int candidates, Set<String> excluded) {
+		return new SimilaritySearch(this).nearest(details, candidates, excluded);
+	}
+
+	/**
 	 * Computes and returns similarity scores for the audio provided by the given provider.
 	 *
 	 * @param provider the audio data provider to compute similarities for
@@ -1387,48 +1402,7 @@ public class AudioLibrary implements ConsoleFeatures {
 	 */
 	public WaveDetails computeSimilarities(WaveDetails details) {
 		if (details == null) return null;
-
-		try {
-			List<String> targetIds = new ArrayList<>(completeIdentifiers);
-			targetIds.remove(details.getIdentifier());
-
-			int batchSize = WaveDetailsFactory.SIMILARITY_BATCH_SIZE;
-
-			for (int start = 0; start < targetIds.size(); start += batchSize) {
-				int end = Math.min(start + batchSize, targetIds.size());
-
-				List<WaveDetails> batch = new ArrayList<>(end - start);
-				for (int i = start; i < end; i++) {
-					String id = targetIds.get(i);
-					if (details.getSimilarities().containsKey(id)) continue;
-
-					WaveDetails target = resolveDetails(id);
-					if (target != null) batch.add(target);
-				}
-
-				if (batch.isEmpty()) continue;
-
-				double[] similarities = factory.batchSimilarity(details, batch);
-
-				for (int i = 0; i < batch.size(); i++) {
-					WaveDetails target = batch.get(i);
-					double similarity = similarities[i];
-
-					if (Math.abs(similarity - 1.0) < 1e-5) {
-						warn("Identical features for distinct files");
-					}
-
-					details.getSimilarities().put(target.getIdentifier(), similarity);
-
-					if (details.getIdentifier() != null)
-						target.getSimilarities().put(details.getIdentifier(), similarity);
-				}
-			}
-		} catch (Exception e) {
-			warn("Failed to load similarities for " + details.getIdentifier(), e);
-		}
-
-		return details;
+		return new SimilaritySearch(this).compute(details, completeIdentifiers);
 	}
 
 	/**
