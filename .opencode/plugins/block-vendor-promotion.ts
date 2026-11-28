@@ -37,14 +37,21 @@ function toPayloads(tool: string, args: Record<string, unknown>): object[] {
  * One `Edit` payload per file an `apply_patch` touches, its removed (`-`)
  * lines as the old text and its added (`+`) lines as the new, so the core
  * judges only what the patch adds. opencode's patches use `*** Update File:` /
- * `*** Add File:` / `*** Delete File:` headers.
+ * `*** Add File:` / `*** Delete File:` headers, and an update may carry a
+ * `*** Move to:` line that renames the file. The payload is emitted for the
+ * destination path so a move out of a test directory is judged at its real
+ * (production) location, not exempted as a test source — the same handling
+ * `block-excessive-comments.ts` applies to this syntax.
  */
 function patchEdits(patchText: string): object[] {
-  const edits: { file: string, removed: string[], added: string[] }[] = []
+  const edits: { file: string, destination: string, removed: string[], added: string[] }[] = []
   for (const line of patchText.split(/\r?\n/)) {
     const header = /^\*\*\*\s+(?:Update|Add|Delete)\s+File:\s*(\S+)/.exec(line)
+    const move = /^\*\*\*\s+Move to:\s*(\S+)/.exec(line)
     if (header) {
-      edits.push({ file: header[1], removed: [], added: [] })
+      edits.push({ file: header[1], destination: "", removed: [], added: [] })
+    } else if (move && edits.length > 0) {
+      edits[edits.length - 1].destination = move[1]
     } else if (edits.length > 0 && line.startsWith("+")) {
       edits[edits.length - 1].added.push(line.slice(1))
     } else if (edits.length > 0 && line.startsWith("-")) {
@@ -52,7 +59,7 @@ function patchEdits(patchText: string): object[] {
     }
   }
   return edits.map(e => ({ tool_name: "Edit",
-    tool_input: { file_path: e.file, old_string: e.removed.join("\n"), new_string: e.added.join("\n") } }))
+    tool_input: { file_path: e.destination || e.file, old_string: e.removed.join("\n"), new_string: e.added.join("\n") } }))
 }
 
 /**

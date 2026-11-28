@@ -91,6 +91,19 @@ class FileEditTests(unittest.TestCase):
                       {"old_string": "c", "new_string": "Claude-Session: x"}]}}
         self.assertAction(payload, "block")
 
+    def test_a_markdown_link_credit_is_still_blocked(self):
+        """The vendor as the object of the preposition blocks even behind a ``[``."""
+        self.assertAction(write("docs/notes.md", "Generated with [Claude Code](https://x)\n"),
+                          "block")
+
+    def test_a_credit_verb_then_an_unrelated_vendor_mention_is_allowed(self):
+        """A line opening with a credit verb whose vendor word is incidental prose,
+        not the object of ``with``/``by``, is description rather than attribution."""
+        for line in ("Generated with the build tool; see CLAUDE.md for details",
+                     "Created by the pipeline, documented under claude-notes",
+                     "Produced by our own compiler, unlike Anthropic's offering"):
+            self.assertAction(write("docs/notes.md", "Body\n\n" + line + "\n"), "allow")
+
     def test_rules_that_describe_attribution_are_allowed(self):
         """CLAUDE.md names the trailers and the link shape without carrying them."""
         text = ("- a `Co-Authored-By:` / `Authored-By:` / `Assisted-By:` trailer\n"

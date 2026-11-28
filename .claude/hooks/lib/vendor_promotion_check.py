@@ -67,19 +67,27 @@ _LEADER = r"[^A-Za-z\n]*"
 #: The vendor names an attribution in this project's files must not credit.
 _VENDOR = r"(?:claude|anthropic)"
 
+#: In the tool-credit form the vendor must be the object of the ``with``/``by``
+#: preposition, so only non-letters may sit between them: whitespace, or the
+#: ``[`` and quote of a markdown link as in ``Generated with [Claude Code]``.
+#: This is like AuthorAttribution's ``INLINE_MARKER`` but admits that bracket.
+#: An intervening word ends the clause, which keeps a credit verb that merely
+#: mentions the vendor later in unrelated prose — ``Generated with the build
+#: tool; see CLAUDE.md`` — from reading as a credit.
+_CREDIT_GAP = r"[^A-Za-z\n]*"
+
 #: Attribution lines: a ``Claude-Session:`` trailer, a ``...-By:`` trailer that
 #: names the vendor, or a tool-credit line that names the vendor. The verb and
 #: vendor vocabulary follows AuthorAttribution in flowtree/runtime so a credit
 #: it rejects in a commit message is rejected here in a file too: ``Created by
 #: Claude Code`` and ``Generated with Anthropic`` are refused, not only
 #: ``Generated with Claude``.
-# TODO(review): the unbounded ``[^\n]*`` before the vendor can false-positive on a line that begins with a credit verb and only mentions claude (e.g. a CLAUDE.md reference) later; consider bounding the vendor to the credit clause.
 ATTRIBUTION_LINE = re.compile(
     r"^" + _LEADER + r"(?:"
     r"Claude-Session:[ \t]*\S"
     r"|(?:co[- ]?)?(?:authored|written|assisted)[- ]?by[ \t]*:[^\n]*" + _VENDOR
-    + r"|(?:generated|created|authored|produced|written|assisted)[- ]?(?:with|by)\b[^\n]*\b"
-    + _VENDOR + r"\b"
+    + r"|(?:generated|created|authored|produced|written|assisted)[- ]?(?:with|by)\b"
+    + _CREDIT_GAP + r"\b" + _VENDOR + r"\b"
     + r")", re.I | re.M)
 
 #: Directory names under which a file is a test source.

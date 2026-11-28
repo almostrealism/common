@@ -90,6 +90,10 @@ async function run(): Promise<void> {
     !(await threw(before, "apply_patch", { patchText: `*** Begin Patch\n*** Update File: docs/notes.md\n-${LINK}\n*** End Patch\n` })),
     "apply_patch that only removes a link should be allowed",
   )
+  expect(
+    await threw(before, "apply_patch", { patchText: `*** Begin Patch\n*** Update File: src/test/A.java\n*** Move to: src/main/java/A.java\n+${LINK}\n*** End Patch\n` }),
+    "apply_patch moving a test file to a production path while adding a link should block at the destination",
+  )
 
   // Claude_Docs connector-name mapping
   expect(
