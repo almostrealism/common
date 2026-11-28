@@ -17,15 +17,17 @@
 package org.almostrealism.ml.audio;
 
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.ml.ReferenceActivations;
-import org.almostrealism.ml.StateDictionary;
 import org.almostrealism.ml.tokenization.SentencePieceBPETokenizer;
-import org.almostrealism.util.TestSuiteBase;
+import org.almostrealism.model.Block;
+import org.almostrealism.model.CompiledModel;
+import org.almostrealism.model.Model;
 import org.junit.Test;
 
 import java.util.Arrays;
 import java.io.File;
 import java.io.IOException;
+import java.util.Random;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
 /**
@@ -54,37 +56,7 @@ import java.util.function.Consumer;
  * {@code export_tokenizer.py}; system property first, then environment variable. The tests log a
  * skip and return when any is absent.</p>
  */
-public class StableAudio3GenerationTest extends TestSuiteBase {
-
-	/** Candidate locations for the transformer weights. */
-	private static final String[] DIT_DIRS = {
-			System.getProperty("AR_SA3_DIT_WEIGHTS", System.getenv("AR_SA3_DIT_WEIGHTS")),
-			"/workspace/sa3-dit-weights"
-	};
-
-	/** Candidate locations for the autoencoder weights. */
-	private static final String[] AE_DIRS = {
-			System.getProperty("AR_SA3_AE_WEIGHTS", System.getenv("AR_SA3_AE_WEIGHTS")),
-			"/workspace/sa3-ae-weights"
-	};
-
-	/** Candidate locations for the conditioner weights. */
-	private static final String[] CONDITIONER_DIRS = {
-			System.getProperty("AR_SA3_CONDITIONER_WEIGHTS", System.getenv("AR_SA3_CONDITIONER_WEIGHTS")),
-			"/workspace/sa3-conditioner-weights"
-	};
-
-	/** Candidate locations for the prompt encoder weights. */
-	private static final String[] ENCODER_DIRS = {
-			System.getProperty("AR_T5GEMMA_WEIGHTS", System.getenv("AR_T5GEMMA_WEIGHTS")),
-			"/workspace/t5gemma-weights"
-	};
-
-	/** Candidate locations for the exported prompt tokenizer. */
-	private static final String[] TOKENIZER_PATHS = {
-			System.getProperty("AR_T5GEMMA_TOKENIZER", System.getenv("AR_T5GEMMA_TOKENIZER")),
-			"/workspace/t5gemma-tokenizer.bin"
-	};
+public class StableAudio3GenerationTest extends StableAudio3TestBase {
 
 	/** Duration to generate, in seconds. Short, since the cost is per latent frame. */
 	private static final double SECONDS = 2.0;
@@ -131,83 +103,125 @@ public class StableAudio3GenerationTest extends TestSuiteBase {
 	}
 
 	/**
-	 * The first existing candidate path, or {@code null} when none is present.
-	 *
-	 * @param candidates the paths to try, in order; a {@code null} entry is skipped
-	 * @return the first existing file, or {@code null}
-	 */
-	protected File firstFile(String[] candidates) {
-		for (String path : candidates) {
-			if (path == null) continue;
-
-			File file = new File(path);
-			if (file.isFile()) return file;
-		}
-
-		return null;
-	}
-
-	/**
-	 * Builds the released model from whichever weight directories are present and runs {@code body}
-	 * against it, logging a skip and returning when any weight set is absent.
-	 *
-	 * <p>Every dictionary is released on every path, including a failure while loading a later shard:
-	 * re-destroying a dictionary the model already owns is a no-op, so releasing all four frees the
-	 * conditioner and autoencoder weights the model does not own.</p>
+	 * Builds the released model for {@link #SECONDS}, with {@link #STEPS} sampling steps, and runs
+	 * {@code body} against it, logging a skip and returning when any weight set is absent.
 	 *
 	 * @param body what to do with the model
 	 * @throws IOException if a weight directory cannot be read
 	 */
 	protected void withModel(Consumer<StableAudio3> body) throws IOException {
-		File dit = ReferenceActivations.firstExisting(DIT_DIRS, "model.model.preprocess_conv.weight");
-		File ae = ReferenceActivations.firstExisting(AE_DIRS, "bottleneck.scaling_factor");
-		File conditioner = ReferenceActivations.firstExisting(CONDITIONER_DIRS,
-				"conditioner.conditioners.prompt.padding_embedding");
-		File encoder = ReferenceActivations.firstExisting(ENCODER_DIRS, "encoder.norm.weight");
+		withModel(SECONDS, (model, autoencoderWeights) -> body.accept(model.setSteps(STEPS)));
+	}
 
-		requireLocalResource("SA3 DiT weights (tried " + Arrays.toString(DIT_DIRS) + ")",
-				"AR_SA3_DIT_WEIGHTS", dit != null);
-		requireLocalResource("SA3 autoencoder weights (tried " + Arrays.toString(AE_DIRS) + ")",
-				"AR_SA3_AE_WEIGHTS", ae != null);
-		requireLocalResource("SA3 conditioner weights (tried " + Arrays.toString(CONDITIONER_DIRS) + ")",
-				"AR_SA3_CONDITIONER_WEIGHTS", conditioner != null);
-		requireLocalResource("T5Gemma encoder weights (tried " + Arrays.toString(ENCODER_DIRS) + ")",
-				"AR_T5GEMMA_WEIGHTS", encoder != null);
+	/**
+	 * A seeded generation produces exactly the same samples whether or not the compiled models
+	 * share memory between layer outputs: the kernels are the same and every output is read
+	 * before the layer that shares its memory writes, so the results must be bitwise identical.
+	 * Every graph of the generator is involved: the prompt encoder, the transformer and the
+	 * decoder.
+	 *
+	 * @throws IOException if a weight directory cannot be read
+	 */
+	@Test(timeout = 2400000)
+	public void generationIsIdenticalWithLayerBufferReuse() throws IOException {
+		double[] off = generateWithLayerBufferReuse(false);
+		if (off == null) return;
 
-		StateDictionary ditWeights = null;
-		StateDictionary conditionerWeights = null;
-		StateDictionary encoderWeights = null;
-		StateDictionary aeWeights = null;
-		StableAudio3 model = null;
+		double[] on = generateWithLayerBufferReuse(true);
+		assertEquals(off.length, on.length);
+		for (int i = 0; i < off.length; i++) {
+			assertEquals("sample " + i, off[i], on[i], 0.0);
+		}
+	}
+
+	/**
+	 * The autoencoder's encoder, compiled for inference the way a client compiles it for
+	 * blending, produces exactly the same latent from a seeded clip whether or not its layer
+	 * outputs share memory.
+	 *
+	 * @throws IOException if a weight directory cannot be read
+	 */
+	@Test(timeout = 2400000)
+	public void encoderIsIdenticalWithLayerBufferReuse() throws IOException {
+		withModel(SECONDS, (model, autoencoderWeights) -> {
+			PackedCollection clip = null;
+			try {
+				Block block = SAMEAutoEncoder.small(autoencoderWeights).encoder(1, model.getAudioLength());
+				clip = new PackedCollection(block.getInputShape()).randnFill(new Random(13));
+
+				double[] off = encodeWithLayerBufferReuse(block, false, clip);
+				double[] on = encodeWithLayerBufferReuse(
+						SAMEAutoEncoder.small(autoencoderWeights).encoder(1, model.getAudioLength()), true, clip);
+
+				assertEquals(off.length, on.length);
+				for (int i = 0; i < off.length; i++) {
+					assertEquals("latent " + i, off[i], on[i], 0.0);
+				}
+			} finally {
+				if (clip != null) clip.destroy();
+			}
+		});
+	}
+
+	/**
+	 * Compiles an encoder block for inference with layer buffer reuse on or off, and with the
+	 * verification of the assignment on, and encodes the clip.
+	 *
+	 * @param block the encoder block
+	 * @param reuse whether layer outputs share memory
+	 * @param clip  the audio to encode
+	 * @return the latent
+	 */
+	private double[] encodeWithLayerBufferReuse(Block block, boolean reuse, PackedCollection clip) {
+		boolean enabled = CompiledModel.enableLayerBufferReuse;
+		boolean verify = CompiledModel.enableLayerBufferReuseVerification;
+		CompiledModel encoder = null;
 
 		try {
-			ditWeights = new StateDictionary(dit.getPath());
-			conditionerWeights = new StateDictionary(conditioner.getPath());
-			encoderWeights = new StateDictionary(encoder.getPath());
-			aeWeights = new StateDictionary(ae.getPath());
-
-			model = StableAudio3.small(ditWeights, conditionerWeights, encoderWeights, aeWeights, SECONDS)
-					.setSteps(STEPS);
-
-			body.accept(model);
+			CompiledModel.enableLayerBufferReuse = reuse;
+			CompiledModel.enableLayerBufferReuseVerification = true;
+			Model model = new Model(block.getInputShape());
+			model.add(block);
+			encoder = model.compile(false);
+			assertEquals(reuse, encoder.getLayerOutputPool() != null);
+			return encoder.forward(clip).toArray();
 		} finally {
-			if (model != null) {
-				model.destroy();
-			}
-
-			if (ditWeights != null) {
-				ditWeights.destroy();
-			}
-			if (conditionerWeights != null) {
-				conditionerWeights.destroy();
-			}
-			if (encoderWeights != null) {
-				encoderWeights.destroy();
-			}
-			if (aeWeights != null) {
-				aeWeights.destroy();
-			}
+			CompiledModel.enableLayerBufferReuse = enabled;
+			CompiledModel.enableLayerBufferReuseVerification = verify;
+			if (encoder != null) encoder.destroy();
 		}
+	}
+
+	/**
+	 * Generates a seeded clip from token ids with layer buffer reuse on or off, and with the
+	 * verification of the layer output assignment on.
+	 *
+	 * @param reuse whether compiled models share memory between layer outputs
+	 * @return the samples, or {@code null} if the weights are absent
+	 * @throws IOException if a weight directory cannot be read
+	 */
+	private double[] generateWithLayerBufferReuse(boolean reuse) throws IOException {
+		boolean enabled = CompiledModel.enableLayerBufferReuse;
+		boolean verify = CompiledModel.enableLayerBufferReuseVerification;
+		AtomicReference<double[]> result = new AtomicReference<>();
+
+		try {
+			CompiledModel.enableLayerBufferReuse = reuse;
+			CompiledModel.enableLayerBufferReuseVerification = true;
+			withModel(model -> {
+				PackedCollection audio = model.generate(7, new long[]{5, 7, 9, 11}, SECONDS).evaluate();
+				try {
+					result.set(audio.toArray());
+				} finally {
+					audio.destroy();
+				}
+			});
+		} finally {
+			CompiledModel.enableLayerBufferReuse = enabled;
+			CompiledModel.enableLayerBufferReuseVerification = verify;
+		}
+
+		return result.get();
 	}
 
 	/**

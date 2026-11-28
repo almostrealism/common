@@ -88,6 +88,9 @@ public class OperationWithInfo implements Operation, OperationInfo {
 	public Collection<Process<?, ?>> getChildren() { return operation.getChildren(); }
 
 	@Override
+	public Collection<Process<?, ?>> getDestinations() { return operation.getDestinations(); }
+
+	@Override
 	public Runnable get() { return new RunnableWithInfo(getMetadata(), operation.get()); }
 
 	@Override

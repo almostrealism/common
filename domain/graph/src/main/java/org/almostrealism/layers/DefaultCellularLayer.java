@@ -102,8 +102,26 @@ public class DefaultCellularLayer implements CellularLayer, CodeFeatures, Learni
 	/** The recorded forward-pass input (when input tracking is enabled). */
 	private PackedCollection input;
 
-	/** The recorded forward-pass output. */
+	/**
+	 * The recorded forward-pass output. It is created when it is first needed rather than
+	 * by {@link #init}: by the first push of this layer's cells, or by {@link #getOutput()}.
+	 */
 	private PackedCollection output;
+
+	/**
+	 * Whether this layer records its output, as requested from {@link #init}. The
+	 * {@link #output} field cannot serve as this flag, because the buffer is created lazily.
+	 */
+	private boolean outputTracking;
+
+	/** Whether the output must keep a buffer of its own, never shared with other layers. */
+	private boolean outputRetained;
+
+	/** The pool that created {@link #output} during a compile, or {@code null} if this layer created it. */
+	private LayerOutputPool outputPool;
+
+	/** Whether {@link #output} shares memory with other layers' outputs under {@link #outputPool}. */
+	private boolean outputShared;
 
 	/**
 	 * Creates a layer with a no-op setup operation and no learnable weights.
@@ -208,11 +226,13 @@ public class DefaultCellularLayer implements CellularLayer, CodeFeatures, Learni
 	/**
 	 * Initializes tracking buffers and wires up the entry/exit pipeline.
 	 *
-	 * <p>When {@code outputTracking} is true, a {@link PackedCollection} is allocated for
-	 * the output and the forward cell is wrapped so that every push copies its result into
-	 * that buffer. When {@code inputTracking} is additionally true, a second buffer is
-	 * allocated for the input and the entry cell copies each incoming value before forwarding
-	 * it. If neither is requested the method returns immediately without allocating buffers.</p>
+	 * <p>When {@code outputTracking} is true, the forward cell is wrapped so that every push
+	 * copies its result into an output buffer. That buffer is not allocated here: it is created
+	 * the first time a push of this layer's cells, or a call to {@link #getOutput()}, needs it,
+	 * and while a {@link LayerOutputPool} is in use for a compile it is created by that pool.
+	 * When {@code inputTracking} is additionally true, a buffer is allocated for the input and
+	 * the entry cell copies each incoming value before forwarding it. If neither is requested
+	 * the method returns immediately without allocating buffers.</p>
 	 *
 	 * @param inputShape    the expected shape of data arriving at this layer's forward cell
 	 * @param inputTracking whether to capture the forward-pass input in a buffer
@@ -230,7 +250,7 @@ public class DefaultCellularLayer implements CellularLayer, CodeFeatures, Learni
 
 		this.inputTrackingEnabled = inputTracking;
 		this.input = inputTracking ? new PackedCollection(inputShape) : null;
-		this.output = outputTracking ? new PackedCollection(outputShape) : null;
+		this.outputTracking = outputTracking;
 
 		this.entry = Cell.of((in, next) -> {
 			if (this.input == null) {
@@ -251,7 +271,7 @@ public class DefaultCellularLayer implements CellularLayer, CodeFeatures, Learni
 		});
 		this.entry.setReceptor(forward);
 
-		this.exit = Cell.of((in, next) -> output(in, p(output)));
+		this.exit = Cell.of((in, next) -> output(in, p(outputForPush())));
 		this.forward.setReceptor(exit);
 	}
 
@@ -276,7 +296,7 @@ public class DefaultCellularLayer implements CellularLayer, CodeFeatures, Learni
 	 */
 	@Override
 	public void setInputTracking(boolean inputTracking) {
-		if (this.output == null) {
+		if (!this.outputTracking) {
 			throw new IllegalStateException("Layer has not been initialized");
 		}
 
@@ -294,6 +314,14 @@ public class DefaultCellularLayer implements CellularLayer, CodeFeatures, Learni
 			this.input = null;
 		}
 	}
+
+	/**
+	 * Returns whether the entry cell records forward-pass inputs, as last set by {@link #init}
+	 * or {@link #setInputTracking(boolean)}. A compile without backpropagation turns it off.
+	 *
+	 * @return true when inputs are recorded for the backward pass
+	 */
+	public boolean isInputTracking() { return inputTrackingEnabled; }
 
 	/**
 	 * Builds the output recording operation, optionally appending a monitor push.
@@ -326,10 +354,125 @@ public class DefaultCellularLayer implements CellularLayer, CodeFeatures, Learni
 
 	/**
 	 * Returns the recorded forward-pass output, or {@code null} if output tracking is disabled.
+	 * The buffer is created by this call if no push has created it yet.
+	 *
+	 * <p>The output of a layer in a model compiled for inference with layer buffer reuse
+	 * shares memory with the outputs of other layers, and holds this layer's values only
+	 * between this layer's write and the next write by a layer sharing it. Such an output is
+	 * not returned: a caller that needs it after a pass calls {@link #retainOutput()} before
+	 * the model is compiled.</p>
 	 *
 	 * @return the output buffer populated during the last forward pass, or {@code null}
+	 * @throws IllegalStateException if the output shares memory with other layers' outputs
 	 */
-	public PackedCollection getOutput() { return output; }
+	public PackedCollection getOutput() {
+		if (outputShared) {
+			throw new IllegalStateException("The output of " + getName() + " shares memory with other " +
+					"layers under inference layer buffer reuse, and is overwritten during each pass; " +
+					"call retainOutput() on the layer, or retain the outputs of its Model, before compiling");
+		}
+
+		if (output == null && outputTracking) {
+			output = new PackedCollection(outputShape);
+		}
+
+		return output;
+	}
+
+	/**
+	 * Returns the output buffer for a push of this layer's cells, creating it if needed: from
+	 * the {@link LayerOutputPool} in use for the current compile when there is one and this
+	 * layer's output is not {@link #retainOutput() retained}, and as a buffer of its own
+	 * otherwise.
+	 *
+	 * <p>An output that an earlier compile's pool created without sharing it is memory of that
+	 * pool, released when the compiled model holding the pool is destroyed. A push under any
+	 * other pool, or under none, therefore replaces it with a new output, leaving the earlier
+	 * compiled model with the one it was compiled against.</p>
+	 *
+	 * @return the output buffer the pushed operations write and read
+	 * @throws IllegalStateException if the output shares memory under a pool other than the one
+	 *                               in use, which is to say the layer belongs to a model that
+	 *                               was already compiled for inference with buffer reuse
+	 */
+	private PackedCollection outputForPush() {
+		LayerOutputPool current = LayerOutputPool.getCurrent();
+
+		if (outputShared && outputPool != current) {
+			throw new IllegalStateException("The output of " + getName() + " shares memory with other " +
+					"layers of a model compiled for inference with layer buffer reuse; that model " +
+					"cannot be compiled again");
+		}
+
+		if (output == null || (outputPool != null && outputPool != current)) {
+			outputPool = outputRetained ? null : current;
+			output = outputPool == null ? new PackedCollection(outputShape) : outputPool.allocate(this);
+		}
+
+		return output;
+	}
+
+	/**
+	 * Keeps a buffer of this layer's own for its output, so that it is never shared with other
+	 * layers when the model is compiled for inference and {@link #getOutput()} remains valid
+	 * after a pass. It must be called before the model is compiled.
+	 *
+	 * @throws IllegalStateException if the output already shares memory with other layers
+	 */
+	public void retainOutput() {
+		if (outputShared) {
+			throw new IllegalStateException("The output of " + getName() + " is already shared");
+		}
+
+		this.outputRetained = true;
+	}
+
+	/**
+	 * Returns whether {@link #retainOutput()} has been called on this layer.
+	 *
+	 * @return true when the output keeps a buffer of its own
+	 */
+	public boolean isOutputRetained() { return outputRetained; }
+
+	/**
+	 * Returns whether the output of this layer shares memory with other layers' outputs,
+	 * which is the case for most layers of a model compiled for inference with layer buffer
+	 * reuse. {@link #getOutput()} throws while it does.
+	 *
+	 * @return true when the output is shared
+	 */
+	public boolean isOutputShared() { return outputShared; }
+
+	/**
+	 * Returns the {@link LayerOutputPool} that created this layer's output, or {@code null}
+	 * when the layer created it, or has none yet.
+	 *
+	 * @return the pool that owns the output's memory, or {@code null}
+	 */
+	public LayerOutputPool getOutputPool() { return outputPool; }
+
+	/**
+	 * Records that the output this layer was given by its {@link LayerOutputPool} now shares
+	 * memory with other layers' outputs.
+	 */
+	void markOutputShared() { this.outputShared = true; }
+
+	/**
+	 * Detaches this layer from the given {@link LayerOutputPool}, which is releasing its memory,
+	 * when the layer's current output is one that pool created. The layer then holds no output,
+	 * as if it had never been pushed: {@link #getOutput()} creates a buffer of its own instead of
+	 * returning freed memory, and the layer may be compiled again even if its output was shared.
+	 * An output a later push replaced, under another pool or none, is left as it is.
+	 *
+	 * @param pool the pool being released
+	 */
+	void releaseOutput(LayerOutputPool pool) {
+		if (outputPool != pool) return;
+
+		output = null;
+		outputPool = null;
+		outputShared = false;
+	}
 
 	/** {@inheritDoc} */
 	@Override
@@ -365,13 +508,13 @@ public class DefaultCellularLayer implements CellularLayer, CodeFeatures, Learni
 	 */
 	@Override
 	public Cell<PackedCollection> getForward() {
-		if (this.output == null) {
+		if (!this.outputTracking) {
 			return this.forward;
 		} else if (fw == null) {
 			fw = Cell.of((in, next) -> {
 				OperationList op = new OperationList(getName() + " Layer (Forward)");
 				op.add(entry.push(in));
-				if (next != null) op.add(next.push(p(output)));
+				if (next != null) op.add(next.push(p(outputForPush())));
 				return op;
 			});
 		}
@@ -426,6 +569,8 @@ public class DefaultCellularLayer implements CellularLayer, CodeFeatures, Learni
 	 *
 	 * <p>Releases all resources held by this layer, including the forward and backward cells,
 	 * the input/output tracking buffers, the setup operation, and all weight collections.
+	 * An output created by a {@link LayerOutputPool} is memory of that pool, and is released
+	 * with it rather than here.
 	 * After this call the layer is no longer usable.</p>
 	 */
 	@Override
@@ -433,7 +578,7 @@ public class DefaultCellularLayer implements CellularLayer, CodeFeatures, Learni
 		Destroyable.destroy(forward);
 		Destroyable.destroy(backward);
 		Destroyable.destroy(input);
-		Destroyable.destroy(output);
+		if (outputPool == null) Destroyable.destroy(output);
 		Destroyable.destroy(setup);
 
 		if (weights != null) {

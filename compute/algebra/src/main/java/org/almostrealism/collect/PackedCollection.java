@@ -246,7 +246,7 @@ public class PackedCollection extends MemoryDataAdapter
 	/**
 	 * The number of elements of backing memory, fixed when the collection is created so that
 	 * bounds checks on every write do not ask the ordering again (which may read its index
-	 * collections back to the host); see {@link #computePhysicalLength()}.
+	 * collections back to the host); see {@link #physicalLength(TraversalPolicy)}.
 	 */
 	private final long physicalLength;
 
@@ -344,7 +344,7 @@ public class PackedCollection extends MemoryDataAdapter
 		}
 
 		this.shape = shape.traverse(order).traverse(traversalAxis);
-		this.physicalLength = computePhysicalLength();
+		this.physicalLength = physicalLength(this.shape);
 		setDelegate(delegate, delegateOffset);
 		init();
 	}
@@ -365,15 +365,17 @@ public class PackedCollection extends MemoryDataAdapter
 	}
 
 	/**
-	 * Computes the number of elements of backing memory for this collection's shape: the
-	 * {@link TraversalOrdering#getLength() physical length} of the shape's ordering when it
+	 * Computes the number of elements of backing memory a collection of the given shape needs:
+	 * the {@link TraversalOrdering#getLength() physical length} of the shape's ordering when it
 	 * reports one (at least one element, since memory cannot be empty), so that a compact or
 	 * sparse collection stores only its entries, and otherwise the
-	 * {@link TraversalPolicy#getTotalInputSizeLong() total input size}.
+	 * {@link TraversalPolicy#getTotalInputSizeLong() total input size}. Code that supplies the
+	 * delegate of a new collection sizes it with this.
 	 *
+	 * @param shape the shape of the collection
 	 * @return the length of the backing memory
 	 */
-	private long computePhysicalLength() {
+	public static long physicalLength(TraversalPolicy shape) {
 		OptionalInt physical = shape.getOrder() == null ? OptionalInt.empty() : shape.getOrder().getLength();
 		return physical.isPresent() ? Math.max(1, physical.getAsInt()) : shape.getTotalInputSizeLong();
 	}
@@ -381,7 +383,7 @@ public class PackedCollection extends MemoryDataAdapter
 	/**
 	 * {@inheritDoc}
 	 *
-	 * <p>This is the {@link #computePhysicalLength() length of the backing memory},
+	 * <p>This is the {@link #physicalLength(TraversalPolicy) length of the backing memory},
 	 * which is what is allocated for a collection that has no delegate.</p>
 	 */
 	@Override

@@ -30,12 +30,16 @@ import org.almostrealism.collect.computations.CollectionContainer;
 import org.almostrealism.graph.Cell;
 import org.almostrealism.graph.Receptor;
 import org.almostrealism.hardware.OperationList;
+import org.almostrealism.hardware.mem.ExecutionStep;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
+import org.almostrealism.io.SystemUtils;
 import org.almostrealism.layers.LayerFeatures;
+import org.almostrealism.layers.LayerOutputPool;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Supplier;
 
 /**
  * An optimized, executable version of a {@link Model} that is ready for inference
@@ -95,6 +99,23 @@ import java.util.List;
  * @author Michael Murray
  */
 public class CompiledModel implements Destroyable, CodeFeatures {
+	/**
+	 * Whether a compile without backpropagation shares memory between layers whose outputs
+	 * are never live at the same time (see {@link LayerOutputPool}). Read from
+	 * {@code AR_GRAPH_LAYER_BUFFER_REUSE}; on unless that is set to {@code disabled}. It exists
+	 * for equivalence runs and for bisecting.
+	 */
+	public static boolean enableLayerBufferReuse =
+			SystemUtils.isEnabled("AR_GRAPH_LAYER_BUFFER_REUSE").orElse(true);
+
+	/**
+	 * Whether a compile that shares layer output memory checks, after assigning it, that no
+	 * step of the forward pass touches two outputs that share memory. Read from
+	 * {@code AR_GRAPH_LAYER_BUFFER_REUSE_VERIFY}; off by default.
+	 */
+	public static boolean enableLayerBufferReuseVerification =
+			SystemUtils.isEnabled("AR_GRAPH_LAYER_BUFFER_REUSE_VERIFY").orElse(false);
+
 	/** Containers of the inputs the forward pass reads (primary followed by auxiliary). */
 	private final List<InputContainer> inputs;
 	/** The collection the forward pass writes the model output into. */
@@ -111,6 +132,9 @@ public class CompiledModel implements Destroyable, CodeFeatures {
 	private final PackedCollection inputGradient;
 	/** Compiled backward-pass operation; {@code null} when backprop is disabled. */
 	private final Runnable backward;
+
+	/** The memory holding the layer outputs of the forward pass, when they are pooled; may be {@code null}. */
+	private final LayerOutputPool layerOutputs;
 
 	/**
 	 * Creates a new compiled model with all required components.
@@ -129,6 +153,28 @@ public class CompiledModel implements Destroyable, CodeFeatures {
 							Runnable setup, Runnable forward,
 							InputContainer outputGradient, PackedCollection inputGradient,
 							Runnable backward) {
+		this(inputs, output, setup, forward, outputGradient, inputGradient, backward, null);
+	}
+
+	/**
+	 * Creates a new compiled model whose forward pass keeps its layer outputs in the given pool.
+	 *
+	 * @param inputs         containers of all inputs the forward pass reads (primary + auxiliary)
+	 * @param output         the collection the forward pass writes the output into
+	 * @param setup          the setup/reset operation
+	 * @param forward        the compiled forward pass operation
+	 * @param outputGradient container of the gradient with respect to the output that the backward pass reads
+	 * @param inputGradient  the collection the backward pass writes the gradient with respect to the
+	 *                       input into, or {@code null} if the model does not return it
+	 * @param backward       the compiled backward pass operation, or {@code null} without backprop
+	 * @param layerOutputs   the pool holding the layer outputs, which this model releases when it is
+	 *                       destroyed, or {@code null} if the layers hold their own
+	 */
+	protected CompiledModel(List<InputContainer> inputs, PackedCollection output,
+							Runnable setup, Runnable forward,
+							InputContainer outputGradient, PackedCollection inputGradient,
+							Runnable backward, LayerOutputPool layerOutputs) {
+		this.layerOutputs = layerOutputs;
 		this.inputs = inputs;
 		this.output = output;
 		this.setup = setup;
@@ -174,6 +220,17 @@ public class CompiledModel implements Destroyable, CodeFeatures {
 	 * @return the output collection
 	 */
 	public PackedCollection getOutput() { return output; }
+
+	/**
+	 * Returns the pool that holds the layer outputs of the forward pass, or {@code null} when
+	 * the model was compiled with backpropagation, with {@link #enableLayerBufferReuse} off, or
+	 * with its {@link Model#setLayerOutputsRetained(boolean) layer outputs retained}. A pool that
+	 * fell back to one buffer per layer is still returned; see
+	 * {@link LayerOutputPool#getFallbackReason()}.
+	 *
+	 * @return the layer output pool, or {@code null}
+	 */
+	public LayerOutputPool getLayerOutputPool() { return layerOutputs; }
 
 	/**
 	 * Executes the forward pass with the given inputs: the pass is issued as by
@@ -266,11 +323,15 @@ public class CompiledModel implements Destroyable, CodeFeatures {
 	 * reused or recompiled afterward — a later compilation would wire its backward pass
 	 * to released memory and fail with a {@link NullPointerException}. Build a fresh
 	 * {@link Model} if another compilation is needed.</p>
+	 *
+	 * <p>The {@link #getLayerOutputPool() layer output pool}, when there is one, is released
+	 * too, and the layers it gave outputs to no longer refer to them.</p>
 	 */
 	@Override
 	public void destroy() {
 		Destroyable.destroy(forward);
 		Destroyable.destroy(backward);
+		Destroyable.destroy(layerOutputs);
 	}
 
 	/**
@@ -296,6 +357,20 @@ public class CompiledModel implements Destroyable, CodeFeatures {
 
 	/**
 	 * Compiles the given model, optionally enabling backpropagation and gradient retrieval.
+	 *
+	 * <p>Without backpropagation, the layer outputs of the forward pass are kept in a
+	 * {@link LayerOutputPool}, which shares memory between layers whose outputs are never live
+	 * at the same time. The cells are pushed with the pool in use, the forward list is optimized,
+	 * and the pool assigns memory from the {@link ExecutionStep}s of the optimized list before it
+	 * is compiled. This is skipped when {@link #enableLayerBufferReuse} is off, when the model's
+	 * {@link Model#setLayerOutputsRetained(boolean) layer outputs are retained}, and while
+	 * {@link OperationList#enableAutomaticOptimization} is on, because that flag lets compiling a
+	 * list regroup it after the analysis. A model compiled this way cannot be compiled again: a
+	 * later push of a layer whose output is shared throws. The returned model owns the pool; a
+	 * compile that throws releases it before the exception propagates, and also restores the
+	 * receptors this compile attached to the last forward cell and, when the input gradient is
+	 * returned, to the first backward cell, releasing the output buffers they wrote into, so the
+	 * model can be compiled again without running the failed compile's receivers.</p>
 	 *
 	 * @param model          the model to compile
 	 * @param backprop       {@code true} to compile the backward pass
@@ -332,10 +407,12 @@ public class CompiledModel implements Destroyable, CodeFeatures {
 		}
 
 		PackedCollection gradOut;
+		Cell<PackedCollection> firstBackward = returnGradient ? model.firstBlock().getBackward() : null;
+		Receptor<PackedCollection> existingBackwardReceptor = returnGradient ? firstBackward.getReceptor() : null;
 
 		if (returnGradient) {
 			gradOut = new PackedCollection(model.firstBlock().getInputShape());
-			model.firstBlock().getBackward().setReceptor(out ->
+			firstBackward.setReceptor(out ->
 					Ops.o().a("Model Backward Output", Ops.o().p(gradOut), out));
 		} else {
 			gradOut = null;
@@ -346,31 +423,57 @@ public class CompiledModel implements Destroyable, CodeFeatures {
 			model.setInputTracking(false);
 		}
 
-		List<Cell<PackedCollection>> cells = model.forward();
-		OperationList forward = new OperationList("CompiledModel Forward", model.getComputeRequirements());
-		for (int i = cells.size() - 1; i >= 0; i--) {
-			forward.add(cells.get(i).push(inputs.get(i)));
+		boolean reuse = !backprop && enableLayerBufferReuse && !model.isLayerOutputsRetained()
+				&& !OperationList.enableAutomaticOptimization;
+		LayerOutputPool layerOutputs = reuse ? new LayerOutputPool() : null;
+
+		Supplier<ParallelProcess<?, Runnable>> build = () -> {
+			List<Cell<PackedCollection>> cells = model.forward();
+			OperationList forward = new OperationList("CompiledModel Forward", model.getComputeRequirements());
+			for (int i = cells.size() - 1; i >= 0; i--) {
+				forward.add(cells.get(i).push(inputs.get(i)));
+			}
+
+			return forward.flatten().optimize();
+		};
+
+		try {
+			ParallelProcess<?, Runnable> p = layerOutputs == null ? build.get() : layerOutputs.use(build);
+
+			if (layerOutputs != null && layerOutputs.assign(ExecutionStep.of(p))
+					&& enableLayerBufferReuseVerification) {
+				layerOutputs.verify();
+			}
+
+			ParallelProcess<?, Runnable> q;
+
+			if (backprop) {
+				OperationList backward = new OperationList("CompiledModel Backward", model.getComputeRequirements());
+				backward.add(model.backward().push(outputGradient));
+				q = backward.flatten().optimize();
+			} else {
+				q = null;
+			}
+
+			if (p instanceof OperationList) ((OperationList) p).setProfile(profile);
+			if (q instanceof OperationList) ((OperationList) q).setProfile(profile);
+
+			CompiledModel compiled = new CompiledModel(inputs, output, setup, p.get(),
+					outputGradient, gradOut, q == null ? null : q.get(), layerOutputs);
+			compiled.reset();
+			return compiled;
+		} catch (RuntimeException | Error e) {
+			if (layerOutputs != null) layerOutputs.destroy();
+			lastForward.setReceptor(existingReceptor);
+			output.destroy();
+
+			if (returnGradient) {
+				firstBackward.setReceptor(existingBackwardReceptor);
+				gradOut.destroy();
+			}
+
+			throw e;
 		}
-
-		ParallelProcess<?, Runnable> p = forward.flatten().optimize();
-
-		ParallelProcess<?, Runnable> q;
-
-		if (backprop) {
-			OperationList backward = new OperationList("CompiledModel Backward", model.getComputeRequirements());
-			backward.add(model.backward().push(outputGradient));
-			q = backward.flatten().optimize();
-		} else {
-			q = null;
-		}
-
-		if (p instanceof OperationList) ((OperationList) p).setProfile(profile);
-		if (q instanceof OperationList) ((OperationList) q).setProfile(profile);
-
-		CompiledModel compiled = new CompiledModel(inputs, output, setup, p.get(),
-				outputGradient, gradOut, q == null ? null : q.get());
-		compiled.reset();
-		return compiled;
 	}
 
 	/**

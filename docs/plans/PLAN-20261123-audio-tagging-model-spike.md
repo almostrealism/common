@@ -353,7 +353,13 @@ exists".
    repository names that cap for Metal. The approver should identify the work
    (or the cap value) so success criterion 2 is checkable; until then the
    findings should report absolute bytes and the `AR_HARDWARE_MEMORY_SCALE`
-   tier.
+   tier. The likely candidate is `PLAN-20261125-inference-layer-buffer-reuse.md`
+   (completed), the plan to share layer output buffers in models compiled for
+   inference. It sets no cap: it records Stable Audio 3 before and after
+   measurements at `AR_HARDWARE_MEMORY_SCALE=7` on Metal, where text generation
+   plus blend at rest falls from 12,394 MB to 3,990 MB tracked (14.5 GB to
+   5.9 GB physical). That after-measurement is the reference point for the
+   memory beside the spike's model.
 8. **Origin of the ~100–200 vocabulary band and of the thresholds' purpose.**
    The band comes from the task, not from any measurement; the spike can only
    propose a size within it. "Matching-sample count" presumes a library-level

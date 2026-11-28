@@ -105,6 +105,15 @@ public class MemoryDataDestinationProducer<T extends MemoryData> extends Dynamic
 		return new MemoryDataDestination<>(size -> getDestinationFactory().apply(size));
 	}
 
+	/**
+	 * Returns false: a destination producer touches only the memory it allocates for the
+	 * result of the process it serves.
+	 *
+	 * @return false
+	 */
+	@Override
+	public boolean hasHiddenMemory() { return false; }
+
 	@Override
 	public void destroy() {
 		super.destroy();

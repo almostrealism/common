@@ -38,6 +38,7 @@ import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.Scope;
 import org.almostrealism.hardware.computations.Abort;
 import org.almostrealism.hardware.computations.Assignment;
+import org.almostrealism.hardware.mem.ExecutionStep;
 import org.almostrealism.hardware.mem.MemoryRegionList;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
@@ -928,7 +929,7 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 					((OperationList) opt).autoOptimized = true;
 				}
 				return opt.get();
-			} else if (isComputation() && (enableNonUniformCompilation || isUniform())) {
+			} else if (isCompiledAsKernel()) {
 				AcceleratedComputationOperation<Void> op = compileRunnable(this);
 				op.load();
 				return op;
@@ -950,6 +951,47 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 				Hardware.getLocalHardware().getComputer().popRequirements();
 			}
 		}
+	}
+
+	/**
+	 * Returns whether {@link #get(OperationProfile)} compiles this list into one kernel rather
+	 * than running its members one by one: every member is a computation
+	 * ({@link #isComputation()}) and the list is uniform, unless
+	 * {@link #enableNonUniformCompilation} lifts the second condition.
+	 *
+	 * <p>When {@link #enableAutomaticOptimization} is on, {@link #get(OperationProfile)}
+	 * re-optimizes a non-uniform list before applying this test, so the grouping it finally
+	 * runs is decided inside that call.</p>
+	 *
+	 * @return true when this list runs as a single kernel
+	 */
+	public boolean isCompiledAsKernel() {
+		return isComputation() && (enableNonUniformCompilation || isUniform());
+	}
+
+	/**
+	 * Returns the {@link ExecutionStep}s of this list, in the order {@link #get()} runs them.
+	 * A list that {@link #isCompiledAsKernel() compiles into one kernel} is one step; any other
+	 * list contributes the steps of each member in turn, with a nested list treated by the same
+	 * rule and every other member as one step. Functionally empty lists contribute nothing.
+	 * Nothing is compiled or run.
+	 *
+	 * <p>The steps describe the list as it stands. When {@link #enableAutomaticOptimization} is
+	 * on, {@link #get()} may regroup a non-uniform list, so the result does not describe what
+	 * runs and a caller that relies on it should not proceed.</p>
+	 *
+	 * @return the steps of this list
+	 */
+	public List<ExecutionStep> getExecutionSteps() {
+		if (isFunctionallyEmpty()) return List.of();
+		if (isCompiledAsKernel()) return List.of(new ExecutionStep(this));
+
+		List<ExecutionStep> steps = new ArrayList<>();
+		for (Supplier<Runnable> member : this) {
+			steps.addAll(ExecutionStep.of(member));
+		}
+
+		return steps;
 	}
 
 	/**
@@ -1062,6 +1104,20 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 		return functionalMembers()
 				.map(Process::asProcess)
 				.collect(Collectors.toList());
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>A list writes what each of its members writes.</p>
+	 */
+	@Override
+	public Collection<Process<?, ?>> getDestinations() {
+		List<Process<?, ?>> destinations = new ArrayList<>();
+		for (Process<?, ?> member : getChildren()) {
+			destinations.addAll(member.getDestinations());
+		}
+		return destinations;
 	}
 
 	/**

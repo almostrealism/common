@@ -286,6 +286,21 @@ public class MemoryDataCopy implements ParallelProcess<Process<?, Runnable>, Run
 	/**
 	 * {@inheritDoc}
 	 *
+	 * <p>A copy created from producers writes its target producer. A copy created from raw
+	 * suppliers or fixed {@link MemoryData} exposes no target, and reports none.</p>
+	 */
+	@Override
+	public Collection<Process<?, ?>> getDestinations() {
+		if (targetProducer instanceof Process) {
+			return List.of((Process<?, ?>) targetProducer);
+		}
+
+		return Collections.emptyList();
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
 	 * <p>Exposes any {@link Producer}-backed source or target (in that order)
 	 * as child processes, so the optimization cascade can recurse into the
 	 * producer trees that supply this copy's memory. When constructed with

@@ -357,6 +357,16 @@ public abstract class ComputationBase<I, O, T>
 	}
 
 	/**
+	 * Returns false: the generated code of a computation touches only its arguments, which
+	 * are its {@link #getChildren() children}, and its own result. Whether an argument hides
+	 * memory is a question for that child.
+	 *
+	 * @return false
+	 */
+	@Override
+	public boolean hasHiddenMemory() { return false; }
+
+	/**
 	 * Returns the output variable for this computation.
 	 * The default implementation returns {@code null}, indicating no explicit output variable.
 	 * Subclasses may override to provide a specific output variable.
