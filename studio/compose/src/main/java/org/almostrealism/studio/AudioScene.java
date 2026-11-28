@@ -1281,6 +1281,11 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 	 * It builds a real-time runner for the one channel, ticks it for {@code frames}
 	 * frames, and flushes the output file.</p>
 	 *
+	 * <p>The runner and the output are reset and destroyed before returning, whether or not the
+	 * render succeeded, so the output's timeline buffer is released rather than left reachable
+	 * through the compiled-kernel caches. The releases run through {@link Destroyable#releaseAll},
+	 * so one failing reset or destroy does not skip the rest.</p>
+	 *
 	 * @param channel    the channel index to render
 	 * @param frames     the number of audio frames to render
 	 * @param outputPath the wav file path to write
@@ -1289,11 +1294,11 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 	public String renderChannel(int channel, int frames, String outputPath) {
 		WaveOutput out = new WaveOutput(() -> new File(outputPath), 24, true);
 		int bufferSize = DEFAULT_REALTIME_BUFFER_SIZE;
-		TemporalCellular cells = runnerRealTime(new MultiChannelAudioOutput(out),
-				List.of(channel), bufferSize);
 		int bufferCount = (frames + bufferSize - 1) / bufferSize;
+		TemporalCellular cells = null;
 
 		try {
+			cells = runnerRealTime(new MultiChannelAudioOutput(out), List.of(channel), bufferSize);
 			Runnable setup = cells.setup().get();
 			Runnable tick = cells.tick().get();
 			setup.run();
@@ -1302,12 +1307,14 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 			}
 			out.write().get().run();
 		} finally {
-			out.reset();
-			try {
-				cells.reset();
-			} finally {
-				cells.destroy();
+			List<Runnable> releases = new ArrayList<>();
+			releases.add(out::reset);
+			if (cells != null) {
+				releases.add(cells::reset);
+				releases.add(cells::destroy);
 			}
+			releases.add(out::destroy);
+			Destroyable.releaseAll(releases);
 		}
 		return outputPath;
 	}

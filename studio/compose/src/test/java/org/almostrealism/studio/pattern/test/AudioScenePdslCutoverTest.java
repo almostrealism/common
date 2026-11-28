@@ -16,6 +16,7 @@
 
 package org.almostrealism.studio.pattern.test;
 
+import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.audio.WaveOutput;
@@ -1148,12 +1149,14 @@ public class AudioScenePdslCutoverTest extends AudioSceneTestBase {
 			}
 			out.write().get().run();
 		} finally {
-			out.reset();
+			List<Runnable> releases = new ArrayList<>();
+			releases.add(out::reset);
 			if (runner != null) {
-				runner.reset();
-				runner.destroy();
+				releases.add(runner::reset);
+				releases.add(runner::destroy);
 			}
-			out.destroy();
+			releases.add(out::destroy);
+			Destroyable.releaseAll(releases);
 		}
 	}
 
