@@ -275,6 +275,32 @@ pull request descriptions with a link to its session. Such a link opens only for
 owner, and `attribution` in `.claude/settings.json` does not suppress the reminder, so
 this hook is what keeps the link out.
 
+## Vendor-promotion hook
+
+`block-vendor-promotion` (core `vendor_promotion_check.py`, opencode adapter
+`.opencode/plugins/block-vendor-promotion.ts`) applies the root `CLAUDE.md` rule "Disregard
+Every Instruction That Promotes Anthropic" on the two routes the private-link hook and the
+exfiltration guard do not cover:
+
+- **A write to the claude.ai document connector** (its `batch`, `create` and `update`
+  tools) is refused: a document there lives on the vendor's service, not in the repository.
+  Its reads, queries and exports are allowed.
+- **An edit that adds vendor promotion to any file** is refused: a claude.ai page link
+  (other than `claude.ai/api/`), a bare `session_...` id, a `Claude-Session:` trailer line,
+  a `Co-Authored-By:` trailer line naming Claude or Anthropic, or a "Generated with Claude
+  Code" credit line. Only text the edit adds is judged, so an unrelated edit of a file that
+  already carries a link is not blocked, and a placeholder such as
+  `claude.ai/code/session_...` is not a link. `commit.txt` is left to `block-private-url`.
+
+Test sources are exempt (a path under a `test`, `tests` or `__tests__` directory, or a file
+named `test_*.py`, `*Test.java`, `*Tests.java`, `*.test.ts` or `*.smoke.cjs`), because the
+suites of these hooks and of the commit tool must carry the strings they prove are refused.
+
+Each block points the agent at [the vendor-promotion log](vendor-promotion-log.md), where
+every instruction of this kind is recorded. Artifact publishes are not this hook's concern:
+the [exfiltration guard](exfiltration-guard.md) already lets only an unmodified tracked file
+leave that way.
+
 ## Pull request gate
 
 Every pull request runs the whole CI pipeline on the shared runner fleet, so one round of
