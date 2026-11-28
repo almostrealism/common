@@ -141,6 +141,31 @@ public class PostCompletionCommandValidatorTest extends TestSuiteBase {
 		assertFalse(violationsFor("pytest -x tests/").isEmpty());
 	}
 
+	/** A parametrized case id carries {@code [...]} after {@code ::}; the glob guard only inspects
+	 * the file path before {@code ::}, so a parametrized node id stays accepted. */
+	@Test(timeout = 10000)
+	public void pytestParametrizedNodeIdAccepted() {
+		assertTrue(violationsFor("pytest test_foo.py::test_bar[1-2]").isEmpty());
+	}
+
+	/** An unquoted {@code tests/*.py} reaches the validator as one literal token ending in
+	 * {@code .py}, but the shell expands it to an unbounded number of files; it must be refused
+	 * rather than counted as a single file. */
+	@Test(timeout = 10000)
+	public void pytestGlobFilePathRejected() {
+		List<String> violations = violationsFor("pytest tools/mcp/manager/test_*.py");
+		assertFalse(violations.isEmpty());
+		assertTrue(violations.get(0).contains("metacharacter"));
+	}
+
+	/** Brace expansion multiplies one token into several files the same way; it is refused too. */
+	@Test(timeout = 10000)
+	public void pytestBraceExpansionFilePathRejected() {
+		List<String> violations = violationsFor("pytest tools/mcp/manager/test_{a,b}.py");
+		assertFalse(violations.isEmpty());
+		assertTrue(violations.get(0).contains("metacharacter"));
+	}
+
 	/** A non-Maven, non-pytest command is accepted. */
 	@Test(timeout = 10000)
 	public void customScriptAccepted() {

@@ -899,6 +899,14 @@ _DTEST_METHOD_NAME = re.compile(r"[A-Za-z_$][A-Za-z0-9_$]*")
 _MAX_TEST_CLASSES = 5
 _MAX_TEST_METHODS = 40
 
+# Shell glob and brace-expansion metacharacters. An unquoted "tests/*.py" reaches
+# this validator as the literal token "tests/*.py", ends in ".py", and would be
+# counted as one file, yet the shell expands it to an unbounded number of files.
+# A file path carrying any of these is therefore not an explicit single file.
+# Mirrors GLOB_METACHARACTERS in PostCompletionCommandValidator.java and
+# GLOB_METACHARS in .claude/hooks/lib/pytest_broad_run_check.py.
+_GLOB_METACHARACTERS = "*?[]{}"
+
 
 def _dtest_is_narrow(value: str) -> bool:
     """True if ``value`` names a bounded set of tests: at most
@@ -1150,6 +1158,13 @@ def _pytest_segment_violation(tokens: list) -> str:
     node_ids = 0
     for positional in positionals:
         file_part = positional.split("::", 1)[0]
+        if any(ch in file_part for ch in _GLOB_METACHARACTERS):
+            return (
+                "pytest command positional \"{}\" in \"{}\" uses a shell glob "
+                "or brace-expansion metacharacter in its file path. The shell "
+                "expands it to an unbounded number of files; pass each explicit "
+                ".py test file or file.py::test_name node id "
+                "literally.".format(positional, " ".join(tokens)))
         if not file_part.endswith(".py"):
             return (
                 "pytest command names a non-file positional \"{}\" in \"{}\". "

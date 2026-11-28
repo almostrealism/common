@@ -96,6 +96,12 @@ class TestValidatePostCompletionCommandAccepted(unittest.TestCase):
         self.assertEqual([], validate_post_completion_command(
             "pytest --maxfail=1 test_foo.py"))
 
+    def test_pytest_parametrized_node_id_accepted(self):
+        # A parametrized case id carries "[...]" after "::"; the glob guard
+        # only inspects the file path before "::", so this stays accepted.
+        self.assertEqual([], validate_post_completion_command(
+            "pytest test_foo.py::test_bar[1-2]"))
+
     def test_custom_script(self):
         self.assertEqual([], validate_post_completion_command("bash scripts/verify-foo.sh"))
 
@@ -185,6 +191,20 @@ class TestValidatePostCompletionCommandRejected(unittest.TestCase):
             "tools/mcp/manager/test_mod{}.py".format(i) for i in range(6))
         violations = validate_post_completion_command("pytest " + over_cap)
         self.assertTrue(violations, "more than the file cap of whole files must be rejected")
+
+    def test_pytest_glob_file_path_rejected(self):
+        # An unquoted "tests/*.py" reaches the validator as one literal token
+        # ending in ".py", but the shell expands it to an unbounded number of
+        # files -- it must not be counted as a single file.
+        violations = validate_post_completion_command("pytest tools/mcp/manager/test_*.py")
+        self.assertTrue(violations)
+        self.assertIn("metacharacter", " ".join(violations))
+
+    def test_pytest_brace_expansion_file_path_rejected(self):
+        violations = validate_post_completion_command(
+            "pytest tools/mcp/manager/test_{a,b}.py")
+        self.assertTrue(violations)
+        self.assertIn("metacharacter", " ".join(violations))
 
     def test_pytest_option_value_alone_rejected(self):
         # Skipping an option's value must not let the option stand in for a

@@ -141,6 +141,13 @@ public class PostCompletionCommandValidator {
 	 * {@code tools/mcp/manager/execution_limits.py}. */
 	static final int MAX_TEST_METHODS = 40;
 
+	/** Shell glob and brace-expansion metacharacters. An unquoted {@code tests/*.py} reaches this
+	 * validator as the literal token {@code tests/*.py}, ends in {@code .py}, and would be counted as
+	 * one file, yet the shell expands it to an unbounded number of files. A file path carrying any of
+	 * these is therefore not an explicit single file. Mirrors {@code _GLOB_METACHARACTERS} in
+	 * {@code tools/mcp/manager/execution_limits.py}. */
+	private static final String GLOB_METACHARACTERS = "*?[]{}";
+
 	/** Maven launcher executable names recognized by {@link #mavenSegmentViolation}: the plain
 	 * {@code mvn} plus the Maven Wrapper scripts ({@code ./mvnw}, {@code ./mvnw.cmd}) and the
 	 * standalone Windows batch launcher. Without these, {@code ./mvnw.cmd test -pl engine/utils}
@@ -1094,6 +1101,13 @@ public class PostCompletionCommandValidator {
 		int nodeIds = 0;
 		for (String positional : positionals) {
 			String filePart = positional.split("::", 2)[0];
+			if (containsGlobMetacharacter(filePart)) {
+				return "pytest command positional \"" + positional + "\" in \""
+						+ String.join(" ", tokens) + "\" uses a shell glob or brace-expansion "
+						+ "metacharacter in its file path. The shell expands it to an unbounded "
+						+ "number of files; pass each explicit .py test file or file.py::test_name "
+						+ "node id literally.";
+			}
 			if (!filePart.endsWith(".py")) {
 				return "pytest command names a non-file positional \"" + positional + "\" in \""
 						+ String.join(" ", tokens) + "\". A directory or other non-.py path runs "
@@ -1155,6 +1169,16 @@ public class PostCompletionCommandValidator {
 				+ "a single dotted module.Class.method test id. \"discover\", a bare module, or a "
 				+ "module.Class runs many tests at once, which agents and job submitters may "
 				+ "never do. Pass exactly one module.Class.method id per invocation.";
+	}
+
+	/** Returns whether {@code s} contains any {@link #GLOB_METACHARACTERS} character. */
+	private static boolean containsGlobMetacharacter(String s) {
+		for (int i = 0; i < s.length(); i++) {
+			if (GLOB_METACHARACTERS.indexOf(s.charAt(i)) >= 0) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	/** Counts occurrences of {@code target} in {@code s}. */
