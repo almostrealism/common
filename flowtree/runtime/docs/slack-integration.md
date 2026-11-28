@@ -112,6 +112,7 @@ Lightweight HTTP server (NanoHTTPD, default port 7780) that receives status even
 | GET | `/api/tools/{name}` | -- | Download a pushed tool's Python source file |
 | POST | `/api/alerts` | `{"text":"...","recipients":["..."],"severity":"INFO"}` | Deliver free-form text to the named SMS recipients configured via `setSmsCompliance`, subject to a per-caller rate limit and recipient opt-out. The response reports the `delivered`, `unknown`, `optedOut`, and `known` recipient names — see `AlertRequestHandler` |
 | POST | `/api/sms/inbound` | SignalWire form-encoded `From`, `To`, `Body` | Inbound-SMS webhook for carrier compliance keywords (STOP/START/HELP): records or clears the sender's opt-out in the `SmsOptOutRegistry` and replies with cXML — see `InboundSmsHandler` |
+| POST | `/api/github/webhook` | GitHub webhook delivery (`application/json`) | Signed GitHub webhook: posts pull request merges, closes and draft-status changes to the channel of the workstream that owns the head branch — see [GitHub Webhooks](./github-webhooks.md) |
 
 #### Workstream listing filters
 

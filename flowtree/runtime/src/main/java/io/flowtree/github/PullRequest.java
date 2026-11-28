@@ -115,4 +115,56 @@ public record PullRequest(JsonNode json) {
     public String body() {
         return json.path("body").asText("");
     }
+
+    /**
+     * Returns the pull request as a Slack mrkdwn link labelled with its number,
+     * such as {@code <https://github.com/o/r/pull/7|PR #7>}, with the title appended.
+     *
+     * @return the link, or the bare label when the URL is absent
+     */
+    public String slackLink() {
+        String label = "PR #" + number();
+        String url = htmlUrl();
+        String link = url == null || url.isEmpty() ? label : "<" + url + "|" + label + ">";
+        return title().isEmpty() ? link : link + " (" + title() + ")";
+    }
+
+    /**
+     * Returns the name of the branch the pull request proposes to merge.
+     *
+     * @return the {@code head.ref}, or {@code null} when absent
+     */
+    public String headBranch() {
+        return json.path("head").path("ref").asText(null);
+    }
+
+    /**
+     * Returns the clone URL of the repository that holds the head branch. For
+     * a pull request from a fork this is the fork, not the base repository.
+     *
+     * @return the {@code head.repo.clone_url}, or {@code null} when absent
+     *         (GitHub omits the repository of a deleted fork)
+     */
+    public String headRepoUrl() {
+        return json.path("head").path("repo").path("clone_url").asText(null);
+    }
+
+    /**
+     * Returns the name of the branch the pull request merges into.
+     *
+     * @return the {@code base.ref}, or {@code null} when absent
+     */
+    public String baseBranch() {
+        return json.path("base").path("ref").asText(null);
+    }
+
+    /**
+     * Returns the login of the user who merged the pull request.
+     *
+     * @return the {@code merged_by.login}, or {@code null} when it is not
+     *         merged or the payload omits it
+     */
+    public String mergedBy() {
+        return json.path("merged_by").path("login").asText(null);
+    }
 }
