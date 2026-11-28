@@ -58,12 +58,19 @@ Two facts matter for this task:
 
 The only existing bridge between the durable conversation and a session is
 `io.flowtree.jobs.ConversationCatchUp`: on a *relaunch* it reads the mailbox
-(`…/mailbox?since=0`), cuts at the job's own last message (sender `job:<jobId>`), and
+(`…/mailbox?since=0`), cuts at the job's own last message (sender `job:<taskId>`), and
 renders the missed messages into the next session's prompt via
 `InstructionPromptBuilder#setConversationCatchUp`. That is a **launch-time, one-shot**
 injection — it has no effect on a session already running. This feature is, in effect,
 the mid-session streaming counterpart of `ConversationCatchUp`, and should reuse its
-mailbox-reading and own-sender-filtering logic rather than re-deriving them.
+mailbox-reading and own-sender-filtering logic rather than re-deriving them. **Note on
+layering**: `ConversationCatchUp` lives in `flowtree/runtime`, which depends on
+`flowtree/agents` (not the reverse — see `flowtree/CLAUDE.md`). An agents-side pump
+therefore cannot call into `ConversationCatchUp`; the shared logic must be factored into
+a module at or below `flowtree/agents`. `flowtree/base` is the natural home (both
+`ConversationCatchUp` and the pump already depend on it, and `JsonFieldExtractor` — the
+mailbox JSON helper this feature reuses — already lives there). This constraint is
+carried through §5.4, §10 Stage 4 and §12.
 
 ---
 
@@ -233,6 +240,15 @@ collaborator class (e.g. `MailboxStdinPump`) in `flowtree/agents`, constructed b
 runner and handed to `runInProcess` through a new overload, mirroring how
 `AgentActivityTracker` and the loop-signature extractor are threaded in today.
 
+The pump and `ConversationCatchUp` share the same mailbox-URL derivation and own-sender
+filtering. Because `ConversationCatchUp` is in `flowtree/runtime` and the pump is in
+`flowtree/agents` — and `runtime` depends on `agents`, never the reverse (§1, layering) —
+that shared logic cannot be a method *on* `ConversationCatchUp`. Extract it into a helper
+in `flowtree/base` (the module both already depend on, and where `JsonFieldExtractor`
+lives), and have `ConversationCatchUp` and the pump both call it. If instead the owner
+decides the pump should live in `flowtree/runtime`, the shared method can stay there; §9
+records this as the placement decision.
+
 ---
 
 ## 6. Interaction with the inactivity monitor
@@ -348,6 +364,16 @@ phase**, taken from the resolved runner's capability, not once for the whole job
    middle of a turn (tool calls in flight), is it delivered immediately (queued on stdin for
    the CLI to consume at the next turn boundary) or held until the current turn's `result`?
    Stage 1's finding on when the CLI consumes a mid-turn stdin line decides this.
+8. **Pump placement and the shared helper's module** (§1, §5.4, §12). The pump reuses
+   `ConversationCatchUp`'s mailbox-URL derivation and own-sender filtering, but
+   `ConversationCatchUp` is in `flowtree/runtime` while the pump is proposed for
+   `flowtree/agents`, and `runtime` depends on `agents` (never the reverse). So the shared
+   logic cannot be a method on `ConversationCatchUp`. Two ways to resolve it, for the owner
+   to choose: (a) factor the shared logic into a `flowtree/base` helper that both
+   `ConversationCatchUp` and the agents-side pump call (the plan's default — `flowtree/base`
+   already hosts `JsonFieldExtractor`, which this feature reuses); or (b) place the pump in
+   `flowtree/runtime` alongside `ConversationCatchUp` and keep the shared method there. The
+   plan assumes (a).
 
 ---
 
@@ -410,9 +436,11 @@ proving the plumbing without delivery.
 ### Stage 4 — The mailbox-to-stdin pump
 
 Add `MailboxStdinPump` in `flowtree/agents`: a bounded long-poll loop against
-`GET /mailbox?since=<cursor>&wait=<n>&exclude=job:<taskId>` (reusing `ConversationCatchUp`'s
-mailbox-URL derivation and own-sender filtering, extracted to a shared method so it is not
-duplicated), writing each delivered message to the session's stdin as a user-turn object in
+`GET /mailbox?since=<cursor>&wait=<n>&exclude=job:<taskId>` (reusing the mailbox-URL
+derivation and own-sender filtering, extracted into a `flowtree/base` helper that both
+`ConversationCatchUp` and the pump call — the layering constraint from §1 and §5.4 means
+the helper cannot be a method on `ConversationCatchUp` itself), writing each delivered
+message to the session's stdin as a user-turn object in
 the envelope Stage 1 confirmed. Start it after `pb.start()`, stop and close stdin in the
 `finally`. Apply the §3.1 pull semantics and the §9.3 inclusion rule once the owner fixes it.
 Adjust `parseClaudeNdjson` for multiple `result` events per Stage 1's cumulative/per-turn
@@ -496,10 +524,13 @@ Changed (production):
 - `io.flowtree.jobs.AgentProcessRunner`, `AgentActivityTracker` — pump attach point, monitor
   signal.
 - New: `MailboxStdinPump` (flowtree/agents) — the pump; shares mailbox-read/own-sender
-  logic with `io.flowtree.jobs.ConversationCatchUp` (extract the shared method).
-  <!-- TODO(review): ConversationCatchUp is in flowtree/runtime, which depends on
-       flowtree/agents; an agents-side pump cannot reference it. Put the shared helper
-       at/below flowtree/agents, or place the pump in flowtree/runtime. -->
+  logic with `io.flowtree.jobs.ConversationCatchUp`. The shared logic goes into a new
+  `flowtree/base` helper that both call, because `ConversationCatchUp` is in
+  `flowtree/runtime` and `runtime` depends on `agents` (not the reverse), so the pump
+  cannot reference `ConversationCatchUp` directly (§1, §5.4). Alternative: place the pump
+  in `flowtree/runtime` — the owner's placement decision, §9.
+- New (or extended): a `flowtree/base` helper holding the shared mailbox-URL derivation
+  and own-sender filtering.
 
 
 Unchanged by design: `WorkstreamMailbox`, `MailboxEndpointHandler`,
