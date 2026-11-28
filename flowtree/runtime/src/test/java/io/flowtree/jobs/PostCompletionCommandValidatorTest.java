@@ -85,21 +85,103 @@ public class PostCompletionCommandValidatorTest extends TestSuiteBase {
 		assertTrue(violationsFor("cd tools/mcp/manager && pytest test_secrets.py::test_render").isEmpty());
 	}
 
+	/** A whole .py test file is a bounded selection (one file, zero node ids) and is accepted. */
+	@Test(timeout = 10000)
+	public void pytestSingleWholeFileAccepted() {
+		assertTrue(violationsFor("pytest tools/mcp/manager/test_server.py").isEmpty());
+	}
+
+	/** A bounded list of explicit node ids is an ordinary targeted check and is accepted. */
+	@Test(timeout = 10000)
+	public void pytestMultipleNodeIdsWithinCapAccepted() {
+		assertTrue(violationsFor("pytest test_foo.py::test_bar test_baz.py::test_qux").isEmpty());
+	}
+
+	/** A bounded list of whole .py test files is accepted. */
+	@Test(timeout = 10000)
+	public void pytestMultipleWholeFilesWithinCapAccepted() {
+		assertTrue(violationsFor(
+				"python3 -m pytest a/test_one.py b/test_two.py c/test_three.py").isEmpty());
+	}
+
+	/** A mix of whole files and node ids within the caps is accepted. */
+	@Test(timeout = 10000)
+	public void pytestMixedFilesAndNodeIdsAccepted() {
+		assertTrue(violationsFor("pytest a/test_one.py b/test_two.py::test_bar").isEmpty());
+	}
+
+	/** A selection exactly at the file cap is accepted. */
+	@Test(timeout = 10000)
+	public void pytestFilesAtTheFileCapAccepted() {
+		StringBuilder command = new StringBuilder("pytest");
+		for (int i = 0; i < PostCompletionCommandValidator.MAX_TEST_CLASSES; i++) {
+			command.append(" dir/test_f").append(i).append(".py");
+		}
+		assertTrue(violationsFor(command.toString()).isEmpty());
+	}
+
+	/** The value of a pytest option such as {@code -k} or {@code -p} is not a test path, so a
+	 * bounded file selection carrying one is accepted, as the pytest hook accepts it. */
+	@Test(timeout = 10000)
+	public void pytestOptionValueIsNotAPositional() {
+		assertTrue(violationsFor("pytest -k test_bar test_foo.py").isEmpty());
+		assertTrue(violationsFor(
+				"python3 -m pytest -p no:cacheprovider --maxfail 1 a/test_one.py::test_x").isEmpty());
+		assertTrue(violationsFor("pytest --maxfail=1 test_foo.py").isEmpty());
+	}
+
+	/** Skipping an option's value must not let the option stand in for a selection, and a flag
+	 * that takes no value does not swallow the directory after it. */
+	@Test(timeout = 10000)
+	public void pytestOptionValueAloneRejected() {
+		assertFalse(violationsFor("pytest -k test_bar").isEmpty());
+		List<String> violations = violationsFor("pytest -k test_bar tests/");
+		assertEquals(1, violations.size());
+		assertTrue(violations.get(0).contains("non-file positional"));
+		assertFalse(violationsFor("pytest -x tests/").isEmpty());
+	}
+
+	/** A parametrized case id carries {@code [...]} after {@code ::}; the glob guard only inspects
+	 * the file path before {@code ::}, so a parametrized node id stays accepted. */
+	@Test(timeout = 10000)
+	public void pytestParametrizedNodeIdAccepted() {
+		assertTrue(violationsFor("pytest test_foo.py::test_bar[1-2]").isEmpty());
+	}
+
+	/** An unquoted {@code tests/*.py} reaches the validator as one literal token ending in
+	 * {@code .py}, but the shell expands it to an unbounded number of files; it must be refused
+	 * rather than counted as a single file. */
+	@Test(timeout = 10000)
+	public void pytestGlobFilePathRejected() {
+		List<String> violations = violationsFor("pytest tools/mcp/manager/test_*.py");
+		assertFalse(violations.isEmpty());
+		assertTrue(violations.get(0).contains("metacharacter"));
+	}
+
+	/** Brace expansion multiplies one token into several files the same way; it is refused too. */
+	@Test(timeout = 10000)
+	public void pytestBraceExpansionFilePathRejected() {
+		List<String> violations = violationsFor("pytest tools/mcp/manager/test_{a,b}.py");
+		assertFalse(violations.isEmpty());
+		assertTrue(violations.get(0).contains("metacharacter"));
+	}
+
 	/** A non-Maven, non-pytest command is accepted. */
 	@Test(timeout = 10000)
 	public void customScriptAccepted() {
 		assertTrue(violationsFor("bash scripts/verify-foo.sh").isEmpty());
 	}
 
-	/** pytest naming more than one node id still runs both tests in a single invocation,
-	 * contradicting the "one test per invocation" rule -- even though every individual
-	 * positional is itself an explicit node id. */
+	/** A pytest selection above the node-id cap is refused as an unbounded run. The node ids are
+	 * packed into one file so it is the node-id cap, not the file cap, that trips. */
 	@Test(timeout = 10000)
 	public void pytestMultipleNodeIdsRejected() {
-		List<String> violations = violationsFor(
-				"pytest test_foo.py::test_bar test_baz.py::test_qux");
-		assertFalse("multiple pytest node ids in one invocation must still be rejected",
-				violations.isEmpty());
+		StringBuilder command = new StringBuilder("pytest");
+		for (int i = 0; i <= PostCompletionCommandValidator.MAX_TEST_METHODS; i++) {
+			command.append(" test_foo.py::test_m").append(i);
+		}
+		assertFalse("more than the node-id cap in one invocation must be rejected",
+				violationsFor(command.toString()).isEmpty());
 	}
 
 	// -- Rejected commands ------------------------------------------------------
@@ -242,10 +324,16 @@ public class PostCompletionCommandValidatorTest extends TestSuiteBase {
 		assertTrue(violations.get(0).contains("node id"));
 	}
 
-	/** pytest against a whole file (no node id) must be rejected. */
+	/** A single whole .py file is a bounded selection and is now accepted (see
+	 * {@link #pytestSingleWholeFileAccepted}); a selection above the file cap is still refused. */
 	@Test(timeout = 10000)
 	public void pytestOnWholeFileRejected() {
-		assertFalse(violationsFor("pytest tools/mcp/manager/test_server.py").isEmpty());
+		StringBuilder command = new StringBuilder("pytest");
+		for (int i = 0; i <= PostCompletionCommandValidator.MAX_TEST_CLASSES; i++) {
+			command.append(" tools/mcp/manager/test_mod").append(i).append(".py");
+		}
+		assertFalse("more than the file cap of whole files must be rejected",
+				violationsFor(command.toString()).isEmpty());
 	}
 
 	/** pytest with no arguments discovers and runs everything, and must be rejected. */

@@ -766,6 +766,8 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
             return runnerQueryHandler.handle(session, method, uri, this::errorResponse);
         }
 
+        Response workspaceConfigResp = workspaceConfigHandler().handleIfMatches(uri, session);
+        if (workspaceConfigResp != null) return workspaceConfigResp;
         if (Method.POST.equals(method)) {
             if ("/api/submit".equals(uri)) {
                 return handleSubmit(session, null);
@@ -794,8 +796,6 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
                         uri.length() - "/phase-config".length());
                 return phaseConfigQueryHandler().handle(workstreamId, readBody(session));
             }
-            Response workspaceConfigResp = workspaceConfigHandler().handleIfMatches(uri, session);
-            if (workspaceConfigResp != null) return workspaceConfigResp;
             Matcher m = WORKSTREAM_PATTERN.matcher(uri);
             if (m.matches()) {
                 String workstreamId = m.group(1);

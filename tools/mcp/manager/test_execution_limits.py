@@ -56,6 +56,52 @@ class TestValidatePostCompletionCommandAccepted(unittest.TestCase):
         self.assertEqual([], validate_post_completion_command(
             "python3 -m pytest tools/mcp/manager/test_server.py::TestFoo::test_bar"))
 
+    def test_pytest_single_whole_file_accepted(self):
+        # A whole .py test file is a bounded selection (one file, zero node
+        # ids), the same way naming one class to Surefire is.
+        self.assertEqual([], validate_post_completion_command(
+            "pytest tools/mcp/manager/test_server.py"))
+
+    def test_pytest_multiple_node_ids_within_cap_accepted(self):
+        # A bounded list of explicit node ids is an ordinary targeted check.
+        self.assertEqual([], validate_post_completion_command(
+            "pytest test_foo.py::test_bar test_baz.py::test_qux"))
+
+    def test_pytest_multiple_whole_files_within_cap_accepted(self):
+        self.assertEqual([], validate_post_completion_command(
+            "python3 -m pytest a/test_one.py b/test_two.py c/test_three.py"))
+
+    def test_pytest_mixed_files_and_node_ids_accepted(self):
+        self.assertEqual([], validate_post_completion_command(
+            "pytest a/test_one.py b/test_two.py::test_bar"))
+
+    def test_pytest_files_at_the_file_cap_accepted(self):
+        selection = " ".join("dir/test_f{}.py".format(i) for i in range(5))
+        self.assertEqual([], validate_post_completion_command("pytest " + selection))
+
+    def test_pytest_node_ids_at_the_node_id_cap_accepted(self):
+        # 40 node ids packed into one file: at the node-id cap, within the
+        # one-file cap.
+        selection = " ".join("test_foo.py::test_m{}".format(i) for i in range(40))
+        self.assertEqual([], validate_post_completion_command("pytest " + selection))
+
+    def test_pytest_option_value_is_not_a_positional(self):
+        # The value of an option such as -k or -p is not a test path, so a
+        # bounded file selection with one is accepted, as the hook accepts it.
+        self.assertEqual([], validate_post_completion_command(
+            "pytest -k test_bar test_foo.py"))
+        self.assertEqual([], validate_post_completion_command(
+            "python3 -m pytest -p no:cacheprovider --maxfail 1 "
+            "a/test_one.py::test_x"))
+        self.assertEqual([], validate_post_completion_command(
+            "pytest --maxfail=1 test_foo.py"))
+
+    def test_pytest_parametrized_node_id_accepted(self):
+        # A parametrized case id carries "[...]" after "::"; the glob guard
+        # only inspects the file path before "::", so this stays accepted.
+        self.assertEqual([], validate_post_completion_command(
+            "pytest test_foo.py::test_bar[1-2]"))
+
     def test_custom_script(self):
         self.assertEqual([], validate_post_completion_command("bash scripts/verify-foo.sh"))
 
@@ -137,8 +183,38 @@ class TestValidatePostCompletionCommandRejected(unittest.TestCase):
         self.assertIn("node id", " ".join(violations))
 
     def test_pytest_on_whole_file_rejected(self):
-        violations = validate_post_completion_command("pytest tools/mcp/manager/test_server.py")
+        # A single whole .py test file is now a bounded selection (one file,
+        # zero node ids) and is accepted; a selection above the file cap is
+        # still refused as an unbounded run. The whole-file acceptance itself
+        # is pinned by test_pytest_single_whole_file_accepted below.
+        over_cap = " ".join(
+            "tools/mcp/manager/test_mod{}.py".format(i) for i in range(6))
+        violations = validate_post_completion_command("pytest " + over_cap)
+        self.assertTrue(violations, "more than the file cap of whole files must be rejected")
+
+    def test_pytest_glob_file_path_rejected(self):
+        # An unquoted "tests/*.py" reaches the validator as one literal token
+        # ending in ".py", but the shell expands it to an unbounded number of
+        # files -- it must not be counted as a single file.
+        violations = validate_post_completion_command("pytest tools/mcp/manager/test_*.py")
         self.assertTrue(violations)
+        self.assertIn("metacharacter", " ".join(violations))
+
+    def test_pytest_brace_expansion_file_path_rejected(self):
+        violations = validate_post_completion_command(
+            "pytest tools/mcp/manager/test_{a,b}.py")
+        self.assertTrue(violations)
+        self.assertIn("metacharacter", " ".join(violations))
+
+    def test_pytest_option_value_alone_rejected(self):
+        # Skipping an option's value must not let the option stand in for a
+        # selection: "-k test_bar" with no path still collects everything,
+        # and a directory after a valued option is still a directory.
+        self.assertTrue(validate_post_completion_command("pytest -k test_bar"))
+        violations = validate_post_completion_command("pytest -k test_bar tests/")
+        self.assertIn("non-file positional", " ".join(violations))
+        # A flag that takes no value does not swallow the path after it.
+        self.assertTrue(validate_post_completion_command("pytest -x tests/"))
 
     def test_pytest_with_no_args_rejected(self):
         violations = validate_post_completion_command("pytest")
@@ -312,13 +388,14 @@ class TestValidatePostCompletionCommandRejected(unittest.TestCase):
         self.assertFalse(violations)
 
     def test_pytest_multiple_node_ids_rejected(self):
-        # Even when every positional is an explicit node id, pytest still
-        # runs them together in a single invocation -- "one test per
-        # invocation" means exactly one node id, not "every positional
-        # happens to be narrow".
-        violations = validate_post_completion_command(
-            "pytest test_foo.py::test_bar test_baz.py::test_qux")
-        self.assertTrue(violations, "multiple pytest node ids in one invocation must be rejected")
+        # A bounded list of explicit node ids is now accepted (see
+        # test_pytest_multiple_node_ids_within_cap_accepted); a selection
+        # above the node-id cap is still refused as an unbounded run. Pack the
+        # node ids into a single file so it is the node-id cap, not the file
+        # cap, that trips.
+        over_cap = " ".join("test_foo.py::test_m{}".format(i) for i in range(41))
+        violations = validate_post_completion_command("pytest " + over_cap)
+        self.assertTrue(violations, "more than the node-id cap in one invocation must be rejected")
 
     def test_mvnw_cmd_launcher_with_no_selector_rejected(self):
         # The Windows Maven Wrapper batch launcher is "mvnw.cmd", not

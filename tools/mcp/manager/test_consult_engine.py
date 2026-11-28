@@ -279,6 +279,20 @@ class TestPureHelpers(unittest.TestCase):
         self.assertEqual(len(consult_engine.reported_conflicts(
             ["N1 vs D1 — differ", "N1 vs D9 — invented"], ev)), 1)
 
+    def test_reported_conflicts_recognise_concept_ids(self):
+        # An M-tier concept can conflict with a document; its ID must be
+        # extracted so the conflict is published rather than silently dropped.
+        from concept_map import ConceptEntry
+        ev = EvidenceList()
+        ev.add_concept(
+            ConceptEntry(name="Cell", statement="a graph node",
+                         canonical_types=["Cell"], start=1, end=2),
+            "docs/internals/consult-concept-map.md")
+        ev.add_doc(_doc())
+        conflicts = consult_engine.reported_conflicts(["M1 vs D1 — differ"], ev)
+        self.assertEqual(len(conflicts), 1)
+        self.assertEqual(conflicts[0]["items"], ["M1", "D1"])
+
     def test_nonexistent_mentions_short_circuits_only_a_pure_how_it_works_ask(self):
         # Every named file missing, and the question is about that file.
         self.assertEqual(
@@ -750,6 +764,83 @@ class TestCitationRetry(_Pipeline):
 
     def test_a_kept_draft_is_not_verified_again(self):
         self.assertEqual(self.verify_calls(self.BAD, Synthesis(self.BAD, "fake")), 2)
+
+
+class TestConceptMap(_Pipeline):
+    """The curated concept map is retrieved as consult's top evidence tier.
+
+    These run against the real docs/internals/consult-concept-map.md (the
+    concept_map() loader is not patched), so they double as a check that the
+    shipped map still matches as intended.
+    """
+
+    def test_index_sequence_entry_leads_the_evidence(self):
+        result = self.consult(
+            "The values form an `IndexSequence` [M1].\n"
+            "BASIS: documentation\nCONFLICTS: none",
+            results=[_doc(text="an unrelated documentation fragment")],
+            question="integer membership for index options",
+            keywords=["integer membership", "index options"])
+        evidence = result["evidence"]
+        self.assertEqual(evidence[0]["kind"], "concept")
+        self.assertEqual(evidence[0]["tier"], "M")
+        self.assertEqual(evidence[0]["section"], "IndexSequence")
+        self.assertEqual(evidence[0]["file"],
+                         "docs/internals/consult-concept-map.md")
+        # The concept entry precedes the document fragment.
+        kinds = [e["kind"] for e in evidence]
+        self.assertLess(kinds.index("concept"), kinds.index("doc"))
+
+    def test_a_concept_citation_expands_and_counts_as_documentation(self):
+        result = self.consult(
+            "The values form an `IndexSequence` [M1].\n"
+            "BASIS: documentation\nCONFLICTS: none",
+            question="integer membership for index options",
+            keywords=["integer membership", "index options"])
+        self.assertIn("[M1: docs/internals/consult-concept-map.md:",
+                      result["answer"])
+        self.assertEqual(result["answer_basis"], "documentation")
+
+    def test_an_unrelated_question_adds_no_concept_entry(self):
+        result = self.consult(
+            "It rejects edits [D1].\nBASIS: documentation\nCONFLICTS: none",
+            results=[_doc(text="rejects edits")],
+            question="quarterly revenue forecast rollup")
+        self.assertTrue(all(e["kind"] != "concept" for e in result["evidence"]))
+
+    def test_a_follow_up_keeps_a_cited_concept_under_its_id(self):
+        # Turn 1 cites [M1]; turn 2 names neither the concept nor its keywords.
+        # The cited entry must be carried forward under the same ID, and its
+        # concept name and canonical type must seed turn 2's retrieval.
+        store = memory_tools.ConversationStore()
+        for p in (patch.object(memory_tools, "_conversations", store),
+                  patch.object(server, "_get_token_workstream_id", return_value="ws"),
+                  patch.object(server, "_get_token_job_id", return_value="job")):
+            p.start()
+            self.addCleanup(p.stop)
+        docs = _docs([_doc("a.md")])
+        llm = MagicMock()
+        llm.consult.return_value = Synthesis(
+            "The values form an `IndexSequence` [M1].\n"
+            "BASIS: documentation\nCONFLICTS: none", "fake")
+        with patch.object(server, "_get_docs", return_value=docs), \
+                patch.object(server, "_get_llm", return_value=llm), \
+                patch.object(server, "_get_memory_client", return_value=None):
+            first = server.consult(question="integer membership for index options",
+                                   keywords=["integer membership"],
+                                   repo_url="git@github.com:org/repo.git")
+            docs.get_context_for_keywords.reset_mock()
+            second = server.consult(question="quarterly revenue forecast rollup",
+                                    repo_url="git@github.com:org/repo.git",
+                                    conversation_id=first["conversation_id"])
+        self.assertEqual(first["evidence"][0]["id"], "M1")
+        concepts = [e for e in second["evidence"] if e["kind"] == "concept"]
+        self.assertEqual([(e["id"], e["section"]) for e in concepts],
+                         [("M1", "IndexSequence")])
+        self.assertIn("[M1: docs/internals/consult-concept-map.md:",
+                      second["answer"])
+        seeded = docs.get_context_for_keywords.call_args[0][0]
+        self.assertIn("IndexSequence", seeded)
 
 
 if __name__ == "__main__":
