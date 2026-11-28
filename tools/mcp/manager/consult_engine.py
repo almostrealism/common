@@ -262,12 +262,15 @@ def nonexistent_mentions(question: str, keywords, index) -> list[str]:
     return missing
 
 
-def parse_trailer(text: str) -> tuple[str, Optional[str], list, bool]:
+def parse_trailer(text: str) -> tuple[str, Optional[str], list, bool, bool]:
     """Split the model's output into body and trailer.
 
-    Returns ``(body, stated_basis, reported_conflicts, trailer_present)``;
-    ``stated_basis`` is ``None`` when the line is missing or names no known
-    basis.
+    Returns ``(body, stated_basis, reported_conflicts, basis_present,
+    conflicts_present)``; ``stated_basis`` is ``None`` when the line is
+    missing or names no known basis. The two presence flags are reported
+    separately so a caller can tell a complete two-line trailer from one
+    that keeps only ``BASIS:`` or only ``CONFLICTS:``; ``basis_present or
+    conflicts_present`` is the aggregate "a trailer is present at all".
     """
     basis_match = _BASIS_LINE.search(text)
     conflicts_match = _CONFLICTS_LINE.search(text)
@@ -282,7 +285,7 @@ def parse_trailer(text: str) -> tuple[str, Optional[str], list, bool]:
                 continue
             conflicts.append(part.strip())
     body = _CONFLICTS_LINE.sub("", _BASIS_LINE.sub("", text)).strip()
-    return body, stated, conflicts, bool(basis_match or conflicts_match)
+    return body, stated, conflicts, bool(basis_match), bool(conflicts_match)
 
 
 def compute_basis(ids: list, evidence: EvidenceList) -> str:
@@ -513,15 +516,16 @@ class ConsultTurn:
             "corpus": self.corpus,
         }
 
+        history = None
         if llm is None:
             synthesis, reason = None, "no inference backend could be constructed"
             no_backend_cause = not_configured_cause(reason)
         else:
             no_backend_cause = None
-            history = self.conversation.history() if self.conversation else None
+            history = (self.conversation.history() if self.conversation else None) or None
             synthesis = llm.consult(self.question, evidence=self.evidence,
                                     extra_context=self.context or None,
-                                    history=history or None)
+                                    history=history)
             reason = synthesis.reason if synthesis.degraded else None
 
         result["evidence"] = self.evidence.to_response()
@@ -550,9 +554,128 @@ class ConsultTurn:
             self._finish(result, [])
             return result
 
-        cited = self._post_process(synthesis.text, result, keyword_guidance)
+        checked = self._revised(llm, synthesis.text, history, result)
+        cited = self._post_process(checked, result, keyword_guidance)
         self._finish(result, cited)
         return result
+
+    def _revised(self, llm, text: str, history, result: dict) -> dict:
+        """Return the checked answer to present: the model's own, or — when the
+        citation verifier flags any of its sentences — the better of it and
+        one revision, which the model writes from the same evidence with the
+        flagged sentences and reasons in front of it.
+
+        The revision is kept only when it has fewer warnings than the draft,
+        does not abstain where the draft answered, leaves a non-empty answer
+        body, keeps every ``BASIS:`` / ``CONFLICTS:`` trailer line the draft
+        had, leaves the draft's reported conflicts unchanged, does not raise
+        the count of uncited claims, and leaves every draft sentence the
+        verifier did not flag unchanged without adding any sentence beyond
+        one per flagged sentence, so a retry can repair citations but
+        cannot turn an answer into a refusal, a malformed response, a response
+        whose published conflict metadata differs from the draft's, a response
+        that trades a flagged cited sentence for a grounded but uncited one, or
+        a response that rewrites or drops a sentence the check never faulted.
+        The unflagged-sentence guard enforces the revision prompt's "keep every
+        other sentence as it is": the model is shown only the flagged sentences,
+        so a revision that replaced an unrelated, correctly cited sentence with
+        another supported one would otherwise satisfy every aggregate guard and
+        be published, altering the answer beyond citation repair
+        (:func:`_unflagged_sentences_survive`). The uncited-claim guard is needed because
+        ``VerificationReport.warnings`` excludes grounded-but-uncited sentences
+        (:data:`REASON_UNCITED`) while :attr:`VerificationReport.uncited_claims`
+        counts them: without it a revision could lower the warning count by
+        dropping a citation and still be published. A revision with nothing left once
+        :meth:`_post_process` moves its history-only sentences aside counts as
+        a refusal too, since that method abstains on an empty answer, so the
+        emptiness is measured after the same history removal rather than on the
+        raw body. Each trailer line is checked on its own so dropping one while
+        keeping the other is rejected. The ``CONFLICTS:`` entries are compared
+        in full because :meth:`_post_process` publishes them through
+        ``reported_conflicts``: a revision that drops, adds or rewrites a
+        conflict would otherwise alter that metadata, which the citation retry
+        has no mandate to touch. There is at most one retry; a backend without
+        ``revise``, or a revision that fails, keeps the draft. When a retry
+        runs, ``citation_retry`` in *result* says what it found.
+
+        Args:
+            llm: The inference backend the draft came from.
+            text: The draft, trailer included.
+            history: Condensed earlier turns, or ``None``.
+            result: The response being built.
+
+        Returns:
+            The :meth:`_verify` result for the answer to post-process, so
+            the kept text is parsed and verified only once.
+        """
+        draft = self._verify(text)
+        warnings = draft["report"].warnings
+        revise = getattr(llm, "revise", None)
+        if not warnings or draft["abstained"] or revise is None:
+            return draft
+        record = {"warnings_before": len(warnings), "kept": "draft"}
+        result["citation_retry"] = record
+        synthesis = revise(self.question, evidence=self.evidence, draft=text,
+                           warnings=warnings, extra_context=self.context or None,
+                           history=history)
+        if synthesis is None or synthesis.degraded:
+            record["degraded"] = synthesis.reason if synthesis is not None else "no response"
+            return draft
+        revision = self._verify(synthesis.text)
+        record["warnings_after"] = len(revision["report"].warnings)
+        record["revision_abstained"] = revision["abstained"]
+        lost_trailer = (draft["basis_present"] and not revision["basis_present"]) \
+            or (draft["conflicts_present"] and not revision["conflicts_present"])
+        if lost_trailer:
+            record["revision_trailer_missing"] = True
+        empty_body = not revision["abstained"] \
+            and not _without_history(revision["report"])[0]
+        if empty_body:
+            record["revision_empty"] = True
+        conflicts_changed = revision["conflict_lines"] != draft["conflict_lines"]
+        if conflicts_changed:
+            record["revision_conflicts_changed"] = True
+        uncited_increased = revision["report"].uncited_claims \
+            > draft["report"].uncited_claims
+        if uncited_increased:
+            record["revision_uncited_increased"] = True
+        unflagged_altered = not revision["abstained"] and not empty_body \
+            and not _unflagged_sentences_survive(draft, revision, warnings)
+        if unflagged_altered:
+            record["revision_altered_unflagged"] = True
+        if revision["abstained"] or lost_trailer or empty_body \
+                or conflicts_changed or uncited_increased or unflagged_altered \
+                or record["warnings_after"] >= len(warnings):
+            return draft
+        record["kept"] = "revision"
+        return revision
+
+    def _verify(self, text: str) -> dict:
+        """Parse a model answer and run the citation verifier over it.
+
+        Args:
+            text: The model's answer, trailer included.
+
+        Returns:
+            ``body`` (the answer without its trailer and abstention lead),
+            ``conflict_lines``, ``basis_present`` and ``conflicts_present``
+            (each required trailer line, tracked separately),
+            ``trailer_present`` (either line present), ``abstained`` (the
+            model said "Not documented."), ``report`` (the verifier's
+            :class:`VerificationReport`) and ``value_conflicts``.
+        """
+        body, _, conflict_lines, basis_present, conflicts_present = parse_trailer(text)
+        abstained = bool(_NOT_DOCUMENTED.match(body))
+        if abstained:
+            body = _NOT_DOCUMENTED.sub("", body, count=1).strip()
+        found_value_conflicts, contradicted = value_conflicts(self.evidence)
+        return {"body": body, "conflict_lines": conflict_lines,
+                "basis_present": basis_present,
+                "conflicts_present": conflicts_present,
+                "trailer_present": basis_present or conflicts_present,
+                "abstained": abstained,
+                "report": verify(body, self.evidence, contradicted),
+                "value_conflicts": found_value_conflicts}
 
     def _notes(self, client) -> list:
         """Search, tier and select the notes; add them to the evidence."""
@@ -611,36 +734,25 @@ class ConsultTurn:
             "tier": item.tier, "evidence_id": item.id,
         }
 
-    def _post_process(self, text: str, result: dict, keyword_guidance) -> list:
-        """Turn the model's output into the answer fields. Returns the cited
-        evidence items."""
+    def _post_process(self, checked: dict, result: dict, keyword_guidance) -> list:
+        """Turn the model's checked output (a :meth:`_verify` result) into
+        the answer fields. Returns the cited evidence items."""
         # The stated basis is parsed only so the line leaves the answer. The
         # computed basis is authoritative, and the model cannot predict it:
         # it rests on note tiers and on which sentences the verifier keeps,
         # so a disagreement is the expected case, not a format fault worth
         # reporting to the caller.
-        body, _, conflict_lines, trailer_present = parse_trailer(text)
+        body, conflict_lines = checked["body"], checked["conflict_lines"]
+        abstained_by_model, report = checked["abstained"], checked["report"]
+        found_value_conflicts = checked["value_conflicts"]
         warnings = []
-        if not trailer_present:
+        if not checked["trailer_present"]:
             warnings.append("trailer missing")
 
-        abstained_by_model = bool(_NOT_DOCUMENTED.match(body))
-        if abstained_by_model:
-            body = _NOT_DOCUMENTED.sub("", body, count=1).strip()
-
-        found_value_conflicts, contradicted = value_conflicts(self.evidence)
-        report = verify(body, self.evidence, contradicted)
         basis = compute_basis(report.supporting_ids(), self.evidence)
 
-        # Sentences resting only on historical or stale notes are history,
-        # whatever their tense: those notes never supply present fact.
-        history_sentences = [s for s in report.sentences_resting_on(HISTORY_ONLY_TIERS)
-                             if REASON_TIER not in s.reasons]
+        answer, history_sentences = _without_history(report)
         support_gone = _support_gone(basis, report, history_sentences)
-        answer = report.annotated
-        for s in sorted(history_sentences, key=lambda s: s.start, reverse=True):
-            answer = _remove_span(answer, s)
-        answer = answer.strip()
         if history_sentences:
             result["history"] = self.evidence.expand(
                 " ".join(s.text.strip() for s in history_sentences))
@@ -764,6 +876,25 @@ def _hedge_lead(answer: str) -> str:
     return f"{HEDGE_SENTENCE} {stripped}".strip()
 
 
+def _without_history(report) -> tuple[str, list]:
+    """The annotated answer with its history sentences removed, and those
+    sentences.
+
+    A sentence resting only on historical or stale notes is history whatever
+    its tense, unless the verifier flags its tier (then it stays in the answer,
+    marked); those notes never supply present fact. The removed sentences move
+    to the ``history`` field, and what is left is the answer the caller sees —
+    empty when every sentence was history, which :meth:`ConsultTurn._post_process`
+    treats as an abstention.
+    """
+    history_sentences = [s for s in report.sentences_resting_on(HISTORY_ONLY_TIERS)
+                         if REASON_TIER not in s.reasons]
+    answer = report.annotated
+    for s in sorted(history_sentences, key=lambda s: s.start, reverse=True):
+        answer = _remove_span(answer, s)
+    return answer.strip(), history_sentences
+
+
 def _remove_span(answer: str, sentence) -> str:
     """Remove one sentence from the annotated answer.
 
@@ -781,4 +912,70 @@ def _remove_span(answer: str, sentence) -> str:
     if left.endswith(" ") and right.startswith(" "):
         right = right.lstrip(" ")
     return left + right
+
+
+def _unflagged_sentences_survive(draft: dict, revision: dict, warnings: list) -> bool:
+    """Whether every draft sentence the retry did not flag survives in the revision.
+
+    The citation retry's mandate is to repair the flagged sentences and nothing
+    else: :func:`inference_prompts.revision_instructions` shows the model only
+    those sentences and tells it to "keep every other sentence as it is". A
+    revision that drops or rewrites an *unflagged* sentence — trading a valid,
+    correctly cited claim for an unrelated one — would still pass the
+    warning-count, trailer, conflict and uncited-claim guards, so without this
+    check it could be published and alter the answer beyond citation repair. A
+    draft sentence counts as unflagged when its text is not among the flagged
+    sentences the model was shown; each such sentence must reappear, whitespace
+    aside, among the revision's sentences — in the draft's order and with its
+    multiplicity, since "keep every other sentence as it is" constrains position
+    and count too. The unflagged draft sentences must form an ordered
+    subsequence of the revision's sentences, each matched to a distinct revision
+    sentence, so a revision that reorders them (``C, fixed-B, A`` for a draft
+    ``A, bad-B, C``) or drops one of a repeated pair is rejected, while the
+    repaired flagged sentences, which no draft target matches, are passed over.
+    The revision may not add sentences either: the prompt lets the model cite,
+    restate or remove each flagged sentence, so every revision sentence that
+    matches no unflagged draft sentence must stand in for a flagged sentence in
+    the same gap between surviving neighbours. A gap may hold at most as many
+    such sentences as the draft had flagged sentences there, so a new claim
+    appended after the answer, or inserted between two unflagged sentences, is
+    rejected while a removed flagged sentence is accepted.
+    The comparison errs towards keeping the draft: a merely reworded survivor is
+    treated as altered, which only rejects the revision — the safe direction.
+
+    Args:
+        draft: The :meth:`ConsultTurn._verify` result for the draft.
+        revision: The :meth:`ConsultTurn._verify` result for the revision.
+        warnings: The draft's ``citation_warnings`` — the flagged sentences
+            shown to the model, each carrying the ``sentence`` text.
+
+    Returns:
+        ``True`` when every unflagged draft sentence survives, in order and
+        count, among the revision's sentences, and the revision adds no
+        sentence beyond one per flagged draft sentence in each gap.
+    """
+    flagged = {w.get("sentence", "") for w in warnings}
+    revised = [_collapse_space(s.text) for s in revision["report"].sentences]
+    cursor = 0
+    replaceable = 0
+    for sentence in draft["report"].sentences:
+        text = sentence.text.strip()
+        if text in flagged:
+            replaceable += 1
+            continue
+        target = _collapse_space(text)
+        start = cursor
+        while cursor < len(revised) and revised[cursor] != target:
+            cursor += 1
+        if cursor >= len(revised) or cursor - start > replaceable:
+            return False
+        cursor += 1
+        replaceable = 0
+    return len(revised) - cursor <= replaceable
+
+
+def _collapse_space(text: str) -> str:
+    """``text`` with leading, trailing and internal whitespace runs collapsed
+    to single spaces, so two sentences are compared on content not spacing."""
+    return " ".join(text.split())
 
