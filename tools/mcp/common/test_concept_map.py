@@ -98,6 +98,19 @@ class TestMatching(unittest.TestCase):
         # concept name or canonical type matched it must not surface the entry.
         self.assertEqual(self.map.match("a node in the deployment pipeline"), [])
 
+    def test_keyword_fragment_inside_a_word_does_not_surface_an_entry(self):
+        # The "cell" keyword is a substring of "cancellation" and "excellent",
+        # but a keyword must match on word boundaries, not as an incidental
+        # fragment, so neither query surfaces the Cell entry.
+        self.assertEqual(self.map.match("how is job cancellation handled"), [])
+        self.assertEqual(self.map.match("the excellent new feature"), [])
+
+    def test_keyword_as_a_whole_word_surfaces_its_entry(self):
+        # The same "cell" keyword, standing as its own word, qualifies the entry.
+        top = self.map.match("what is a cell")
+        self.assertTrue(top)
+        self.assertEqual(top[0].name, "Cell")
+
 
 class TestUndeclaredTypes(unittest.TestCase):
 

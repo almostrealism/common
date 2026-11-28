@@ -279,6 +279,20 @@ class TestPureHelpers(unittest.TestCase):
         self.assertEqual(len(consult_engine.reported_conflicts(
             ["N1 vs D1 — differ", "N1 vs D9 — invented"], ev)), 1)
 
+    def test_reported_conflicts_recognise_concept_ids(self):
+        # An M-tier concept can conflict with a document; its ID must be
+        # extracted so the conflict is published rather than silently dropped.
+        from concept_map import ConceptEntry
+        ev = EvidenceList()
+        ev.add_concept(
+            ConceptEntry(name="Cell", statement="a graph node",
+                         canonical_types=["Cell"], start=1, end=2),
+            "docs/internals/consult-concept-map.md")
+        ev.add_doc(_doc())
+        conflicts = consult_engine.reported_conflicts(["M1 vs D1 — differ"], ev)
+        self.assertEqual(len(conflicts), 1)
+        self.assertEqual(conflicts[0]["items"], ["M1", "D1"])
+
     def test_nonexistent_mentions_short_circuits_only_a_pure_how_it_works_ask(self):
         # Every named file missing, and the question is about that file.
         self.assertEqual(

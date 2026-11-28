@@ -70,6 +70,19 @@ def _tokens(text: str) -> set:
     return {w for w in _WORD.findall(text.lower()) if w not in _STOP_WORDS}
 
 
+def _phrase_present(phrase: str, text: str) -> bool:
+    """Whether ``phrase`` occurs in ``text`` on word boundaries.
+
+    A raw substring test would let a short keyword surface an entry on an
+    incidental fragment — ``cell`` inside ``cancellation`` — defeating the
+    strong-signal requirement. Anchoring the (escaped) phrase on ``\\b`` keeps
+    a genuine multi-word phrase matching while rejecting the fragment. Both
+    arguments are expected lowercase."""
+    if not phrase:
+        return False
+    return re.search(r"\b" + re.escape(phrase) + r"\b", text) is not None
+
+
 @dataclass
 class ConceptEntry:
     """One concept and the types that represent it.
@@ -93,7 +106,7 @@ class ConceptEntry:
 
     def search_tokens(self) -> set:
         """Every word this entry can be matched on: its name, statement,
-        keywords, module and canonical type names."""
+        keywords, module, extension points and canonical type names."""
         parts = [self.name, self.statement, self.module, self.extension_points,
                  " ".join(self.keywords), " ".join(self.canonical_types)]
         return _tokens(" ".join(parts))
@@ -210,10 +223,8 @@ class ConceptMap:
         scored: list = []
         for entry in self.entries:
             strong = 0.0
-            # TODO(review): single-token keywords match as raw substrings, so "cancellation"/"excellent" falsely surface the Cell entry; match short keywords on word boundaries.
             for keyword in entry.keywords:
-                phrase = keyword.lower().strip()
-                if phrase and phrase in lowered:
+                if _phrase_present(keyword.lower().strip(), lowered):
                     strong += _SCORE_KEYWORD_PHRASE
             if entry.name.lower() in tokens:
                 strong += _SCORE_NAME

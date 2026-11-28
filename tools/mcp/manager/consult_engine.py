@@ -343,7 +343,7 @@ def reported_conflicts(lines: list, evidence: EvidenceList) -> list[dict]:
     """``CONFLICTS:`` entries whose IDs were all presented."""
     out = []
     for line in lines:
-        ids = re.findall(r"\b[DNI]\d+\b", line)
+        ids = re.findall(r"\b[DNIM]\d+\b", line)
         if len(ids) >= 2 and all(evidence.get(i) is not None for i in ids):
             summary = re.sub(r"^[^—\-:]*[—\-:]\s*", "", line).strip() or line
             out.append({"items": ids, "kind": "reported", "summary": summary})
