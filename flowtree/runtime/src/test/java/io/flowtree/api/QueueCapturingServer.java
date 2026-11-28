@@ -37,13 +37,25 @@ class QueueCapturingServer extends Server {
     /** Node group reporting a single (placeholder) peer. */
     private final NodeGroup group;
 
-    /** Constructs the server without binding a listening socket (port 0). */
+    /** Constructs the server with a single connected peer and no listening socket (port 0). */
     QueueCapturingServer() throws IOException {
+        this(1);
+    }
+
+    /**
+     * Constructs the server reporting {@code peerCount} connected peers and no
+     * listening socket (port 0). A count of zero lets a test exercise the
+     * endpoint's "No agents connected" path.
+     *
+     * @param peerCount the number of peers {@link NodeGroup#getServers()} reports
+     * @throws IOException if the underlying server cannot be constructed
+     */
+    QueueCapturingServer(int peerCount) throws IOException {
         super(ephemeralProperties());
         group = new NodeGroup(ephemeralProperties(), this) {
             @Override
             public NodeProxy[] getServers() {
-                return new NodeProxy[1];
+                return new NodeProxy[peerCount];
             }
         };
     }

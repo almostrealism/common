@@ -16,10 +16,7 @@
 
 package io.flowtree.node;
 
-import org.almostrealism.util.TestSuiteBase;
-import org.junit.AfterClass;
 import org.junit.Assert;
-import org.junit.BeforeClass;
 import org.junit.Test;
 
 import java.util.HashMap;
@@ -38,30 +35,7 @@ import java.util.Properties;
  *
  * @author Michael Murray
  */
-public class NodeGroupTest extends TestSuiteBase {
-
-	/** The offline-mode property value captured before the suite forced it on, or {@code null} if it was unset. */
-	private static String originalOfflineMode;
-
-	/** Forces offline mode so the constructor cannot reach a live controller. */
-	@BeforeClass
-	public static void enforceOfflineMode() {
-		originalOfflineMode = System.getProperty(NodeGroupNodeConfig.OFFLINE_MODE_PROPERTY);
-		System.setProperty(NodeGroupNodeConfig.OFFLINE_MODE_PROPERTY, "true");
-	}
-
-	/**
-	 * Restores the offline-mode property to the value it held before the suite ran so a
-	 * later test in the same JVM does not inherit the forced {@code "true"}.
-	 */
-	@AfterClass
-	public static void restoreOfflineMode() {
-		if (originalOfflineMode == null) {
-			System.clearProperty(NodeGroupNodeConfig.OFFLINE_MODE_PROPERTY);
-		} else {
-			System.setProperty(NodeGroupNodeConfig.OFFLINE_MODE_PROPERTY, originalOfflineMode);
-		}
-	}
+public class NodeGroupTest extends OfflineNodeTestBase {
 
 	/**
 	 * Builds a minimal, fully offline node-group configuration with the given worker count.

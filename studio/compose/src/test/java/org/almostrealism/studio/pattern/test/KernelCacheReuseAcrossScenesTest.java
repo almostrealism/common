@@ -17,6 +17,8 @@
 package org.almostrealism.studio.pattern.test;
 
 import org.almostrealism.audio.WaveOutput;
+import org.almostrealism.hardware.jni.NativeCompiler;
+import org.almostrealism.hardware.metal.MetalProgram;
 import org.almostrealism.heredity.TemporalCellular;
 import org.almostrealism.music.pattern.BatchedPatternLayerRenderer;
 import org.almostrealism.music.pattern.PatternSystemManager;
@@ -43,6 +45,12 @@ import java.io.IOException;
  * build and render a fresh scene with identical configuration — twice in one JVM. Kernel
  * compilation dominates the first scene's render wall time; if the cache covers cross-scene reuse,
  * later scenes render dramatically faster, which the per-scene render wall times reveal.</p>
+ *
+ * <p>The runner build is measured for each scene as well ({@link #buildAttributedRunner}): its
+ * wall time per construction step and the number of Metal and native C (JNI) kernels it
+ * compiled, and the render logs both counts too. Small operations run on the CPU backend, so the
+ * native C compiles are the expensive ones. A second scene that compiles as many kernels as the
+ * first is recompiling rather than reusing them.</p>
  */
 public class KernelCacheReuseAcrossScenesTest extends AudioSceneTestBase {
 
@@ -70,9 +78,9 @@ public class KernelCacheReuseAcrossScenesTest extends AudioSceneTestBase {
 
 	/**
 	 * Builds and renders {@link #SCENES} identically-configured scenes in one JVM, logging the
-	 * per-scene setup, first-tick, and render-loop wall times plus the distinct-kernel compile
-	 * count, so the second and third scenes' times reveal how much the first scene's compiled
-	 * kernels are reused.
+	 * per-scene runner build attribution, the setup, first-tick, and render-loop wall times, and
+	 * the Metal and native C kernel compile counts of the build and of the render, so the second scene's
+	 * figures reveal how much the first scene's compiled kernels are reused.
 	 *
 	 * @throws IOException if the curated scene cannot be loaded
 	 */
@@ -104,12 +112,14 @@ public class KernelCacheReuseAcrossScenesTest extends AudioSceneTestBase {
 			outFile.getParentFile().mkdirs();
 			WaveOutput out = new WaveOutput(() -> outFile, 24, true);
 
-			TemporalCellular runner = scene.runnerRealTime(
-					new MultiChannelAudioOutput(out), null, BUFFER);
+			TemporalCellular runner = buildAttributedRunner(String.valueOf(s), scene,
+					new MultiChannelAudioOutput(out), BUFFER);
 			Runnable setup = runner.setup().get();
 			Runnable tick = runner.tick().get();
 
 			try {
+				long compilesBefore = MetalProgram.compileTime.getCount();
+				long jniCompilesBefore = NativeCompiler.compileTime.getCount();
 				long t0 = System.nanoTime();
 				setup.run();
 				long t1 = System.nanoTime();
@@ -125,7 +135,9 @@ public class KernelCacheReuseAcrossScenesTest extends AudioSceneTestBase {
 						+ " firstTickMs=" + ms(t2 - t1)
 						+ " renderLoopMs=" + ms(t3 - t2)
 						+ " renderTotalMs=" + ms(t3 - t1)
-						+ " ticks=" + RENDER_TICKS);
+						+ " ticks=" + RENDER_TICKS
+						+ " renderMtlCompiles=" + (MetalProgram.compileTime.getCount() - compilesBefore)
+						+ " renderJniCompiles=" + (NativeCompiler.compileTime.getCount() - jniCompilesBefore));
 			} finally {
 				out.reset();
 				runner.reset();

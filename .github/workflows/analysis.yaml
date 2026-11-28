@@ -2481,7 +2481,12 @@ jobs:
             'import ast, sys; ast.parse(open("/app/server.py").read()); print("server.py present and parseable")'
 
       - name: Build ar-memory image
-        run: docker build -f tools/mcp/memory/Dockerfile -t ar-memory:ci tools/mcp/memory
+        run: docker build -f tools/mcp/memory/Dockerfile -t ar-memory:ci tools/mcp
+
+      - name: Verify the memory server imports in the packaged layout
+        # Building is not enough: a module the server imports but the image
+        # lacks only fails when the server starts.
+        run: docker run --rm --entrypoint python ar-memory:ci -c "import store, server"
 
       - name: Build ar-tracker image
         run: docker build -f tools/tracker/Dockerfile -t ar-tracker:ci tools/tracker
@@ -4281,12 +4286,15 @@ jobs:
             # retries transient ones with backoff, so a 429 or a rate-limit page
             # can never be mistaken for the zip — the earlier `-sL` without `-f`
             # left the HTTP error body in the file and then tried to unzip it.
+            # No --retry-delay: a fixed delay turns off curl's doubling backoff
+            # (1s, 2s, 4s, ...), and a rate limit outlasts six tries 5s apart.
+            # curl also waits as long as a Retry-After header asks.
             JACOCO_VERSION=$(sed -n 's|.*<jacoco.version>\(.*\)</jacoco.version>.*|\1|p' pom.xml | head -n1)
             JACOCO_ZIP="${HOME}/.m2/repository/org/jacoco/jacoco/${JACOCO_VERSION}/jacoco-${JACOCO_VERSION}.zip"
             if [ ! -f "$JACOCO_ZIP" ]; then
               echo "jacoco-cli ${JACOCO_VERSION} not in the Maven cache; downloading from Maven Central"
               mkdir -p "$(dirname "$JACOCO_ZIP")"
-              curl -fsSL --retry 5 --retry-delay 5 --retry-all-errors --retry-max-time 120 \
+              curl -fsSL --retry 8 --retry-all-errors --retry-max-time 300 \
                 -o "$JACOCO_ZIP" \
                 "https://repo1.maven.org/maven2/org/jacoco/jacoco/${JACOCO_VERSION}/jacoco-${JACOCO_VERSION}.zip"
             else
@@ -4371,13 +4379,18 @@ jobs:
   #   auto-resolve-python  python-tests or python-evals failed. Submits at
   #                        once, from inside this run, without waiting for
   #                        anything else.
-  #   auto-review          Every other case, on attempt 1 only: a build
-  #                        failure, code policy violations, other quality gate
-  #                        failures, a docs-only review, or — when every gate
-  #                        passed — the general review. Submits as soon as the
-  #                        gates report, from inside this run, while the
-  #                        long-running test jobs are still going. The gates
-  #                        are deterministic, so there is nothing to retry.
+  #   auto-review          Every other case: a build failure, code policy
+  #                        violations, other quality gate failures, a docs-only
+  #                        review, or — when every gate passed — the general
+  #                        review. Submits as soon as the gates report, from
+  #                        inside this run, while the long-running test jobs are
+  #                        still going. The gates are deterministic, so there is
+  #                        nothing to retry, but the infra retry gate re-runs a
+  #                        gate that failed on infrastructure; auto-review runs
+  #                        on that later attempt too, and stages at most once
+  #                        across the run's attempts (the "earlier attempt"
+  #                        guard), so a validate run that passes on a retry
+  #                        still hands off without a second review round.
   #   auto-resolve         The slow path: failures of the long-running test
   #                        jobs (test, test-flowtree, test-media, the mac, CL
   #                        and CUDA lanes), in a test run. Runs on every
@@ -4401,10 +4414,14 @@ jobs:
   #     auto-resolve-submit.yaml must be equal: the final attempt is the one
   #     whose unconfirmed failures are handed to an agent.
   #     tools/tests/test_remediation_job_exclusivity.py holds these together.
-  #     auto-review is held to attempt 1 because a retry re-runs it whenever
-  #     one of its inputs failed (checkstyle, say) — and its agent, submitted
-  #     minutes into attempt 1, is very likely still working when a test
-  #     failure brings attempt 2 around.
+  #     auto-review runs on every attempt, but hands off at most once: a retry
+  #     re-runs it whenever one of its inputs failed (checkstyle, say), and its
+  #     agent — submitted minutes into the attempt that staged — is very likely
+  #     still working when a later attempt comes around, so auto-review stages
+  #     nothing once an earlier attempt of the same run staged a request. That
+  #     is also what lets a validate run re-run only for an infrastructure
+  #     failure (which attempt 1 suppressed rather than dispatched) hand off
+  #     from the passing attempt instead of stranding the pull request.
   #   - A python-tests or python-evals failure skips both of them (a
   #     python-tests failure also skips test-flowtree, which gates on it), and
   #     rerun-flaky-tests.sh never retries such a run, so auto-resolve-python
@@ -4602,15 +4619,20 @@ jobs:
 
   auto-review:
     needs: [changes, build, python-tests, python-evals, code-policy-check, test-timeout-check, duplicate-code-check, test-integrity-check, deception-audit, agent-commit-validation, checkstyle]
-    # Attempt 1 only — see "Remediation Jobs" above. A python-tests or
-    # python-evals failure belongs to auto-resolve-python. Validate runs
-    # only: the review loop iterates on validation, and a test run (which
-    # repeats validation for the same commit) must not start another round.
+    # Validate runs only, and at most one handoff across a run's attempts — see
+    # "Remediation Jobs" above. A python-tests or python-evals failure belongs
+    # to auto-resolve-python. A test run (which repeats validation for the same
+    # commit) must not start another review round. It runs on every attempt,
+    # not attempt 1 alone: the infra retry gate (rerun-flaky-tests.sh) re-runs a
+    # validate run's failed gates when one failed on infrastructure, so a run
+    # whose attempt 1 suppressed the dispatch as infrastructure must still hand
+    # off when a later attempt passes. The "earlier attempt" guard below keeps
+    # it to a single handoff: it stages nothing when an earlier attempt already
+    # staged a request, so a retry never starts a second review round.
     if: >-
       !cancelled() &&
       github.event_name == 'pull_request' &&
       github.ref != 'refs/heads/master' &&
-      fromJSON(github.run_attempt) == 1 &&
       needs.changes.result == 'success' &&
       needs.python-tests.result != 'failure' &&
       needs.python-evals.result != 'failure'
@@ -4646,6 +4668,37 @@ jobs:
             echo "::notice::All changes are under docs/ — will use the docs review prompt"
           else
             echo "docs_only=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # A validate run reaches attempt 2+ only because the infra retry gate
+      # (rerun-flaky-tests.sh) re-ran a gate that failed on infrastructure, and
+      # auto-review runs again on that attempt so a passing retry still hands
+      # off. But it must stage at most once across the run's attempts: two
+      # review rounds for one commit put two agents on the branch making
+      # conflicting edits. An earlier attempt's handoff is recorded by the
+      # auto-review-request artifact it staged (the same artifact the retry gate
+      # keys its auto-resolve-request check on), so a non-expired one from this
+      # run means an earlier attempt already handed off and this one stages
+      # nothing. The check runs before this attempt's own upload, so the only
+      # artifacts it sees are from earlier attempts. A failed query leaves
+      # earlier=false and the handoff proceeds: the controller's STARTED_AFTER
+      # guard still refuses a genuine duplicate, so favouring the handoff is the
+      # safe direction. Skipped on attempt 1, where no earlier attempt exists.
+      - name: Detect an earlier attempt's review handoff
+        id: earlier
+        if: fromJSON(github.run_attempt) != 1
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          COUNT=$(gh api "/repos/$REPO/actions/runs/$RUN_ID/artifacts?name=auto-review-request" \
+            --jq '[.artifacts[] | select(.expired | not)] | length' 2>/dev/null || echo "0")
+          if [ -n "$COUNT" ] && [ "$COUNT" != "0" ]; then
+            echo "::notice::An earlier attempt already staged an auto-review request — not starting a second review round"
+            echo "earlier=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "earlier=false" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Check quality gates
@@ -4856,7 +4909,7 @@ jobs:
           ./tools/ci/prompts/build-build-failure-prompt.sh "${{ runner.temp }}/agent-prompt.txt" "${{ runner.temp }}/branch-todos.txt"
 
       - name: Stage submit request (build failure)
-        if: steps.route.outputs.route == 'build-failure' && steps.infra.outputs.infra_only != 'true'
+        if: steps.route.outputs.route == 'build-failure' && steps.infra.outputs.infra_only != 'true' && steps.earlier.outputs.earlier != 'true'
         env:
           BRANCH: ${{ needs.changes.outputs.branch }}
           BASE_BRANCH: ${{ needs.changes.outputs.base_branch }}
@@ -4883,7 +4936,7 @@ jobs:
           ./tools/ci/prompts/build-policy-violation-prompt.sh "${{ runner.temp }}/agent-prompt.txt" "${{ runner.temp }}/branch-todos.txt"
 
       - name: Stage submit request (code policy violations)
-        if: steps.route.outputs.route == 'code-policy' && steps.infra.outputs.infra_only != 'true'
+        if: steps.route.outputs.route == 'code-policy' && steps.infra.outputs.infra_only != 'true' && steps.earlier.outputs.earlier != 'true'
         env:
           BRANCH: ${{ needs.changes.outputs.branch }}
           BASE_BRANCH: ${{ needs.changes.outputs.base_branch }}
@@ -4916,7 +4969,7 @@ jobs:
           ./tools/ci/prompts/build-quality-gate-prompt.sh "${{ runner.temp }}/quality-gate-failures.txt" "${{ runner.temp }}/agent-prompt.txt" "${{ runner.temp }}/branch-todos.txt"
 
       - name: Stage submit request (quality gates)
-        if: steps.route.outputs.route == 'quality-gates' && steps.infra.outputs.infra_only != 'true'
+        if: steps.route.outputs.route == 'quality-gates' && steps.infra.outputs.infra_only != 'true' && steps.earlier.outputs.earlier != 'true'
         env:
           BRANCH: ${{ needs.changes.outputs.branch }}
           BASE_BRANCH: ${{ needs.changes.outputs.base_branch }}
@@ -4947,7 +5000,7 @@ jobs:
           ./tools/ci/prompts/build-docs-review-prompt.sh "${{ runner.temp }}/agent-prompt.txt" "${{ runner.temp }}/branch-todos.txt"
 
       - name: Stage submit request (docs-only review)
-        if: steps.route.outputs.route == 'docs-review'
+        if: steps.route.outputs.route == 'docs-review' && steps.earlier.outputs.earlier != 'true'
         env:
           BRANCH: ${{ needs.changes.outputs.branch }}
           BASE_BRANCH: ${{ needs.changes.outputs.base_branch }}
@@ -4988,7 +5041,7 @@ jobs:
           fi
 
       - name: Stage submit request (general review)
-        if: steps.route.outputs.route == 'general-review'
+        if: steps.route.outputs.route == 'general-review' && steps.earlier.outputs.earlier != 'true'
         env:
           BRANCH: ${{ needs.changes.outputs.branch }}
           BASE_BRANCH: ${{ needs.changes.outputs.base_branch }}
@@ -5021,10 +5074,17 @@ jobs:
           QUALITY_FAILURE_COUNT: ${{ steps.quality.outputs.failure_count }}
           COPILOT_AVAILABLE: ${{ steps.copilot.outputs.copilot_available }}
           INFRA_ONLY: ${{ steps.infra.outputs.infra_only }}
+          EARLIER: ${{ steps.earlier.outputs.earlier }}
         run: |
           {
             echo "## Auto-Review"
             echo ""
+            if [ "$EARLIER" = "true" ]; then
+              echo "> **Already handed off** — an earlier attempt of this run staged a review request for this commit, so this re-run of the gates (after an infrastructure retry) starts no second review round."
+              echo ""
+              echo "_Nothing was submitted._"
+              exit 0
+            fi
             if [ "$COPILOT_AVAILABLE" = "false" ]; then
               echo "> **Copilot unavailable** — the latest Copilot review on this PR is an \"insufficient remaining quota\" notice, so no Copilot review ran. The review agent is the only automated reviewer, and it will not wait for a Copilot review that is not coming."
               echo ""
@@ -5174,7 +5234,7 @@ jobs:
   # hands off" below); "Auto-Resolve Submit" submits the request once the run
   # completes, and rerun-flaky-tests.sh retries a run that staged nothing.
   # Stages nothing when no test failed — the review for this commit was
-  # auto-review's, on attempt 1. Its requests carry no STARTED_AFTER: the
+  # auto-review's, in the validate run. Its requests carry no STARTED_AFTER: the
   # submit workflow sets it to the start of this attempt, since the pipeline
   # start would make auto-review's own submission look like newer work.
   #

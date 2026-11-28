@@ -209,7 +209,7 @@ public interface RigidBody {
 		public void setMass(double mass) {
 			this.mass = mass;
 			this.p = this.v.multiply(this.mass);
-			this.l = this.w.multiply(this.mass);
+			this.l = this.in.transformAsOffset(this.w);
 		}
 		
 		public double getMass() { return this.mass; }
@@ -236,7 +236,7 @@ public interface RigidBody {
 		 */
 		public void setAngularVelocity(Vector w) {
 			this.w = w;
-			this.l = this.w.multiply(this.mass);
+			this.l = this.in.transformAsOffset(this.w);
 		}
 		
 		public void setForce(Vector f) { this.f = f; }

@@ -1,9 +1,14 @@
 """Tests for tools/ci/pr-status-labels.py and the workflow that runs it."""
 
+import contextlib
+import dataclasses
 import datetime
 import importlib.util
+import io
 import os
+import tempfile
 import unittest
+from unittest import mock
 
 import yaml
 
@@ -79,6 +84,19 @@ class DeriveTest(unittest.TestCase):
                 validate_run=run("pull_request", conclusion=conclusion),
                 validate_jobs=[job("auto-review-submit")])
             self.assertEqual(state[0], labels.AUTO_REVIEW, conclusion)
+
+    def test_a_validate_run_that_handed_off_on_a_retry_is_auto_review(self):
+        """When the infra retry gate re-runs a failed validate run and a later
+        attempt passes, auto-review now hands off on that attempt. The labeller
+        reads it with no change: ``submitted`` looks for an auto-review-submit
+        success in the run's jobs (``gather`` fetches them with ``filter=all``,
+        i.e. across every attempt), so a handoff on attempt 2 reads as
+        ``ci: auto-review`` just as one on attempt 1 does — not as the
+        ``ci: needs attention`` the stranded run used to show."""
+        state = self.derive(
+            validate_run=run("pull_request", conclusion="success", attempt=2),
+            validate_jobs=[job("auto-review-submit")])
+        self.assertEqual(state[0], labels.AUTO_REVIEW)
 
     def test_a_python_fix_from_a_validate_run_is_auto_review(self):
         state = self.derive(
@@ -263,6 +281,15 @@ class LabelChangesTest(unittest.TestCase):
                          sorted([labels.STALLED, labels.READY_TO_LAUNCH]))
         self.assertEqual(remove, [])
 
+    def test_ready_to_launch_removes_a_present_ready_for_review(self):
+        # The settled stage where the marker takes the label's place: a draft
+        # plan currently ci: ready for review that is ready to launch shows the
+        # marker alone, so ci: ready for review is removed as the marker is added.
+        add, remove = labels.label_changes([labels.READY], labels.READY, False,
+                                           ready=True)
+        self.assertEqual((add, remove),
+                         ([labels.READY_TO_LAUNCH], [labels.READY]))
+
     def test_ready_to_launch_is_removed_when_no_longer_ready(self):
         add, remove = labels.label_changes(
             [labels.FULL_TESTS, labels.READY_TO_LAUNCH], labels.FULL_TESTS,
@@ -291,6 +318,50 @@ class LabelChangesTest(unittest.TestCase):
             add, remove = labels.label_changes([state], state, False,
                                                ready=True)
             self.assertNotIn(labels.READY_TO_LAUNCH, add, state)
+
+    def test_ready_to_launch_replaces_ready_for_review(self):
+        # On the settled ready-for-review stage the marker takes that label's
+        # place: the wanted set is {READY_TO_LAUNCH}, never both green labels.
+        add, remove = labels.label_changes([], labels.READY, False, ready=True)
+        self.assertEqual((add, remove), ([labels.READY_TO_LAUNCH], []))
+
+    def test_ready_for_review_stays_when_not_ready_to_launch(self):
+        # A settled PR that is not a ready-to-launch draft plan keeps
+        # ci: ready for review exactly as before.
+        self.assertEqual(
+            labels.label_changes([], labels.READY, False, ready=False),
+            ([labels.READY], []))
+        self.assertEqual(
+            labels.label_changes([labels.READY], labels.READY, False,
+                                 ready=False), ([], []))
+
+    def test_a_pr_carrying_both_green_labels_loses_ready_for_review(self):
+        # A pull request that already shows both gets ci: ready for review
+        # removed so only ci: ready to launch remains.
+        add, remove = labels.label_changes(
+            [labels.READY, labels.READY_TO_LAUNCH], labels.READY, False,
+            ready=True)
+        self.assertEqual((add, remove), ([], [labels.READY]))
+
+    def test_the_marker_sits_beside_review_limit(self):
+        # ci: review limit is a settled stage the marker joins, as before.
+        add, remove = labels.label_changes([labels.REVIEW_LIMIT],
+                                           labels.REVIEW_LIMIT, False,
+                                           ready=True)
+        self.assertEqual((add, remove), ([labels.READY_TO_LAUNCH], []))
+
+    def test_the_two_green_labels_are_never_both_wanted(self):
+        # The owner's rule, across every stage and both markers: a pull request
+        # is never wanted to carry ci: ready for review and ci: ready to launch
+        # at once.
+        for stage in labels.LABELS:
+            for stalled in (False, True):
+                for ready in (False, True):
+                    wanted = labels.wanted_labels(stage, stalled, ready)
+                    self.assertFalse(
+                        labels.READY in wanted
+                        and labels.READY_TO_LAUNCH in wanted,
+                        (stage, stalled, ready))
 
 
 class ReadyToLaunchTest(unittest.TestCase):
@@ -351,6 +422,16 @@ class ReadyToLaunchTest(unittest.TestCase):
         self.assertTrue(self.ready(files=[
             changed("docs/guide.md", "modified"),
             changed("docs/plans/sub/PLAN-y.md")]))
+
+    def test_docs_dir_without_a_trailing_slash_is_a_directory_boundary(self):
+        # A consumer passing "docs" (no slash) must not accept a sibling such
+        # as "docs-other/": a change there is outside the docs directory and
+        # blocks the marker, exactly as the normalized plans_dir does.
+        config = dataclasses.replace(labels.DEFAULTS, docs_dir="docs")
+        facts = {"pr": plan_pr(),
+                 "files": [changed("docs/plans/PLAN-x.md"),
+                           changed("docs-other/thing.py", "modified")]}
+        self.assertFalse(labels.ready_to_launch(facts, self.REPO, config))
 
     def test_the_marker_is_the_same_green_as_ready_for_review(self):
         self.assertEqual(labels.LABELS[labels.READY_TO_LAUNCH][0],
@@ -579,6 +660,90 @@ class GatherTest(unittest.TestCase):
         self.assertEqual(client.requested[0], "labels?per_page=100&page=1")
 
 
+class MainTest(unittest.TestCase):
+    """``main`` end to end against a ``FakeClient``: the reporting path that
+    derives the stage shown and the launch marker from the wanted set, so a
+    regression in that computation is caught, not only in ``wanted_labels`` and
+    ``summary_row`` in isolation. Run with ``--dry-run`` so no label is written;
+    the reporting still runs."""
+
+    def run_main(self, client):
+        """Run ``main --dry-run`` against ``client``, returning its stdout and
+        the step-summary text it wrote."""
+        handle = tempfile.NamedTemporaryFile("w+", suffix=".md", delete=False)
+        handle.close()
+        env = {"REPO": "owner/repo", "GH_TOKEN": "",
+               "GITHUB_STEP_SUMMARY": handle.name}
+        out = io.StringIO()
+        try:
+            with mock.patch.object(labels, "StatusClient",
+                                   lambda *a, **k: client), \
+                    mock.patch.dict(os.environ, env), \
+                    contextlib.redirect_stdout(out):
+                labels.main(["--dry-run"])
+            with open(handle.name) as summary:
+                written = summary.read()
+        finally:
+            os.unlink(handle.name)
+        return out.getvalue(), written
+
+    def test_a_ready_to_launch_draft_plan_reports_the_marker_as_the_stage(self):
+        # A settled draft plan both ready for review and ready to launch,
+        # already carrying ci: ready for review. Both the stdout line and the
+        # step-summary row show ci: ready to launch as the stage, never beside
+        # ci: ready for review and never with the separate marker suffix.
+        item = {"number": 7,
+                "head": {"sha": "abc", "ref": "project/plan-x",
+                         "repo": {"full_name": "owner/repo"}},
+                "labels": [{"name": labels.READY}]}
+        client = FakeClient([
+            ("pulls?state=open", [item]),
+            ("pulls/7/files", [changed("docs/plans/PLAN-x.md")]),
+            ("pulls/7", plan_pr()),
+            ("actions/workflows/", {"workflow_runs": [
+                dict(run("deployment"), head_branch="project/plan-x")]}),
+            ("commits/abc/check-runs", {"check_runs": [
+                check("All Checks", "success"),
+                check("Test Checks", "success")]}),
+        ])
+        stdout, summary = self.run_main(client)
+        self.assertIn("#7 " + labels.READY_TO_LAUNCH + ":", stdout)
+        self.assertNotIn(" ready-to-launch", stdout)
+        row = [line for line in summary.splitlines()
+               if line.startswith("| #7")][0]
+        self.assertIn("| %s |" % labels.READY_TO_LAUNCH, row)
+        self.assertNotIn("(ready to launch)", row)
+        self.assertNotIn(labels.READY, summary)
+
+    def test_a_plain_ready_pull_request_keeps_ready_for_review_as_the_stage(self):
+        # A settled pull request ready for review that is not a draft plan: the
+        # marker does not apply, so ci: ready for review stays the stage and
+        # ci: ready to launch appears nowhere.
+        item = {"number": 9,
+                "head": {"sha": "abc", "ref": "feature/x",
+                         "repo": {"full_name": "owner/repo"}},
+                "labels": []}
+        client = FakeClient([
+            ("pulls?state=open", [item]),
+            ("pulls/9", {"number": 9, "draft": False,
+                         "base": {"ref": "master",
+                                  "repo": {"default_branch": "master"}},
+                         "head": {"ref": "feature/x", "sha": "abc",
+                                  "repo": {"full_name": "owner/repo"}},
+                         "mergeable_state": "clean"}),
+            ("actions/workflows/", {"workflow_runs": [
+                dict(run("deployment"), head_branch="feature/x")]}),
+            ("commits/abc/check-runs", {"check_runs": [
+                check("All Checks", "success"),
+                check("Test Checks", "success")]}),
+        ])
+        stdout, summary = self.run_main(client)
+        self.assertIn("#9 " + labels.READY + ":", stdout)
+        self.assertNotIn(labels.READY_TO_LAUNCH, stdout)
+        self.assertIn(labels.READY, summary)
+        self.assertNotIn(labels.READY_TO_LAUNCH, summary)
+
+
 class CapStatusTest(unittest.TestCase):
     """The remediation-cap commit status, from the submitters to the label."""
 
@@ -646,7 +811,8 @@ class CapStatusTest(unittest.TestCase):
 
 
 class WorkflowTest(unittest.TestCase):
-    """The workflow runs no pull request code and has only what it needs."""
+    """This repository's caller: it has only what it needs and reproduces this
+    repository's own behaviour through the reusable workflow's inputs."""
 
     def setUp(self):
         with open(os.path.join(ROOT, ".github", "workflows",
@@ -660,10 +826,12 @@ class WorkflowTest(unittest.TestCase):
                          ["Build and Test", "Auto-Resolve Submit"])
         self.assertIn("schedule", triggers)
 
+    def test_calls_the_reusable_workflow(self):
+        self.assertEqual(self.job["uses"],
+                         "./.github/workflows/pr-status-labels-run.yaml")
+
     def test_checks_out_the_default_branch(self):
-        checkout = self.job["steps"][0]
-        self.assertTrue(checkout["uses"].startswith("actions/checkout@"))
-        self.assertEqual(checkout["with"]["ref"],
+        self.assertEqual(self.job["with"]["framework-ref"],
                          "${{ github.event.repository.default_branch }}")
 
     def test_permissions(self):
@@ -671,11 +839,239 @@ class WorkflowTest(unittest.TestCase):
             "actions": "read", "checks": "read", "contents": "read",
             "issues": "write", "pull-requests": "write", "statuses": "read"})
 
+    def test_passes_this_repositorys_pipeline_as_inputs(self):
+        with_ = self.job["with"]
+        self.assertEqual(with_["workflow-file"], "analysis.yaml")
+        self.assertEqual(with_["all-checks"], "All Checks")
+        self.assertEqual(with_["test-checks"], "Test Checks")
+        self.assertEqual(with_["validate-submitters"],
+                         ",".join(labels.VALIDATE_SUBMITTERS))
+        self.assertEqual(with_["test-submitters"],
+                         ",".join(labels.TEST_SUBMITTERS))
+        self.assertEqual(with_["staged-request"], labels.STAGED_REQUEST)
+        self.assertEqual(with_["cap-status"], labels.CAP_STATUS)
+        self.assertIs(with_["expect-test-run"], True)
+        self.assertEqual(with_["plans-dir"], labels.PLANS_DIR)
+        self.assertEqual(with_["plan-exclude-pattern"],
+                         labels.PLAN_EXCLUDE_PATTERN)
+
     def test_max_attempts_matches_the_retry_gate(self):
         with open(os.path.join(ROOT, ".github", "workflows",
                                "auto-resolve-submit.yaml")) as handle:
             text = handle.read()
         self.assertIn('MAX_ATTEMPTS: "%d"' % labels.MAX_ATTEMPTS, text)
+
+
+class ReusableWorkflowTest(unittest.TestCase):
+    """The reusable workflow: a trusted checkout of the framework, generic
+    (non-FlowTree, non-this-repository) defaults, and only what it needs."""
+
+    def setUp(self):
+        with open(os.path.join(ROOT, ".github", "workflows",
+                               "pr-status-labels-run.yaml")) as handle:
+            self.workflow = yaml.safe_load(handle)
+        self.job = self.workflow["jobs"]["label"]
+        self.inputs = self.workflow[True]["workflow_call"]["inputs"]
+
+    def test_triggered_only_by_workflow_call(self):
+        self.assertEqual(list(self.workflow[True].keys()), ["workflow_call"])
+
+    def test_checks_out_the_framework_explicitly(self):
+        checkout = self.job["steps"][0]
+        self.assertTrue(checkout["uses"].startswith("actions/checkout@"))
+        self.assertEqual(checkout["with"]["repository"],
+                         "${{ inputs.framework-repository }}")
+        self.assertEqual(checkout["with"]["ref"], "${{ inputs.framework-ref }}")
+        self.assertFalse(checkout["with"].get("persist-credentials", True))
+
+    def test_declares_no_permissions_of_its_own(self):
+        # A reusable workflow's token is the caller's grant. Declaring no
+        # permissions block lets each caller ask for only what its own config
+        # needs (statuses: read only with cap-status), as qa-round.yaml does.
+        self.assertNotIn("permissions", self.job)
+
+    def test_defaults_assume_no_particular_repositorys_pipeline(self):
+        # A repository with no FlowTree workstream and no particular job or
+        # check-run names must get no label that assumes any of them exist.
+        for name in ("workflow-file", "all-checks", "test-checks",
+                     "validate-submitters", "test-submitters",
+                     "staged-request", "cap-status", "plans-dir",
+                     "plan-exclude-pattern"):
+            self.assertEqual(self.inputs[name]["default"], "", name)
+        self.assertIs(self.inputs["expect-test-run"]["default"], False)
+
+    def test_runs_the_script_with_every_input_as_an_environment_variable(self):
+        run = self.job["steps"][1]["run"]
+        env = self.job["steps"][1]["env"]
+        for env_name, config_field in (
+                ("WORKFLOW_FILE", "workflow_file"),
+                ("VALIDATE_EVENT", "validate_event"),
+                ("TEST_EVENT", "test_event"),
+                ("ALL_CHECKS", "all_checks"),
+                ("TEST_CHECKS", "test_checks"),
+                ("VALIDATE_SUBMITTERS", "validate_submitters"),
+                ("TEST_SUBMITTERS", "test_submitters"),
+                ("STAGED_REQUEST", "staged_request"),
+                ("CAP_STATUS", "cap_status"),
+                ("MAX_ATTEMPTS", "max_attempts"),
+                ("RETRY_DECISION_MINUTES", "retry_decision_minutes"),
+                ("EXPECT_TEST_RUN", "expect_test_run"),
+                ("PLANS_DIR", "plans_dir"),
+                ("DOCS_DIR", "docs_dir"),
+                ("PLAN_EXCLUDE_PATTERN", "plan_exclude_pattern")):
+            self.assertIn(env_name, env, config_field)
+            self.assertTrue(
+                any(field.name == config_field
+                    for field in dataclasses.fields(labels.Config)),
+                config_field)
+        self.assertIn("pr-status-labels.py", run)
+
+
+class ConfigTest(unittest.TestCase):
+    """``Config.from_env`` reads the environment the reusable workflow sets,
+    distinguishing unset (keep this repository's default) from set-but-empty
+    (disable the feature)."""
+
+    def test_defaults_match_this_repository(self):
+        self.assertEqual(labels.DEFAULTS, labels.Config())
+        self.assertEqual(labels.DEFAULTS.workflow_file, labels.WORKFLOW_FILE)
+        self.assertEqual(labels.DEFAULTS.validate_submitters,
+                         labels.VALIDATE_SUBMITTERS)
+        self.assertTrue(labels.DEFAULTS.expect_test_run)
+        self.assertEqual(labels.DEFAULTS.plans_dir, labels.PLANS_DIR)
+
+    def test_an_unset_variable_keeps_the_default(self):
+        self.assertEqual(labels.Config.from_env({}), labels.DEFAULTS)
+
+    def test_an_empty_submitters_variable_means_no_such_job(self):
+        config = labels.Config.from_env({"VALIDATE_SUBMITTERS": ""})
+        self.assertEqual(config.validate_submitters, ())
+
+    def test_a_submitters_variable_is_comma_separated(self):
+        config = labels.Config.from_env(
+            {"TEST_SUBMITTERS": "one-submit, two-submit"})
+        self.assertEqual(config.test_submitters, ("one-submit", "two-submit"))
+
+    def test_integers_and_booleans_are_parsed(self):
+        config = labels.Config.from_env(
+            {"MAX_ATTEMPTS": "5", "RETRY_DECISION_MINUTES": "30",
+             "EXPECT_TEST_RUN": "False"})
+        self.assertEqual(config.max_attempts, 5)
+        self.assertEqual(config.retry_decision_minutes, 30)
+        self.assertFalse(config.expect_test_run)
+
+    def test_an_invalid_boolean_is_an_error(self):
+        with self.assertRaises(ValueError):
+            labels.Config.from_env({"EXPECT_TEST_RUN": "yes"})
+
+    def test_an_empty_plans_dir_disables_the_marker(self):
+        config = labels.Config.from_env({"PLANS_DIR": ""})
+        self.assertEqual(config.plans_dir, "")
+
+
+class GeneralizationTest(unittest.TestCase):
+    """The behaviour each generalization switch turns on or off, for a
+    repository whose pipeline does not match this one's."""
+
+    GENERIC = labels.Config(
+        workflow_file="", validate_submitters=(), test_submitters=(),
+        staged_request="", cap_status="", all_checks="", test_checks="",
+        expect_test_run=False, plans_dir="")
+
+    def test_empty_submitters_never_report_an_agent_sent(self):
+        state = labels.derive(
+            {"pr": {"number": 7},
+             "validate_run": run("pull_request", conclusion="failure")},
+            NOW, self.GENERIC)
+        self.assertEqual(state[0], labels.NEEDS_ATTENTION)
+
+    def test_expect_test_run_false_makes_a_passing_validate_run_ready(self):
+        state = labels.derive(
+            {"pr": {"number": 7, "mergeable_state": "clean"},
+             "validate_run": run("pull_request", conclusion="success")},
+            NOW, self.GENERIC)
+        self.assertEqual(state[0], labels.READY)
+
+    def test_expect_test_run_false_still_reports_a_merge_conflict(self):
+        state = labels.derive(
+            {"pr": {"number": 7, "mergeable_state": "dirty"},
+             "validate_run": run("pull_request", conclusion="success")},
+            NOW, self.GENERIC)
+        self.assertEqual(state[0], labels.NEEDS_ATTENTION)
+
+    def test_expect_test_run_true_awaits_a_test_run_instead(self):
+        state = labels.derive(
+            {"pr": {"number": 7},
+             "validate_run": run("pull_request", conclusion="success")},
+            NOW, labels.DEFAULTS)
+        self.assertEqual(state[0], labels.NEEDS_ATTENTION)
+
+    def test_empty_checks_skip_the_gate(self):
+        state = labels.derive(
+            {"pr": {"number": 7, "mergeable_state": "clean"},
+             "test_run": run("deployment")},
+            NOW, self.GENERIC)
+        self.assertEqual(state[0], labels.READY)
+
+    def test_an_empty_cap_status_skips_the_statuses_request(self):
+        client = FakeClient([
+            ("pulls/7", {"number": 7}),
+            ("actions/runs?", {"workflow_runs": [dict(run("pull_request"),
+                                                      id=21)]}),
+            ("commits/abc/check-runs", {"check_runs": []}),
+            ("actions/runs/21/jobs", {"jobs": []}),
+        ])
+        facts = labels.gather(client, PR, self.GENERIC)
+        self.assertIsNone(facts["capped"])
+        self.assertNotIn("commits/abc/statuses?per_page=100&page=1",
+                         client.requested)
+
+    def test_an_empty_cap_status_is_never_matched(self):
+        self.assertIsNone(labels.capped_at(
+            [{"context": "remediation-cap", "state": "failure",
+              "created_at": stamp(1)}], self.GENERIC))
+
+    def test_an_empty_plans_dir_disables_ready_to_launch(self):
+        self.assertFalse(labels.ready_to_launch(
+            {"pr": plan_pr(), "files": [changed("docs/plans/PLAN-x.md")]},
+            "owner/repo", self.GENERIC))
+
+    def test_gather_skips_the_files_request_when_plans_dir_is_empty(self):
+        item = {"number": 7, "head": {"sha": "abc", "ref": "project/plan-x",
+                                      "repo": {"full_name": "owner/repo"}}}
+        client = FakeClient([
+            ("pulls/7", plan_pr()),
+            ("actions/runs?", {"workflow_runs": []}),
+            ("commits/abc/check-runs", {"check_runs": []}),
+        ])
+        facts = labels.gather(client, item, self.GENERIC)
+        self.assertNotIn("files", facts)
+
+    def test_an_empty_workflow_file_reads_every_workflows_runs(self):
+        client = FakeClient([
+            ("pulls/7", {"number": 7}),
+            ("actions/runs?", {"workflow_runs": [dict(run("pull_request"),
+                                                      id=14)]}),
+            ("commits/abc/check-runs", {"check_runs": []}),
+            ("actions/runs/14/jobs", {"jobs": []}),
+        ])
+        facts = labels.gather(client, PR, self.GENERIC)
+        self.assertEqual(facts["validate_run"]["id"], 14)
+        self.assertIn("actions/runs?head_sha=abc&per_page=50",
+                      client.requested)
+
+    def test_an_empty_staged_request_skips_the_artifact_request(self):
+        test_run = dict(run("deployment", conclusion="failure", attempt=3),
+                        id=11)
+        client = FakeClient([
+            ("pulls/7", {"number": 7}),
+            ("actions/runs?", {"workflow_runs": [test_run]}),
+            ("commits/abc/check-runs", {"check_runs": []}),
+            ("actions/runs/11/attempts/3/jobs", {"jobs": []}),
+        ])
+        facts = labels.gather(client, PR, self.GENERIC)
+        self.assertFalse(facts["staged"])
+        self.assertNotIn("actions/runs/11/artifacts", client.requested[-1])
 
 
 if __name__ == "__main__":

@@ -404,15 +404,20 @@ class ScriptedModel:
         return Synthesis("(scripted summary)", "scripted")
 
 
-def _pinned_index(index, now: str):
+def _pinned_index(index, now: str, path_dates=None):
     """The checkout's snapshot index with its corpus identity pinned to the
     case: commit ``checkout`` built at ``now``, so the recency window is
-    measured from a fixed date."""
-    from snapshot_index import SnapshotIndex
+    measured from a fixed date. ``path_dates`` (a case's ``{path: ISO date}``)
+    become the index's file change dates, which the checkout's own index
+    never carries, so a case decides exactly which files changed when."""
+    from snapshot_index import PATH_DATES_WINDOW_DAYS, SnapshotIndex
     if index is None:
         return None
     data = dict(index.data)
     data["corpus"] = {"commit": "checkout", "built_at": now}
+    if path_dates:
+        data["path_dates"] = {"since_days": PATH_DATES_WINDOW_DAYS,
+                              "dates": dict(path_dates)}
     return SnapshotIndex(data)
 
 
@@ -487,7 +492,8 @@ def _run_inprocess(cases: list[dict], k: int, model_for) -> dict:
                                               return_value=model, create=True), \
                             mock.patch.object(consult_engine, "snapshot_index",
                                               return_value=_pinned_index(
-                                                  checkout_index, now)), \
+                                                  checkout_index, now,
+                                                  case.get("path_dates"))), \
                             mock.patch.object(consult_engine, "clock",
                                               return_value=parse_time(now) or
                                               datetime.fromisoformat(DEFAULT_EVAL_NOW)), \

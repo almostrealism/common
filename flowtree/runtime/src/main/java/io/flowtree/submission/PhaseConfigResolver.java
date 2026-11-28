@@ -16,6 +16,7 @@
 
 package io.flowtree.submission;
 
+import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.flowtree.JsonFieldExtractor;
@@ -28,9 +29,11 @@ import io.flowtree.jobs.agent.Phase;
 import io.flowtree.jobs.agent.PhaseConfig;
 import io.flowtree.jobs.agent.PhaseConfigBundle;
 
+import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import io.flowtree.workstream.Workstream;
@@ -266,6 +269,289 @@ public final class PhaseConfigResolver {
                 .overlayOnClearingInheritedProvider(middle)
                 .overlayOnClearingInheritedProvider(workspaceBundle.forPhase(phase))
                 .overlayOn(CONTROLLER_DEFAULT);
+    }
+
+    /** Source label: a per-phase entry in the per-job request bundle. */
+    public static final String SOURCE_JOB_PHASE = "job per-phase";
+    /** Source label: the default of the per-job request bundle. */
+    public static final String SOURCE_JOB_DEFAULT = "job default";
+    /** Source label: a per-phase entry in the workstream bundle. */
+    public static final String SOURCE_WORKSTREAM_PHASE = "workstream per-phase";
+    /** Source label: the default of the workstream bundle. */
+    public static final String SOURCE_WORKSTREAM_DEFAULT = "workstream default";
+    /** Source label: a per-phase entry in the per-job fallback bundle. */
+    public static final String SOURCE_FALLBACK_PHASE = "fallback per-phase";
+    /** Source label: the default of the per-job fallback bundle. */
+    public static final String SOURCE_FALLBACK_DEFAULT = "fallback default";
+    /** Source label: a per-phase entry in the workspace bundle. */
+    public static final String SOURCE_WORKSPACE_PHASE = "workspace per-phase";
+    /** Source label: the default of the workspace bundle. */
+    public static final String SOURCE_WORKSPACE_DEFAULT = "workspace default";
+    /** Source label: the built-in {@link #CONTROLLER_DEFAULT}. */
+    public static final String SOURCE_CONTROLLER_DEFAULT = "controller default";
+    /** Source label: no level supplied a value (the field resolves to {@code null}). */
+    public static final String SOURCE_NONE = "none";
+
+    /**
+     * The resolved value of one {@link PhaseConfig} field together with the
+     * precedence level that supplied it.
+     *
+     * @param value  the resolved field value, or {@code null} when no level set it
+     * @param source one of the {@code SOURCE_*} labels naming the level that
+     *               supplied {@code value} ({@link #SOURCE_NONE} when {@code value}
+     *               is {@code null})
+     */
+    public record FieldResolution(String value, String source) {
+    }
+
+    /**
+     * The resolved per-phase configuration with each field attributed to the
+     * precedence level that supplied it. The {@code value} of each
+     * {@link FieldResolution} matches the corresponding field of
+     * {@link #forPhase(Phase)} for the same phase.
+     *
+     * @param runner   resolution of the {@code runner} field
+     * @param model    resolution of the {@code model} field
+     * @param effort   resolution of the {@code effort} field
+     * @param provider resolution of the {@code provider} field
+     */
+    public record PhaseResolution(FieldResolution runner, FieldResolution model,
+                                  FieldResolution effort, FieldResolution provider) {
+    }
+
+    /**
+     * A single resolved field value together with the {@code SOURCE_*} label of
+     * the level that supplied it. {@link #NONE} represents a field no level set
+     * (value {@code null}, source {@link #SOURCE_NONE}).
+     */
+    private record Attributed(String value, String source) {
+        /** A field no level set: {@code null} value attributed to {@link #SOURCE_NONE}. */
+        private static final Attributed NONE = new Attributed(null, SOURCE_NONE);
+
+        /** Wraps {@code value} with {@code source}, or returns {@link #NONE} when {@code value} is {@code null}. */
+        private static Attributed of(String value, String source) {
+            return value == null ? NONE : new Attributed(value, source);
+        }
+    }
+
+    /**
+     * A {@link PhaseConfig} whose four fields each carry the source level that
+     * supplied them. Its overlay operations mirror {@link PhaseConfig#overlayOn}
+     * and {@link PhaseConfig#overlayOnClearingInheritedProvider} exactly, but
+     * propagate the {@link Attributed#source} of each surviving value — so a
+     * provider cleared by a runner mismatch loses its source rather than keeping
+     * a stale attribution, and a value re-supplied by a lower level is credited
+     * to that level. Replaying the resolution through these is what lets
+     * {@link #resolutionOf(Phase)} attribute each field to the level that truly
+     * decided it, instead of value-matching a flattened layer list after the
+     * merge (which cannot see a cleared field).
+     */
+    private record LabeledConfig(Attributed runner, Attributed model,
+                                 Attributed effort, Attributed provider) {
+
+        /** Attributes every non-null field of {@code config} to {@code source}. */
+        private static LabeledConfig of(PhaseConfig config, String source) {
+            return new LabeledConfig(
+                    Attributed.of(config.runner(), source),
+                    Attributed.of(config.model(), source),
+                    Attributed.of(config.effort(), source),
+                    Attributed.of(config.provider(), source));
+        }
+
+        /** Mirror of {@link PhaseConfig#overlayOn(PhaseConfig)} with source propagation. */
+        private LabeledConfig overlayOn(LabeledConfig other) {
+            return new LabeledConfig(
+                    runner.value() != null ? runner : other.runner,
+                    model.value() != null ? model : other.model,
+                    effort.value() != null ? effort : other.effort,
+                    provider.value() != null ? provider : other.provider);
+        }
+
+        /** Mirror of {@link PhaseConfig#overlayOnClearingInheritedProvider(PhaseConfig)} with source propagation. */
+        private LabeledConfig overlayOnClearingInheritedProvider(LabeledConfig other) {
+            Attributed resolvedProvider;
+            if (provider.value() != null) {
+                resolvedProvider = provider;
+            } else if (runner.value() != null && !runner.value().equals(other.runner.value())) {
+                resolvedProvider = Attributed.NONE;
+            } else {
+                resolvedProvider = other.provider;
+            }
+            return new LabeledConfig(
+                    runner.value() != null ? runner : other.runner,
+                    model.value() != null ? model : other.model,
+                    effort.value() != null ? effort : other.effort,
+                    resolvedProvider);
+        }
+    }
+
+    /**
+     * Returns the resolved configuration for {@code phase} with each field
+     * attributed to the precedence level that supplied it. The resolved values
+     * are identical to {@link #forPhase(Phase)}; this method additionally reports
+     * <em>where</em> each value came from — one of the {@code SOURCE_*} labels
+     * ({@code job per-phase}, {@code job default}, {@code workstream per-phase},
+     * {@code workstream default}, {@code fallback per-phase},
+     * {@code fallback default}, {@code workspace per-phase},
+     * {@code workspace default}, {@code controller default}, or {@code none}).
+     *
+     * <p>Each field's source is determined by replaying the exact overlay chain
+     * of {@link #forPhase(Phase)} on source-carrying layers, so the reported
+     * source is the level whose value actually survived the merge. This accounts
+     * for the runner-aware provider clearing of
+     * {@link PhaseConfig#overlayOnClearingInheritedProvider(PhaseConfig)}: a
+     * provider suppressed by a runner mismatch is reported as {@code none} (or
+     * credited to the lower level that re-supplied it), never attributed to the
+     * higher level whose provider was cleared.</p>
+     *
+     * @param phase the phase to resolve; {@code null} resolves the default
+     * @return the per-field resolution with sources, never {@code null}
+     */
+    public PhaseResolution resolutionOf(Phase phase) {
+        PhaseConfig resolved = forPhase(phase);
+        LabeledConfig attributed = attributedResolution(phase);
+        return new PhaseResolution(
+                fieldResolution(resolved.runner(), attributed.runner()),
+                fieldResolution(resolved.model(), attributed.model()),
+                fieldResolution(resolved.effort(), attributed.effort()),
+                fieldResolution(resolved.provider(), attributed.provider()));
+    }
+
+    /**
+     * Replays the exact overlay chain of {@link #forPhase(Phase)} on
+     * {@link LabeledConfig}s so that every surviving field carries the source
+     * level that supplied it. The structure mirrors {@link #forPhase(Phase)}
+     * precisely — each bundle's per-phase entry overlaid on its default (the
+     * runner-aware {@link PhaseConfigBundle#forPhase(Phase)} merge), the request
+     * on the workstream-or-fallback middle on the workspace, then the controller
+     * default — so a provider cleared mid-chain by a runner mismatch is
+     * attributed to {@link #SOURCE_NONE} or to the lower level that re-supplied
+     * it, never to a higher level whose value was discarded.
+     */
+    private LabeledConfig attributedResolution(Phase phase) {
+        LabeledConfig middle = workstreamBundle.setsPhase(phase)
+                ? labeledForPhase(workstreamBundle, phase,
+                        SOURCE_WORKSTREAM_PHASE, SOURCE_WORKSTREAM_DEFAULT)
+                : labeledForPhase(fallbackBundle, phase,
+                        SOURCE_FALLBACK_PHASE, SOURCE_FALLBACK_DEFAULT);
+        return labeledForPhase(requestBundle, phase, SOURCE_JOB_PHASE, SOURCE_JOB_DEFAULT)
+                .overlayOnClearingInheritedProvider(middle)
+                .overlayOnClearingInheritedProvider(labeledForPhase(workspaceBundle, phase,
+                        SOURCE_WORKSPACE_PHASE, SOURCE_WORKSPACE_DEFAULT))
+                .overlayOn(LabeledConfig.of(CONTROLLER_DEFAULT, SOURCE_CONTROLLER_DEFAULT));
+    }
+
+    /**
+     * Attributes {@code bundle}'s resolution of {@code phase} to its per-phase
+     * ({@code phaseLabel}) and default ({@code defaultLabel}) levels, mirroring
+     * {@link PhaseConfigBundle#forPhase(Phase)}: the per-phase entry, when
+     * present, is overlaid on the default with runner-aware provider clearing;
+     * otherwise the default stands alone.
+     */
+    private static LabeledConfig labeledForPhase(PhaseConfigBundle bundle, Phase phase,
+                                                 String phaseLabel, String defaultLabel) {
+        LabeledConfig def = LabeledConfig.of(bundle.defaultPhaseConfig(), defaultLabel);
+        PhaseConfig override = phase == null ? null : bundle.phaseConfigs().get(phase);
+        if (override == null) return def;
+        return LabeledConfig.of(override, phaseLabel).overlayOnClearingInheritedProvider(def);
+    }
+
+    /**
+     * Pairs the authoritative resolved value from {@link #forPhase(Phase)} with
+     * the source the attributed replay credited it to; a {@code null} value is
+     * always {@link #SOURCE_NONE}.
+     */
+    private static FieldResolution fieldResolution(String resolvedValue, Attributed attributed) {
+        if (resolvedValue == null) return new FieldResolution(null, SOURCE_NONE);
+        return new FieldResolution(resolvedValue, attributed.source());
+    }
+
+    /**
+     * Appends a {@code ,"phaseConfigResolution":{...}} fragment to {@code json}
+     * reporting, for every {@link Phase}, each resolved field's value and the
+     * precedence level ({@code source}) that supplied it. The fragment leads
+     * with a comma, so the caller must have written at least one prior field.
+     *
+     * <p>Unlike {@link #appendFallbackResolutionJson(StringBuilder)}, this is
+     * always emitted — it is the full per-phase resolution map, not just the
+     * fallback status.</p>
+     *
+     * @param json the target string builder; must not be {@code null}
+     */
+    public void appendPhaseConfigResolutionJson(StringBuilder json) {
+        json.append(",\"phaseConfigResolution\":{");
+        boolean first = true;
+        for (Phase phase : Phase.values()) {
+            if (!first) json.append(",");
+            first = false;
+            json.append("\"")
+                    .append(JsonFieldExtractor.escapeJson(phase.wireName()))
+                    .append("\":");
+            appendPhaseResolutionJson(json, resolutionOf(phase));
+        }
+        json.append("}");
+    }
+
+    /** Appends one {@link PhaseResolution} as a JSON object of {@code field:{value,source}} members. */
+    private static void appendPhaseResolutionJson(StringBuilder json, PhaseResolution resolution) {
+        json.append("{");
+        appendFieldResolutionJson(json, true, "runner", resolution.runner());
+        appendFieldResolutionJson(json, false, "model", resolution.model());
+        appendFieldResolutionJson(json, false, "effort", resolution.effort());
+        appendFieldResolutionJson(json, false, "provider", resolution.provider());
+        json.append("}");
+    }
+
+    /** Appends a {@code "name":{"value":...,"source":"..."}} member, comma-prefixed unless first. */
+    private static void appendFieldResolutionJson(StringBuilder json, boolean firstMember,
+                                                  String name, FieldResolution field) {
+        if (!firstMember) json.append(",");
+        json.append("\"").append(name).append("\":{\"value\":");
+        if (field.value() == null) {
+            json.append("null");
+        } else {
+            json.append("\"").append(JsonFieldExtractor.escapeJson(field.value())).append("\"");
+        }
+        json.append(",\"source\":\"")
+                .append(JsonFieldExtractor.escapeJson(field.source()))
+                .append("\"}");
+    }
+
+    /**
+     * Returns warnings for resolved phases whose configuration sets a capability
+     * the resolved runner does not honour. Currently a single check: an
+     * {@code effort} level set for a runner whose
+     * {@link AgentCapabilities#supportsEffortLevel()} is {@code false} — the
+     * runner silently ignores the effort at run time, which a submitter rarely
+     * intends. Unlike model and provider mismatches (which are hard submission
+     * errors), these are advisory because the job still runs correctly; they
+     * surface through the phase-config diagnostic rather than failing the submit.
+     *
+     * @return the list of human-readable warnings, in {@link Phase} declaration
+     *         order; never {@code null}, empty when every resolved capability is
+     *         honoured
+     */
+    public List<String> capabilityWarnings() {
+        List<String> warnings = new ArrayList<>();
+        for (Phase phase : Phase.values()) {
+            appendCapabilityWarning(warnings, phase.wireName(), forPhase(phase));
+        }
+        return warnings;
+    }
+
+    /** Adds an effort-capability warning for {@code config} under {@code phaseLabel} when applicable. */
+    private static void appendCapabilityWarning(List<String> warnings, String phaseLabel,
+                                                PhaseConfig config) {
+        String effort = config.effort();
+        String runner = config.runner();
+        if (effort == null || effort.isEmpty()) return;
+        AgentRunner instance = AgentRunnerRegistry.find(runner);
+        if (instance == null) return;
+        if (!instance.capabilities().supportsEffortLevel()) {
+            warnings.add("phase " + phaseLabel + ": runner '" + runner
+                    + "' does not support effort levels, so effort='" + effort
+                    + "' will be ignored at run time");
+        }
     }
 
     /**
@@ -521,6 +807,96 @@ public final class PhaseConfigResolver {
         return result;
     }
 
+    /** The request fields carrying a single {@link PhaseConfig} object. */
+    private static final String[] PHASE_CONFIG_REQUEST_FIELDS =
+            {"defaultPhaseConfig", "fallbackPhaseConfig"};
+
+    /** The request fields carrying a per-phase map of {@link PhaseConfig} objects. */
+    private static final String[] PHASE_CONFIGS_REQUEST_FIELDS =
+            {"phaseConfigs", "fallbackPhaseConfigs"};
+
+    /** The keys a {@link PhaseConfig} JSON object may carry. */
+    private static final Set<String> PHASE_CONFIG_KEYS =
+            Set.of("runner", "model", "effort", "provider");
+
+    /**
+     * Returns an error message when {@code body} does not have the shape
+     * {@link #bundleFromRequest(String)} and {@link #fallbackBundleFromRequest(String)}
+     * read, or {@code null} when it does. Those parsers are lenient — they skip
+     * a malformed body, a non-object field, an unknown phase name, an unknown
+     * key and a non-text value — so a caller that must report every ignored
+     * input (a dry-run validator) checks the body here first.
+     *
+     * <p>A {@code null} or blank body is valid (it carries no configuration).
+     * Otherwise the body must be a JSON object; each of {@code defaultPhaseConfig}
+     * and {@code fallbackPhaseConfig}, when present and not {@code null}, must be
+     * an object whose keys are among {@code runner}, {@code model},
+     * {@code effort} and {@code provider}, each a string or {@code null}; and
+     * each of {@code phaseConfigs} and {@code fallbackPhaseConfigs} must be an
+     * object mapping {@link Phase} wire names to such objects.</p>
+     *
+     * @param body the raw request body; may be {@code null}
+     * @return an error naming the first malformed field, or {@code null}
+     */
+    public static String requestShapeError(String body) {
+        if (body == null || body.isBlank()) return null;
+        JsonNode root;
+        try (JsonParser parser = MAPPER.createParser(body)) {
+            root = MAPPER.readTree(parser);
+            if (parser.nextToken() != null) {
+                return "Request body is not valid JSON: unexpected trailing content";
+            }
+        } catch (Exception ex) {
+            return "Request body is not valid JSON: " + ex.getMessage();
+        }
+        if (root == null || !root.isObject()) return "Request body must be a JSON object";
+        for (String field : PHASE_CONFIG_REQUEST_FIELDS) {
+            String err = phaseConfigShapeError(field, root.get(field));
+            if (err != null) return err;
+        }
+        for (String field : PHASE_CONFIGS_REQUEST_FIELDS) {
+            JsonNode map = root.get(field);
+            if (map == null || map.isNull()) continue;
+            if (!map.isObject()) return "'" + field + "' must be a JSON object keyed by phase";
+            Iterator<Map.Entry<String, JsonNode>> it = map.fields();
+            while (it.hasNext()) {
+                Map.Entry<String, JsonNode> entry = it.next();
+                try {
+                    Phase.fromWireName(entry.getKey());
+                } catch (IllegalArgumentException ex) {
+                    return "'" + field + "' has unknown phase '" + entry.getKey() + "'";
+                }
+                String err = phaseConfigShapeError(field + "." + entry.getKey(), entry.getValue());
+                if (err != null) return err;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Returns an error when {@code node} (named {@code label} in the message) is
+     * present but is not a {@link PhaseConfig} object of string-or-null
+     * {@link #PHASE_CONFIG_KEYS}; {@code null} when absent, JSON {@code null}
+     * or well formed.
+     */
+    private static String phaseConfigShapeError(String label, JsonNode node) {
+        if (node == null || node.isNull()) return null;
+        if (!node.isObject()) return "'" + label + "' must be a JSON object";
+        Iterator<Map.Entry<String, JsonNode>> it = node.fields();
+        while (it.hasNext()) {
+            Map.Entry<String, JsonNode> entry = it.next();
+            if (!PHASE_CONFIG_KEYS.contains(entry.getKey())) {
+                return "'" + label + "' has unknown key '" + entry.getKey()
+                        + "'; expected one of " + PHASE_CONFIG_KEYS;
+            }
+            JsonNode value = entry.getValue();
+            if (!value.isNull() && !value.isTextual()) {
+                return "'" + label + "." + entry.getKey() + "' must be a string";
+            }
+        }
+        return null;
+    }
+
     /** Parses a {@link PhaseConfig} from a JSON object node; ignores unknown fields. */
     private static PhaseConfig phaseConfigFromNode(JsonNode node) {
         String runner = textOrNull(node.get("runner"));
@@ -611,22 +987,7 @@ public final class PhaseConfigResolver {
         String model = config.model();
         if (model == null || model.isEmpty()) return null;
         String runner = config.runner();
-        if (runner == null || runner.isEmpty()) return null;
-        if (!AgentRunnerRegistry.available().contains(runner)) {
-            // Already caught by validateRunners; defensive guard.
-            return null;
-        }
-        AgentRunner instance;
-        try {
-            instance = AgentRunnerRegistry.get(runner);
-        } catch (Exception e) {
-            // Runners that fail to instantiate (e.g. opencode without a
-            // configured binary) should not block validation; treat as
-            // unconstrained.
-            return null;
-        }
-        // A registered supplier may also yield null rather than throw; that
-        // is the same "cannot ask this runner" case.
+        AgentRunner instance = AgentRunnerRegistry.find(runner);
         if (instance == null) return null;
         if (instance.isModelSupported(model)) return null;
         Set<String> advertised = instance.capabilities().supportedModels();
@@ -636,27 +997,29 @@ public final class PhaseConfigResolver {
     }
 
     /**
-     * Validates provider compatibility with the resolved runner for {@code config}.
-     * Currently only the {@code "claude"} runner enforces provider restrictions:
-     * claude only supports the {@code "anthropic"} provider; using any other
-     * provider with claude is not supported and fails with a clear error.
+     * Validates the resolved provider for {@code config} against the resolved
+     * runner's advertised {@link AgentCapabilities#supportedProviders()}. Every
+     * runner is checked the same way: {@code claude} advertises only
+     * {@code anthropic}, and {@code opencode} advertises exactly the providers
+     * its run step accepts, so a provider either runner would refuse at run
+     * time is rejected at submission instead.
      *
-     * <p>The {@code "opencode"} runner is not validated here. Provider validation
-     * for opencode happens at run time inside the runner itself, where it checks the
-     * provider against its known set and fails with an explicit error if unrecognised.</p>
+     * <p>An empty advertised set means the runner is unconstrained, and a
+     * runner that cannot be instantiated (or whose supplier yields
+     * {@code null}) is treated as unconstrained, matching
+     * {@link #validateModelForRunner(PhaseConfig, String)}.</p>
      */
     private static String validateProviderForRunner(PhaseConfig config, String phaseLabel) {
         String provider = config.provider();
         if (provider == null || provider.isEmpty()) return null;
-        String runner = config.runner();
-        if (runner == null || runner.isEmpty()) return null;
-        if (AgentRunnerRegistry.CLAUDE.equals(runner)
-                && !"anthropic".equals(provider)) {
-            return "runner='claude' only supports provider='anthropic'"
-                    + " (phase " + phaseLabel + "); got provider='" + provider + "'."
-                    + " Use runner='opencode' for other providers.";
-        }
-        return null;
+        AgentRunner instance = AgentRunnerRegistry.find(config.runner());
+        if (instance == null) return null;
+        Set<String> supported = instance.capabilities().supportedProviders();
+        if (supported.isEmpty() || supported.contains(provider)) return null;
+        String hint = AgentRunnerRegistry.CLAUDE.equals(config.runner())
+                ? " Use runner='opencode' for other providers." : "";
+        return "runner='" + config.runner() + "' only supports provider in " + supported
+                + " (phase " + phaseLabel + "); got provider='" + provider + "'." + hint;
     }
 
     /** Shared Jackson mapper for request body parsing; thread-safe after construction. */

@@ -250,6 +250,9 @@ def create_http_app(store, auth_token: Optional[str] = None) -> Starlette:
                         skipped += 1
                         continue
 
+                # Imports preserve every entry: dedup_strategy (not the store's
+                # loop-collapse merge) is the caller's dedup contract, so merging
+                # is opted out to avoid silently deleting same-branch history.
                 store.store(
                     content=content,
                     namespace=entry.get("namespace", "default"),
@@ -257,6 +260,7 @@ def create_http_app(store, auth_token: Optional[str] = None) -> Starlette:
                     source=entry.get("source"),
                     repo_url=repo_url,
                     branch=branch,
+                    merge_near_duplicates=False,
                 )
                 imported += 1
             except Exception as e:

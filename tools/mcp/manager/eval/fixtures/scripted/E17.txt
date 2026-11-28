@@ -1,0 +1,3 @@
+`validate-agent-commit.sh` exits 3 when it blocks a change set that only edits existing tests [N:e17-note].
+BASIS: notes
+CONFLICTS: none

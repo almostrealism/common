@@ -246,6 +246,7 @@ from workspace_map import (
     _is_multi_workspace_mode,
     _workspaces_for_org,
     _require_org_in_scope,
+    _require_repo_in_scope,
     _require_workstream_in_scope,
     _dispatch_capable_cache,
     _dispatch_capable_lock,
@@ -354,16 +355,19 @@ def controller_health() -> dict:
 
 @mcp.tool()
 def agent_options() -> dict:
-    """Return available agent runners, phases, model names, and the default runner.
+    """Return available agent runners, phases, models, the default runner, and connected nodes.
 
     Queries the controller's ``/api/agents`` endpoint and returns the
     complete set of options needed to configure per-workstream or per-job
-    runner selection.
+    runner selection, plus the connected nodes and the labels and busy
+    state each last reported.
 
     Use this tool before calling ``workstream_register``,
     ``workstream_update_config``, or ``workstream_submit_task`` with
     ``runners`` or ``default_runner`` parameters to discover valid runner
-    names and phase wire names.
+    names and phase wire names. Use the ``nodes`` list to see where a job
+    with given ``requiredLabels`` would land, and whether a node that
+    matches is currently busy (which is why a matching job may be waiting).
 
     Returns:
         Dictionary with:
@@ -377,6 +381,13 @@ def agent_options() -> dict:
         - ``models``: list of accepted model identifiers (aliases and full
           IDs) that may be passed as the ``model`` parameter.
         - ``defaultRunner``: the built-in fallback runner name (``"claude"``).
+        - ``nodes``: list of connected-node objects, each with ``address``,
+          ``busy`` (``true``/``false``, or ``null`` when the node runs a
+          build that does not report it — unknown, not idle), and
+          ``labels`` (an object of label key/value pairs such as
+          ``{"platform": "linux", "hostname": "halo"}``, or ``null`` when
+          unknown). An empty ``labels`` object means the node reported no
+          labels, distinct from ``null``.
     """
     _require_scope("read")
     _audit("agent_options")
@@ -831,8 +842,26 @@ def _resolve_scope_context(
             "error": f"Invalid scope '{scope}'. Must be 'repo', 'branch', or 'all'.",
         })
 
+    err = _repo_scope_error(repo_url, branch)
+    if err:
+        return ("", "", err)
+
     if scope == "all" and not repo_url and not workstream_id:
-        # Explicitly requested: search everything, no filtering.
+        if _get_workspace_scopes():
+            # A scoped token (a job token) must not read across workspaces;
+            # an unfiltered scope='all' would do exactly that. Memory entries
+            # carry no workspace, so there is nothing to filter on — refuse.
+            return ("", "", {
+                "ok": False,
+                "error": "A workspace-scoped token cannot search every repository "
+                         "(scope='all' with no repository or workstream). Name a "
+                         "repository or workstream in your own workspace, or use "
+                         "scope='repo'.",
+                "next_steps": [
+                    "Set scope to 'repo', or name a workstream in your own workspace",
+                ],
+            })
+        # Unscoped caller explicitly requested everything: no filtering.
         return ("", "", None)
 
     if scope == "branch":
@@ -859,6 +888,28 @@ def _resolve_scope_context(
     return (effective_repo, effective_branch, None)
 
 
+def _repo_scope_error(repo_url: str, branch: str) -> Optional[dict]:
+    """Return the refusal for a directly named repository outside the
+    caller's workspace scope, or ``None`` when it is in scope (or unscoped).
+
+    Args:
+        repo_url: The repository the caller named; empty passes.
+        branch: The branch the caller named, or empty for the whole repository.
+
+    Returns:
+        An ``ok=False`` error dict, or ``None``.
+    """
+    try:
+        _require_repo_in_scope(repo_url, branch)
+    except PermissionError as e:
+        return {
+            "ok": False,
+            "error": str(e),
+            "next_steps": ["Address a workstream or repository in your own workspace"],
+        }
+    return None
+
+
 def _resolve_branch_context(
     workstream_id: str = "",
     repo_url: str = "",
@@ -881,10 +932,22 @@ def _resolve_branch_context(
         require_branch: If False, only repo_url is required (branch may
             be empty).  Defaults to True for backward compatibility.
 
+    The *effective* repository and branch — after a ``workstream_id`` or the
+    token context has filled them, and with an explicit branch override kept —
+    must belong to the caller's workspace scope (:func:`_require_repo_in_scope`);
+    otherwise the error explains the refusal. Authorizing the resolved values
+    rather than the raw arguments is what closes the override path, where a
+    scoped caller supplies its own ``workstream_id`` and an explicit branch on a
+    shared repository that belongs to another workspace, with no ``repo_url`` for
+    an up-front check to see. Unscoped callers are not restricted.
+
     Returns:
         (repo_url, branch, error_dict_or_None)
     """
     if repo_url and (branch or not require_branch):
+        err = _repo_scope_error(repo_url, branch)
+        if err:
+            return ("", "", err)
         return (repo_url, branch, None)
 
     if workstream_id:
@@ -942,6 +1005,9 @@ def _resolve_branch_context(
             "next_steps": next_steps,
         })
 
+    err = _repo_scope_error(repo_url, branch)
+    if err:
+        return ("", "", err)
     return (repo_url, branch, None)
 
 
@@ -1453,12 +1519,14 @@ from workspace_tools import (  # noqa: E402
 from messaging_tools import (  # noqa: E402
     send_message,
     await_message,
+    mailbox_peek,
     job_report_blocked,
     send_alert,
 )
 from workstream_config_tools import (  # noqa: E402
     workstream_register,
     workstream_update_config,
+    phase_config_explain,
 )
 from workstream_submit_tools import (  # noqa: E402
     workstream_submit_task,

@@ -68,4 +68,38 @@ public class RealtimePositionWindowTest extends TestSuiteBase {
 		window.setStartFrame(5000);
 		Assert.assertEquals(6024, window.position(1024));
 	}
+
+	/**
+	 * A non-finite loop length is rejected at construction rather than silently collapsing every
+	 * rendered position to frame {@code 0} (NaN and the infinities drive {@code wrap()} to NaN,
+	 * which {@code position()} would cast to {@code 0}).
+	 */
+	@Test(timeout = 10000)
+	public void constructorRejectsNonFiniteLoop() {
+		for (double invalid : new double[] { Double.NaN, Double.POSITIVE_INFINITY, Double.NEGATIVE_INFINITY }) {
+			try {
+				new RealtimePositionWindow(0, invalid);
+				Assert.fail("expected IllegalArgumentException for loopFrames=" + invalid);
+			} catch (IllegalArgumentException expected) {
+				// the contract defines only finite lengths
+			}
+		}
+	}
+
+	/** Mutation rejects a non-finite loop length and leaves the previous length in place. */
+	@Test(timeout = 10000)
+	public void setLoopFramesRejectsNonFiniteLoop() {
+		RealtimePositionWindow window = new RealtimePositionWindow(0, 4096);
+		for (double invalid : new double[] { Double.NaN, Double.POSITIVE_INFINITY, Double.NEGATIVE_INFINITY }) {
+			try {
+				window.setLoopFrames(invalid);
+				Assert.fail("expected IllegalArgumentException for loopFrames=" + invalid);
+			} catch (IllegalArgumentException expected) {
+				// the contract defines only finite lengths
+			}
+		}
+
+		Assert.assertEquals(4096.0, window.getLoopFrames(), 0.0);
+		Assert.assertEquals(1024, window.position(5120));
+	}
 }

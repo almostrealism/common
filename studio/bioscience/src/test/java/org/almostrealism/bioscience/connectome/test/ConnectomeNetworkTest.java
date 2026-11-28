@@ -260,6 +260,44 @@ public class ConnectomeNetworkTest extends NeuronConnectomeChecks {
 	}
 
 	/**
+	 * {@link ConnectomeNetwork#getStateMemLength()} counts every tensor the network allocates for
+	 * itself and none of the caller's: with no drive of the caller's, one replica of {@code N}
+	 * neurons holds the step counter and the Poisson seed (one element each), the targets
+	 * ({@code replicas * N}), the delay line ({@code (delay + 1) * replicas * N}), the spike totals
+	 * ({@code N}), the five neuron state vectors ({@code replicas * N} each) and the silent drive
+	 * ({@code N}); a caller's drive is not counted, and the connectome never is.
+	 */
+	@Test(timeout = 300000)
+	public void stateMemLengthCountsEveryOwnedTensor() throws IOException {
+		try (NeuronConnectome connectome = NeuronConnectome.load(synthetic())) {
+			long n = connectome.getNeuronCount();
+			int rows = (int) ((ConnectomeNetwork.DELAY + 1e-3 * ConnectomeNetwork.DT) / ConnectomeNetwork.DT) + 1;
+
+			for (int replicas : new int[] {1, 3}) {
+				ConnectomeNetwork network = new ConnectomeNetwork(connectome, replicas, 150.0, 0, 0);
+				try {
+					long count = replicas * n;
+					Assert.assertEquals(rows, network.getRing().getShape().length(0));
+					Assert.assertEquals("replicas=" + replicas,
+							2 + count + rows * count + n + 5 * count + n, network.getStateMemLength());
+				} finally {
+					network.destroy();
+				}
+			}
+
+			try (PackedCollection drive = new PackedCollection(shape(4, (int) n))) {
+				ConnectomeNetwork network = new ConnectomeNetwork(connectome, drive,
+						ConnectomeNetwork.SYNAPSE_WEIGHT, 1, 150.0, 0, 0);
+				try {
+					Assert.assertEquals(2 + n + rows * n + n + 5 * n, network.getStateMemLength());
+				} finally {
+					network.destroy();
+				}
+			}
+		}
+	}
+
+	/**
 	 * {@link ConnectomeNetwork#meanRates(int, long, int)} rejects a seed range whose later passes
 	 * would run past {@link CounterRandom#SEED_LIMIT}, and does so before any state is cleared or
 	 * any trial run, rather than throwing partway through after earlier passes have already mutated

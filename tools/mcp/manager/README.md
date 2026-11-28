@@ -43,14 +43,17 @@ is a thin orchestration facade that:
 |------|-------|-------------|
 | `controller_health` | read | Check controller liveness |
 | `controller_update_config` | write | Update controller-wide config |
+| `agent_options` | read | List agent runners, phases, models, the default runner, and connected `nodes` with the labels and busy state each reported |
 | `workstream_list` | read | List all workstreams with capabilities |
 | `workstream_get_status` | read | Job stats for a workstream |
 | `workstream_get_job` | read | Fetch a specific job by id |
 | `workstream_submit_task` | submit | Submit a coding task prompt |
 | `workstream_register` | write | Register a new workstream |
 | `workstream_update_config` | write | Update workstream settings |
+| `phase_config_explain` | read | Explain per-phase runner/model/effort/provider resolution and dry-run validate a submission |
 | `workspace_update_config` | write | Update workspace-level config (name, default channel, runner defaults) |
 | `send_message` | write | Send a Slack message |
+| `mailbox_peek` | read | Show a workstream's conversation without waiting or consuming it |
 | `job_report_blocked` | write | Report that the current job cannot proceed; ends it `BLOCKED` |
 
 ### Reporting a block
@@ -158,7 +161,7 @@ always has the full history.
 |------|-------|-------------|
 | `memory_recall` | memory-read | Semantic search with optional LLM synthesis |
 | `memory_namespaces` | memory-read | List namespaces with entry counts and latest-write times, newest first |
-| `workstream_context` | memory-read | Get memories, commits, PR, and jobs for a branch (a workstream is optional — `repo_url` + `branch` is enough; only the jobs stream needs one) |
+| `workstream_context` | memory-read | Get memories, commits, PR, jobs, and detected enforcement loops for a branch (a workstream is optional — `repo_url` + `branch` is enough; only the jobs stream needs one) |
 | `memory_store` | memory-write | Store a memory, optionally reformulated |
 | `consult` | consult | Documentation-grounded Q&A: retrieves the project docs and the relevant memories, then synthesises an answer (or returns retrieval-only when no model is reachable, marked `degraded: true`). Replaces the retired `ar-consultant` `consult` tool |
 | `inference_health` | read | Diagnose the inference backend behind `consult`/`memory_recall` on demand: the selected backend and why, a classified availability probe, and when synthesis last succeeded |
@@ -177,8 +180,84 @@ passes `reformulate=true`. Reformulation is a **beta feature**, so `memory_recal
 `workstream_context` return the original text and mark it with `text_source`.
 Pass `reformulated=true` to see the rewrite instead — the response then also
 carries the original for comparison plus a `notice` about the feature's state.
-See [the Consultant README](../consultant/README.md#memory-text-original-vs-reformulated)
+See [Memory Text: Original vs Reformulated](#memory-text-original-vs-reformulated)
 for the full contract.
+
+### Enforcement loops in `workstream_context`
+
+When a branch goes round an enforcement loop — an agent edits, a rule rejects, a
+remediation job runs, repeat — the raw streams show it as a long run of
+near-identical jobs and memories that buries the substantive notes. `workstream_context`
+detects two shapes and collapses each into a single `loop` entry carrying a
+`count` and a time `span` (`from`/`to`):
+
+- **job loops** — consecutive jobs where the same enforcement phase
+  (`description`) produced the same verdict (`status`);
+- **memory loops** — runs of near-identical memories written within one job
+  (bounded by the jobs timeline so a run never spans two jobs).
+
+The response always includes a `loops` array (empty when none are found). By
+default the runs are also collapsed in the `memories` and `jobs` streams to one
+representative entry each, annotated with a `loop` field. Pass
+`collapse_loops=false` to keep every individual entry listed while still
+receiving the `loops` summary. Memory near-identity here is judged textually
+(`difflib`), because the manager has no embedder; the minimum run length (3) and
+similarity floor live as named constants in `loop_summary.py`.
+
+### Near-duplicate memory merging (ar-memory, store time)
+
+The ar-memory server merges near-duplicate memories **at store time** rather
+than through a periodic compaction pass. A looping branch writes the same note
+serially (each new "rule X failed again…" near-identical to the last), so
+collapsing on arrival keeps the index free of duplicates with bounded per-store
+work — one extra nearest-neighbour search, reusing the embedding already
+computed for indexing — and no scheduler or scan window during which duplicates
+pollute recall. The trade-off is that only already-stored notes are considered
+(two truly simultaneous writes cannot merge), which is exactly the serial loop
+this targets.
+
+A new memory whose cosine similarity to an existing note on the **same
+repository and branch** meets `NEAR_DUPLICATE_SIMILARITY_THRESHOLD` (a named
+constant in `store.py`, default `0.97`, override with
+`AR_MEMORY_NEAR_DUPLICATE_THRESHOLD`) replaces that note: the newest entry is
+kept and its `merged_count` records how many source notes it now stands for.
+Distinct memories, and identical text on another branch or repository, are never
+merged. Set `AR_MEMORY_MERGE_NEAR_DUPLICATES=0` to disable the behaviour.
+
+## Memory Text: Original vs Reformulated
+
+ar-manager's `memory_store` can rewrite a note before storing it so the wording
+matches project terminology (enable it per repository with `reformulateOnStore`,
+or per call with `reformulate=true`). Both versions are kept: the rewrite becomes
+the entry's `content` (that is what gets embedded and ranked) and the text the
+agent actually wrote is preserved alongside it. When no inference backend is
+reachable the note is stored unreformulated rather than refused, and the response
+carries `degraded: true` — a missing model never costs you the memory.
+
+The reformulation itself lives on `InferenceBackend.reformulate` in
+`tools/mcp/common/inference.py`, and the dual encoding on
+`MemoryHTTPClient.store_dual`, so every writer shares one implementation.
+
+**Reformulation is a beta feature.** The rewrite runs on a small local model and
+can drop detail, collapse specifics, or state things the author did not. So every
+retrieval path — `consult` and ar-manager's `memory_recall` and
+`workstream_context` — returns the **original text by default**. Each returned memory carries a `text_source` field (`original` or
+`reformulated`) saying which version it holds.
+
+To read the rewrite instead — when evaluating reformulation quality, for example —
+pass `reformulated=true`. The response then contains the rewrite as `content`, the
+author's text as `original` for comparison, and a `notice` repeating the beta
+warning. Setting `AR_MEMORY_REFORMULATED=1` makes rewrites the default for a whole
+session, including the surfaces that expose no parameter of their own (`consult`,
+`workstream_context`).
+
+Retrieval still *ranks* on the rewrite, because that is what was embedded;
+only the text shown to the caller changes. Memories stored by FlowTree jobs never
+went through reformulation and are unaffected either way.
+
+The encoding and the presentation rules live in
+[`tools/mcp/common/memory_text.py`](../common/memory_text.py), shared by every
+retrieval path.
 
 ## Optional Enforcement Phases
 
@@ -250,6 +329,38 @@ for the auto-review, code-policy, quality-gate, auto-resolve and
 auto-resolve-python submissions. Unset → nothing is sent and resolution is
 byte-for-byte what it is today.
 
+### Explaining resolution — `phase_config_explain`
+
+`phase_config_explain` is a read-only diagnostic that answers "what runner,
+model, effort and provider will each phase use, and where did each value come
+from?" for a workstream. For every phase it reports each field's resolved
+`value` and its `source` — one of `job per-phase`, `job default`,
+`workstream per-phase`, `workstream default`, `fallback per-phase`,
+`fallback default`, `workspace per-phase`, `workspace default`,
+`controller default`, or `none` — so an unexpected model or a per-phase
+override that silently did nothing is traceable without reading the raw
+workstream and workspace configuration by hand.
+
+The optional `default_phase_config` / `phase_configs` / `fallback_*`
+arguments preview a *hypothetical* submission: they are resolved exactly as
+`workstream_submit_task` would resolve them, on top of the workstream and
+workspace configuration, without submitting a job. Resolution runs the same
+validation the submit path does, so an unsupported model-for-runner or a
+provider outside the runner's advertised `supportedProviders` is returned as an
+`error` here — the tool doubles as a dry-run validator. The controller also
+checks the request shape strictly (malformed JSON, an unknown phase or key, a
+non-string value), and answers `404` for an unknown workstream and `400` for
+an invalid configuration, with the `ok:false` body either way. When a resolved phase sets an `effort` for a runner that
+cannot honour it, the response also carries a `warnings` entry (the job still
+runs; the effort is ignored).
+
+This is a dedicated tool rather than a field on `workstream_get_status`
+because that tool reports operational analytics (job counts, cost, turns),
+whereas `phase_config_explain` resolves configuration and accepts hypothetical
+per-job overrides to preview a submission. The controller serves it at
+`POST /api/workstreams/{id}/phase-config`
+(`io.flowtree.api.PhaseConfigQueryHandler`).
+
 ## Test Execution Limits
 
 `workstream_submit_task` mechanically rejects submissions that would have an agent or
@@ -304,6 +415,217 @@ target branch (`Workstream.applyCapabilities`). The pipeline's CI-file lock
 edit: the permission-prompt bypass is the flag that decides whether the edit can be
 made at all. Neither flag can be set by an in-flight coding agent.
 
+## Inference Backends
+
+`consult`, `memory_recall` summaries and memory reformulation run on one inference backend
+(`tools/mcp/common/inference.py`), selected by auto-detection or the
+`AR_CONSULTANT_BACKEND` environment variable (the name predates the move of
+`consult` into ar-manager). There are five.
+
+### Auto-Detection Order
+
+When `AR_CONSULTANT_BACKEND` is unset or `"auto"` (the default), ar-manager tries backends in this order:
+
+1. **llama.cpp** -- checks `localhost:8084`, then `mac-studio:8084` as fallback
+2. **Ollama** -- checks `localhost:11434`
+3. **MLX** -- checks if `mlx-lm` is importable (Apple Silicon only)
+4. **OpenRouter** -- only when an API key is configured; paid per token, so it is
+   tried after every local model and auto-detection moves back to a local model
+   as soon as one comes up
+5. **Degraded** -- no model; retrieval-only responses marked `degraded: true`
+
+Detection is re-run whenever the current choice goes stale, so **no restart is
+needed** when a model comes up or goes away. Start `llama-server` mid-session and
+the next consult synthesizes; kill it and the next consult degrades to retrieval.
+Health is cached for `AR_INFERENCE_HEALTH_TTL` seconds (default 30) so a status
+check is not a network round trip; set it to `0` in tests to probe every time.
+
+Because health is re-probed rather than fixed at startup, `inference_health`
+always agrees with what the other tools will actually do.
+
+### OpenRouter (hosted)
+
+For when no lab machine can be spared to run a model. Requests go to
+OpenRouter's OpenAI-compatible API and are billed per token.
+
+```bash
+export AR_CONSULTANT_BACKEND=openrouter          # or auto, to prefer a local model
+export AR_CONSULTANT_OPENROUTER_API_KEY_FILE=/path/to/consultant__openrouter-api-key.json
+export AR_CONSULTANT_OPENROUTER_MODEL=minimax/minimax-m3   # the default
+```
+
+The key file follows the workspace-secret convention
+(`flowtree/docs/operations/PROVIDERS.md`): a JSON object keyed by the secret
+name, created with mode `0600`.
+
+```json
+{ "openrouter-api-key": "sk-or-v1-..." }
+```
+
+In the controller deployment it is ar-manager's own key, kept apart from
+the OpenRouter keys the opencode agents use:
+`/Users/Shared/flowtree/secrets/consultant__openrouter-api-key.json` on the host,
+mounted at `/secrets/consultant__openrouter-api-key.json` (see
+`flowtree/runtime/controller/docker-compose.yml`).
+
+Set `AR_CONSULTANT_BACKEND=openrouter` in the controller stack's **operator
+settings file** — `/Users/Shared/flowtree/secrets/controller.env` on the host
+(overridable with the `FLOWTREE_CONTROLLER_ENV` repository variable), beside the
+other deploy secrets. Do **not** put it in the compose project's
+`flowtree/runtime/controller/.env`: that file is gitignored and a deploy's
+checkout clean deletes it, so a setting kept only there resets to the compose
+default (`llamacpp`) on the next deploy. `rebuild.sh` reads the operator
+settings file and carries it into the compose `.env`, and the deploy workflow
+prints the effective backend in its job summary so a reset is visible. See
+`flowtree/runtime/README.md` ("Controller operator settings").
+
+Two request defaults are deliberate:
+
+- **Reasoning is off** (`reasoning.enabled = false`). OpenRouter counts reasoning
+  tokens against `max_tokens`, so a thinking model can spend a consult's whole
+  budget reasoning and return an empty (but billed) answer. Set
+  `AR_CONSULTANT_OPENROUTER_REASONING` to an effort level (`high`/`medium`/`low`,
+  sent as `reasoning.effort`) to turn it on, or to an empty string to leave the
+  model's own default. (`none`, the default, is a disable sentinel — not an
+  OpenRouter effort level.)
+- **Providers that retain prompts are excluded** (`provider.data_collection =
+  "deny"`). Prompts carry the memory corpus. If a model has no compliant
+  provider, requests fail; set `AR_CONSULTANT_OPENROUTER_DATA_COLLECTION=allow`
+  only if that trade is acceptable.
+
+The health probe calls `GET /key`, which costs nothing, and reports the backend
+down when the key has no credit left, so auto-detection moves on instead of
+failing every request with HTTP 402. The provider's error message (for example
+"Insufficient credits") is returned as the degraded consult's reason.
+
+### llama.cpp (Recommended)
+
+The recommended backend for most setups. Runs a llama.cpp server on any machine and connects via the OpenAI-compatible HTTP API.
+
+#### Starting the Server
+
+```bash
+llama-server \
+    -m /path/to/model.gguf \
+    --host 0.0.0.0 \
+    --port 8084 \
+    -ngl 99 \
+    -c 8192
+```
+
+Key flags:
+- `--host 0.0.0.0` -- listen on all interfaces (required for remote access)
+- `--port 8084` -- the default port ar-manager checks
+- `-ngl 99` -- offload all layers to GPU
+- `-c 8192` -- context window size
+
+Recommended models (Q4_K_M or Q5_K_M quantization):
+- `qwen2.5-coder-32b-instruct` -- best quality for code understanding
+- `qwen2.5-coder-14b-instruct` -- good balance of speed and quality
+
+#### Remote Setup (e.g., Mac Studio)
+
+When running llama-server on a remote machine (e.g., `mac-studio`) and ar-manager elsewhere:
+
+1. Start llama-server on the remote host with `--host 0.0.0.0`
+2. ar-manager auto-detects `mac-studio:8084` as a fallback when `localhost:8084` is unreachable
+
+To explicitly set the URL:
+```bash
+export AR_CONSULTANT_LLAMACPP_URL=http://mac-studio:8084
+```
+
+#### macOS Firewall (Common Issue)
+
+**If the server is running but unreachable from another machine**, the macOS Application Firewall is almost certainly blocking it. Symptoms:
+
+- `nc -z mac-studio 8084` succeeds (TCP connects)
+- `curl http://mac-studio:8084/health` hangs and eventually times out
+- `curl http://localhost:8084/health` works on the server machine itself
+
+The macOS firewall accepts the TCP connection at the kernel level (so `nc` succeeds) but blocks the application from receiving data (so HTTP requests hang indefinitely with no response).
+
+**Fix:**
+
+```bash
+# Check firewall state
+/usr/libexec/ApplicationFirewall/socketfilterfw --getglobalstate
+
+# Allow llama-server through the firewall
+sudo /usr/libexec/ApplicationFirewall/socketfilterfw --add $(which llama-server)
+sudo /usr/libexec/ApplicationFirewall/socketfilterfw --unblockapp $(which llama-server)
+
+# Restart llama-server after changing firewall rules
+```
+
+This applies to any llama.cpp binary name (`llama-server`, `llama-server-metal`, etc.).
+
+#### Container Setup (Docker/Linux)
+
+When ar-manager runs inside a container and llama-server runs on the Docker host:
+
+```bash
+export AR_CONSULTANT_LLAMACPP_URL=http://host.docker.internal:8084
+```
+
+This is the default when a container is detected (via `/.dockerenv`).
+
+### Ollama
+
+Uses the Ollama HTTP API. Ollama must be running and the model must be pulled.
+
+#### Starting the Server
+
+```bash
+# Start Ollama (if not already running as a service)
+ollama serve
+
+# Pull the default model
+ollama pull qwen2.5-coder:32b-instruct-q4_K_M
+```
+
+#### Configuration
+
+```bash
+# Custom model
+export AR_CONSULTANT_MODEL=qwen2.5-coder:14b-instruct-q4_K_M
+
+# Custom Ollama URL (default: http://localhost:11434)
+export AR_CONSULTANT_OLLAMA_URL=http://mac-studio:11434
+```
+
+### MLX (Apple Silicon)
+
+Native inference on Apple Silicon using MLX-LM. No separate server needed, but the model loads into the ar-manager process memory.
+
+#### Installation
+
+```bash
+pip install mlx mlx-lm
+```
+
+#### Configuration
+
+```bash
+# Custom model (default: mlx-community/Qwen2.5-Coder-32B-Instruct-4bit)
+export AR_CONSULTANT_MLX_MODEL=mlx-community/Qwen2.5-Coder-14B-Instruct-4bit
+```
+
+The model is downloaded on first use from Hugging Face.
+
+### Passthrough (No Model)
+
+Skips LLM synthesis entirely. Every tool returns its retrieval results marked
+`degraded: true`. Useful for exercising the retrieval pipeline or when no GPU is
+available.
+
+```bash
+export AR_CONSULTANT_BACKEND=passthrough
+```
+
+Note that pinning any backend by name disables auto-detection, so a pinned
+backend that is unreachable degrades rather than falling back to another one.
+
 ## Environment Variables
 
 | Variable | Default | Description |
@@ -315,9 +637,18 @@ made at all. Neither flag can be set by an in-flight coding agent.
 | `AR_MANAGER_TOKEN_FILE` | `~/.config/ar/manager-tokens.json` | Bearer token config file |
 | `AR_MANAGER_TOKENS` | (none) | JSON string of token config (overrides file) |
 | `AR_MANAGER_REPO_CONFIG_FILE` | `/config/repo-config.json` | Per-repository settings (see below) |
-| `AR_CONSULTANT_BACKEND` | `llamacpp` | LLM backend for memory synthesis: `llamacpp`, `ollama`, `mlx`, `openrouter`, `passthrough`, or `auto` |
+| `AR_CONSULTANT_BACKEND` | `auto` (library); the controller compose deployment pins `llamacpp` | LLM backend for memory synthesis: `llamacpp`, `ollama`, `mlx`, `openrouter`, `passthrough`, or `auto` |
 | `AR_CONSULTANT_LLAMACPP_URL` | (auto-discovered) | llama.cpp server URL |
-| `AR_CONSULTANT_OPENROUTER_API_KEY_FILE` | `/secrets/consultant__openrouter-api-key.json` (compose) | The consultant's OpenRouter secret file; other `AR_CONSULTANT_OPENROUTER_*` settings are in [the consultant README](../consultant/README.md#openrouter-hosted) |
+| `AR_CONSULTANT_OPENROUTER_API_KEY_FILE` | `/secrets/consultant__openrouter-api-key.json` (compose) | ar-manager's OpenRouter secret file; other `AR_CONSULTANT_OPENROUTER_*` settings are in [OpenRouter (hosted)](#openrouter-hosted) |
+| `AR_CONSULTANT_OLLAMA_URL` | `http://localhost:11434` | Ollama server URL |
+| `AR_CONSULTANT_MODEL` | `qwen2.5-coder:32b-instruct-q4_K_M` | Ollama model name |
+| `AR_CONSULTANT_MLX_MODEL` | `mlx-community/Qwen2.5-Coder-32B-Instruct-4bit` | MLX model path |
+| `AR_CONSULTANT_OPENROUTER_API_KEY` | (none) | OpenRouter API key, if not using the file |
+| `AR_CONSULTANT_OPENROUTER_MODEL` | `minimax/minimax-m3` | OpenRouter model slug |
+| `AR_CONSULTANT_OPENROUTER_REASONING` | `none` | `none` disables reasoning (`reasoning.enabled=false`); `high`/`medium`/`low` set `reasoning.effort`; empty string sends no reasoning field |
+| `AR_CONSULTANT_OPENROUTER_DATA_COLLECTION` | `deny` | `provider.data_collection`: `deny` or `allow`; a blank or unrecognised value falls back to `deny` so the privacy restriction is never silently dropped |
+| `AR_CONSULTANT_OPENROUTER_URL` | `https://openrouter.ai/api/v1` | OpenRouter API base URL |
+| `AR_INFERENCE_HEALTH_TTL` | `30` | Seconds a backend health probe is trusted before re-probing; `0` probes every time |
 | `AR_SNAPSHOT_INDEX` | `/app/snapshot/snapshot-index.json` (image) | The snapshot index consult checks names and extracts facts from; unset in a checkout, which disables both |
 | `MCP_TRANSPORT` | `http` | Transport: `http` or `sse`. `stdio` is rejected (auth-only HTTP server) |
 | `MCP_PORT` | `8010` | Port for http/sse transport |
@@ -422,7 +753,14 @@ answered directly with `nonexistent: true`.
 The snapshot index is built in the Dockerfile's `docs` stage before the prune
 (`tools/mcp/common/snapshot_index.py`) and records the commit it was built from,
 passed as the `CORPUS_COMMIT` build argument (`rebuild.sh` exports it; a build
-that omits it records `unknown`). `consult` returns it as `corpus`.
+that omits it records `unknown`). `consult` returns it as `corpus`. It also
+records when each file last changed in the last 90 days: `rebuild.sh` writes
+that `git log` to `tools/mcp/manager/snapshot-path-dates.txt` in the build
+context, because the context has no `.git`. A note naming a file (one the name
+resolves to unambiguously) that changed after the note was written is tier C,
+"names files changed since it was written". It may describe the file as it was,
+so it supplies history, not present fact. A build without that file records no
+dates, and then no note is demoted this way.
 
 Every consult returns a `conversation_id`, and passing it back continues the
 consult: a follow-up keeps the evidence IDs of earlier turns and sees their

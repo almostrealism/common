@@ -79,7 +79,19 @@ public interface RealtimeRunner extends TemporalCellular {
 	/** Returns the number of buffers consumed since the last (re)start. Never blocks. */
 	long buffersConsumed();
 
-	/** Returns the render-ahead ring depth in buffers. */
+	/**
+	 * Returns the render-ahead ring depth in buffers.
+	 *
+	 * <p>This is a property of the render-ahead ring, which only the PDSL path owns: it
+	 * reports the configured depth (the per-runner
+	 * {@link RealtimeRunnerOptions#renderAheadSlots(int) override} when positive, otherwise
+	 * the global {@link AudioSceneRealtimeRunner#renderAheadSlots}). The CellList path has no
+	 * ring — it renders inline within each tick — so it always reports {@code 1} and ignores
+	 * any configured depth. A caller that needs the override to take effect must therefore use
+	 * a channel selection the PDSL path supports (see
+	 * {@link org.almostrealism.studio.arrange.MixdownManager#supportsPdslMixdown}) with the
+	 * PDSL mixdown enabled; otherwise the depth is not applicable and this reports {@code 1}.</p>
+	 */
 	int renderAheadSlots();
 
 	/**

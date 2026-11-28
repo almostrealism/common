@@ -30,6 +30,7 @@ import io.almostrealism.sequence.IndexValues;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.kernel.NoOpKernelStructureContext;
 import io.almostrealism.relation.Producer;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 
 import java.util.List;
@@ -439,10 +440,76 @@ public class PackedCollectionEnumerate
 	}
 
 	/**
+	 * Returns the inverse of this enumeration applied to {@code values} when this
+	 * enumeration is a permutation, or {@code null} when it is not.
+	 *
+	 * <p>An enumeration with a window of length one and stride one along a single axis
+	 * {@code k} of the item, spanning every other axis whole, takes each element exactly
+	 * once: it moves axis {@code k} to the front of the item (this is how
+	 * {@code transpose()} is built). Its output is the leading dimensions, then the
+	 * length of axis {@code k}, then the item with axis {@code k} reduced to one; its
+	 * inverse moves that axis back, as a {@link CollectionPermute}. Any other
+	 * enumeration repeats or skips elements and has no inverse.</p>
+	 *
+	 * @param values a producer in the shape of this enumeration's output
+	 * @return {@code values} in the shape of the input, or {@code null}
+	 */
+	@Override
+	protected CollectionProducer inverseProjection(Producer<PackedCollection> values) {
+		int axis = permutedAxis();
+		if (axis < 0) return null;
+
+		TraversalPolicy fullShape = Shape.requireShape("Enumerate", getInputs().get(1));
+		int prefix = traversalDepth;
+		int itemDims = inputShape.getDimensions();
+
+		int[] dims = new int[prefix + itemDims];
+		int[] order = new int[prefix + itemDims];
+		for (int i = 0; i < prefix; i++) {
+			dims[i] = fullShape.length(i);
+			order[i] = i;
+		}
+
+		dims[prefix] = inputShape.length(axis);
+		for (int j = 0, d = prefix + 1; j < itemDims; j++) {
+			if (j != axis) dims[d++] = inputShape.length(j);
+			order[prefix + j] = j < axis ? prefix + 1 + j : j == axis ? prefix : prefix + j;
+		}
+
+		return new CollectionPermute(c(values).reshape(new TraversalPolicy(dims)), order);
+	}
+
+	/**
+	 * Returns the item axis this enumeration moves to the front when it is a permutation,
+	 * a window of length one and stride one along that axis and every other axis whole,
+	 * or {@code -1} when it is not.
+	 *
+	 * @return the permuted axis, or {@code -1}
+	 */
+	private int permutedAxis() {
+		if (subsetShape == null || strideShape == null
+				|| subsetShape.getDimensions() != inputShape.getDimensions()
+				|| strideShape.getDimensions() != inputShape.getDimensions()) {
+			return -1;
+		}
+
+		int axis = -1;
+		for (int j = 0; j < inputShape.getDimensions(); j++) {
+			if (strideShape.length(j) == 1 && subsetShape.length(j) == 1 && axis < 0) {
+				axis = j;
+			} else if (strideShape.length(j) != 0 || subsetShape.length(j) != inputShape.length(j)) {
+				return -1;
+			}
+		}
+
+		return axis;
+	}
+
+	/**
 	 * Generates a new enumeration instance with the same configuration but different inputs.
 	 * This method is used by the framework to create optimized versions of the enumeration
 	 * with potentially transformed or optimized child processes.
-	 * 
+	 *
 	 * @param children the list of child processes to use in the new instance
 	 * @return a new {@link PackedCollectionEnumerate} instance with the same configuration
 	 *         but using the provided child processes

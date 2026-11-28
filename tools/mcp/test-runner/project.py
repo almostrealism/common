@@ -9,9 +9,21 @@ interrogating that target lives here — resolving the root, and reading the
 per-module CI test-group count from the project's own workflow definition.
 """
 
+import os
 import re
+import sys
 from pathlib import Path
 from typing import Optional
+
+# Shared MCP helpers (tools/mcp/common); imported as a top-level module so the
+# project-root resolution is the single one every server shares. project.py is
+# imported before server.py adds this directory under some test entry points,
+# so it puts common on the path here too rather than relying on the server
+# having run first.
+_COMMON_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "common")
+if _COMMON_DIR not in sys.path:
+    sys.path.insert(0, _COMMON_DIR)
+from maven_project import resolve_project_root as _resolve_project_root  # noqa: E402
 
 # The default project root, derived from this file's location
 # (tools/mcp/test-runner/project.py -> project root). This is the repository the
@@ -22,6 +34,11 @@ PROJECT_ROOT = Path(__file__).parent.parent.parent.parent.resolve()
 
 def resolve_project_root(project: str = "") -> Path:
     """Resolve the Maven project a run targets.
+
+    Delegates to the shared resolver in ``common``, binding the default base to
+    :data:`PROJECT_ROOT` so an empty or relative ``project`` is resolved against
+    this repository. ``PROJECT_ROOT`` is read at call time, which keeps the
+    default root patchable in this module's tests.
 
     Args:
         project: Path to the project root. Empty selects :data:`PROJECT_ROOT`.
@@ -37,26 +54,7 @@ def resolve_project_root(project: str = "") -> Path:
             unbuildable target is reported here rather than as an opaque
             Maven failure several steps later.
     """
-    if not project:
-        return PROJECT_ROOT
-
-    root = Path(project).expanduser()
-    if not root.is_absolute():
-        root = PROJECT_ROOT / root
-
-    try:
-        root = root.resolve()
-    except OSError as e:
-        raise ValueError(f"Cannot resolve project path {project!r}: {e}")
-
-    if not root.is_dir():
-        raise ValueError(f"Project root {root} does not exist")
-    if not (root / "pom.xml").is_file():
-        raise ValueError(
-            f"Project root {root} has no pom.xml; "
-            "the path must name the directory holding the reactor pom")
-
-    return root
+    return _resolve_project_root(project, base=PROJECT_ROOT)
 
 
 def ci_workflow_path(project_root: Path) -> Path:

@@ -87,7 +87,7 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 
 	/**
 	 * Bin-selection scale for the impulse-response tables:
-	 * {@code (FILTER_TABLE_BINS - 1) / ln(20000 / MIN_FREQUENCY)} (see {@link #tableRow}).
+	 * {@code (FILTER_TABLE_BINS - 1) / ln(20000 / MIN_FREQUENCY)} (see {@link #tableRows}).
 	 */
 	private static final double FILTER_TABLE_BIN_SCALE =
 			(FILTER_TABLE_BINS - 1) / Math.log(20000.0 / AudioPassFilter.MIN_FREQUENCY);
@@ -593,13 +593,10 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 		// device-side gather: bin = round((bins-1) * ln(cutoff/10) / ln(20000/10)).
 		PackedCollection hpTable = biquadResponseTable(true);
 		PackedCollection lpTable = biquadResponseTable(false);
-		for (int ch = 0; ch < config.channels; ch++) {
-			refresh.add(a(taps,
-					cp(hpCoeffs.reshape(shape(config.channels, taps)).traverse(1).get(ch)),
-					tableRow(hpTable, hpCutoffProducer(config.channel(ch)), taps)));
-		}
+		refresh.add(a(config.channels * taps, cp(hpCoeffs), tableRows(hpTable,
+				perChannelProducer(config.channels, ch -> hpCutoffProducer(config.channel(ch))), taps)));
 		refresh.add(a(taps, cp(lpCoeffs),
-				tableRow(lpTable, lpCutoffProducer(config.channel(0)), taps)));
+				tableRows(lpTable, lpCutoffProducer(config.channel(0)), taps)));
 
 		if (efx != null) {
 			PackedCollection efxAutomation = (PackedCollection) args.get("efx_automation");
@@ -749,28 +746,31 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 	}
 
 	/**
-	 * Builds a {@code [taps]} producer selecting the response-table row for the bin
-	 * nearest the cutoff:
+	 * Builds a {@code [rows, taps]} producer selecting, for each of the {@code [rows]} cutoffs,
+	 * the response-table row for the bin nearest that cutoff:
 	 * {@code bin = floor(FILTER_TABLE_BIN_SCALE * ln(cutoff / MIN_FREQUENCY) + 0.5)}.
-	 * Entirely device-side (log, scale, floor, indexed gather).
+	 * Entirely device-side (log, scale, floor, indexed gather). The bins of every cutoff are
+	 * computed and gathered together, so a bank of per-channel cutoffs compiles to one kernel
+	 * rather than one per channel, each reading its genes at a different offset.
 	 *
-	 * @param table  the {@code [FILTER_TABLE_BINS, taps]} response table
-	 * @param cutoff cutoff producer in Hz (bounded to the table's range)
-	 * @param taps   FIR taps per response
-	 * @return a {@code [taps]} coefficient producer
+	 * @param table   the {@code [FILTER_TABLE_BINS, taps]} response table
+	 * @param cutoffs shape-{@code [rows]} cutoff producer in Hz (bounded to the table's range)
+	 * @param taps    FIR taps per response
+	 * @return a {@code [rows, taps]} coefficient producer
 	 */
-	private Producer<PackedCollection> tableRow(PackedCollection table,
-			Producer<PackedCollection> cutoff, int taps) {
+	private CollectionProducer tableRows(PackedCollection table,
+			Producer<PackedCollection> cutoffs, int taps) {
+		int rows = shape(cutoffs).getTotalSize();
 		CollectionProducer bin = floor(add(
 				multiply(
-						log(divide(cutoff,
+						log(divide(cutoffs,
 								c(AudioPassFilter.MIN_FREQUENCY))),
 						c(FILTER_TABLE_BIN_SCALE)),
 				c(0.5)));
 		Producer<PackedCollection> positions = add(
-				multiply(bin, c((double) taps)),
-				integers(0, taps));
-		return c(shape(taps), cp(table), positions);
+				bin.multiply((double) taps).repeat(1, taps),
+				integers(0, taps).repeat(0, rows));
+		return c(shape(rows, taps), cp(table), positions);
 	}
 
 	/**
@@ -1065,31 +1065,34 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 	 * model: a {@code sel ∈ {0, 1}} weight blends the two coefficient banks
 	 * ({@code hp·(1 − sel) + lp·sel}), yielding exactly the chosen filter per channel.</p>
 	 *
+	 * <p>The genes are gathered into {@code [channels]} banks and the coefficients computed
+	 * over the whole bank, rather than one coefficient subgraph per channel. Each channel's
+	 * subgraph reads its genes at a different offset, so per-channel subgraphs compile to as
+	 * many distinct kernels — the largest single cost of building the real-time runner.</p>
+	 *
 	 * @return shape-{@code [channels, fir_taps]} coefficient producer
 	 */
 	private Producer<PackedCollection> efxFilterCoefficients() {
 		int firTaps = config.filterOrder + 1;
 		Chromosome<PackedCollection> levels = efx.getDelayLevels();
-		Producer<PackedCollection>[] perChannel = new Producer[config.channels];
-		for (int ch = 0; ch < config.channels; ch++) {
-			int src = config.channel(ch);
-			// sel = floor(decision * 2) clamped to {0, 1}: 0 selects high-pass, 1 low-pass,
-			// matching choice(2, decision, concat(hp, lp)) in EfxManager.applyFilter.
-			Producer<PackedCollection> decision = levels.valueAt(src, 2).getResultant(c(1.0));
-			Producer<PackedCollection> sel = floor(multiply(
-					min(decision, c(0.999999)), c(2.0)));
 
-			Producer<PackedCollection> cutoffHz = multiply(
-					levels.valueAt(src, 3).getResultant(c(1.0)), c(20000.0));
-			Producer<PackedCollection> clamped = max(c(20.0),
-					min(cutoffHz, c(0.49 * config.sampleRate)));
-			CollectionProducer hp =
-					highPassCoefficients(clamped, config.sampleRate, config.filterOrder);
-			CollectionProducer lp =
-					lowPassCoefficients(clamped, config.sampleRate, config.filterOrder);
-			perChannel[ch] = hp.multiply(c(1.0).subtract(sel)).add(lp.multiply(sel));
-		}
-		return channelBank(perChannel, new TraversalPolicy(config.channels, firTaps));
+		// sel = floor(decision * 2) clamped to {0, 1}: 0 selects high-pass, 1 low-pass,
+		// matching choice(2, decision, concat(hp, lp)) in EfxManager.applyFilter.
+		CollectionProducer sel = floor(multiply(min(
+				perChannelProducer(config.channels,
+						ch -> levels.valueAt(config.channel(ch), 2).getResultant(c(1.0))),
+				c(0.999999)), c(2.0))).repeat(1, firTaps);
+
+		CollectionProducer clamped = max(c(20.0), min(multiply(
+				perChannelProducer(config.channels,
+						ch -> levels.valueAt(config.channel(ch), 3).getResultant(c(1.0))),
+				c(20000.0)), c(0.49 * config.sampleRate)));
+		CollectionProducer hp =
+				highPassCoefficients(clamped, config.sampleRate, config.filterOrder);
+		CollectionProducer lp =
+				lowPassCoefficients(clamped, config.sampleRate, config.filterOrder);
+		return hp.multiply(sel.multiply(-1.0).add(1.0)).add(lp.multiply(sel))
+				.reshape(new TraversalPolicy(config.channels, firTaps));
 	}
 
 	/**
@@ -1193,20 +1196,16 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 	 * @return cutoff-frequency producer (Hz)
 	 */
 	private Producer<PackedCollection> hpCutoffProducer(int channel) {
-		if (hpCutoffOverrideHz >= 0.0) {
-			// Diagnostic: force the main-arm high-pass cutoff (0 makes the spectral-inversion FIR
-			// collapse to an identity passthrough), so a bisection can isolate the filter's effect
-			// on the main-bus level from the rest of the chain.
-			return c(hpCutoffOverrideHz);
-		}
-		Producer<PackedCollection> v = manager.getAutomationManager().getAggregatedValue(
-				manager.getMainFilterUpSimple().valueAt(channel),
-				p(manager.getMainFilterUpAdjustmentScale()), -40.0);
+		// Diagnostic override: force the main-arm high-pass cutoff (0 selects the lowest, near
+		// passthrough response) so a bisection can isolate the filter from the rest of the chain.
+		Producer<PackedCollection> hz = hpCutoffOverrideHz >= 0.0 ? c(hpCutoffOverrideHz)
+				: multiply(c(20000.0), manager.getAutomationManager().getAggregatedValue(
+						manager.getMainFilterUpSimple().valueAt(channel),
+						p(manager.getMainFilterUpAdjustmentScale()), -40.0));
 		// AudioPassFilter bounds its frequency producer to [MIN_FREQUENCY, 20000] at
 		// construction, so the gene's near-zero cutoff is really a 10 Hz high-pass in
 		// Java. Apply the identical bound so the FIR cutoff matches exactly.
-		return bound(multiply(c(20000.0), v),
-				AudioPassFilter.MIN_FREQUENCY, 20000);
+		return bound(hz, AudioPassFilter.MIN_FREQUENCY, 20000);
 	}
 
 	/**
@@ -1312,18 +1311,16 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 	private Producer<PackedCollection> wetFilterCoefficients(boolean high) {
 		final int firTaps = config.filterOrder + 1;
 		FixedFilterChromosome wetFilter = manager.getWetFilter();
-		PackedCollection table = biquadResponseTable(high);
-		Producer<PackedCollection>[] perChannel = new Producer[config.channels];
-		for (int ch = 0; ch < config.channels; ch++) {
-			int src = config.channel(ch);
-			Producer<PackedCollection> cutoff = bound(
-					high ? wetFilter.highPassFrequency(src) : wetFilter.lowPassFrequency(src),
-					AudioPassFilter.MIN_FREQUENCY, 20000);
-			Producer<PackedCollection> row = tableRow(table, cutoff, firTaps);
-			// efx-off wet arm has no per-channel volume/send; pan folds here (see javadoc).
-			perChannel[ch] = efx == null ? applyPan(src, row) : row;
-		}
-		return channelBank(perChannel, new TraversalPolicy(config.channels, firTaps));
+		Producer<PackedCollection> cutoffs = bound(perChannelProducer(config.channels, ch -> high
+						? wetFilter.highPassFrequency(config.channel(ch))
+						: wetFilter.lowPassFrequency(config.channel(ch))),
+				AudioPassFilter.MIN_FREQUENCY, 20000);
+		CollectionProducer rows = tableRows(biquadResponseTable(high), cutoffs, firTaps);
+		// efx-off wet arm has no per-channel volume/send; pan folds here (see javadoc).
+		if (efx != null || stereoSide == null) return rows;
+		CollectionProducer gains = c(perChannelProducer(config.channels,
+				ch -> panGain(config.channel(ch)))).repeat(1, firTaps);
+		return rows.multiply(gains).reshape(new TraversalPolicy(config.channels, firTaps));
 	}
 
 	/**

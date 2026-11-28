@@ -1,4 +1,4 @@
-"""Tests for ar-build-validator's metadata handling.
+"""Tests for ar-build-validator's metadata handling and project targeting.
 
 ar-build-validator used to reimplement metadata load/save and old-run cleanup
 inline. It now delegates to the shared ``RunStore`` in ``common``. These tests
@@ -6,6 +6,13 @@ pin that delegation at build-validator's own call sites, and in particular that
 a corrupt ``metadata.json`` now reads as absent (``None``) — the robustness the
 inline copy lacked, where ``json.load`` raised straight out of ``_load_metadata``
 and out of ``get_status``.
+
+They also pin that a run can target any Maven project, not only the repository
+the server ships in: an empty ``project`` selects that repository (so common's
+behaviour is unchanged), a supplied path redirects the build, the invalid-file
+scan and the policy report both follow the chosen root, and the project is
+recorded in the run config so the shared build-tree conflict check can scope to
+it.
 
 The server module is loaded from its explicit path under a directory-specific
 name: nine ``tools/mcp`` directories define a top-level ``server.py``, so a bare
@@ -17,8 +24,11 @@ import importlib.util
 import json
 import sys
 import tempfile
+import threading
 import unittest
+from dataclasses import asdict
 from pathlib import Path
+from unittest import mock
 
 _SERVER_DIR = Path(__file__).resolve().parent
 _COMMON_DIR = _SERVER_DIR.parent / "common"
@@ -77,6 +87,60 @@ class BuildValidatorMetadataTest(unittest.TestCase):
         # reported as not found rather than crashing the status call.
         self.assertIsNone(self.validator.get_status("bad"))
 
+    def test_worker_marks_run_failed_when_target_resolution_fails(self):
+        """A target removed after call_tool validated it fails the run terminally.
+
+        ``project_root()`` is re-resolved inside the worker. If the sibling
+        checkout has since vanished it raises, which must be caught and reported
+        as a ``failed`` run with the timeout timer cancelled -- not escape the
+        worker thread and leave the run reported as ``running`` until timeout.
+        """
+        run_dir = self._make_run("race")
+        (run_dir / "output.txt").write_text("")
+        self.validator._save_metadata("race", {
+            "run_id": "race", "status": "running",
+            "started_at": "2020-01-01T00:00:00",
+            "checks": [{"name": "checkstyle", "status": "pending"}],
+        })
+        timer = threading.Timer(3600, lambda: None)
+        timer.daemon = True
+        timer.start()
+        self.validator._timeout_timers["race"] = timer
+
+        config = server.ValidationConfig(
+            checks=["checkstyle"], project="/nonexistent/vanished/checkout")
+        self.validator._run_validation("race", config, run_dir)
+
+        self.assertEqual("failed", self.validator._load_metadata("race")["status"])
+        self.assertNotIn("race", self.validator._timeout_timers)
+        timer.cancel()
+
+    def test_subprocess_runs_in_the_target_project(self):
+        """Maven is launched with cwd set to the project being validated.
+
+        Threading the chosen root into the subprocess working directory is the
+        core of the generalization: a validation of a sibling checkout must run
+        Maven there, not in the repository the server ships in.
+        """
+        run_dir = self._make_run("cwd")
+        (run_dir / "output.txt").write_text("")
+        self.validator._save_metadata("cwd", {
+            "run_id": "cwd", "status": "running",
+            "started_at": "2020-01-01T00:00:00", "checks": []})
+        target = Path(self._tmp.name) / "downstream"
+        target.mkdir()
+
+        fake = mock.MagicMock()
+        fake.pid = 4321
+        fake.wait.return_value = 0
+        with mock.patch.object(server.subprocess, "Popen", return_value=fake) as popen:
+            exit_code = self.validator._run_subprocess(
+                ["mvn", "checkstyle:check", "-B"],
+                run_dir / "output.txt", "cwd", target)
+
+        self.assertEqual(0, exit_code)
+        self.assertEqual(target, popen.call_args.kwargs["cwd"])
+
     def test_cleanup_retires_oldest_runs(self):
         for i in range(server.MAX_RUNS + 5):
             run_dir = self.dir / f"r{i:03d}"
@@ -87,6 +151,59 @@ class BuildValidatorMetadataTest(unittest.TestCase):
         remaining = sorted(p.name for p in self.dir.iterdir() if p.is_dir())
         self.assertEqual(server.MAX_RUNS - 1, len(remaining))
         self.assertNotIn("r000", remaining)
+
+
+class BuildValidatorProjectTargetTest(unittest.TestCase):
+    """A validation run resolves and targets the Maven project it was given."""
+
+    def _project(self) -> Path:
+        """Return a throwaway directory that is a buildable Maven project."""
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        root = Path(tmp.name)
+        (root / "pom.xml").write_text("<project/>")
+        return root
+
+    def test_config_defaults_to_servers_own_repository(self):
+        """An empty project leaves common's behaviour unchanged."""
+        self.assertEqual(server.PROJECT_ROOT, server.ValidationConfig().project_root())
+
+    def test_config_resolves_a_supplied_project(self):
+        """A supplied path redirects the build away from the server's own repo."""
+        root = self._project()
+        config = server.ValidationConfig(project=str(root))
+        self.assertEqual(root.resolve(), config.project_root())
+
+    def test_supplied_project_without_pom_is_rejected(self):
+        """An unbuildable target fails fast, not as an opaque Maven error later."""
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        with self.assertRaises(ValueError):
+            server.ValidationConfig(project=tmp.name).project_root()
+
+    def test_project_is_recorded_in_the_config(self):
+        """The project rides in the run config so conflict detection can scope it."""
+        self.assertEqual(
+            "../downstream",
+            asdict(server.ValidationConfig(project="../downstream"))["project"])
+
+    def test_surefire_report_follows_the_target_project(self):
+        """The policy report is read from under whichever project is validated."""
+        root = self._project()
+        report = server.BuildValidator._surefire_report(root)
+        self.assertEqual(
+            root / server._SAFE_TEST_MODULE / "target" / "surefire-reports"
+            / f"TEST-{server.SUREFIRE_TEST_CLASS}.xml",
+            report)
+
+    def test_invalid_file_scan_targets_the_given_project(self):
+        """The *.bin scan walks the chosen project, not the server's own repo."""
+        root = self._project()
+        (root / "stray.bin").write_text("x")
+        nested = root / "sub"
+        nested.mkdir()
+        (nested / "keep.txt").write_text("ok")
+        self.assertEqual(["stray.bin"], server.BuildValidator._scan_invalid_files(root))
 
 
 if __name__ == "__main__":

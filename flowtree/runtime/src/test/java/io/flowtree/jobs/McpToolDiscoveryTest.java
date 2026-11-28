@@ -314,6 +314,7 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 			"workstream_submit_task",
 			"workstream_register",
 			"workstream_update_config",
+			"phase_config_explain",
 			"workspace_update_config",
 			"workstream_archive",
 			"workstream_archive_many",
@@ -332,6 +333,7 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 			"workstream_context",
 			"memory_store",
 			"send_message",
+			"mailbox_peek",
 			"job_report_blocked",
 			"github_pr_find",
 			"github_pr_review_comments",
@@ -863,11 +865,18 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 			"src/main/java/io/flowtree/api/WorkstreamRegistrationHandler.java");
 		assertNotNull("WorkstreamRegistrationHandler.java must be locatable for the"
 			+ " submit parity guard", registration);
+		// The resource limits (maxTurns, maxBudgetUsd, inactivityTimeoutSeconds)
+		// are read off the body here, which clamps them to the workstream's.
+		Path limits = locateModuleSource(
+			"src/main/java/io/flowtree/submission/ResourceLimitOverrides.java");
+		assertNotNull("ResourceLimitOverrides.java must be locatable for the"
+			+ " submit parity guard", limits);
 
 		Set<String> consumed = new HashSet<>();
 		consumed.addAll(controllerConsumedKeys(endpoint));
 		consumed.addAll(controllerConsumedKeys(resolver));
 		consumed.addAll(controllerConsumedKeys(registration));
+		consumed.addAll(controllerConsumedKeys(limits));
 
 		List<String> missing = new ArrayList<>();
 		for (String key : toolKeys) {
@@ -1165,6 +1174,35 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 				+ " resolving the workstream from its bearer",
 			McpToolDiscovery.isOptionalToolParameter(
 				managerSources, "await_message", "workstream_id"));
+	}
+
+	/**
+	 * Verifies that {@code mailbox_peek} is registered with the {@code @mcp.tool()}
+	 * decorator and declares the parameters a read-only view of a conversation needs:
+	 * {@code since} to choose where the view starts and {@code limit} to bound it.
+	 * {@code workstream_id} must be optional so a job-scoped agent can look at its own
+	 * workstream's conversation with no arguments.
+	 */
+	@Test(timeout = 30000)
+	public void managerMailboxPeekToolIsRegisteredWithExpectedParameters() {
+		List<Path> managerSources = McpToolDiscovery.locateManagerSources();
+		assertFalse("manager tool sources must be locatable from the test working"
+			+ " directory; a silent skip here would let MCP tool/schema drift go"
+			+ " undetected", managerSources.isEmpty());
+
+		assertTrue("mailbox_peek must be registered with @mcp.tool() or it is"
+				+ " invisible to MCP clients",
+			McpToolDiscovery.discoverToolNames(managerSources).contains("mailbox_peek"));
+
+		List<String> peekParams =
+			McpToolDiscovery.discoverToolParameters(managerSources, "mailbox_peek");
+		assertTrue("mailbox_peek must declare since in signature",
+			peekParams.contains("since"));
+		assertTrue("mailbox_peek must declare limit in signature",
+			peekParams.contains("limit"));
+		assertTrue("mailbox_peek workstream_id must be optional (default value present)",
+			McpToolDiscovery.isOptionalToolParameter(
+				managerSources, "mailbox_peek", "workstream_id"));
 	}
 
 	/**

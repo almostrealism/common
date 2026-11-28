@@ -53,10 +53,28 @@ public class RealtimePositionWindow {
 	 *
 	 * @param startFrame pattern position of render cursor frame {@code 0}
 	 * @param loopFrames loop length in frames, or a non-positive value for no wrap
+	 * @throws IllegalArgumentException if {@code loopFrames} is not finite
 	 */
 	public RealtimePositionWindow(long startFrame, double loopFrames) {
-		this.loopFrames = loopFrames;
+		this.loopFrames = requireFiniteLoopFrames(loopFrames);
 		setStartFrame(startFrame);
+	}
+
+	/**
+	 * Validates that a loop length is finite. The contract defines only a finite positive
+	 * length (positions wrap) or a non-positive value (positions do not wrap); {@code NaN}
+	 * and the infinities are rejected because they make {@link #wrap(double)} produce
+	 * {@code NaN}, which {@link #position(long)} would silently collapse to frame {@code 0}.
+	 *
+	 * @param loopFrames the candidate loop length
+	 * @return {@code loopFrames} when it is finite
+	 * @throws IllegalArgumentException if {@code loopFrames} is not finite
+	 */
+	private static double requireFiniteLoopFrames(double loopFrames) {
+		if (!Double.isFinite(loopFrames)) {
+			throw new IllegalArgumentException("loopFrames must be finite (was " + loopFrames + ")");
+		}
+		return loopFrames;
 	}
 
 	/** Returns the pattern position of render cursor frame {@code 0}. */
@@ -78,9 +96,10 @@ public class RealtimePositionWindow {
 	 * Sets the loop length. The start frame is re-wrapped into the new length.
 	 *
 	 * @param loopFrames loop length in frames, or a non-positive value for no wrap
+	 * @throws IllegalArgumentException if {@code loopFrames} is not finite
 	 */
 	public void setLoopFrames(double loopFrames) {
-		this.loopFrames = loopFrames;
+		this.loopFrames = requireFiniteLoopFrames(loopFrames);
 		setStartFrame(startFrame);
 	}
 

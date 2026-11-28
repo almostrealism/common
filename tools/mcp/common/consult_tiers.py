@@ -13,7 +13,8 @@ Tiers (see ``consult_evidence``):
 - **B'** branch-local note: on an open or unmerged branch other than the
   caller's — true of that branch, not established for the target.
 - **C**  historical note: older than the window, on a branch closed without
-  merging, or of unknown branch state.
+  merging, of unknown branch state, or naming a file that changed after the
+  note was written.
 - **C✗** stale note: names a type or path the snapshot no longer contains.
 
 Merge state is looked up live while the corpus is a fixed snapshot, so a
@@ -31,6 +32,7 @@ from typing import Optional
 from consult_evidence import (
     TIER_BRANCH_LOCAL, TIER_CURRENT, TIER_HISTORICAL, TIER_STALE,
 )
+from snapshot_index import parse_iso
 
 # Notes older than this, measured back from the snapshot date, are history.
 RECENCY_WINDOW_DAYS = 45
@@ -111,13 +113,13 @@ def parse_time(value) -> Optional[datetime]:
     if not value or not isinstance(value, str):
         return None
     try:
-        parsed = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
+        return parse_iso(value)
     except ValueError:
         try:
             parsed = datetime.strptime(value.strip()[:10], "%Y-%m-%d")
         except ValueError:
             return None
-    return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+    return parsed.replace(tzinfo=timezone.utc)
 
 
 def extract_mentions(text: str) -> list[str]:
@@ -209,7 +211,8 @@ def classify_mentions(mentions: list[str], index) -> dict:
 
 def tier(note: dict, branch_state: BranchState, caller: Caller,
          snapshot_built_at: str, absent_names: list[str],
-         now: Optional[datetime] = None) -> tuple[str, str]:
+         now: Optional[datetime] = None,
+         changed_names: Optional[list[str]] = None) -> tuple[str, str]:
     """The tier of one note, and the reason it was given.
 
     Args:
@@ -220,6 +223,9 @@ def tier(note: dict, branch_state: BranchState, caller: Caller,
             recency window is measured back from it, falling back to ``now``.
         absent_names: Checkable names the note uses that the snapshot lacks.
         now: The current time; injected so the evaluation can freeze it.
+        changed_names: Files the note names that changed after it was written
+            (``SnapshotIndex.changed_after``). What it says about them may no
+            longer hold, so the note is history rather than present fact.
 
     Returns:
         ``(tier, reason)``.
@@ -231,6 +237,9 @@ def tier(note: dict, branch_state: BranchState, caller: Caller,
 
     if absent_names and written_before_snapshot:
         return TIER_STALE, "names absent from snapshot: " + ", ".join(absent_names)
+    if changed_names:
+        return TIER_HISTORICAL, ("names files changed since it was written: "
+                                 + ", ".join(changed_names))
 
     on_target = (branch == caller.target_branch
                  or branch_state.state in (STATE_TARGET, STATE_MERGED))

@@ -176,7 +176,6 @@ STANDALONE_MD_ROOTS = [
     "tools/mcp/README.md",
     "tools/mcp/CLAUDE.md",
     "tools/mcp/SECRETS.md",
-    "tools/mcp/consultant/README.md",
     "tools/mcp/jmx/README.md",
     "tools/mcp/manager/README.md",
     "tools/mcp/memory/README.md",

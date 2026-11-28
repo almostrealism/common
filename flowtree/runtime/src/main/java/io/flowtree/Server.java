@@ -35,6 +35,7 @@ import io.flowtree.msg.NodeProxy;
 import io.flowtree.node.Client;
 import io.flowtree.node.Node;
 import io.flowtree.node.NodeGroup;
+import io.flowtree.node.NodeStatusReport;
 import io.flowtree.www.TomcatNode;
 import org.almostrealism.auth.Login;
 import org.almostrealism.color.RGB;
@@ -1016,7 +1017,9 @@ public class Server implements JobFactory, Runnable, ConsoleFeatures {
 	 */
 	public Message getStatusMessage() throws IOException {
 		String stat = "jobtime:" + this.group.getAverageJobTime()
-				+ ";activity:" + this.group.getAverageActivityRating();
+				+ ";activity:" + this.group.getAverageActivityRating()
+				+ ";" + new NodeStatusReport(this.group.isWorking(),
+						this.group.getLabels()).encode();
 		Message m = new Message(Message.ServerStatus, -1);
 		m.setString(stat);
 		return m;

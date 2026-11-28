@@ -247,12 +247,14 @@ counts.
 **Code path** (`OperationList.get()`):
 ```java
 } else if (isComputation() && (enableNonUniformCompilation || isUniform())) {
-    AcceleratedOperation op = (AcceleratedOperation) compileRunnable(this);
-    op.setFunctionName(functionName);
+    AcceleratedComputationOperation<Void> op = compileRunnable(this);
     op.load();
     return op;
 }
 ```
+
+The compiled operation takes its function name from the list, which is a `NamedFunction`, and
+`load()` compiles the kernel now rather than on the first run.
 
 Without this flag, only uniform lists (where `isUniform()` returns `true`)
 can compile to a single kernel. With it, any list where `isComputation()`

@@ -143,6 +143,12 @@ public class RestartGovernor {
      */
     private Duration maxWallClock = DEFAULT_MAX_WALL_CLOCK;
 
+    /**
+     * This job's own silence budget, or {@code null} to use the runner's; see
+     * {@link #inactivityTimeoutMillis(long)}.
+     */
+    private Duration inactivityTimeout;
+
     /** Number of logical sessions launched so far for this job. */
     private int sessionsLaunched;
 
@@ -244,6 +250,51 @@ public class RestartGovernor {
      */
     void setMaxWallClock(Duration maxWallClock) {
         this.maxWallClock = maxWallClock == null ? DEFAULT_MAX_WALL_CLOCK : maxWallClock;
+    }
+
+    /**
+     * Returns this job's own silence budget, or {@code null} when it uses its
+     * runner's.
+     *
+     * @return the override, or {@code null}
+     */
+    Duration getInactivityTimeout() {
+        return inactivityTimeout;
+    }
+
+    /**
+     * Sets this job's own silence budget: how long an agent session may produce
+     * no output before the inactivity watchdog destroys it. It can only shorten
+     * the runner's budget, never lengthen it; see
+     * {@link #inactivityTimeoutMillis(long)}.
+     *
+     * @param inactivityTimeout the budget, which must be positive, or
+     *                          {@code null} to use the runner's
+     * @throws IllegalArgumentException if the budget is not positive
+     */
+    void setInactivityTimeout(Duration inactivityTimeout) {
+        if (inactivityTimeout != null && (inactivityTimeout.isNegative() || inactivityTimeout.isZero())) {
+            throw new IllegalArgumentException("inactivityTimeout must be positive, got: " + inactivityTimeout);
+        }
+        this.inactivityTimeout = inactivityTimeout;
+    }
+
+    /**
+     * Returns the silence budget a session launched by a runner with the given
+     * default should run under: this job's override when it is shorter, and
+     * the runner's default otherwise.
+     *
+     * <p>The runner's default is the ceiling. A longer budget is what lets a
+     * wedged session linger, and a session that is legitimately quiet inside a
+     * long tool call already gets the watchdog's in-flight grace, so a job may
+     * ask to be watched more closely but not less.</p>
+     *
+     * @param runnerDefaultMillis the runner's default budget, in milliseconds
+     * @return the budget to launch with, in milliseconds
+     */
+    long inactivityTimeoutMillis(long runnerDefaultMillis) {
+        if (inactivityTimeout == null) return runnerDefaultMillis;
+        return Math.min(inactivityTimeout.toMillis(), runnerDefaultMillis);
     }
 
     /**
@@ -372,6 +423,9 @@ public class RestartGovernor {
         if (!DEFAULT_MAX_WALL_CLOCK.equals(maxWallClock)) {
             sb.append("::maxWallClockMs:=").append(maxWallClock.toMillis());
         }
+        if (inactivityTimeout != null) {
+            sb.append("::inactivityTimeoutMs:=").append(inactivityTimeout.toMillis());
+        }
     }
 
     /**
@@ -395,6 +449,9 @@ public class RestartGovernor {
                 // Non-positive is meaningful here: it disables the ceiling, so
                 // it travels rather than being treated as an absent override.
                 setMaxWallClock(Duration.ofMillis(Long.parseLong(value)));
+                return true;
+            case "inactivityTimeoutMs":
+                setInactivityTimeout(Duration.ofMillis(Long.parseLong(value)));
                 return true;
             default:
                 return false;

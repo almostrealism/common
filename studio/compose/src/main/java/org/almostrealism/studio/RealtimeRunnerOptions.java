@@ -67,6 +67,11 @@ public class RealtimeRunnerOptions {
 	 * Overrides the render-ahead ring depth for this runner only, leaving the global
 	 * {@link AudioSceneRealtimeRunner#renderAheadSlots} that other runners read unchanged.
 	 *
+	 * <p>Applies only to the PDSL path, which owns a render-ahead ring. The CellList path
+	 * (selected when the PDSL mixdown is disabled or the channel selection is unsupported)
+	 * renders inline and has no ring, so it ignores this depth and reports {@code 1} from
+	 * {@link RealtimeRunner#renderAheadSlots()}.</p>
+	 *
 	 * @param slots ring depth in buffers, or non-positive for the global default
 	 * @return this options object
 	 */

@@ -168,7 +168,8 @@ class AgentRunRequestFactory {
                 .provider(effective.provider())
                 .maxTurns(job.getMaxTurns())
                 .maxBudgetUsd(job.getMaxBudgetUsd())
-                .inactivityTimeoutMillis(job.resolveRunner(phase).defaultInactivityTimeoutMillis())
+                .inactivityTimeoutMillis(job.restartGovernor().inactivityTimeoutMillis(
+                        job.resolveRunner(phase).defaultInactivityTimeoutMillis()))
                 .inactivityRestartAttempt(attempt)
                 .maxInactivityRestarts(job.restartGovernor().getMaxInactivityRestarts())
                 .taskId(job.getTaskId())

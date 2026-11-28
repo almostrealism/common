@@ -20,18 +20,12 @@ import io.almostrealism.db.Query;
 import io.flowtree.msg.Message;
 import io.flowtree.msg.NodeProxy;
 import io.flowtree.node.NodeGroup;
+import io.flowtree.test.HeaderOnlySocket;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
-import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.ObjectOutputStream;
-import java.io.OutputStream;
-import java.net.InetAddress;
-import java.net.Socket;
 import java.net.SocketException;
 import java.util.Properties;
 
@@ -185,41 +179,5 @@ public class ServerQueryExecutorRelayTest extends TestSuiteBase {
 			@Override
 			public Object waitForMessage(int type, String data, long timeout) { return reply; }
 		};
-	}
-
-	/**
-	 * A socket whose output discards writes and whose input carries only an
-	 * object-stream header, so the proxy's reader thread finds nothing to read
-	 * and the write path is driven entirely by the overridden proxy methods.
-	 */
-	private static final class HeaderOnlySocket extends Socket {
-		/** Reports the loopback address, which the proxy uses as its label. */
-		@Override
-		public InetAddress getInetAddress() { return InetAddress.getLoopbackAddress(); }
-
-		/**
-		 * @return an output stream that silently discards everything written
-		 */
-		@Override
-		public OutputStream getOutputStream() {
-			return new OutputStream() {
-				@Override
-				public void write(int b) { }
-
-				@Override
-				public void write(byte[] b, int off, int len) { }
-			};
-		}
-
-		/**
-		 * @return an input stream holding just a valid object-stream header
-		 * @throws IOException never, but declared by the superclass
-		 */
-		@Override
-		public InputStream getInputStream() throws IOException {
-			ByteArrayOutputStream header = new ByteArrayOutputStream();
-			new ObjectOutputStream(header).close();
-			return new ByteArrayInputStream(header.toByteArray());
-		}
 	}
 }
