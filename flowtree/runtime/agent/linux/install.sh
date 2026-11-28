@@ -173,9 +173,11 @@ fi
 
 # Each node entry is a line `nodes.<i>.kind=<kind>`. A Docker Node is useful
 # only if this account can drive the daemon; finding that out at the first
-# job would leave a Node that accepts work it can never run.
+# job would leave a Node that accepts work it can never run. NodeKind.forKey
+# matches the value case-insensitively, so the kind is detected the same way
+# here (the key stays lowercase, as the Java parser matches it case-sensitively).
 if [ -f "${NODES_FILE}" ] \
-        && grep -Eq '^[[:space:]]*nodes\.[0-9]+\.kind[[:space:]]*=[[:space:]]*docker[[:space:]]*$' "${NODES_FILE}"; then
+        && grep -Eq '^[[:space:]]*nodes\.[0-9]+\.kind[[:space:]]*=[[:space:]]*[Dd][Oo][Cc][Kk][Ee][Rr][[:space:]]*$' "${NODES_FILE}"; then
     if ! command -v docker >/dev/null 2>&1; then
         echo "ERROR: ${NODES_FILE} configures a docker Node, but docker is not on PATH for $(id -un)." >&2
         exit 1

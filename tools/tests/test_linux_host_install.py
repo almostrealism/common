@@ -335,6 +335,13 @@ class PreconditionTests(_InstallFixture):
         self.assertEqual(1, result.returncode)
         self.assertIn("'docker info' fails", result.stderr)
 
+    def test_docker_node_detection_is_case_insensitive(self):
+        _write(os.path.join(self.agent_home, "nodes.properties"),
+               "nodes.0.kind=native\nnodes.1.kind=Docker\n")
+        result = self.run_install(FAKE_DOCKER_INFO_RC="1")
+        self.assertEqual(1, result.returncode)
+        self.assertIn("'docker info' fails", result.stderr)
+
     def test_node_list_is_appended_to_the_installed_properties(self):
         _write(os.path.join(self.agent_home, "nodes.properties"),
                "nodes.0.kind=native\nnodes.0.labels.runtime=native\n")
