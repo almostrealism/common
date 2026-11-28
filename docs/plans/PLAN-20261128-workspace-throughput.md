@@ -33,14 +33,18 @@ staged build with tests including a reconciliation test against per-job records
 
 **No new Maven module is created** (repository rule). Everything lands as new
 *classes* in `flowtree/runtime` (packages `io.flowtree.controller` and
-`io.flowtree.api`) and new *Python files* under `tools/mcp/manager/`. The three
-files already at the 1600-line Checkstyle cap — `FlowTreeApiEndpoint.java`,
-`FlowTreeController.java`, `server.py` (all **1596** lines today) — are touched
-only minimally, and §4.4 folds the unavoidable touch into an extract-first step.
+`io.flowtree.api`) and new *Python files* under `tools/mcp/manager/`. The files
+that sit close to the 1600-line Checkstyle cap — `server.py` and
+`FlowTreeController.java` are within a handful of lines of it, and
+`FlowTreeApiEndpoint.java` carries a little more headroom (these counts drift
+with every merge; read them from the files before acting) — are touched only
+minimally, and §4.4 keeps the one unavoidable touch small.
 
 ---
 
 ## 1. Inventory — what is recorded per job today
+
+<!-- TODO(review): §1 cites source line numbers (e.g. JobStatsStore.java:54-86, updateJobSlackTs:1365); docs/CLAUDE.md forbids :NNN anchors — reference by stable class/method/table/column name instead (the "1596" counts already drifted). -->
 
 All storage is `JobStatsStore`
 (`flowtree/runtime/src/main/java/io/flowtree/controller/JobStatsStore.java`,
@@ -348,8 +352,8 @@ keeps logic out of the capped `FlowTreeApiEndpoint`), serving:
 
 ### 4.2 ar-manager tools (one call each → one question)
 
-New Python file `tools/mcp/manager/throughput_tools.py` (keeps `server.py` at
-1596):
+New Python file `tools/mcp/manager/throughput_tools.py` (keeps the bulk out of
+the near-cap `server.py`):
 
 - `throughput_window(preset|start,end, breakdown=...)` → Q1 (last N / custom).
 - `throughput_forecast(horizon)` → Q2 (next N), returns ranges + time-to-idle.
@@ -374,15 +378,27 @@ within the existing derive-at-read design — no new persisted status.
 
 ### 4.4 Respecting the 1600-line cap
 
-`FlowTreeApiEndpoint.java`, `FlowTreeController.java`, `server.py` are each at
-1596 lines. New behaviour goes in the new classes/files above. The one
-unavoidable touch is route registration in `FlowTreeApiEndpoint.serve()`. Rather
-than add branches to a file 4 lines from the cap, **Stage 1 first extracts the
-route dispatch into an `ApiRouter`** (a mechanical move of the existing
-`handleXxx` wiring), bringing `FlowTreeApiEndpoint` well under the recommended
-1500 and giving a clean home for the three new routes. This refactor is in
-scope here, per `flowtree/CLAUDE.md` ("the refactoring is part of the scope of
-whatever change needed the room").
+`server.py` and `FlowTreeController.java` sit within a handful of lines of the
+1600-line cap; `FlowTreeApiEndpoint.java` has more headroom but is still close
+enough that it is worth watching. (Verify the current counts against the files
+before acting — they move with every merge into this branch.) New behaviour goes
+in the new classes/files above. The one unavoidable touch is route registration
+in `FlowTreeApiEndpoint.serve()`, which is a few lines.
+
+Two ways to make the room, for the owner to choose between (§6.7):
+
+- **Minimal touch.** Add the three route branches directly to
+  `FlowTreeApiEndpoint.serve()` while it has headroom. Smallest diff, no
+  cross-cutting change, but leaves the file closer to the cap.
+- **Extract-first.** **Stage 1 extracts the route dispatch into an `ApiRouter`**
+  (a mechanical move of the existing `handleXxx` wiring) before adding the new
+  routes, giving a clean home for them and pulling `FlowTreeApiEndpoint` well
+  under the recommended 1500. `flowtree/CLAUDE.md` ("the refactoring is part of
+  the scope of whatever change needed the room") permits folding such a refactor
+  into the change that needs the room — but with the current headroom the
+  extraction is no longer *forced* by the cap, so it couples a cross-cutting
+  refactor to a feature branch as a matter of preference, not necessity. That is
+  the trade the owner should weigh (§6.7).
 
 ---
 
@@ -461,6 +477,14 @@ harness commits the whole branch once; the stages describe logical phases.
 6. **Forecast horizon cost.** A few hundred Monte-Carlo trials per request is
    cheap, but confirm the forecast endpoint may be computed on demand rather
    than precomputed on a timer.
+7. **`ApiRouter` extraction on this branch?** §4.4 offers two ways to make room
+   for the three new routes. The extract-first option couples a behaviour-
+   preserving but cross-cutting refactor of `FlowTreeApiEndpoint` to this
+   feature branch. With `FlowTreeApiEndpoint` no longer within a few lines of the
+   cap, the extraction is a cleanliness choice, not a necessity. Fold it into
+   this branch, do it first as a standalone refactor change, or skip it and take
+   the minimal-touch route? This is the one place the plan steps beyond purely
+   additive new classes.
 
 ---
 
