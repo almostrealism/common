@@ -203,7 +203,7 @@ public abstract class FrequencyTimeseries implements SpatialTimeseries, ConsoleF
 						}
 					}
 
-					for (int j = 0; j < aggregates.length; j++) {
+					for (int j = 0; isSummaryShown() && j < aggregates.length; j++) {
 						double freq = (j + 1) / (double) aggregates.length;
 
 						if (aggregates[j] > 0.0) {
@@ -226,6 +226,20 @@ public abstract class FrequencyTimeseries implements SpatialTimeseries, ConsoleF
 		}
 
 		elements = local;
+	}
+
+	/**
+	 * Returns whether {@link #loadElements(TemporalSpatialContext)} adds, for each
+	 * time step, the per-band summary values (marked
+	 * {@linkplain SpatialValue#isAlt() alt}) laid out along the lower edge of the
+	 * layer. Subclasses whose layers are not analysed audio, and for which such a
+	 * summary would misrepresent the content, override this to return
+	 * {@code false}.
+	 *
+	 * @return {@code true} to include the summary values; {@code true} by default
+	 */
+	protected boolean isSummaryShown() {
+		return true;
 	}
 
 	/**

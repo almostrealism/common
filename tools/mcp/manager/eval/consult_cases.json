@@ -529,6 +529,49 @@
       }
     },
     {
+      "id": "E15",
+      "question": "What does validate-agent-commit.sh block and what exit code does it use?",
+      "keywords": [
+        "validate-agent-commit.sh",
+        "agent-commit-validation"
+      ],
+      "answerable": true,
+      "memories": "fixtures/memories/E2.json",
+      "scripted": "fixtures/scripted/E15.txt",
+      "revised": "fixtures/scripted/E15-revised.txt",
+      "expect": {
+        "outcome": "answer",
+        "retry_kept": "revision",
+        "max_citation_warnings": 0,
+        "must_include": [
+          "exits?\\s+3"
+        ],
+        "must_cite_any": [
+          "tools/ci/agent-protection/validate-agent-commit.sh"
+        ]
+      }
+    },
+    {
+      "id": "E16",
+      "question": "What does validate-agent-commit.sh block and what exit code does it use?",
+      "keywords": [
+        "validate-agent-commit.sh",
+        "agent-commit-validation"
+      ],
+      "answerable": true,
+      "memories": "fixtures/memories/E2.json",
+      "scripted": "fixtures/scripted/E15.txt",
+      "revised": "fixtures/scripted/E16-revised.txt",
+      "expect": {
+        "outcome": "answer",
+        "retry_kept": "draft",
+        "min_citation_warnings": 1,
+        "must_mark_unsupported": [
+          "exits?\\s+3"
+        ]
+      }
+    },
+    {
       "id": "E17",
       "question": "What does validate-agent-commit.sh block and what exit code does it use?",
       "keywords": [
