@@ -145,6 +145,7 @@ public class AggregateRegionDisjointnessTest extends TestSuiteBase {
 				Assert.assertEquals(8, map.getAggregateLength());
 				Assert.assertEquals("len=8 [0:6,6:2,]", map.describeAggregate());
 
+				// TODO(review): every folded root's root delegate is the aggregate argument, so this holds for distinct roots too
 				Assert.assertSame(frontArg.getRootDelegate(), backArg.getRootDelegate());
 
 				Semaphore done = Submittable.submit(map.getPrepareOperations(), null);
