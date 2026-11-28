@@ -43,7 +43,7 @@ ar-compose
 | `SceneSectionManager` | `org.almostrealism.studio.arrange` | Musical section organization |
 | `AudioComposer` | `org.almostrealism.studio.ml` | Latent-space blending of autoencoded audio sources |
 | `AudioLibraryPersistence` | `org.almostrealism.studio.persistence` | Save/load library to Protocol Buffer |
-| `PatternElementPersistence` | `org.almostrealism.studio.persistence` | Lossless protobuf codec for `PatternElement` / `PatternNote` |
+| `PatternElementPersistence` | `org.almostrealism.studio.persistence` | Lossless protobuf codec for `PatternLayer` / `PatternElement` / `PatternNote` |
 | `LibraryDestination` | `org.almostrealism.studio.persistence` | Batched protobuf file management |
 | `AudioLayerGroupLibrary` | `org.almostrealism.studio.persistence` | Persist `AudioLayerGroup`s as first-class library entries |
 | `AudioLayerPitch` | `org.almostrealism.studio.persistence` | Single accessor for the captured pitch of an `AudioLayer` |

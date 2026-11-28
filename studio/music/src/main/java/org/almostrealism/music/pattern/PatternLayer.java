@@ -23,6 +23,7 @@ import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 /**
@@ -212,6 +213,54 @@ public class PatternLayer {
 	public int depth() {
 		if (child == null) return 1;
 		return child.depth() + 1;
+	}
+
+	/**
+	 * Returns whether the given layer has the same structure as this one: an equal
+	 * {@link NoteAudioChoice}, element lists of the same length whose elements are
+	 * pairwise equal in content (see {@link PatternElement#contentEquals(PatternElement)})
+	 * and in the same order, and child chains for which the same holds at every depth.
+	 *
+	 * <p>A null element list equals only another null element list; it is distinct from
+	 * an empty one. The choice is compared with {@link Objects#equals(Object, Object)},
+	 * so two layers are equal only when they refer to the same choice, not to two
+	 * choices that happen to be configured alike.</p>
+	 *
+	 * <p>This is deliberately not {@link #equals(Object)}, for the reason given on
+	 * {@link PatternElement#contentEquals(PatternElement)}: the elements a layer holds
+	 * are identified by instance in the render caches.</p>
+	 *
+	 * @param other the layer to compare with; may be null
+	 * @return true if {@code other} has the same choice, elements and children as this layer
+	 */
+	public boolean contentEquals(PatternLayer other) {
+		if (this == other) return true;
+		if (other == null) return false;
+
+		return Objects.equals(choice, other.choice)
+				&& elementsContentEqual(other)
+				&& (child == null ? other.child == null : child.contentEquals(other.child));
+	}
+
+	/**
+	 * Returns whether the element list of the given layer matches the element list of
+	 * this one: both are null, or they have the same length and pairwise content-equal
+	 * elements in the same order. Child layers are not considered.
+	 *
+	 * @param other the layer whose elements are compared with those of this layer
+	 * @return true if both layers hold content-equal elements in the same order
+	 */
+	private boolean elementsContentEqual(PatternLayer other) {
+		if (elements == null || other.elements == null) return elements == other.elements;
+		if (elements.size() != other.elements.size()) return false;
+
+		Iterator<PatternElement> others = other.elements.iterator();
+		for (PatternElement element : elements) {
+			PatternElement counterpart = others.next();
+			if (element == null ? counterpart != null : !element.contentEquals(counterpart)) return false;
+		}
+
+		return true;
 	}
 
 	/**

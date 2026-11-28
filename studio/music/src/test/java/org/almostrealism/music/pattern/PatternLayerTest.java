@@ -189,6 +189,50 @@ public class PatternLayerTest extends TestSuiteBase {
 		Assert.assertTrue(layer.getElements().isEmpty());
 	}
 
+	/** Layers with the same choice, content-equal elements and equal child chains are equal in content. */
+	@Test(timeout = 10000)
+	public void contentEqualsComparesChoiceElementsAndChildren() {
+		NoteAudioChoice kick = new NoteAudioChoice("kick");
+		NoteAudioChoice snare = new NoteAudioChoice("snare");
+
+		PatternLayer first = layer(kick, 0.0, 1.0);
+		first.setChild(layer(snare, 0.5));
+		PatternLayer second = layer(kick, 0.0, 1.0);
+		second.setChild(layer(snare, 0.5));
+
+		Assert.assertTrue(first.contentEquals(first));
+		Assert.assertTrue(first.contentEquals(second));
+		Assert.assertTrue(second.contentEquals(first));
+		Assert.assertNotEquals("content equality is not instance equality", first, second);
+		Assert.assertFalse(first.contentEquals(null));
+
+		second.getChild().setChoice(kick);
+		Assert.assertFalse("a different choice in a child", first.contentEquals(second));
+		second.getChild().setChoice(snare);
+
+		second.getChild().setChild(layer(snare, 0.75));
+		Assert.assertFalse("a longer chain", first.contentEquals(second));
+		Assert.assertFalse("a shorter chain", second.contentEquals(first));
+		second.getChild().setChild(null);
+
+		second.getElements().get(1).setRepeatCount(3);
+		Assert.assertFalse("a different element", first.contentEquals(second));
+	}
+
+	/** Element order and count matter, and a null element list is distinct from an empty one. */
+	@Test(timeout = 10000)
+	public void contentEqualsDistinguishesElementLists() {
+		Assert.assertFalse(layer(null, 0.0, 1.0).contentEquals(layer(null, 1.0, 0.0)));
+		Assert.assertFalse(layer(null, 0.0, 1.0).contentEquals(layer(null, 0.0)));
+		Assert.assertFalse(layer(null, 0.0).contentEquals(layer(null, 0.0, 1.0)));
+
+		PatternLayer nullElements = new PatternLayer(null, null);
+		Assert.assertTrue(nullElements.contentEquals(new PatternLayer(null, null)));
+		Assert.assertFalse(nullElements.contentEquals(new PatternLayer()));
+		Assert.assertFalse(new PatternLayer().contentEquals(nullElements));
+		Assert.assertTrue(new PatternLayer().contentEquals(new PatternLayer()));
+	}
+
 	/**
 	 * Builds a one-element layer where the element sits at position {@code 0.0}
 	 * and repeats four times at a spacing of one measure, so it sounds at

@@ -348,6 +348,24 @@ message PatternData {
   repeated PatternElementData elements = 1;
 }
 
+// One layer of a pattern (the Java PatternLayer): the elements of the layer, the
+// NoteAudioChoice that the selection values of those elements are resolved against
+// when the layer is rendered, and the layer chained beneath it.
+//
+// The choice is referenced, not copied: choice_id is the id of a NoteAudioChoice in
+// the choice list of the scene the layer belongs to, which is where choices are
+// persisted and how they are identified there. A layer is therefore decoded against
+// that list.
+//
+// Each field distinguishes absent from empty. An absent choice_id is a layer with no
+// choice, an absent pattern is a layer whose element list is null (a present pattern
+// with no elements is an empty list), and an absent child ends the chain.
+message PatternLayerData {
+  optional string choice_id = 1;
+  optional PatternData pattern = 2;
+  optional PatternLayerData child = 3;
+}
+
 message PatternElementData {
   enum NoteDurationStrategy {
     NOTE_DURATION_STRATEGY_UNSPECIFIED = 0;

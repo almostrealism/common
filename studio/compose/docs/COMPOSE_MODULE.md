@@ -10,7 +10,7 @@ This module provides audio persistence, discovery, and composition tools.
 | `AudioLayerGroupLibrary` | Persist `AudioLayerGroup`s as first-class library entries, content-addressed by MD5 |
 | `AudioLayerPitch` | Single, authoritative accessor for the captured pitch of an `AudioLayer` |
 | `LibraryDestination` | Manages batched protobuf file paths (PREFIX_0.bin, PREFIX_1.bin, etc.) |
-| `PatternElementPersistence` | Lossless codec between `PatternElement` / `PatternNote` and the `PatternData` / `PatternElementData` / `PatternNoteData` protobuf messages |
+| `PatternElementPersistence` | Lossless codec between `PatternLayer` / `PatternElement` / `PatternNote` and the `PatternLayerData` / `PatternData` / `PatternElementData` / `PatternNoteData` protobuf messages |
 | `PrototypeDiscovery` | Console app and reusable API for finding representative samples using graph algorithms |
 
 ## PrototypeDiscovery
@@ -228,6 +228,33 @@ that still carry it, and returns a `WaveDetails` whose `getData()` is
 `null` either way. A `WaveDetails` that will only be read for display or
 metadata can additionally call `releaseData()` to drop the raw audio and
 free that memory.
+
+## Pattern Layers
+
+`PatternElementPersistence.toLayerData(PatternLayer)` encodes a `PatternLayer` and every
+layer chained beneath it as a `PatternLayerData` message: the layer's elements (a
+`PatternData`), a reference to its `NoteAudioChoice`, and its child layer. With the choice
+recorded, a persisted pattern carries what it needs in order to be rendered: the selection
+values of its notes are resolved against that choice.
+
+The choice is stored as its id, not as a copy. Choices belong to a scene, which keeps them
+in its own choice list (the choices file described below) and identifies them by that id,
+and a choice is a set of live audio sources rather than plain data. A layer is therefore
+decoded against the choice list of the scene it belongs to, and the decoded layers hold the
+choice instances from that list:
+
+```java
+Audio.PatternLayerData data = PatternElementPersistence.toLayerData(layer);
+
+PatternLayer restored = PatternElementPersistence.fromLayerData(
+        data, scene.getPatternManager().getChoices());
+
+layer.contentEquals(restored);   // same choice, equal elements, equal children
+```
+
+A reference the choice list cannot resolve is an `IllegalArgumentException`, not a layer
+with no choice. A layer with no choice, a null element list, an empty element list and a
+layer with no child are each restored as they were.
 
 ## Choices File Robustness
 

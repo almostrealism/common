@@ -30,6 +30,7 @@ import org.almostrealism.music.filter.ParameterizedEnvelopeLayers;
 import org.almostrealism.music.filter.ParameterizedFilterEnvelope;
 import org.almostrealism.music.filter.ParameterizedLayerEnvelope;
 import org.almostrealism.music.filter.ParameterizedVolumeEnvelope;
+import org.almostrealism.music.notes.NoteAudioChoice;
 import org.almostrealism.music.notes.PatternNote;
 import org.almostrealism.music.notes.PatternNoteAudio;
 import org.almostrealism.music.notes.PatternNoteAudioChoice;
@@ -37,6 +38,8 @@ import org.almostrealism.music.notes.PatternNoteLayer;
 import org.almostrealism.music.pattern.NoteDurationStrategy;
 import org.almostrealism.music.pattern.PatternDirection;
 import org.almostrealism.music.pattern.PatternElement;
+import org.almostrealism.music.pattern.PatternLayer;
+import org.almostrealism.music.pattern.PatternLayerManager;
 import org.almostrealism.music.pattern.ScaleTraversalStrategy;
 import org.almostrealism.persist.assets.CollectionEncoder;
 
@@ -51,9 +54,10 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 /**
- * Codec between the pattern model of the music module ({@link PatternElement} and the
- * types it aggregates) and the {@link Audio.PatternData} / {@link Audio.PatternElementData}
- * protobuf messages.
+ * Codec between the pattern model of the music module ({@link PatternLayer},
+ * {@link PatternElement} and the types they aggregate) and the
+ * {@link Audio.PatternLayerData} / {@link Audio.PatternData} /
+ * {@link Audio.PatternElementData} protobuf messages.
  *
  * <p>The generated protobuf types live in this module while the pattern model lives in
  * the music module, which cannot depend on this one, so the mapping cannot be a method
@@ -82,6 +86,36 @@ import java.util.stream.Collectors;
  * of silently dropping it. The same applies to a subclass of {@link PatternElement},
  * whose overridden behaviour cannot be persisted.</p>
  *
+ * <h2>Layers</h2>
+ *
+ * <p>A {@link PatternLayer} adds two things to the elements it holds: the
+ * {@link NoteAudioChoice} that the {@link PatternNoteAudioChoice} selection values of
+ * those elements are resolved against when the layer is rendered, and the layer chained
+ * beneath it. {@link #toLayerData(PatternLayer)} stores the whole chain, so a pattern
+ * can be persisted together with what it needs in order to be rendered.</p>
+ *
+ * <p>The choice is stored as a reference, its {@link NoteAudioChoice#getId() id}, and not
+ * as a copy. Choices belong to a scene, which persists them in its own choice list and
+ * identifies them by that id, and a choice is a set of live audio sources rather than
+ * plain data. A layer is therefore decoded against the choice list of the scene it
+ * belongs to ({@link #fromLayerData(Audio.PatternLayerData, List)}), and the decoded
+ * layer holds the very choice instance from that list. A reference that the list cannot
+ * resolve fails with an {@link IllegalArgumentException} rather than producing a layer
+ * with no choice, because such a layer could not be rendered.</p>
+ *
+ * <p>A layer round-trips to one for which {@link PatternLayer#contentEquals(PatternLayer)}
+ * holds: the same choice, content-equal elements in the same order, and the same at every
+ * depth of the chain. A layer with no choice, a null element list, an empty element list
+ * and a layer with no child are each restored as they were. The elements of a generated
+ * layer share one automation parameter collection; the format stores it per element, so
+ * each decoded element holds its own equal copy.</p>
+ *
+ * <p>Each layer of the chain is one level of message nesting, and a protobuf parser
+ * refuses messages nested more deeply than its recursion limit (100 levels unless the
+ * caller raises it on the {@code CodedInputStream}). A chain of
+ * {@link PatternLayerManager#MAX_LAYERS} layers is well within the default.</p>
+ *
+ * @see PatternLayer
  * @see PatternElement
  * @see MidiPatternPersistence
  */
@@ -89,6 +123,65 @@ public final class PatternElementPersistence {
 
 	/** Not instantiable; all members are static. */
 	private PatternElementPersistence() { }
+
+	/**
+	 * Encodes a pattern layer together with every layer chained beneath it.
+	 *
+	 * @param layer the root of the chain to encode
+	 * @return the encoded layer
+	 * @throws IllegalArgumentException if the chain contains a type the format cannot
+	 *         represent, or a choice that has no id to be referenced by
+	 */
+	public static Audio.PatternLayerData toLayerData(PatternLayer layer) {
+		if (layer.getClass() != PatternLayer.class) {
+			throw unsupported("pattern layer", layer);
+		}
+
+		Audio.PatternLayerData.Builder data = Audio.PatternLayerData.newBuilder();
+		encodeIfPresent(layer.getChoice(), PatternElementPersistence::toChoiceId, data::setChoiceId);
+		encodeIfPresent(layer.getElements(), PatternElementPersistence::toPatternData, data::setPattern);
+		encodeIfPresent(layer.getChild(), PatternElementPersistence::toLayerData, data::setChild);
+		return data.build();
+	}
+
+	/**
+	 * Decodes a pattern layer together with every layer chained beneath it, resolving
+	 * each choice reference against the given choices.
+	 *
+	 * @param data    the encoded layer
+	 * @param choices the choice list of the scene the layer belongs to
+	 * @return the decoded root layer, whose layers hold choice instances from {@code choices}
+	 * @throws IllegalArgumentException if a layer refers to a choice that is not in {@code choices}
+	 */
+	public static PatternLayer fromLayerData(Audio.PatternLayerData data, List<NoteAudioChoice> choices) {
+		PatternLayer layer = new PatternLayer(
+				decodeIfPresent(data.hasChoiceId(), data.getChoiceId(), id -> choice(choices, id)),
+				decodeIfPresent(data.hasPattern(), data.getPattern(),
+						PatternElementPersistence::fromPatternData));
+		layer.setChild(decodeIfPresent(data.hasChild(), data.getChild(),
+				child -> fromLayerData(child, choices)));
+		return layer;
+	}
+
+	/** Returns the id a choice is referenced by, which it must have. */
+	private static String toChoiceId(NoteAudioChoice choice) {
+		if (choice.getId() == null) {
+			throw new IllegalArgumentException("Cannot persist a reference to the choice \""
+					+ choice.getName() + "\"; it has no id");
+		}
+
+		return choice.getId();
+	}
+
+	/** Returns the first of the given choices that has the given id. */
+	private static NoteAudioChoice choice(List<NoteAudioChoice> choices, String id) {
+		return choices.stream()
+				.filter(c -> id.equals(c.getId()))
+				.findFirst()
+				.orElseThrow(() -> new IllegalArgumentException(
+						"No choice with id \"" + id + "\" among the " + choices.size()
+								+ " choices the layer was decoded against"));
+	}
 
 	/**
 	 * Encodes an ordered list of pattern elements.
