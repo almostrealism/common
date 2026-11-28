@@ -1252,8 +1252,7 @@ A third review round raised four more points, settled the same way:
 A fourth review round (Copilot, PR #1133 HEAD) raised ten more points, settled the
 same way:
 
-10. **Scan the config OpenSSH actually reads** (the `TODO(review)` now
-    resolved). Settled in resolver step 3: the per-user config
+10. **Scan the config OpenSSH actually reads.** Settled in resolver step 3: the per-user config
     is located from the passwd-database home (`pwd.getpwuid(os.getuid()).pw_dir`)
     and `~` expands to it, matching how OpenSSH builds the path and expands `~` —
     `$HOME` is not consulted, so the scanned file is the file `ssh -G` reads even
