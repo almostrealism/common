@@ -96,6 +96,16 @@ class JobSessionAccumulator {
     private BlockReport blockReport;
 
     /**
+     * Human-readable records of enforcement rules retired during this job, each
+     * naming the rule and why it was retired. Appended by {@link EnforcementRunner}
+     * when it stops driving a rule — because the violation was environment-determined
+     * (never retried), because correction attempts stopped making progress, or
+     * because a retry cap was exhausted — and read by {@link CodingAgentJobEvent#forJob}
+     * so the reasons travel on the completion event. Empty when no rule was retired.
+     */
+    private final List<String> enforcementRetirements = new ArrayList<>();
+
+    /**
      * Absorbs the result of one agent session run into the accumulated state.
      *
      * <p>Latest-value fields ({@link #exitCode}, {@link #sessionId}, {@link #subtype},
@@ -181,4 +191,26 @@ class JobSessionAccumulator {
      * @param blockReport the reported block, or {@code null}
      */
     void setBlockReport(BlockReport blockReport) { this.blockReport = blockReport; }
+
+    /**
+     * Records that an enforcement rule was retired, with a message naming the
+     * rule and why. Called by {@link EnforcementRunner}; the recorded reasons
+     * are folded into the completion event by {@link CodingAgentJobEvent#forJob}.
+     *
+     * @param retirement the retirement message; ignored when {@code null} or blank
+     */
+    void recordEnforcementRetirement(String retirement) {
+        if (retirement != null && !retirement.isBlank()
+                && !enforcementRetirements.contains(retirement)) {
+            enforcementRetirements.add(retirement);
+        }
+    }
+
+    /**
+     * Returns the enforcement-rule retirement records accumulated during this
+     * job, in the order they occurred.
+     *
+     * @return the retirement messages; empty when no rule was retired
+     */
+    List<String> enforcementRetirements() { return enforcementRetirements; }
 }
