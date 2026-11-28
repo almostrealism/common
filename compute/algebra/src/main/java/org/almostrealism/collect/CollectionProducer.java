@@ -218,9 +218,10 @@ public interface CollectionProducer extends
 
 	/**
 	 * Returns the transpose of this collection by enumerating along the traversal axis.
-	 * For square diagonal 2D matrices, returns {@code this} directly as they are symmetric.
+	 * For square diagonal 2D matrices, returns {@code this} directly as they are symmetric,
+	 * whatever {@link TraversalOrdering} their shape carries.
 	 *
-	 * <p>A 2D collection whose {@link TraversalOrdering} can
+	 * <p>Any other 2D collection whose {@link TraversalOrdering} can
 	 * {@link TraversalOrdering#transpose(int, int) describe its transpose} (such as a sparse
 	 * matrix in compressed-sparse-row form) is transposed without moving any element: the result
 	 * reads the same memory through the ordering of the transpose, so it stays sparse and a
@@ -231,18 +232,18 @@ public interface CollectionProducer extends
 	default CollectionProducer transpose() {
 		TraversalPolicy shape = shape(this);
 
-		Optional<TraversalOrdering> transposed = shape.getDimensions() == 2 && shape.getOrder() != null ?
-				shape.getOrder().transpose(shape.length(0), shape.length(1)) : Optional.empty();
-		if (transposed.isPresent()) {
-			return reshape(new TraversalPolicy(transposed.get(), shape.length(1), shape.length(0)));
-		}
-
 		if (shape.getTraversalAxis() == 0 && shape.getDimensions() == 2 &&
 				shape.length(0) == shape.length(1) &&
 				Algebraic.isDiagonal(shape.length(0), this)) {
 			// Square, diagonal, 2D matrices are symmetric
 			// and do not require any transformation
 			return this;
+		}
+
+		Optional<TraversalOrdering> transposed = shape.getDimensions() == 2 && shape.getOrder() != null ?
+				shape.getOrder().transpose(shape.length(0), shape.length(1)) : Optional.empty();
+		if (transposed.isPresent()) {
+			return reshape(new TraversalPolicy(transposed.get(), shape.length(1), shape.length(0)));
 		}
 
 		CollectionProducerComputation result = enumerate(shape.getTraversalAxis() + 1, 1);

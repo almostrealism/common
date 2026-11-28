@@ -620,7 +620,9 @@ public class ReshapeProducer
 	 * error.</p>
 	 *
 	 * @param index the flat index
-	 * @return the element, or {@code null} if the reshaped producer is not traversable
+	 * @return the element of the reshaped producer at the same flat index, or {@code null} only
+	 *         when this reshape has no ordering of its own and the reshaped producer is not a
+	 *         {@link TraversableExpression}
 	 * @throws UnsupportedOperationException if this reshape has an ordering of its own
 	 */
 	@Override
