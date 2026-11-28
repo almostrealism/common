@@ -258,6 +258,9 @@ public class AutoPullRequestPublisherTest extends TestSuiteBase {
     @Test(timeout = 30000)
     public void companionOpenedWithoutAutoCreatePrContext() {
         // No register(...) call: the job did not request a primary pull request.
+        // The dependent commit carries no message, so the companion title and
+        // body must come from the neutral fallback, never the job's prompt.
+        github.messageByRef.put("dep123", "");
         JobCompletionEvent event = eventWithPush("abc", "dep123");
         publisher.publish(event);
 
@@ -267,6 +270,9 @@ public class AutoPullRequestPublisherTest extends TestSuiteBase {
         FakePr companion = companions.get(0);
         assertEquals("master", companion.base);
         assertFalse("the companion must not be a draft", companion.draft);
+        // Title and body fall back to the neutral description, never the prompt.
+        assertEquals("Dependent-repo companion change", companion.title);
+        assertEquals("Dependent-repo companion change", companion.body);
         assertEquals(List.of(companion.htmlUrl), event.getCompanionPullRequestUrls());
     }
 
