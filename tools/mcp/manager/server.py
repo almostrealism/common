@@ -1543,6 +1543,7 @@ from workstream_tools import (  # noqa: E402
     workstream_delete,
     workstream_context,
 )
+from throughput_tools import throughput_window  # noqa: F401,E402
 from github_tools import (  # noqa: E402
     github_pr_find,
     github_pr_review_comments,

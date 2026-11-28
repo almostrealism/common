@@ -332,6 +332,7 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 			"consult",
 			"inference_health",
 			"workstream_context",
+			"throughput_window",
 			"memory_store",
 			"send_message",
 			"mailbox_peek",

@@ -50,102 +50,6 @@ import io.flowtree.api.FlowTreeApiEndpoint;
  */
 public class JobStatsStore extends ControllerDatabase {
 
-    /** DDL statement that creates the {@code job_timing} table if it does not yet exist. */
-    private static final String CREATE_TABLE = ""
-        + "CREATE TABLE IF NOT EXISTS job_timing ("
-        + "    job_id         VARCHAR(255) PRIMARY KEY,"
-        + "    workstream_id  VARCHAR(255) NOT NULL,"
-        + "    status         VARCHAR(32)  NOT NULL,"
-        + "    started_at     TIMESTAMP    NOT NULL,"
-        + "    completed_at   TIMESTAMP,"
-        + "    wall_clock_ms  BIGINT,"
-        + "    duration_ms    BIGINT,"
-        + "    duration_api_ms BIGINT,"
-        + "    cost_usd       DOUBLE,"
-        + "    num_turns      INTEGER,"
-        + "    session_id     VARCHAR(255),"
-        + "    exit_code      INTEGER,"
-        + "    description    VARCHAR(1000),"
-        + "    subtype        VARCHAR(64),"
-        + "    session_error  BOOLEAN,"
-        + "    permission_denials INTEGER,"
-        + "    target_branch  VARCHAR(255),"
-        + "    commit_hash    VARCHAR(64),"
-        + "    pull_request_url VARCHAR(1000),"
-        + "    error_message  VARCHAR(2000),"
-        + "    blocked_category VARCHAR(32),"
-        + "    blocked_detail VARCHAR(2000),"
-        + "    blocked_verified BOOLEAN,"
-        + "    trigger_reason VARCHAR(64) DEFAULT 'manual',"
-        + "    heartbeat_at   TIMESTAMP,"
-        + "    phase          VARCHAR(64),"
-        + "    submitted_at   TIMESTAMP,"
-        + "    submitted_by   VARCHAR(255),"
-        + "    required_labels VARCHAR(2000),"
-        + "    node           VARCHAR(255)"
-        + ")";
-
-    /** DDL statement that creates an index on {@code (workstream_id, started_at)} for efficient queries. */
-    private static final String CREATE_INDEX =
-        "CREATE INDEX IF NOT EXISTS idx_timing_ws_started ON job_timing (workstream_id, started_at)";
-
-    /**
-     * DDL for the per-runner cost table. One row per (job, runner) pair holds
-     * the cumulative USD cost that runner accrued across all of the job's phase
-     * invocations. Joined back to {@code job_timing} on {@code job_id} for the
-     * time-window and workstream filters used by the aggregation queries.
-     */
-    private static final String CREATE_RUNNER_COST_TABLE = ""
-        + "CREATE TABLE IF NOT EXISTS job_runner_cost ("
-        + "    job_id   VARCHAR(255) NOT NULL,"
-        + "    runner   VARCHAR(64)  NOT NULL,"
-        + "    cost_usd DOUBLE,"
-        + "    PRIMARY KEY (job_id, runner)"
-        + ")";
-
-    /**
-     * Table storing per-model cost breakdowns per job. Mirrors the structure
-     * of {@code job_runner_cost} but keyed by provider/model identifier
-     * (e.g. {@code "openrouter/claude-opus-5-5"}) instead of runner name.
-     */
-    private static final String CREATE_MODEL_COST_TABLE = ""
-        + "CREATE TABLE IF NOT EXISTS job_model_cost ("
-        + "    job_id   VARCHAR(255) NOT NULL,"
-        + "    model    VARCHAR(128)  NOT NULL,"
-        + "    cost_usd DOUBLE,"
-        + "    PRIMARY KEY (job_id, model)"
-        + ")";
-
-    /**
-     * ALTER TABLE statements to add new columns to existing databases, applied
-     * by {@link ControllerDatabase#addColumns}, which ignores the ones whose
-     * column already exists.
-     */
-    private static final String[] SCHEMA_MIGRATIONS = {
-        "ALTER TABLE job_timing ADD COLUMN subtype VARCHAR(64)",
-        "ALTER TABLE job_timing ADD COLUMN session_error BOOLEAN",
-        "ALTER TABLE job_timing ADD COLUMN permission_denials INTEGER",
-        "ALTER TABLE job_timing ADD COLUMN target_branch VARCHAR(255)",
-        "ALTER TABLE job_timing ADD COLUMN commit_hash VARCHAR(64)",
-        "ALTER TABLE job_timing ADD COLUMN pull_request_url VARCHAR(1000)",
-        "ALTER TABLE job_timing ADD COLUMN error_message VARCHAR(2000)",
-        "ALTER TABLE job_timing ADD COLUMN blocked_category VARCHAR(32)",
-        "ALTER TABLE job_timing ADD COLUMN blocked_detail VARCHAR(2000)",
-        "ALTER TABLE job_timing ADD COLUMN blocked_verified BOOLEAN",
-        "ALTER TABLE job_timing ADD COLUMN slack_message_ts VARCHAR(64)",
-        "ALTER TABLE job_timing ADD COLUMN trigger_reason VARCHAR(64) DEFAULT 'manual'",
-        "ALTER TABLE job_timing ADD COLUMN heartbeat_at TIMESTAMP",
-        "ALTER TABLE job_timing ADD COLUMN phase VARCHAR(64)",
-        "ALTER TABLE job_timing ADD COLUMN submitted_at TIMESTAMP",
-        "ALTER TABLE job_timing ADD COLUMN submitted_by VARCHAR(255)",
-        "ALTER TABLE job_timing ADD COLUMN required_labels VARCHAR(2000)",
-        "ALTER TABLE job_timing ADD COLUMN node VARCHAR(255)"
-    };
-
-    /** DML statement that removes stale {@code STARTED} rows older than a given cutoff timestamp. */
-    private static final String CLEAN_ORPHANS =
-        "DELETE FROM job_timing WHERE status = 'STARTED' AND started_at < ?";
-
     /**
      * Computes the weekly-statistics rollups. Recreated whenever the
      * connection is opened and discarded when it is closed, so it always
@@ -153,6 +57,19 @@ public class JobStatsStore extends ControllerDatabase {
      * {@link #initialize()} has run.
      */
     private WeeklyStatsAggregator weeklyStatsAggregator;
+    /**
+     * Computes the windowed throughput retrospective. Recreated whenever the
+     * connection is opened and discarded when it is closed, so it always reads
+     * through the live connection. {@code null} until {@link #initialize()} has
+     * run.
+     */
+    private WindowStatsAggregator windowStatsAggregator;
+    /**
+     * Writes the per-job cost and token breakdown side tables. Recreated
+     * whenever the connection is opened and discarded when it is closed.
+     * {@code null} until {@link #initialize()} has run.
+     */
+    private JobBreakdownRecorder breakdownRecorder;
     /**
      * Trigger reasons registered before the job_timing row exists, applied
      * on the next {@link #recordJobStarted} call. The completion-listener
@@ -181,16 +98,17 @@ public class JobStatsStore extends ControllerDatabase {
     @Override
     protected void prepare() throws SQLException {
         try (Statement stmt = connection().createStatement()) {
-            stmt.execute(CREATE_TABLE);
-            stmt.execute(CREATE_INDEX);
-            stmt.execute(CREATE_RUNNER_COST_TABLE);
-            stmt.execute(CREATE_MODEL_COST_TABLE);
+            stmt.execute(JobTimingSchema.CREATE_TABLE);
+            stmt.execute(JobTimingSchema.CREATE_INDEX);
+            stmt.execute(JobTimingSchema.CREATE_RUNNER_COST_TABLE);
+            stmt.execute(JobTimingSchema.CREATE_MODEL_COST_TABLE);
+            stmt.execute(JobTimingSchema.CREATE_TOKEN_TABLE);
         }
-        addColumns(SCHEMA_MIGRATIONS);
+        addColumns(JobTimingSchema.MIGRATIONS);
 
         // Clean orphaned STARTED rows older than 7 days
         Instant cutoff = Instant.now().minusSeconds(7 * 24 * 3600);
-        try (PreparedStatement ps = connection().prepareStatement(CLEAN_ORPHANS)) {
+        try (PreparedStatement ps = connection().prepareStatement(JobTimingSchema.CLEAN_ORPHANS)) {
             ps.setTimestamp(1, Timestamp.from(cutoff));
             int cleaned = ps.executeUpdate();
             if (cleaned > 0) {
@@ -199,6 +117,8 @@ public class JobStatsStore extends ControllerDatabase {
         }
 
         weeklyStatsAggregator = new WeeklyStatsAggregator(connection());
+        windowStatsAggregator = new WindowStatsAggregator(connection());
+        breakdownRecorder = new JobBreakdownRecorder(connection());
     }
 
     /**
@@ -209,6 +129,8 @@ public class JobStatsStore extends ControllerDatabase {
     public synchronized void close() {
         super.close();
         weeklyStatsAggregator = null;
+        windowStatsAggregator = null;
+        breakdownRecorder = null;
     }
 
     /**
@@ -566,6 +488,8 @@ public class JobStatsStore extends ControllerDatabase {
         }
         recordRunnerCosts(event.getJobId(), event.getCostByRunner());
         recordModelCosts(event.getJobId(), event.getCostByModel());
+        recordTokens(event.getJobId(), event.getInputTokens(), event.getOutputTokens(),
+                event.getCacheReadTokens(), event.getCacheWriteTokens());
     }
 
     /**
@@ -642,7 +566,8 @@ public class JobStatsStore extends ControllerDatabase {
      *                     or empty clears any existing rows for the job
      */
     public synchronized void recordRunnerCosts(String jobId, Map<String, Double> costByRunner) {
-        recordCostsInTable(jobId, "job_runner_cost", "runner", 64, costByRunner);
+        if (!isOpen()) return;
+        breakdownRecorder.recordRunnerCosts(jobId, costByRunner);
     }
 
     /**
@@ -654,42 +579,25 @@ public class JobStatsStore extends ControllerDatabase {
      *                    {@code null} or empty clears any existing rows for the job
      */
     public synchronized void recordModelCosts(String jobId, Map<String, Double> costByModel) {
-        recordCostsInTable(jobId, "job_model_cost", "model", 128, costByModel);
+        if (!isOpen()) return;
+        breakdownRecorder.recordModelCosts(jobId, costByModel);
     }
 
     /**
-     * Shared implementation for {@link #recordRunnerCosts} and {@link #recordModelCosts}.
-     * Deletes existing rows for the job in {@code table}, then inserts one row per entry,
-     * truncating the key to {@code maxKeyLen} characters.
+     * Records the token counts for a job, replacing any existing row so a
+     * re-reported completion event is idempotent. Delegates to
+     * {@link JobBreakdownRecorder}; a no-op when the store is closed.
+     *
+     * @param jobId      the job identifier
+     * @param input      input tokens
+     * @param output     output tokens
+     * @param cacheRead  cache-read tokens
+     * @param cacheWrite cache-write tokens
      */
-    private void recordCostsInTable(String jobId, String table, String keyColumn,
-                                    int maxKeyLen, Map<String, Double> costs) {
-        if (!isOpen() || jobId == null) return;
-
-        try (PreparedStatement del = connection().prepareStatement(
-                "DELETE FROM " + table + " WHERE job_id = ?")) {
-            del.setString(1, jobId);
-            del.executeUpdate();
-        } catch (SQLException e) {
-            warn("Failed to clear costs for job " + jobId + " in " + table + ": " + e.getMessage());
-            return;
-        }
-
-        if (costs == null || costs.isEmpty()) return;
-
-        String sql = "INSERT INTO " + table + " (job_id, " + keyColumn + ", cost_usd) VALUES (?, ?, ?)";
-        try (PreparedStatement ps = connection().prepareStatement(sql)) {
-            for (Map.Entry<String, Double> entry : costs.entrySet()) {
-                if (entry.getKey() == null) continue;
-                ps.setString(1, jobId);
-                ps.setString(2, truncate(entry.getKey(), maxKeyLen));
-                ps.setDouble(3, entry.getValue() != null ? entry.getValue() : 0.0);
-                ps.addBatch();
-            }
-            ps.executeBatch();
-        } catch (SQLException e) {
-            warn("Failed to record costs for job " + jobId + " in " + table + ": " + e.getMessage());
-        }
+    public synchronized void recordTokens(String jobId, long input, long output,
+                                          long cacheRead, long cacheWrite) {
+        if (!isOpen()) return;
+        breakdownRecorder.recordTokens(jobId, input, output, cacheRead, cacheWrite);
     }
 
     /**
@@ -1305,6 +1213,24 @@ public class JobStatsStore extends ControllerDatabase {
     }
 
     /**
+     * Computes the windowed throughput retrospective for {@code query}:
+     * outcomes, spend, tokens, turns and agent time over an arbitrary
+     * window, with per-kind, per-workstream and per-node breakdowns.
+     *
+     * @param query         the window and optional workstream filter
+     * @param now           the reference instant for running-job time and the
+     *                      unresponsive label
+     * @param lostThreshold the wait past which a still-submitted job counts as
+     *                      {@link PendingJob#LOST}
+     * @return the computed stats, empty when the store is closed
+     */
+    public synchronized WindowStats getWindowStats(WindowQuery query, Instant now,
+                                                   Duration lostThreshold) {
+        if (!isOpen()) return new WindowStats();
+        return windowStatsAggregator.forWindow(query, now, lostThreshold);
+    }
+
+    /**
      * Formats a cost-by-key map compactly for inclusion in a stats line,
      * e.g. {@code " (claude $1.20, opencode $0.03)"}. Returns an empty string
      * when the map is empty so callers can append it unconditionally.
@@ -1511,7 +1437,7 @@ public class JobStatsStore extends ControllerDatabase {
      *         its first {@code maxLength} characters otherwise, or
      *         {@code null} if {@code s} is {@code null}
      */
-    private static String truncate(String s, int maxLength) {
+    static String truncate(String s, int maxLength) {
         return s == null ? null : Truncation.CUT.apply(s, maxLength);
     }
 

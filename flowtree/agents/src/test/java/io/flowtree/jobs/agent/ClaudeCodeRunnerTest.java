@@ -355,6 +355,38 @@ public class ClaudeCodeRunnerTest extends TestSuiteBase {
     }
 
     /**
+     * The parser must surface the token counts from the result's {@code usage}
+     * block under the canonical {@link AgentRunResult} token accessors, mapping
+     * Anthropic's {@code cache_creation}/{@code cache_read} naming to the
+     * cache-write/cache-read measures the throughput retrospective records.
+     */
+    @Test(timeout = 5000)
+    public void parseClaudeNdjsonExtractsUsageTokens() {
+        String sample = "{\"type\":\"result\",\"subtype\":\"success\",\"num_turns\":1,"
+                + "\"total_cost_usd\":0.1,\"usage\":{\"input_tokens\":1200,"
+                + "\"output_tokens\":340,\"cache_read_input_tokens\":5000,"
+                + "\"cache_creation_input_tokens\":80}}";
+
+        AgentRunResult result = new ClaudeCodeRunner().parseClaudeNdjson(sample, 0, false, SILENT);
+
+        assertEquals(1200L, result.inputTokens());
+        assertEquals(340L, result.outputTokens());
+        assertEquals(5000L, result.cacheReadTokens());
+        assertEquals(80L, result.cacheWriteTokens());
+    }
+
+    /** With no {@code usage} block the token accessors all read zero. */
+    @Test(timeout = 5000)
+    public void parseClaudeNdjsonNoUsageReadsZeroTokens() {
+        String sample = "{\"type\":\"result\",\"subtype\":\"success\",\"num_turns\":1}";
+        AgentRunResult result = new ClaudeCodeRunner().parseClaudeNdjson(sample, 0, false, SILENT);
+        assertEquals(0L, result.inputTokens());
+        assertEquals(0L, result.outputTokens());
+        assertEquals(0L, result.cacheReadTokens());
+        assertEquals(0L, result.cacheWriteTokens());
+    }
+
+    /**
      * A denied MCP tool must reach {@code deniedToolNames} under the field
      * name Claude Code actually emits.
      *

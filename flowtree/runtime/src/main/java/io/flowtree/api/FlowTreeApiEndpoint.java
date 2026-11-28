@@ -239,6 +239,14 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
     /** Handles {@code GET /api/agents} metadata requests. */
     private final AgentsQueryHandler agentsQueryHandler = new AgentsQueryHandler();
 
+    /**
+     * Handles {@code GET /api/throughput/*} retrospective queries. Reads the
+     * stats store through the live {@link #statsQueryHandler} so a store swap is
+     * picked up without reconstructing the handler.
+     */
+    private final ThroughputQueryHandler throughputQueryHandler =
+            new ThroughputQueryHandler(() -> statsQueryHandler.store());
+
     /** The kill switch for automated submissions and its config endpoint. */
     private final AutomatedJobsSwitch automatedJobs = new AutomatedJobsSwitch();
 
@@ -693,6 +701,10 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
 
         if (Method.GET.equals(method) && uri.startsWith("/api/stats")) {
             return handleStatsQuery(session);
+        }
+
+        if (Method.GET.equals(method) && "/api/throughput/window".equals(uri)) {
+            return throughputQueryHandler.handleWindow(session, this::errorResponse);
         }
 
         if (Method.GET.equals(method) && "/api/workstreams".equals(uri)) {
