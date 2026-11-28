@@ -57,8 +57,9 @@ import java.util.Set;
  * {@link OrderingSegments enumeration} of the rows of the matrix, and {@code matrix[p]} is the
  * entry at physical position {@code p}. For a compressed-sparse-row matrix the position of each
  * member is the member itself; for the transpose of one, whose rows are the columns of the
- * original matrix, each member is read where the original matrix stores it. This is the same value as the dense product of the
- * matrix read through its ordering, but visits each stored entry once and never forms a logical
+ * original matrix, each member is read where the original matrix stores it. This is the same
+ * value as the dense product of the matrix read through its ordering, but visits each stored
+ * entry once and never forms a logical
  * index of the matrix, so it applies to matrices whose logical size exceeds the range of an
  * {@code int}.</p>
  *
