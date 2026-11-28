@@ -1213,8 +1213,8 @@ public class JobStatsStore extends ControllerDatabase {
     }
 
     /**
-     * Computes the windowed throughput retrospective for {@code query} (plan
-     * §2): outcomes, spend, tokens, turns and agent time over an arbitrary
+     * Computes the windowed throughput retrospective for {@code query}:
+     * outcomes, spend, tokens, turns and agent time over an arbitrary
      * window, with per-kind, per-workstream and per-node breakdowns.
      *
      * @param query         the window and optional workstream filter

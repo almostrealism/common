@@ -30,9 +30,15 @@ package io.flowtree.controller;
  * retrospective can report the uncertain fraction honestly instead of inflating
  * the coding count.</p>
  *
+ * <p>There is deliberately no shell kind: a shell-command job carries the same
+ * {@code manual} trigger as a coding job and reports no phase, so neither
+ * signal on its row can tell the two apart and it classifies as
+ * {@link #CODING}. Distinguishing it needs the submitted job type persisted on
+ * the row, which is part of the first-class {@code kind} property below.</p>
+ *
  * <p>The classification is a heuristic, not a contract: the durable fix is a
- * first-class {@code kind} property threaded through the job and its factory
- * (see the plan's §2.3/§6.3). Until that lands, this is the best signal
+ * first-class {@code kind} property threaded through the job and its factory.
+ * Until that lands, this is the best signal
  * available for history and for new rows alike.</p>
  *
  * @author Michael Murray
@@ -51,9 +57,6 @@ public enum JobKind {
 
     /** A retrospective / falsification / QA-enforcement job, recognised by its phase. */
     QA,
-
-    /** A shell-command job. */
-    SHELL,
 
     /** A job with no durable signal to classify it (typically pre-dates the signal columns). */
     UNKNOWN;

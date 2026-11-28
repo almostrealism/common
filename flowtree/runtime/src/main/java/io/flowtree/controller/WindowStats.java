@@ -28,7 +28,7 @@ import java.util.Map;
  *
  * <p>Deliberately a sibling of {@link WeeklyStats} rather than a generalization
  * of it, so the Slack {@code /flowtree stats} path that {@code WeeklyStats}
- * serves is not destabilized. Counting follows the plan's §2.4 rules, applied
+ * serves is not destabilized. Counting follows the window counting rules, applied
  * by {@link WindowStatsAggregator}: a job's <em>outcome, spend, tokens and
  * turns</em> are counted in the window that contains its {@code completed_at},
  * while its <em>time</em> ({@link #agentWallClockMs}) is the overlap of its run
@@ -83,7 +83,7 @@ public class WindowStats {
     /** Of {@link #running}, those silent past the silence threshold. */
     public int unresponsive;
 
-    /** Summed overlap of each job's run with the window, in milliseconds (plan §2.4). */
+    /** Summed overlap of each job's run with the window, in milliseconds. */
     public long agentWallClockMs;
 
     /** Total spend of jobs finished in the window, in USD. */

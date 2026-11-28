@@ -226,7 +226,11 @@ No kind is persisted today. The plan adds a first-class `job_kind` via a
 deterministic classifier `JobKind.classify(trigger_reason, phase, factoryType,
 command)`:
 
-- `SHELL` — `ShellCommandJob` (`jobType=shell`).
+- `SHELL` — `ShellCommandJob` (`jobType=shell`). *Not implemented by the
+  back-derivation:* a shell job carries the `manual` trigger and reports no
+  phase, so `trigger_reason` + `phase` cannot tell it from coding and it
+  classifies as `CODING`. `JobKind` therefore has no `SHELL` constant until the
+  submitted job type is persisted (the first-class `job_kind` below, §6.3).
 - `CI_REVIEW` — `trigger_reason = auto_resolve`, or a job whose phase is a
   review/enforcement phase.
 - `PLANNING` — a coding job flagged plan-only (today only inferrable from the

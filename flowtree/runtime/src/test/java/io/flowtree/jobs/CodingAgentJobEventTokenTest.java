@@ -23,7 +23,7 @@ import static org.junit.Assert.assertEquals;
 
 /**
  * Tests that the token counts added to {@link CodingAgentJobEvent} survive the
- * status-post JSON wire (plan Stage 0): a worker builds the event with
+ * status-post JSON wire: a worker builds the event with
  * {@link CodingAgentJobEvent#withTokenInfo}, serialises it, and the controller
  * reconstructs it with {@link JobCompletionEvent#fromStatusBody}.
  */

@@ -20,6 +20,7 @@ import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -541,5 +542,29 @@ public class JsonFieldExtractorTest extends TestSuiteBase {
 		} catch (IllegalArgumentException expected) {
 			Assert.assertNotNull(expected.getMessage());
 		}
+	}
+
+	/**
+	 * {@link JsonFieldExtractor#appendLongMapJson} renders a leading-comma
+	 * member holding the map in insertion order, escapes keys, writes a
+	 * {@code null} value as {@code 0}, and renders a {@code null} or empty map
+	 * as an empty object.
+	 */
+	@Test(timeout = 10000)
+	public void appendLongMapJsonRendersMembers() {
+		Map<String, Long> map = new LinkedHashMap<>();
+		map.put("n1", 3600000L);
+		map.put("a\"b", null);
+		StringBuilder sb = new StringBuilder("{\"x\":1");
+		JsonFieldExtractor.appendLongMapJson(sb, "busy", map);
+		Assert.assertEquals("{\"x\":1,\"busy\":{\"n1\":3600000,\"a\\\"b\":0}", sb.toString());
+
+		StringBuilder empty = new StringBuilder();
+		JsonFieldExtractor.appendLongMapJson(empty, "busy", Map.of());
+		Assert.assertEquals(",\"busy\":{}", empty.toString());
+
+		StringBuilder nul = new StringBuilder();
+		JsonFieldExtractor.appendLongMapJson(nul, "busy", null);
+		Assert.assertEquals(",\"busy\":{}", nul.toString());
 	}
 }

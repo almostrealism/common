@@ -34,7 +34,7 @@ import java.util.function.Supplier;
 /**
  * Handles the {@code GET /api/throughput/*} retrospective queries for
  * {@link FlowTreeApiEndpoint}, the single-call surface behind the "how much
- * happened in the last N" question (plan §4.1).
+ * happened in the last N" question.
  *
  * <p>Keeps the windowing logic out of the near-cap {@code FlowTreeApiEndpoint}
  * and off the near-cap {@link JobStatsStore}: it reads the store through the
@@ -45,7 +45,10 @@ import java.util.function.Supplier;
  * <p>{@code GET /api/throughput/window} accepts either a {@code preset}
  * ({@code 1h}/{@code 3h}/{@code 6h}/{@code 24h}/{@code 7d}) or an explicit
  * {@code from}/{@code to} pair of ISO-8601 instants, plus an optional
- * {@code workstream} filter, and returns the {@link WindowStats} JSON.</p>
+ * {@code workstream} filter, and returns the {@link WindowStats} JSON. A request
+ * naming both a preset and either bound is rejected rather than resolved in
+ * favour of one form, since a stale preset would otherwise silently replace the
+ * window the caller asked for.</p>
  *
  * @author Michael Murray
  * @see FlowTreeApiEndpoint
@@ -120,12 +123,15 @@ class ThroughputQueryHandler {
 
         WindowQuery query;
         String preset = emptyToNull(params.get("preset"));
+        String fromParam = emptyToNull(params.get("from"));
+        String toParam = emptyToNull(params.get("to"));
+        if (preset != null && (fromParam != null || toParam != null)) {
+            return error.respond("Supply either 'preset' or 'from'/'to', not both");
+        }
         try {
             if (preset != null) {
                 query = WindowQuery.ofPreset(preset, now, silentThreshold).withWorkstream(workstream);
             } else {
-                String fromParam = emptyToNull(params.get("from"));
-                String toParam = emptyToNull(params.get("to"));
                 if (fromParam == null || toParam == null) {
                     return error.respond("Supply 'preset' (1h/3h/6h/24h/7d) or both 'from' and 'to' "
                             + "as ISO-8601 instants");

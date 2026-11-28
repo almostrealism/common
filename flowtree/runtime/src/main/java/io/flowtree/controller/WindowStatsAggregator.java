@@ -34,7 +34,7 @@ import java.util.Map;
  *
  * <p>The windowed counterpart of {@link WeeklyStatsAggregator}: it reads through
  * a {@link Connection} {@link JobStatsStore} owns and recreates whenever the
- * connection changes. It applies the plan's §2.4 counting rules — a job's
+ * connection changes. It applies the window counting rules — a job's
  * outcome, spend, tokens and turns land in the window containing its
  * {@code completed_at}; its agent time is the <em>overlap</em> of its run with
  * the window, so per-window busy time sums back to the total — and classifies
@@ -47,6 +47,18 @@ import java.util.Map;
  * @see WindowQuery
  */
 public class WindowStatsAggregator implements ConsoleFeatures {
+
+    /**
+     * SQL predicate selecting rows whose {@code started_at} records a real start.
+     * {@link JobStatsStore#recordJobSubmitted} seeds {@code started_at} with the
+     * submission time and only a real start overwrites it, so a value still
+     * equal to {@code submitted_at} is that placeholder: a row still
+     * {@code SUBMITTED}, or one cancelled before it ever started. A row inserted
+     * by a start or completion with no prior submission has no
+     * {@code submitted_at} and its {@code started_at} is real.
+     */
+    private static final String REAL_START =
+        "(submitted_at IS NULL OR started_at <> submitted_at)";
 
     /** The connection to the backing HSQLDB database, owned by {@link JobStatsStore}. */
     private final Connection connection;
@@ -225,12 +237,12 @@ public class WindowStatsAggregator implements ConsoleFeatures {
 
     /**
      * Counts jobs that began running in the window — a {@code started_at} in
-     * range on a row that is no longer merely {@code SUBMITTED} (the placeholder
-     * {@code started_at} a submitted row carries is excluded).
+     * range that records a real start ({@link #REAL_START}), so neither a still
+     * submitted row nor one cancelled before starting is counted.
      */
     private int countStarted(WindowQuery query) {
         String sql = "SELECT COUNT(*) FROM job_timing "
-            + "WHERE started_at >= ? AND started_at < ? AND status <> 'SUBMITTED'"
+            + "WHERE started_at >= ? AND started_at < ? AND " + REAL_START
             + (query.workstreamId() == null ? "" : " AND workstream_id = ?");
         try (PreparedStatement ps = connection.prepareStatement(sql)) {
             bindWindow(ps, query);
@@ -274,12 +286,14 @@ public class WindowStatsAggregator implements ConsoleFeatures {
     /**
      * Sums each job's run-overlap with the window into the total agent
      * wall-clock and the per-node busy breakdown, applying
-     * {@link JobInterval#end(Instant, Duration)}'s running-job rule.
+     * {@link JobInterval#end(Instant, Duration)}'s running-job rule. Only rows
+     * with a {@link #REAL_START} contribute, so the time between submission and
+     * cancellation of a job that never ran is not counted as agent time.
      */
     private void foldOverlap(WindowQuery query, Instant now, WindowStats stats) {
         String sql = "SELECT job_id, workstream_id, status, started_at, completed_at, "
             + "heartbeat_at, cost_usd, node FROM job_timing "
-            + "WHERE status <> 'SUBMITTED' AND started_at < ? "
+            + "WHERE " + REAL_START + " AND started_at < ? "
             + "AND (completed_at IS NULL OR completed_at >= ?)"
             + (query.workstreamId() == null ? "" : " AND workstream_id = ?");
         try (PreparedStatement ps = connection.prepareStatement(sql)) {

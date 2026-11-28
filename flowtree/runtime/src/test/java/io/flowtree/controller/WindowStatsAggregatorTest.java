@@ -35,10 +35,10 @@ import static org.junit.Assert.assertTrue;
 
 /**
  * Tests for {@link WindowStatsAggregator} and {@link JobStatsStore#getWindowStats}:
- * the plan's §2.4 counting rules (boundary straddle, running and unresponsive
+ * the window counting rules (boundary straddle, running and unresponsive
  * jobs, lost submissions, overlap-based agent time), the per-kind/per-node
  * breakdowns, token coverage, and a reconciliation of the aggregate against the
- * per-job records (plan Stage 4).
+ * per-job records.
  */
 public class WindowStatsAggregatorTest extends TestSuiteBase {
 
@@ -212,6 +212,35 @@ public class WindowStatsAggregatorTest extends TestSuiteBase {
         }
     }
 
+    /**
+     * A job cancelled before it ever started still carries the placeholder
+     * {@code started_at} seeded at submission. It finishes as cancelled in the
+     * window, but neither counts as started nor accrues agent time; a job that
+     * was submitted, really started and then cancelled does both.
+     */
+    @Test(timeout = 60000)
+    public void cancelledBeforeStartIsNotStartedAndAccruesNoTime() throws Exception {
+        JobStatsStore store = newStore();
+        try {
+            store.recordJobSubmitted("P", "ws-1", "P", "sub", null, T0.plus(Duration.ofHours(1)));
+            assertTrue(store.cancelIfInFlight("P", T0.plus(Duration.ofHours(3)), "withdrawn"));
+
+            store.recordJobSubmitted("R", "ws-1", "R", "sub", null, T0.plus(Duration.ofHours(1)));
+            store.recordJobStarted("R", "ws-1", "R", "n1", T0.plus(Duration.ofHours(2)));
+            assertTrue(store.cancelIfInFlight("R", T0.plus(Duration.ofHours(3)), "stopped"));
+
+            WindowStats s = store.getWindowStats(new WindowQuery(T0, NOW, null, SILENT), NOW, LOST);
+            assertEquals("submitted", 2, s.submitted);
+            assertEquals("finished", 2, s.finished);
+            assertEquals("cancelled", 2, s.cancelled);
+            assertEquals("started", 1, s.started);
+            assertEquals(Duration.ofHours(1).toMillis(), s.agentWallClockMs);
+            assertEquals(Long.valueOf(Duration.ofHours(1).toMillis()), s.busyMsByNode.get("n1"));
+        } finally {
+            store.close();
+        }
+    }
+
     /** The rendered JSON is non-empty and carries the window bounds and outcome block. */
     @Test(timeout = 60000)
     public void jsonRendersWindow() throws Exception {
@@ -228,7 +257,7 @@ public class WindowStatsAggregatorTest extends TestSuiteBase {
     }
 
     /**
-     * Reconciliation (plan Stage 4): the aggregate's finished count and total
+     * Reconciliation: the aggregate's finished count and total
      * spend are re-derived independently by iterating the per-job records
      * {@link JobStatsStore#getRecentJobs} returns — a different read path than
      * the aggregator's {@code GROUP BY} — and must match. Spend is read from

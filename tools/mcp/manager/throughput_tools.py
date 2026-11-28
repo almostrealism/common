@@ -9,7 +9,8 @@ grow and so the ``*_tools`` suffix enrolls them in the tool surface that
 
 Like the other read tools, this routes through the controller
 (``server._controller_get``), reaches shared helpers through ``server`` so the
-test suite's patches still apply, and enforces the read scope gate.
+test suite's patches still apply, and enforces the read scope gate and the
+caller's workspace scope.
 """
 
 import server
@@ -47,12 +48,19 @@ def throughput_window(
             (e.g. ``"2026-11-28T00:00:00Z"``). Requires ``end``.
         end: Exclusive window end as an ISO-8601 instant. Requires ``start``.
         workstream_id: Restrict the retrospective to one workstream. Empty
-            (the default) covers every workstream.
+            (the default) covers every workstream, which only an unscoped
+            token may request; a workspace-scoped token must name a
+            workstream in its own workspace.
 
     Returns:
         dict with the window's statistics on success, or ``ok=False`` with an
-        error message when neither a preset nor a start/end pair was supplied or
-        the controller rejected the request.
+        error message when neither or both of a preset and a start/end pair
+        were supplied, a scoped token asked for every workstream, or the
+        controller rejected the request.
+
+    Raises:
+        PermissionError: When ``workstream_id`` belongs to a workspace outside
+            the token's scope.
     """
     server._require_scope("read")
     err = server._check_short_strings(
@@ -63,10 +71,26 @@ def throughput_window(
     server._audit("throughput_window", preset=preset, start=start, end=end,
                   workstream_id=workstream_id)
 
+    if preset and (start or end):
+        return {
+            "ok": False,
+            "error": "Supply either 'preset' or 'start'/'end', not both",
+        }
     if not preset and not (start and end):
         return {
             "ok": False,
             "error": "Supply 'preset' (1h/3h/6h/24h/7d) or both 'start' and 'end'",
+        }
+
+    if workstream_id:
+        server._require_workstream_in_scope(workstream_id)
+    elif server._get_workspace_scopes():
+        # An unfiltered window aggregates every workstream on the controller,
+        # including other workspaces'; a scoped token must name its own.
+        return {
+            "ok": False,
+            "error": "A workspace-scoped token cannot read the retrospective for "
+                     "every workstream; pass a workstream_id in your own workspace.",
         }
 
     params = {}
