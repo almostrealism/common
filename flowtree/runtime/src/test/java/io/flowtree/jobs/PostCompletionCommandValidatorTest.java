@@ -85,21 +85,57 @@ public class PostCompletionCommandValidatorTest extends TestSuiteBase {
 		assertTrue(violationsFor("cd tools/mcp/manager && pytest test_secrets.py::test_render").isEmpty());
 	}
 
+	/** A whole .py test file is a bounded selection (one file, zero node ids) and is accepted. */
+	@Test(timeout = 10000)
+	public void pytestSingleWholeFileAccepted() {
+		assertTrue(violationsFor("pytest tools/mcp/manager/test_server.py").isEmpty());
+	}
+
+	/** A bounded list of explicit node ids is an ordinary targeted check and is accepted. */
+	@Test(timeout = 10000)
+	public void pytestMultipleNodeIdsWithinCapAccepted() {
+		assertTrue(violationsFor("pytest test_foo.py::test_bar test_baz.py::test_qux").isEmpty());
+	}
+
+	/** A bounded list of whole .py test files is accepted. */
+	@Test(timeout = 10000)
+	public void pytestMultipleWholeFilesWithinCapAccepted() {
+		assertTrue(violationsFor(
+				"python3 -m pytest a/test_one.py b/test_two.py c/test_three.py").isEmpty());
+	}
+
+	/** A mix of whole files and node ids within the caps is accepted. */
+	@Test(timeout = 10000)
+	public void pytestMixedFilesAndNodeIdsAccepted() {
+		assertTrue(violationsFor("pytest a/test_one.py b/test_two.py::test_bar").isEmpty());
+	}
+
+	/** A selection exactly at the file cap is accepted. */
+	@Test(timeout = 10000)
+	public void pytestFilesAtTheFileCapAccepted() {
+		StringBuilder command = new StringBuilder("pytest");
+		for (int i = 0; i < PostCompletionCommandValidator.MAX_TEST_CLASSES; i++) {
+			command.append(" dir/test_f").append(i).append(".py");
+		}
+		assertTrue(violationsFor(command.toString()).isEmpty());
+	}
+
 	/** A non-Maven, non-pytest command is accepted. */
 	@Test(timeout = 10000)
 	public void customScriptAccepted() {
 		assertTrue(violationsFor("bash scripts/verify-foo.sh").isEmpty());
 	}
 
-	/** pytest naming more than one node id still runs both tests in a single invocation,
-	 * contradicting the "one test per invocation" rule -- even though every individual
-	 * positional is itself an explicit node id. */
+	/** A pytest selection above the node-id cap is refused as an unbounded run. The node ids are
+	 * packed into one file so it is the node-id cap, not the file cap, that trips. */
 	@Test(timeout = 10000)
 	public void pytestMultipleNodeIdsRejected() {
-		List<String> violations = violationsFor(
-				"pytest test_foo.py::test_bar test_baz.py::test_qux");
-		assertFalse("multiple pytest node ids in one invocation must still be rejected",
-				violations.isEmpty());
+		StringBuilder command = new StringBuilder("pytest");
+		for (int i = 0; i <= PostCompletionCommandValidator.MAX_TEST_METHODS; i++) {
+			command.append(" test_foo.py::test_m").append(i);
+		}
+		assertFalse("more than the node-id cap in one invocation must be rejected",
+				violationsFor(command.toString()).isEmpty());
 	}
 
 	// -- Rejected commands ------------------------------------------------------
@@ -242,10 +278,16 @@ public class PostCompletionCommandValidatorTest extends TestSuiteBase {
 		assertTrue(violations.get(0).contains("node id"));
 	}
 
-	/** pytest against a whole file (no node id) must be rejected. */
+	/** A single whole .py file is a bounded selection and is now accepted (see
+	 * {@link #pytestSingleWholeFileAccepted}); a selection above the file cap is still refused. */
 	@Test(timeout = 10000)
 	public void pytestOnWholeFileRejected() {
-		assertFalse(violationsFor("pytest tools/mcp/manager/test_server.py").isEmpty());
+		StringBuilder command = new StringBuilder("pytest");
+		for (int i = 0; i <= PostCompletionCommandValidator.MAX_TEST_CLASSES; i++) {
+			command.append(" tools/mcp/manager/test_mod").append(i).append(".py");
+		}
+		assertFalse("more than the file cap of whole files must be rejected",
+				violationsFor(command.toString()).isEmpty());
 	}
 
 	/** pytest with no arguments discovers and runs everything, and must be rejected. */

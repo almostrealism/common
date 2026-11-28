@@ -1081,7 +1081,20 @@ def _index_of_module_flag(tokens: list):
 
 def _pytest_segment_violation(tokens: list) -> str:
     """Return a violation reason for a single ``pytest``/``python -m pytest``
-    command segment, or ``""`` when it already names explicit node ids."""
+    command segment, or ``""`` when it already names a bounded selection of
+    explicit test files or node ids.
+
+    A bounded selection mirrors ``.claude/hooks/lib/pytest_broad_run_check.py``
+    and the root ``CLAUDE.md`` "Test Execution Limits" rule: every positional
+    is an explicit ``.py`` test file (``file.py``) or node id
+    (``file.py::test_name``), naming at most ``_MAX_TEST_CLASSES`` distinct
+    files and at most ``_MAX_TEST_METHODS`` node ids. A test file counts as one
+    class against the cap the way naming a class to Surefire does -- it bounds
+    which tests can run without bounding how many cases the file holds. What is
+    refused, as an unbounded run, is no positional at all (pytest then collects
+    from the current directory), a directory or any other non-``.py``
+    positional, or a selection above either cap.
+    """
     if not tokens:
         return ""
     base = tokens[0].rsplit("/", 1)[-1]
@@ -1099,19 +1112,34 @@ def _pytest_segment_violation(tokens: list) -> str:
     if substitution_reason:
         return substitution_reason
     positionals = [a for a in rest if not a.startswith("-")]
-    if len(positionals) == 1 and "::" in positionals[0]:
-        return ""
-    if len(positionals) > 1:
+    if not positionals:
         return (
-            "pytest command names {} positional arguments in \"{}\". Even "
-            "when each one is an explicit node id, pytest runs them "
-            "together in a single invocation, which agents and job "
-            "submitters may never do. Pass exactly one node id per "
-            "invocation.".format(len(positionals), " ".join(tokens)))
-    return (
-        "pytest command has no explicit node id (file.py::test_name): "
-        "\"{}\". This runs an entire file or directory. Pass explicit "
-        "node ids, one test per invocation.".format(" ".join(tokens)))
+            "pytest command names no explicit test file or node id "
+            "(file.py or file.py::test_name): \"{}\". This runs an entire "
+            "file or directory. Pass explicit test files or node ids, at most "
+            "{} files and {} node ids per invocation.".format(
+                " ".join(tokens), _MAX_TEST_CLASSES, _MAX_TEST_METHODS))
+    files = set()
+    node_ids = 0
+    for positional in positionals:
+        file_part = positional.split("::", 1)[0]
+        if not file_part.endswith(".py"):
+            return (
+                "pytest command names a non-file positional \"{}\" in \"{}\". "
+                "A directory or other non-.py path runs every test it holds; "
+                "pass explicit .py test files or file.py::test_name node "
+                "ids.".format(positional, " ".join(tokens)))
+        files.add(file_part)
+        if "::" in positional:
+            node_ids += 1
+    if len(files) > _MAX_TEST_CLASSES or node_ids > _MAX_TEST_METHODS:
+        return (
+            "pytest command selects {} test files and {} node ids in \"{}\", "
+            "more than the {} files and {} node ids allowed per invocation. "
+            "Split it into bounded runs.".format(
+                len(files), node_ids, " ".join(tokens),
+                _MAX_TEST_CLASSES, _MAX_TEST_METHODS))
+    return ""
 
 
 def _unittest_segment_violation(tokens: list) -> str:

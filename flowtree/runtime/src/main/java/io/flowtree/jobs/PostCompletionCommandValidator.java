@@ -53,7 +53,8 @@ import java.util.regex.Pattern;
  * {@code Class#method} tests -- a bare class or a few classes is fine, a
  * wildcard or other unbounded selector is not), reference
  * {@code AR_TEST_GROUP}/{@code AR_TEST_GROUPS}, or run pytest against a
- * directory or whole file instead of an explicit node id. The sibling
+ * directory or more test files/node ids than the caps allow instead of a
+ * bounded selection of explicit {@code .py} files or node ids. The sibling
  * timeout ceiling ({@link #MAX_TIMEOUT_SECONDS}) is enforced separately by
  * clamping at the call site in {@code FlowTreeApiEndpoint#handleSubmit},
  * since an over-limit timeout is corrected rather than rejected.</p>
@@ -776,7 +777,8 @@ public class PostCompletionCommandValidator {
 			sb.append("  - ").append(violation).append('\n');
 		}
 		sb.append("\nRewrite the command to select a bounded set of tests (Maven: up to the "
-				+ "class/method caps via -Dtest; pytest: one explicit node id per invocation).");
+				+ "class/method caps via -Dtest; pytest: up to the file/node-id caps as explicit "
+				+ ".py files or file.py::test_name node ids).");
 		return sb.toString();
 	}
 
@@ -1020,7 +1022,17 @@ public class PostCompletionCommandValidator {
 		return -1;
 	}
 
-	/** Returns a violation reason for a pytest segment, or null when it is acceptable. */
+	/**
+	 * Returns a violation reason for a pytest segment, or null when it names a bounded selection
+	 * of explicit test files or node ids. Mirrors {@code _pytest_segment_violation} in
+	 * {@code tools/mcp/manager/execution_limits.py} and {@code .claude/hooks/lib/pytest_broad_run_check.py}:
+	 * every positional must be a {@code .py} test file or {@code file.py::test_name} node id,
+	 * naming at most {@link #MAX_TEST_CLASSES} distinct files and {@link #MAX_TEST_METHODS} node
+	 * ids. A test file counts as one class against the cap, the way naming a class to Surefire
+	 * does. Refused as an unbounded run: no positional at all (pytest then collects from the
+	 * current directory), a directory or other non-{@code .py} positional, or a selection above
+	 * either cap.
+	 */
 	private String pytestSegmentViolation(List<String> tokens) {
 		if (tokens.isEmpty()) {
 			return null;
@@ -1046,18 +1058,34 @@ public class PostCompletionCommandValidator {
 				positionals.add(arg);
 			}
 		}
-		if (positionals.size() == 1 && positionals.get(0).contains("::")) {
-			return null;
+		if (positionals.isEmpty()) {
+			return "pytest command names no explicit test file or node id (file.py or "
+					+ "file.py::test_name): \"" + String.join(" ", tokens) + "\". This runs an "
+					+ "entire file or directory. Pass explicit test files or node ids, at most "
+					+ MAX_TEST_CLASSES + " files and " + MAX_TEST_METHODS + " node ids per invocation.";
 		}
-		if (positionals.size() > 1) {
-			return "pytest command names " + positionals.size() + " positional arguments in \""
-					+ String.join(" ", tokens) + "\". Even when each one is an explicit node id, "
-					+ "pytest runs them together in a single invocation, which agents and job "
-					+ "submitters may never do. Pass exactly one node id per invocation.";
+		Set<String> files = new HashSet<>();
+		int nodeIds = 0;
+		for (String positional : positionals) {
+			String filePart = positional.split("::", 2)[0];
+			if (!filePart.endsWith(".py")) {
+				return "pytest command names a non-file positional \"" + positional + "\" in \""
+						+ String.join(" ", tokens) + "\". A directory or other non-.py path runs "
+						+ "every test it holds; pass explicit .py test files or file.py::test_name "
+						+ "node ids.";
+			}
+			files.add(filePart);
+			if (positional.contains("::")) {
+				nodeIds++;
+			}
 		}
-		return "pytest command has no explicit node id (file.py::test_name): \""
-				+ String.join(" ", tokens) + "\". This runs an entire file or directory. Pass "
-				+ "explicit node ids, one test per invocation.";
+		if (files.size() > MAX_TEST_CLASSES || nodeIds > MAX_TEST_METHODS) {
+			return "pytest command selects " + files.size() + " test files and " + nodeIds
+					+ " node ids in \"" + String.join(" ", tokens) + "\", more than the "
+					+ MAX_TEST_CLASSES + " files and " + MAX_TEST_METHODS + " node ids allowed per "
+					+ "invocation. Split it into bounded runs.";
+		}
+		return null;
 	}
 
 	/**
