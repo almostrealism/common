@@ -1,7 +1,7 @@
 ---
-status: in-progress
+status: completed
 created: 2026-11-27
-closed:
+closed: 2026-11-28
 tracker: [748c1c4a-1b70-45f5-85d3-eb8e8e4911f4]
 ---
 
@@ -36,7 +36,26 @@ Implemented on this branch. What the measurements decided:
   reference was written elsewhere and passed to `matchesRateReference` through
   `AR_MALE_CNS_CELL_TYPE_RATES`; it still needs copying to the default directory.
 - **Fixture README.** It is generated (and checksummed) by the script, so the platform's measured
-  full-matrix agreement is recorded in the module README and the test javadoc instead.
+  full-matrix agreement is recorded in the module README and the test javadoc instead. Its
+  recorded command names the reference where the job account wrote it; regenerating the fixture
+  once the reference is in the default directory replaces that path.
+- **The reference is checked, not trusted.** `matchesRateReference` requires the reference's driven
+  sets to be the experiment the Java tests define before it runs anything: an empty baseline, the
+  Java GRN list, and the control `matchedControl` draws. It also requires the committed circuit to
+  record the same driven sets, matrix checksum and full-matrix MN9 rates. The control rule lives
+  once, in `CellTypeRateChecks.controlCandidates`; the pipeline test holds the fixture's driven
+  sets to it, with a test that each part of the rule rejects a set that breaks it. A Java test and
+  the Python port's test hold the `java.util.Random` draw to one recorded sequence, and the
+  `circuit` mode refuses a reference whose driven sets are not the experiment's.
+- **Text layout.** The fixture's tensors are text, read by `CellTypeConnectome.load` when a
+  directory has no safetensors file. That reader is production code this plan did not foresee;
+  `CellTypeConnectomeLoadTest` covers it (the same tensors as the safetensors layout, safetensors
+  preferred when both are present, malformed entries and counts rejected).
+
+Left for the owner: copy the reference into the default directory
+(`<models-derived>/male-cns/cell-type-rate-reference`), which the job account cannot write, and
+rerun `male_cns_cell_types.py circuit` so the fixture README records that path. The pipeline test
+has run on native and Metal on the macOS node; the CI test lanes run it on the next test run.
 
 ## Motivation
 

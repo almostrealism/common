@@ -332,6 +332,27 @@ def matched_control(grns, superclasses, classes, out_synapses, seed=CONTROL_SEED
     return chosen
 
 
+def experiment_driven(names, superclasses, classes, out_synapses):
+    """Returns the driven type names of each run of the sugar experiment.
+
+    The baseline drives nothing, the GRN run drives ``SUGAR_GRNS`` and the
+    control run drives the types ``matched_control`` draws for them.
+
+    Args:
+        names: the type names, in index order.
+        superclasses: the superclass of every type, in index order.
+        classes: the class of every type, in index order.
+        out_synapses: the outgoing synapse count of every type.
+
+    Returns:
+        A dict from run name to the driven type names, in order.
+    """
+    index = {name: i for i, name in enumerate(names)}
+    grns = [index[n] for n in SUGAR_GRNS]
+    control = [names[i] for i in matched_control(grns, superclasses, classes, out_synapses)]
+    return {"baseline": [], "grn": list(SUGAR_GRNS), "control": control}
+
+
 def rate_step(weights, scale, rates, drive, constants):
     """Returns the rates after one step of the ``RatePopulation`` update.
 
@@ -515,9 +536,7 @@ def rates_main(argv):
 
     names, superclasses, classes, tensors = read_matrix(args.matrix)
     index = {name: i for i, name in enumerate(names)}
-    grns = [index[n] for n in SUGAR_GRNS]
-    control = [names[i] for i in matched_control(grns, superclasses, classes, tensors["type_out_synapses"])]
-    driven = {"baseline": [], "grn": list(SUGAR_GRNS), "control": control}
+    driven = experiment_driven(names, superclasses, classes, tensors["type_out_synapses"])
 
     weights = tensors["weights"].astype(np.float64)
     results = experiment(weights, tensors["type_sizes"], names, driven, RATE_CONSTANTS)
@@ -694,6 +713,8 @@ def circuit_main(argv):
 
     index = {name: i for i, name in enumerate(names)}
     driven = manifest["driven"]
+    if driven != experiment_driven(names, superclasses, classes, tensors["type_out_synapses"]):
+        raise SystemExit("the rate reference does not drive the types of the sugar experiment")
     required = [index[n] for n in driven["grn"] + driven["control"]] + [index[MN9]]
     full = tensors["weights"].astype(np.float64)
     sizes = tensors["type_sizes"]

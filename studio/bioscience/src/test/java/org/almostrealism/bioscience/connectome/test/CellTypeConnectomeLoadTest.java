@@ -37,6 +37,10 @@ import java.util.List;
  * {@code type_sizes} and {@code type_out_synapses} in one safetensors file, the type names and
  * the annotation table. Unlike {@link CellTypeConnectomeTest}, it needs no external data, so it
  * runs everywhere.
+ *
+ * <p>It also covers the text layout a committed fixture uses in place of the safetensors file
+ * ({@link CellTypeConnectome#COUNTS_FILE} and {@link CellTypeConnectome#WEIGHTS_TEXT_FILE}): the
+ * same directory written that way loads to the same tensors, and malformed rows are rejected.</p>
  */
 public class CellTypeConnectomeLoadTest extends TestSuiteBase {
 	/** The type names of the synthetic connectome. */
@@ -56,6 +60,24 @@ public class CellTypeConnectomeLoadTest extends TestSuiteBase {
 
 	/** The outgoing synapses per type. */
 	private static final int[] OUT_SYNAPSES = { 17, 1, 6 };
+
+	/** The text layout's counts table matching {@link #SIZES} and {@link #OUT_SYNAPSES}. */
+	private static final String TEXT_COUNTS = "type\tsize\tout_synapses\n"
+			+ "LB3a\t4\t17\n"
+			+ "MN9\t2\t1\n"
+			+ "Kenyon\t5\t6\n";
+
+	/** The header line of the text layout's entry list. */
+	private static final String TEXT_WEIGHTS_HEADER = "post\tpre\tweight\n";
+
+	/** The text layout's entry list holding the non-zero entries of {@link #WEIGHTS}. */
+	private static final String TEXT_WEIGHTS = TEXT_WEIGHTS_HEADER
+			+ "0\t1\t-3\n"
+			+ "0\t2\t7\n"
+			+ "1\t0\t12\n"
+			+ "1\t2\t-1\n"
+			+ "2\t0\t5\n"
+			+ "2\t1\t2\n";
 
 	/**
 	 * Writes a connectome directory with the given tensors, names and annotation table.
@@ -117,6 +139,47 @@ public class CellTypeConnectomeLoadTest extends TestSuiteBase {
 	}
 
 	/**
+	 * Writes the three-type directory in the text layout, with no safetensors file.
+	 *
+	 * @param counts  the content of the counts table
+	 * @param weights the content of the entry list
+	 * @return the directory
+	 */
+	private static File writeTextDirectory(String counts, String weights) throws IOException {
+		Path directory = Files.createTempDirectory("cell-types-text");
+		Files.writeString(directory.resolve(CellTypeConnectome.TYPES_FILE), String.join("\n", NAMES) + "\n");
+		Files.writeString(directory.resolve(CellTypeConnectome.ANNOTATIONS_FILE), ANNOTATIONS);
+		addTextTensors(directory.toFile(), counts, weights);
+		return directory.toFile();
+	}
+
+	/**
+	 * Writes the text layout's two tensor files into a connectome directory.
+	 *
+	 * @param directory the connectome directory
+	 * @param counts    the content of the counts table
+	 * @param weights   the content of the entry list
+	 */
+	private static void addTextTensors(File directory, String counts, String weights) throws IOException {
+		Files.writeString(directory.toPath().resolve(CellTypeConnectome.COUNTS_FILE), counts);
+		Files.writeString(directory.toPath().resolve(CellTypeConnectome.WEIGHTS_TEXT_FILE), weights);
+	}
+
+	/**
+	 * Asserts that a loaded connectome holds {@link #WEIGHTS}, {@link #SIZES} and
+	 * {@link #OUT_SYNAPSES}.
+	 *
+	 * @param connectome the loaded connectome
+	 */
+	private static void assertExpectedTensors(CellTypeConnectome connectome) {
+		double[] expectedWeights = new double[WEIGHTS.length];
+		for (int i = 0; i < WEIGHTS.length; i++) expectedWeights[i] = WEIGHTS[i];
+		Assert.assertArrayEquals(expectedWeights, connectome.getWeights().toArray(), 0.0);
+		Assert.assertArrayEquals(new double[] { 4, 2, 5 }, connectome.getTypeSizes().toArray(), 0.0);
+		Assert.assertArrayEquals(new double[] { 17, 1, 6 }, connectome.getOutSynapses().toArray(), 0.0);
+	}
+
+	/**
 	 * Every tensor, name and annotation is loaded in index order, names resolve to their indices,
 	 * blank lines are ignored, an unannotated type reads as {@code ""}, and
 	 * {@link CellTypeConnectome#inverseTypeSizes()} is {@code 1 / type_size}.
@@ -128,11 +191,7 @@ public class CellTypeConnectomeLoadTest extends TestSuiteBase {
 			assertEquals(3, connectome.getTypeCount());
 			Assert.assertEquals(NAMES, connectome.getTypeNames());
 
-			double[] expectedWeights = new double[WEIGHTS.length];
-			for (int i = 0; i < WEIGHTS.length; i++) expectedWeights[i] = WEIGHTS[i];
-			Assert.assertArrayEquals(expectedWeights, connectome.getWeights().toArray(), 0.0);
-			Assert.assertArrayEquals(new double[] { 4, 2, 5 }, connectome.getTypeSizes().toArray(), 0.0);
-			Assert.assertArrayEquals(new double[] { 17, 1, 6 }, connectome.getOutSynapses().toArray(), 0.0);
+			assertExpectedTensors(connectome);
 			Assert.assertArrayEquals(new double[] { 0.25, 0.5, 0.2 }, inverse.toArray(), 1e-6);
 
 			assertEquals(0, connectome.indexOf("LB3a"));
@@ -215,6 +274,74 @@ public class CellTypeConnectomeLoadTest extends TestSuiteBase {
 		} catch (IllegalArgumentException expected) {
 			assertTrue(expected.getMessage(), expected.getMessage().contains("type_out_synapses"));
 		}
+	}
+
+	/**
+	 * A directory in the text layout loads to the tensors, names and annotations the safetensors
+	 * layout gives, with every entry the list does not name left at zero.
+	 */
+	@Test(timeout = 60000)
+	public void loadsTextLayout() throws IOException {
+		try (CellTypeConnectome connectome = CellTypeConnectome.load(writeTextDirectory(TEXT_COUNTS, TEXT_WEIGHTS));
+			 PackedCollection inverse = connectome.inverseTypeSizes().evaluate()) {
+			assertEquals(3, connectome.getTypeCount());
+			Assert.assertEquals(NAMES, connectome.getTypeNames());
+			assertExpectedTensors(connectome);
+			Assert.assertArrayEquals(new double[] { 0.25, 0.5, 0.2 }, inverse.toArray(), 1e-6);
+			Assert.assertEquals("gustatory", connectome.getTypeClass(0));
+		}
+	}
+
+	/** An entry list holding only its header line loads as a matrix of zeros. */
+	@Test(timeout = 60000)
+	public void loadsEmptyTextEntryList() throws IOException {
+		try (CellTypeConnectome connectome = CellTypeConnectome.load(writeTextDirectory(TEXT_COUNTS, TEXT_WEIGHTS_HEADER))) {
+			Assert.assertArrayEquals(new double[WEIGHTS.length], connectome.getWeights().toArray(), 0.0);
+			Assert.assertArrayEquals(new double[] { 4, 2, 5 }, connectome.getTypeSizes().toArray(), 0.0);
+		}
+	}
+
+	/**
+	 * The text layout is read only when there is no safetensors file: a directory holding both
+	 * loads the safetensors tensors, whatever the text files say.
+	 */
+	@Test(timeout = 60000)
+	public void prefersSafetensorsOverTextLayout() throws IOException {
+		File directory = writeValidDirectory();
+		addTextTensors(directory, "type\tsize\tout_synapses\nLB3a\t9\t9\nMN9\t9\t9\nKenyon\t9\t9\n",
+				TEXT_WEIGHTS_HEADER + "0\t0\t99\n");
+		try (CellTypeConnectome connectome = CellTypeConnectome.load(directory)) {
+			assertExpectedTensors(connectome);
+		}
+	}
+
+	/**
+	 * An entry of the text layout that names a row or column outside the matrix, has the wrong
+	 * number of fields, or holds a value that is not a number is rejected.
+	 */
+	@Test(timeout = 60000)
+	public void rejectsMalformedTextEntry() throws IOException {
+		assertThrowsLoad(writeTextDirectory(TEXT_COUNTS, TEXT_WEIGHTS + "3\t0\t1\n"));
+		assertThrowsLoad(writeTextDirectory(TEXT_COUNTS, TEXT_WEIGHTS + "0\t3\t1\n"));
+		assertThrowsLoad(writeTextDirectory(TEXT_COUNTS, TEXT_WEIGHTS + "-1\t0\t1\n"));
+		assertThrowsLoad(writeTextDirectory(TEXT_COUNTS, TEXT_WEIGHTS + "0\t1\n"));
+		assertThrowsLoad(writeTextDirectory(TEXT_COUNTS, TEXT_WEIGHTS + "0\t1\t2\t3\n"));
+		assertThrowsLoad(writeTextDirectory(TEXT_COUNTS, TEXT_WEIGHTS + "0\tx\t1\n"));
+		assertThrowsLoad(writeTextDirectory(TEXT_COUNTS, TEXT_WEIGHTS + "0\t1\tmany\n"));
+	}
+
+	/**
+	 * A counts table of the text layout that does not list every type, in index order, with an
+	 * integer size and outgoing synapse count is rejected.
+	 */
+	@Test(timeout = 60000)
+	public void rejectsMalformedTextCounts() throws IOException {
+		String header = "type\tsize\tout_synapses\n";
+		assertThrowsLoad(writeTextDirectory(header + "LB3a\t4\t17\nMN9\t2\t1\n", TEXT_WEIGHTS));
+		assertThrowsLoad(writeTextDirectory(TEXT_COUNTS + "Extra\t1\t1\n", TEXT_WEIGHTS));
+		assertThrowsLoad(writeTextDirectory(header + "MN9\t2\t1\nLB3a\t4\t17\nKenyon\t5\t6\n", TEXT_WEIGHTS));
+		assertThrowsLoad(writeTextDirectory(header + "LB3a\t4\nMN9\t2\t1\nKenyon\t5\t6\n", TEXT_WEIGHTS));
+		assertThrowsLoad(writeTextDirectory(header + "LB3a\t4.5\t17\nMN9\t2\t1\nKenyon\t5\t6\n", TEXT_WEIGHTS));
 	}
 
 	/** A type name listed twice is rejected. */

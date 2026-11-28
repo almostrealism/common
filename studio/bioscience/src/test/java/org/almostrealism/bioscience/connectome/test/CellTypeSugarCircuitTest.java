@@ -21,10 +21,14 @@ import com.google.gson.JsonObject;
 import org.almostrealism.bioscience.connectome.CellTypeConnectome;
 import org.almostrealism.graph.RatePopulation;
 import org.almostrealism.time.SimulationRunner;
+import org.junit.Assert;
 import org.junit.Test;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.List;
+import java.util.Random;
+import java.util.stream.IntStream;
 import java.util.stream.StreamSupport;
 
 /**
@@ -47,21 +51,8 @@ import java.util.stream.StreamSupport;
  * in a few seconds.</p>
  */
 public class CellTypeSugarCircuitTest extends CellTypeRateChecks {
-	/** The file of expected rates written by the script beside the matrix. */
-	private static final String RATE_REFERENCE_FILE = "rate-reference.json";
-
 	/** The fraction of the recorded GRN-over-control margin MN9 must keep on the platform. */
 	private static final double MARGIN_FRACTION = 0.9;
-
-	/**
-	 * Returns the directory of the committed circuit.
-	 *
-	 * @return the directory
-	 */
-	private File circuit() {
-		return NeuronConnectomeChecks.resourceDirectory(getClass(),
-				"/connectome/cell-type-sugar-circuit/" + CellTypeConnectome.TYPES_FILE);
-	}
 
 	/**
 	 * The circuit loads through {@link CellTypeConnectome#load} and every entry the script
@@ -69,7 +60,7 @@ public class CellTypeSugarCircuitTest extends CellTypeRateChecks {
 	 */
 	@Test(timeout = 300000)
 	public void spotChecks() throws IOException {
-		log("spotChecks=" + CellTypeConnectomeTest.assertSpotChecks(circuit(), 90));
+		log("spotChecks=" + CellTypeConnectomeTest.assertSpotChecks(sugarCircuit(), 90));
 	}
 
 	/**
@@ -77,11 +68,15 @@ public class CellTypeSugarCircuitTest extends CellTypeRateChecks {
 	 * control, for 1,000 steps from zero rates reaches the recorded rate of every kept type,
 	 * MN9's included, within {@link #RATE_ALLOWANCE}; and MN9's GRN rise exceeds its control rise
 	 * by at least {@value #MARGIN_FRACTION} of the recorded margin.
+	 *
+	 * <p>The driven sets are read from the fixture but must be the experiment the tests define
+	 * (see {@link #assertDrivenSets}), so a regenerated fixture cannot drive other types and
+	 * still agree with its own recorded rates.</p>
 	 */
 	@Test(timeout = 300000)
 	public void sugarDrivesMn9() throws IOException {
-		File directory = circuit();
-		JsonObject reference = NeuronConnectomeChecks.json(directory, RATE_REFERENCE_FILE).getAsJsonObject();
+		File directory = sugarCircuit();
+		JsonObject reference = NeuronConnectomeChecks.json(directory, SUGAR_CIRCUIT_REFERENCE_FILE).getAsJsonObject();
 		JsonObject driven = reference.getAsJsonObject("driven");
 		JsonObject expectedFinal = reference.getAsJsonObject("final");
 		int steps = reference.getAsJsonObject("constants").get("steps").getAsInt();
@@ -89,6 +84,7 @@ public class CellTypeSugarCircuitTest extends CellTypeRateChecks {
 		try (CellTypeConnectome connectome = CellTypeConnectome.load(directory);
 			 RatePopulation population = population(connectome)) {
 			int mn9 = connectome.indexOf(MN9);
+			assertDrivenSets(connectome, driven);
 			SimulationRunner runner = new SimulationRunner(population, DT);
 
 			double[] baseline = responseRates(runner, population, new int[0], steps);
@@ -98,7 +94,8 @@ public class CellTypeSugarCircuitTest extends CellTypeRateChecks {
 			String[] runs = { "grn", "control" };
 			for (int r = 0; r < runs.length; r++) {
 				double[] expected = doubles(expectedFinal.getAsJsonArray(runs[r]));
-				double[] actual = responseRates(runner, population, indices(connectome, driven.getAsJsonArray(runs[r])), steps);
+				double[] actual = responseRates(runner, population,
+						indices(connectome, names(driven.getAsJsonArray(runs[r]))), steps);
 				double difference = maxDifference(expected, actual);
 				log("backend=" + backend() + " run=" + runs[r] + " mn9Expected=" + expected[mn9]
 						+ " mn9Actual=" + actual[mn9] + " maxDifference=" + difference);
@@ -114,6 +111,91 @@ public class CellTypeSugarCircuitTest extends CellTypeRateChecks {
 			assertTrue("GRN drive raises MN9 by " + mn9Final[0] + " against " + mn9Final[1] + " for control",
 					mn9Final[0] - mn9Final[1] >= MARGIN_FRACTION * margin);
 		}
+	}
+
+	/**
+	 * {@link #assertDrivenSets} accepts the driven sets the fixture records and rejects every
+	 * departure from the experiment: a driven baseline, a GRN run without all of
+	 * {@link #SUGAR_GRNS}, and a control that is short, gustatory, not sensory, repeated, or
+	 * outside 20% of its GRN type's outgoing synapse count. Each rejected control breaks one part
+	 * of the rule and satisfies the others, so every part is shown to be checked.
+	 */
+	@Test(timeout = 300000)
+	public void drivenSetsAreTheExperiment() throws IOException {
+		File directory = sugarCircuit();
+		JsonObject driven = NeuronConnectomeChecks.json(directory, SUGAR_CIRCUIT_REFERENCE_FILE)
+				.getAsJsonObject().getAsJsonObject("driven");
+
+		try (CellTypeConnectome connectome = CellTypeConnectome.load(directory)) {
+			assertDrivenSets(connectome, driven);
+
+			List<String> control = names(driven.getAsJsonArray("control"));
+			assertDrivenSetsRejected(connectome, driven, "baseline", List.of(MN9));
+			assertDrivenSetsRejected(connectome, driven, "grn", SUGAR_GRNS.subList(0, 3));
+			assertDrivenSetsRejected(connectome, driven, "control", control.subList(0, 3));
+
+			// A GRN type is sensory and matches its own count exactly, but is gustatory.
+			assertDrivenSetsRejected(connectome, driven, "control",
+					List.of(SUGAR_GRNS.get(0), control.get(1), control.get(2), control.get(3)));
+
+			// A type of matching count that is not sensory.
+			int grn = connectome.indexOf(SUGAR_GRNS.get(0));
+			double[] out = connectome.getOutSynapses().toArray();
+			int unrelated = IntStream.range(0, connectome.getTypeCount())
+					.filter(i -> !connectome.getSuperclass(i).contains("sensory"))
+					.filter(i -> Math.abs(out[i] - out[grn]) <= 0.2 * out[grn])
+					.findFirst().orElseThrow(() -> new AssertionError("no non-sensory type of matching count"));
+			assertDrivenSetsRejected(connectome, driven, "control",
+					List.of(connectome.getTypeNames().get(unrelated), control.get(1), control.get(2), control.get(3)));
+
+			// The first control type is also a candidate for the second GRN type, but is repeated.
+			assertTrue(IntStream.of(controlCandidates(connectome, connectome.indexOf(SUGAR_GRNS.get(1))))
+					.anyMatch(i -> i == connectome.indexOf(control.get(0))));
+			assertDrivenSetsRejected(connectome, driven, "control",
+					List.of(control.get(0), control.get(0), control.get(2), control.get(3)));
+
+			// Sensory, non-gustatory and distinct, but matched to the wrong GRN types' counts.
+			assertDrivenSetsRejected(connectome, driven, "control",
+					List.of(control.get(2), control.get(1), control.get(0), control.get(3)));
+		}
+	}
+
+	/**
+	 * The first draws of {@code new java.util.Random(CONTROL_SEED).nextInt(bound)} are the values
+	 * {@code test_male_cns_cell_types.py} requires of the script's port of that generator, for
+	 * the same bounds. Both sides are held to one recorded sequence, so the control the script
+	 * draws for the rate reference and this circuit stays the one the full-matrix test draws.
+	 */
+	@Test(timeout = 60000)
+	public void controlDrawMatchesScriptPort() {
+		int[] bounds = { 7, 16, 1000, 3, 1 << 30, 1_500_000_000, 97 };
+		Random random = new Random(CONTROL_SEED);
+		int[] drawn = IntStream.of(bounds).map(random::nextInt).toArray();
+		Assert.assertArrayEquals(new int[] { 0, 6, 389, 1, 918785025, 113334809, 91 }, drawn);
+	}
+
+	/**
+	 * Asserts that {@link #assertDrivenSets} rejects the driven sets with one run replaced.
+	 *
+	 * @param connectome the loaded connectome
+	 * @param driven     the accepted driven sets, left unchanged
+	 * @param run        the run whose driven types are replaced
+	 * @param names      the type names driven in that run instead
+	 */
+	private void assertDrivenSetsRejected(CellTypeConnectome connectome, JsonObject driven,
+										  String run, List<String> names) {
+		JsonObject altered = driven.deepCopy();
+		JsonArray replacement = new JsonArray();
+		names.forEach(replacement::add);
+		altered.add(run, replacement);
+
+		try {
+			assertDrivenSets(connectome, altered);
+		} catch (AssertionError expected) {
+			return;
+		}
+
+		Assert.fail("Driving " + names + " in the " + run + " run was accepted");
 	}
 
 	/**
