@@ -1,0 +1,41 @@
+# systemd service definition for a native FlowTree agent on Linux.
+#
+# This is a template: install.sh substitutes @AGENT_HOME@, @ENV_FILE@,
+# @AGENT_USER@, @AGENT_GROUP@ and @AGENT_USER_HOME@ and writes the result to
+# @AGENT_HOME@/conf/. It is a system unit that runs as the service account,
+# registered ONCE by an administrator with register-unit.sh, which copies it
+# to /etc/systemd/system/. It is not a `systemctl --user` unit: a user
+# manager exists only while the account has a session (or lingering is
+# enabled for it), while the system manager is there from boot with nobody
+# logged in — the same reason the macOS agent is a LaunchDaemon.
+#
+# Redeploys never touch this definition. install.sh swaps the JARs and
+# signals the running process; Restart=always makes systemd start it again
+# on the new classpath, and keeps it running across crashes and reboots.
+#
+# Only the directives register-unit.sh accepts may appear here; anything
+# that would have systemd act as root on the account's behalf (an
+# EnvironmentFile it reads, a StandardOutput file it opens, an ExecStart
+# prefix that drops the User= switch) is refused there. That is why the
+# launcher, not systemd, reads the env file and opens the log.
+
+[Unit]
+Description=FlowTree native agent (@AGENT_USER@)
+Wants=network-online.target
+After=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+User=@AGENT_USER@
+Group=@AGENT_GROUP@
+Environment=FLOWTREE_AGENT_ENV=@ENV_FILE@
+Environment=HOME=@AGENT_USER_HOME@
+WorkingDirectory=@AGENT_HOME@
+ExecStart=/bin/bash @AGENT_HOME@/bin/run.sh
+Restart=always
+RestartSec=30
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

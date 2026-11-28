@@ -1,0 +1,32 @@
+# ─── Typed Node list for a Linux host Server ─────────────────────────
+#
+# Optional. When ${FLOWTREE_AGENT_HOME}/nodes.properties exists (or
+# FLOWTREE_AGENT_NODES names another file), install.sh appends it to the
+# installed conf/agent.properties, so one host Server runs every Node listed
+# here. Without it the Server builds the legacy homogeneous group of native
+# Nodes, exactly like the macOS agent.
+#
+# Index is the node id; indices must be contiguous from 0. Labels are
+# per Node and are not broadcast to siblings. A native Node takes the host's
+# platform and hostname labels automatically; a container Node takes its
+# platform from this file, because that is a property of its image.
+#
+# The `runtime` labels below are what the end-to-end smoke (smoke.sh)
+# routes its two jobs by; keep them, or pass smoke.sh the labels you use.
+#
+# kind=docker needs the Docker Node kind, which is a later addition to the
+# runtime: on a build without it the Server rejects the unknown kind at
+# startup and install.sh reports that the agent did not connect. install.sh
+# also refuses to install a docker Node unless `docker info` works for the
+# service account.
+# ─────────────────────────────────────────────────────────────────────
+
+nodes.0.kind=native
+nodes.0.labels.runtime=native
+
+nodes.1.kind=docker
+nodes.1.labels.runtime=docker
+nodes.1.labels.platform=linux
+nodes.1.image=flowtree/agent:latest
+nodes.1.cpus=4
+nodes.1.memory=4g

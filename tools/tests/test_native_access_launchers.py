@@ -22,6 +22,7 @@ _GRANT = "--enable-native-access=ALL-UNNAMED"
 _JAVA_SCRIPTS = [
     "flowtree/runtime/agent/entrypoint.sh",
     "flowtree/runtime/agent/macos/run.sh",
+    "flowtree/runtime/agent/linux/run.sh",
     "engine/ml/scripts/run_moonbeam_inference.sh",
     "studio/compose/scripts/run-optimizer.sh",
     "studio/compose/scripts/run-optimizer-benchmark.sh",
