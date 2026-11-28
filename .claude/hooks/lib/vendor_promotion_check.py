@@ -103,9 +103,16 @@ def is_test_source(path):
     return bool(TEST_DIRECTORIES.intersection(parts[:-1])) or bool(TEST_FILE.match(parts[-1]))
 
 
+#: A documentation placeholder elides the id with a trailing ``...`` ellipsis
+#: or an angle-bracket ``<id>`` token, optionally followed by closing
+#: punctuation, so the elision must end the link. A real link that merely
+#: carries ``...`` mid-path is a link, not a placeholder, and is not exempt.
+_PLACEHOLDER = re.compile(r"(?:\.\.\.|<[^>]*>?)[)\].,;:'\"]*$")
+
+
 def _is_placeholder(match):
-    """True for a documentation placeholder such as ``claude.ai/code/session_...``."""
-    return "..." in match or "<" in match
+    """True for a documentation placeholder whose id is elided with ``...`` or ``<id>``."""
+    return bool(_PLACEHOLDER.search(match))
 
 
 def promotions(text):

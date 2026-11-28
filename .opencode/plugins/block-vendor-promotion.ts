@@ -63,12 +63,16 @@ function patchEdits(patchText: string): object[] {
 }
 
 /**
- * Ask the shared core about a payload. Any internal error (Python missing,
- * core crashed, bad JSON) allows the call, so a hook malfunction can never
- * block legitimate work.
+ * Ask the shared core about a payload. The core reads an edited file's current
+ * content to tell an added promotion from one the file already carried, so it
+ * runs with the opencode project `directory` as its cwd: a relative `file_path`
+ * then resolves against the project root rather than opencode's own cwd. Any
+ * internal error (Python missing, core crashed, bad JSON) allows the call, so a
+ * hook malfunction can never block legitimate work.
  */
-function callCore(payload: object): Decision {
-  const result = spawnSync("python3", [CORE, JSON.stringify(payload)], { encoding: "utf-8", timeout: 5_000 })
+function callCore(payload: object, directory: string): Decision {
+  const result = spawnSync("python3", [CORE, JSON.stringify(payload)],
+    { encoding: "utf-8", timeout: 5_000, cwd: directory || undefined })
   if (result.error || result.status !== 0) return { action: "allow" }
   try {
     return JSON.parse(result.stdout) as Decision
@@ -83,11 +87,11 @@ function callCore(payload: object): Decision {
  * The decision lives in the shared core
  * .claude/hooks/lib/vendor_promotion_check.py.
  */
-export const BlockVendorPromotionPlugin: Plugin = async () => ({
+export const BlockVendorPromotionPlugin: Plugin = async ({ directory }) => ({
   "tool.execute.before": async (input, output) => {
     const args = (output.args ?? {}) as Record<string, unknown>
     for (const payload of toPayloads(input.tool, args)) {
-      const decision = callCore(payload)
+      const decision = callCore(payload, directory)
       if (decision.action === "block") throw new Error(decision.reason ?? "")
     }
   },

@@ -61,6 +61,17 @@ class FileEditTests(unittest.TestCase):
                      "https://claude.ai/project/x"):
             self.assertAction(edit("docs/guide.md", "", "Notes: " + link), "block")
 
+    def test_a_link_with_a_mid_path_ellipsis_is_blocked(self):
+        """A real link that merely carries ``...`` mid-path is not a placeholder."""
+        for link in ("https://claude.ai/chat/real...token", "claude.ai/project/a...b/x"):
+            self.assertAction(edit("docs/guide.md", "", "See " + link), "block")
+
+    def test_a_trailing_ellipsis_placeholder_is_allowed(self):
+        """An id elided with a trailing ``...`` (bare or closed by punctuation) is documentation."""
+        for text in ("See claude.ai/code/session_... for the record\n",
+                     "A session link (claude.ai/code/session_...).\n"):
+            self.assertAction(write("docs/guide.md", text), "allow")
+
     def test_a_bare_session_id_is_blocked(self):
         self.assertAction(edit("README.md", "", "from session_01AbCdEfGhIjKlMnOpQr"), "block")
 
