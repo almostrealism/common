@@ -37,6 +37,7 @@ _ANALYSIS = os.path.join(_REPO_ROOT, ".github", "workflows", "analysis.yaml")
 _DEPLOY = os.path.join(_REPO_ROOT, ".github", "workflows", "deploy.yaml")
 _REBUILD = os.path.join(_REPO_ROOT, "flowtree", "runtime", "rebuild.sh")
 _COMPOSE = os.path.join(_REPO_ROOT, "flowtree", "runtime", "controller", "docker-compose.yml")
+_AGENT_COMPOSE = os.path.join(_REPO_ROOT, "flowtree", "runtime", "agent", "docker-compose.yml")
 _GATE = os.path.join(_REPO_ROOT, "tools", "ci", "require_rehearsed_commit.py")
 
 
@@ -223,6 +224,19 @@ class RehearsalModeTest(unittest.TestCase):
         self.assertIsNotNone(match)
         self.assertEqual(services - {"fleet-db", "fleet-grafana"}, set(match.group(1).split()),
                          "a service the preflight does not start is a service CI never starts")
+
+    def test_the_rehearsal_supplies_every_agent_compose_value_without_a_default(self):
+        """A rehearsal has no agent ``.env``; any variable the agent compose file uses with
+        no default must be set by the rehearsal, or compose cannot even parse the file."""
+        lines = [line for line in _read(_AGENT_COMPOSE).splitlines()
+                 if not line.lstrip().startswith("#")]
+        needed = set(re.findall(r"\$\{([A-Z_][A-Z0-9_]*)(?:\}|:\?)", "\n".join(lines)))
+        block = self.script[self.script.index('if [ "${REHEARSE}" = true ]; then'):]
+        block = block[:block.index("\nfi\n")]
+        exported = set(re.findall(r"export ([A-Z_][A-Z0-9_]*)=", block))
+        self.assertTrue(needed, "found no required values; the pattern no longer matches the file")
+        self.assertEqual(set(), needed - exported,
+                         "agent compose values the rehearsal leaves unset")
 
 
 if __name__ == "__main__":

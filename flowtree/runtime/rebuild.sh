@@ -137,13 +137,15 @@ done
 # A rehearsal builds and preflights exactly what a deploy would, under its own
 # compose project name: compose names the images it builds after the project,
 # so the live stack's image tags are never touched. Agent images are built but
-# never started, so the two values the agent compose file requires for
-# interpolation get placeholders; neither is a secret, and neither reaches a
-# running container.
+# never started, so the values the agent compose file needs to interpolate
+# (the two it requires, and the SSH key directory its volume list names) get
+# placeholders; none is a secret, and none reaches a running container.
 if [ "${REHEARSE}" = true ]; then
   export COMPOSE_PROJECT_NAME="${REHEARSAL_PROJECT:-flowtree-rehearsal}"
   export FLOWTREE_ROOT_HOST="${FLOWTREE_ROOT_HOST:-rehearsal.invalid}"
   export CLAUDE_CODE_OAUTH_TOKEN="${CLAUDE_CODE_OAUTH_TOKEN:-rehearsal-placeholder}"
+  export SSH_KEY_DIR="${SSH_KEY_DIR:-${FLOWTREE_HOST_DIR}/rehearsal-ssh}"
+  mkdir -p "${SSH_KEY_DIR}"
   echo "Rehearsal: building and preflighting under compose project ${COMPOSE_PROJECT_NAME};" \
     "nothing running will be stopped or replaced."
 fi
