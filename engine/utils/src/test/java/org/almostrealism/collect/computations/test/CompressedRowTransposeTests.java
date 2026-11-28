@@ -344,6 +344,29 @@ public class CompressedRowTransposeTests extends TestSuiteBase implements Matrix
 	}
 
 	/**
+	 * A view without an ordering of its own over a sparse matrix inherits the matrix's ordering
+	 * only through its delegate. Its shape is dense, so its transpose must not take the sparse
+	 * path: the ordering of the transpose addresses the matrix's entries, and placing it on the
+	 * shape of the view would apply the matrix's ordering a second time. The transpose of the
+	 * matrix itself, by contrast, carries the ordering of the transpose.
+	 */
+	@Test(timeout = 60000)
+	public void transposeOfUnorderedViewIsNotSparse() {
+		PackedCollection matrix = sparse();
+		PackedCollection view = matrix.range(shape(24)).reshape(shape(4, 6));
+		assertTrue("the view should not carry an ordering of its own", view.getShape().getOrder() == null);
+		assertTrue("the view should inherit the ordering of the matrix", view.getMemOrdering() != null);
+
+		TraversalPolicy viewTranspose = shape(cp(view).transpose());
+		assertTrue(Arrays.equals(new long[] { 6, 4 }, viewTranspose.extentLong()));
+		assertTrue("the transpose of the view should be dense", viewTranspose.getOrder() == null);
+
+		CompressedRowTraversalOrdering order = (CompressedRowTraversalOrdering) matrix.getShape().getOrder();
+		assertTrue("the transpose of the matrix should be sparse",
+				shape(cp(matrix).transpose()).getOrder() == order.transpose());
+	}
+
+	/**
 	 * Preparing the transpose binds the ordering of the transpose, so the transpose reports the
 	 * arguments that ordering reads, and nothing for the producer of the matrix, which is a
 	 * position of the process tree in its own right.
