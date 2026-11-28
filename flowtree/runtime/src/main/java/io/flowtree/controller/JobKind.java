@@ -16,6 +16,8 @@
 
 package io.flowtree.controller;
 
+import java.util.Locale;
+
 /**
  * The kind of work a recorded job represents, for the throughput retrospective's
  * per-kind breakdown.
@@ -73,8 +75,8 @@ public enum JobKind {
      * @return the derived kind; {@link #UNKNOWN} when neither signal is present
      */
     public static JobKind classify(String triggerReason, String phase) {
-        String p = phase == null ? "" : phase.toLowerCase();
-        String t = triggerReason == null ? "" : triggerReason.toLowerCase();
+        String p = phase == null ? "" : phase.toLowerCase(Locale.ROOT);
+        String t = triggerReason == null ? "" : triggerReason.toLowerCase(Locale.ROOT);
 
         if (!p.isEmpty()) {
             if (p.contains("falsif") || p.contains("retrospective")

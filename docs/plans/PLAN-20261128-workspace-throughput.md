@@ -429,17 +429,24 @@ Each stage compiles, is independently reviewable, and ships its own tests. The
 harness commits the whole branch once; the stages describe logical phases.
 
 **Stage 0 — close the data gaps (schema + capture).**
-- Add `job_token` table `(job_id, kind, input_tokens, output_tokens,
-  cache_read_tokens, cache_write_tokens)` and a `job_kind` column + persisted
-  `delay_seconds`/scheduled-start on `job_timing` (all via `SCHEMA_MIGRATIONS`,
-  the existing additive-ALTER pattern).
-- Thread tokens through: `ClaudeCodeRunner` reads `usage.*` from the result
-  JSON; `OpencodeRunner` promotes its already-parsed `runnerMetadata` tokens
-  into `AgentRunResult` → `JobCompletionEvent` → `recordJobCompleted`. Thread a
-  `kind` property through `CodingAgentJobFactory`/`CodingAgentJob`/codec.
-- *Tests*: `GitManagedJobSerializationTest.roundTripFactory` asserts `kind` and
-  token fields survive the wire; `JobStatsStoreTest` asserts tokens/kind persist
-  and read back; a runner-parser test for each runner's token extraction.
+- *Shipped on this branch*: add the `job_token` table `(job_id, kind,
+  input_tokens, output_tokens, cache_read_tokens, cache_write_tokens)` via
+  `SCHEMA_MIGRATIONS` (the existing additive-ALTER pattern), and thread tokens
+  through: `ClaudeCodeRunner` reads `usage.*` from the result JSON;
+  `OpencodeRunner` promotes its already-parsed `runnerMetadata` tokens into
+  `AgentRunResult` → `JobCompletionEvent` → `recordJobCompleted`. Job kind is
+  back-derived at read time by `JobKind.classify` from the durable
+  `trigger_reason`/`phase` signals — it is not persisted.
+- *Deferred follow-ups, not shipped here*: a persisted `job_kind` column and a
+  first-class `kind` property threaded through
+  `CodingAgentJobFactory`/`CodingAgentJob`/codec (open question §6.3), and a
+  persisted `delay_seconds`/scheduled-start on `job_timing` (open question
+  §6.1). Until those land, kind is only a read-time heuristic and delayed jobs
+  are placed at `now`.
+- *Tests*: a runner-parser test for each runner's token extraction, and
+  `JobStatsStore` coverage asserting tokens persist and read back. When the
+  deferred `kind` property lands, `GitManagedJobSerializationTest.roundTripFactory`
+  asserts it survives the wire.
 - *Note*: this stage does nothing for historical rows — history stays
   token-less and kind-`UNKNOWN`, by design.
 

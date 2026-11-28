@@ -19,6 +19,8 @@ package io.flowtree.controller;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
+import java.util.Locale;
+
 import static org.junit.Assert.assertEquals;
 
 /**
@@ -72,5 +74,22 @@ public class JobKindTest extends TestSuiteBase {
     public void noSignalIsUnknown() {
         assertEquals(JobKind.UNKNOWN, JobKind.classify(null, null));
         assertEquals(JobKind.UNKNOWN, JobKind.classify("", ""));
+    }
+
+    /**
+     * Classification is locale-independent: an upper-case {@code CI} phase still
+     * matches the {@code ci} branch under the Turkish locale, whose default
+     * lower-casing would turn {@code I} into a dotless {@code ı} and miss it.
+     */
+    @Test(timeout = 30000)
+    public void classificationIsLocaleIndependent() {
+        Locale previous = Locale.getDefault();
+        try {
+            Locale.setDefault(new Locale("tr", "TR"));
+            assertEquals(JobKind.CI_REVIEW, JobKind.classify("manual", "CI"));
+            assertEquals(JobKind.CI_REVIEW, JobKind.classify("AUTO_RESOLVE", null));
+        } finally {
+            Locale.setDefault(previous);
+        }
     }
 }
