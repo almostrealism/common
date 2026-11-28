@@ -15,10 +15,13 @@ name: "Register Workstream"
 # so it fires for a conflicted PR too. This workflow uses that to register the
 # workstream regardless of mergeability. It calls the same
 # tools/ci/register-workstream.sh the analysis.yaml job calls, and that script
-# is idempotent — a workstream that already exists is returned unchanged — so
-# the two paths are safe to run together: on a mergeable PR both fire and the
-# second is a no-op.
-# TODO(review): stale — the controller returns the existing workstream atomically (NotifierRegistry.registerExclusively) and the script then updates it with SETTLED_CI_TRIGGER, so the second run is not a no-op.
+# is duplicate-safe — the controller answers a branch it already has a
+# workstream for with that workstream (atomically, via
+# NotifierRegistry.registerExclusively), so no second workstream is created —
+# so the two paths are safe to run together. On a mergeable PR both fire; the
+# one that loses the race does not create a workstream but still refreshes
+# SETTLED_CI_TRIGGER on the existing one with an update, so it is a
+# duplicate-safe refresh, not a no-op.
 #
 # Why pull_request_target rather than pull_request:
 # `pull_request` is exactly the trigger that does not fire on a conflicted PR,

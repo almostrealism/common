@@ -258,8 +258,9 @@ declares no secret.
 
 A branch's workstream is what a coding-agent job is dispatched to. Two paths
 register it with `register-workstream.sh`, and because that script is
-idempotent — the controller returns an existing workstream unchanged — they are
-safe to run together:
+duplicate-safe — the controller answers a branch it already has a workstream
+for with that workstream (atomically, via `NotifierRegistry.registerExclusively`),
+so neither path creates a second — they are safe to run together:
 
 - **The normal path** is analysis.yaml's `register-workstream` job, on the
   `pull_request` event. Because it runs the PR-head copy of the script with the
@@ -279,7 +280,9 @@ safe to run together:
   controller credential but runs no PR code, acts only on a same-repo head
   branch, and passes every PR-derived value through `env:`, the same trust rules
   `cancel-merged-pr-runs.yaml`'s `cancel-branch-jobs` job follows. On a mergeable
-  PR both paths fire and the `pull_request_target` one is a no-op. Pinned by
+  PR both paths fire; whichever loses the controller's atomic lookup creates no
+  workstream but still refreshes `SETTLED_CI_TRIGGER` on the existing one with an
+  update, so it is a duplicate-safe refresh rather than a no-op. Pinned by
   `tools/tests/test_register_workstream_conflict.py`.
 
 Like every `pull_request_target` workflow, `register-workstream.yaml` takes
