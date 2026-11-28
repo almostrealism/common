@@ -48,7 +48,7 @@ source "${SCRIPT_DIR}/prompt-render.sh"
 # report last, so the tail of the log is where the failures are.
 LOG_TAIL=""
 if [ -s "$LOG_FILE" ]; then
-    LOG_TAIL=$(tail -n 200 "$LOG_FILE")
+    LOG_TAIL=$(tail -n 200 "$LOG_FILE" | redact_ci_shard_variables)
 fi
 if [ -z "$LOG_TAIL" ]; then
     LOG_TAIL="(no output was captured — reproduce the failure with the commands below)"
