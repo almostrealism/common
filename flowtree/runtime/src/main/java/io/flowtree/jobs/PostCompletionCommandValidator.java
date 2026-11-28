@@ -53,7 +53,8 @@ import java.util.regex.Pattern;
  * {@code Class#method} tests -- a bare class or a few classes is fine, a
  * wildcard or other unbounded selector is not), reference
  * {@code AR_TEST_GROUP}/{@code AR_TEST_GROUPS}, or run pytest against a
- * directory or whole file instead of an explicit node id. The sibling
+ * directory or more test files/node ids than the caps allow instead of a
+ * bounded selection of explicit {@code .py} files or node ids. The sibling
  * timeout ceiling ({@link #MAX_TIMEOUT_SECONDS}) is enforced separately by
  * clamping at the call site in {@code FlowTreeApiEndpoint#handleSubmit},
  * since an over-limit timeout is corrected rather than rejected.</p>
@@ -139,6 +140,13 @@ public class PostCompletionCommandValidator {
 	 * class is not knowable from the selector. Mirrored by {@code _MAX_TEST_METHODS} in
 	 * {@code tools/mcp/manager/execution_limits.py}. */
 	static final int MAX_TEST_METHODS = 40;
+
+	/** Shell glob and brace-expansion metacharacters. An unquoted {@code tests/*.py} reaches this
+	 * validator as the literal token {@code tests/*.py}, ends in {@code .py}, and would be counted as
+	 * one file, yet the shell expands it to an unbounded number of files. A file path carrying any of
+	 * these is therefore not an explicit single file. Mirrors {@code _GLOB_METACHARACTERS} in
+	 * {@code tools/mcp/manager/execution_limits.py}. */
+	private static final String GLOB_METACHARACTERS = "*?[]{}";
 
 	/** Maven launcher executable names recognized by {@link #mavenSegmentViolation}: the plain
 	 * {@code mvn} plus the Maven Wrapper scripts ({@code ./mvnw}, {@code ./mvnw.cmd}) and the
@@ -276,6 +284,16 @@ public class PostCompletionCommandValidator {
 	 * token as their own operand, mirroring {@link #PYTHON_NOARG_FLAGS} for flags that are not
 	 * bare. */
 	private static final List<String> PYTHON_ARG_FLAGS = Arrays.asList("-W", "-X");
+
+	/** pytest options whose value is the next token, so that value is not mistaken for a test
+	 * path ({@code -k test_bar}, {@code -p no:cacheprovider}). The {@code --opt=value} form needs
+	 * no entry since it is one token starting with {@code -}. Mirrors {@code _PYTEST_VALUE_OPTIONS}
+	 * in {@code tools/mcp/manager/execution_limits.py}. */
+	private static final Set<String> PYTEST_VALUE_OPTIONS = new HashSet<>(Arrays.asList(
+			"-k", "-m", "-p", "-c", "-o", "-W", "-n", "--rootdir", "--confcutdir",
+			"--basetemp", "--deselect", "--ignore", "--ignore-glob", "--junitxml",
+			"--junit-xml", "--maxfail", "--tb", "--durations", "--log-level",
+			"--override-ini", "--import-mode", "--capture", "--cov", "--timeout"));
 
 	/** The shell command being validated. */
 	private final String command;
@@ -776,7 +794,8 @@ public class PostCompletionCommandValidator {
 			sb.append("  - ").append(violation).append('\n');
 		}
 		sb.append("\nRewrite the command to select a bounded set of tests (Maven: up to the "
-				+ "class/method caps via -Dtest; pytest: one explicit node id per invocation).");
+				+ "class/method caps via -Dtest; pytest: up to the file/node-id caps as explicit "
+				+ ".py files or file.py::test_name node ids).");
 		return sb.toString();
 	}
 
@@ -1020,7 +1039,38 @@ public class PostCompletionCommandValidator {
 		return -1;
 	}
 
-	/** Returns a violation reason for a pytest segment, or null when it is acceptable. */
+	/**
+	 * Returns the test-path arguments of a pytest invocation, skipping its options and the value
+	 * token of each option in {@link #PYTEST_VALUE_OPTIONS}, so {@code pytest -k test_bar
+	 * test_foo.py} yields only {@code test_foo.py}. Mirrors {@code _pytest_positionals} in
+	 * {@code tools/mcp/manager/execution_limits.py}.
+	 */
+	private static List<String> pytestPositionals(List<String> args) {
+		List<String> result = new ArrayList<>();
+		boolean skipNext = false;
+		for (String arg : args) {
+			if (skipNext) {
+				skipNext = false;
+			} else if (arg.startsWith("-")) {
+				skipNext = PYTEST_VALUE_OPTIONS.contains(arg);
+			} else {
+				result.add(arg);
+			}
+		}
+		return result;
+	}
+
+	/**
+	 * Returns a violation reason for a pytest segment, or null when it names a bounded selection
+	 * of explicit test files or node ids. Mirrors {@code _pytest_segment_violation} in
+	 * {@code tools/mcp/manager/execution_limits.py} and {@code .claude/hooks/lib/pytest_broad_run_check.py}:
+	 * every positional must be a {@code .py} test file or {@code file.py::test_name} node id,
+	 * naming at most {@link #MAX_TEST_CLASSES} distinct files and {@link #MAX_TEST_METHODS} node
+	 * ids. A test file counts as one class against the cap, the way naming a class to Surefire
+	 * does. Refused as an unbounded run: no positional at all (pytest then collects from the
+	 * current directory), a directory or other non-{@code .py} positional, or a selection above
+	 * either cap.
+	 */
 	private String pytestSegmentViolation(List<String> tokens) {
 		if (tokens.isEmpty()) {
 			return null;
@@ -1040,24 +1090,42 @@ public class PostCompletionCommandValidator {
 		if (substitutionReason != null) {
 			return substitutionReason;
 		}
-		List<String> positionals = new ArrayList<>();
-		for (String arg : rest) {
-			if (!arg.startsWith("-")) {
-				positionals.add(arg);
+		List<String> positionals = pytestPositionals(rest);
+		if (positionals.isEmpty()) {
+			return "pytest command names no explicit test file or node id (file.py or "
+					+ "file.py::test_name): \"" + String.join(" ", tokens) + "\". This runs an "
+					+ "entire file or directory. Pass explicit test files or node ids, at most "
+					+ MAX_TEST_CLASSES + " files and " + MAX_TEST_METHODS + " node ids per invocation.";
+		}
+		Set<String> files = new HashSet<>();
+		int nodeIds = 0;
+		for (String positional : positionals) {
+			String filePart = positional.split("::", 2)[0];
+			if (containsGlobMetacharacter(filePart)) {
+				return "pytest command positional \"" + positional + "\" in \""
+						+ String.join(" ", tokens) + "\" uses a shell glob or brace-expansion "
+						+ "metacharacter in its file path. The shell expands it to an unbounded "
+						+ "number of files; pass each explicit .py test file or file.py::test_name "
+						+ "node id literally.";
+			}
+			if (!filePart.endsWith(".py")) {
+				return "pytest command names a non-file positional \"" + positional + "\" in \""
+						+ String.join(" ", tokens) + "\". A directory or other non-.py path runs "
+						+ "every test it holds; pass explicit .py test files or file.py::test_name "
+						+ "node ids.";
+			}
+			files.add(filePart);
+			if (positional.contains("::")) {
+				nodeIds++;
 			}
 		}
-		if (positionals.size() == 1 && positionals.get(0).contains("::")) {
-			return null;
+		if (files.size() > MAX_TEST_CLASSES || nodeIds > MAX_TEST_METHODS) {
+			return "pytest command selects " + files.size() + " test files and " + nodeIds
+					+ " node ids in \"" + String.join(" ", tokens) + "\", more than the "
+					+ MAX_TEST_CLASSES + " files and " + MAX_TEST_METHODS + " node ids allowed per "
+					+ "invocation. Split it into bounded runs.";
 		}
-		if (positionals.size() > 1) {
-			return "pytest command names " + positionals.size() + " positional arguments in \""
-					+ String.join(" ", tokens) + "\". Even when each one is an explicit node id, "
-					+ "pytest runs them together in a single invocation, which agents and job "
-					+ "submitters may never do. Pass exactly one node id per invocation.";
-		}
-		return "pytest command has no explicit node id (file.py::test_name): \""
-				+ String.join(" ", tokens) + "\". This runs an entire file or directory. Pass "
-				+ "explicit node ids, one test per invocation.";
+		return null;
 	}
 
 	/**
@@ -1101,6 +1169,16 @@ public class PostCompletionCommandValidator {
 				+ "a single dotted module.Class.method test id. \"discover\", a bare module, or a "
 				+ "module.Class runs many tests at once, which agents and job submitters may "
 				+ "never do. Pass exactly one module.Class.method id per invocation.";
+	}
+
+	/** Returns whether {@code s} contains any {@link #GLOB_METACHARACTERS} character. */
+	private static boolean containsGlobMetacharacter(String s) {
+		for (int i = 0; i < s.length(); i++) {
+			if (GLOB_METACHARACTERS.indexOf(s.charAt(i)) >= 0) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	/** Counts occurrences of {@code target} in {@code s}. */

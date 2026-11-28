@@ -375,8 +375,9 @@ before the submission ever reaches the controller:
   selector at all, more than those caps, a Surefire wildcard (`*`, `?`), the `+`
   method-list separator, `!` negation, a `%regex[...]` pattern, or an unresolvable
   `$VAR` is rejected — references `AR_TEST_GROUP`/`AR_TEST_GROUPS`, or runs pytest
-  against a directory, a whole file, or more than one node id instead of exactly
-  one explicit node id. A `post_completion_command` runs unattended, so it is held
+  with no path, against a directory, or with more than 5 test files or 40 node ids
+  instead of a bounded selection of explicit `.py` files or `file.py::test_name`
+  node ids. A `post_completion_command` runs unattended, so it is held
   to one stricter rule on top of that: every `-Dtest` entry must name a
   `Class#method`, not a bare class.
 - **`post_completion_timeout_seconds`** — rejected above 2400 (40 minutes).
