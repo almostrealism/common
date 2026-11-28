@@ -167,17 +167,19 @@ public final class NotifierRegistry {
 
     /**
      * Posts an operational notice to a workstream's channel through its owning
-     * notifier. A no-op when no workspace claims the workstream, so a caller on
-     * a background timer need not guard against an archived workstream.
+     * notifier. Reports {@code false} when no workspace claims the workstream,
+     * so a caller on a background timer need not guard against an archived
+     * workstream yet a caller that must know the post landed (the GitHub
+     * webhook handler, which releases its delivery claim on failure) can.
      *
      * @param workstreamId the workstream whose channel receives the notice
      * @param message      the notice text
+     * @return {@code true} when the message was posted; {@code false} when no
+     *         workspace claims the workstream or the post failed
      */
-    public void postWorkstreamNotice(String workstreamId, String message) {
+    public boolean postWorkstreamNotice(String workstreamId, String message) {
         SlackNotifier owner = notifierFor(workstreamId);
-        if (owner != null) {
-            owner.postWorkstreamNotice(workstreamId, message);
-        }
+        return owner != null && owner.postWorkstreamNotice(workstreamId, message);
     }
 
     /**
