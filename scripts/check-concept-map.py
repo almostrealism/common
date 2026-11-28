@@ -45,7 +45,7 @@ def check(root: str) -> int:
         return 2
 
     index = SnapshotIndex(build(root))
-    flagged = concept_map.undeclared_types(index.has_type)
+    flagged = concept_map.undeclared_types(index.declares_type)
     if not flagged:
         print(f"concept map OK: {len(concept_map.entries)} entries, "
               "all canonical types declared in the source tree")

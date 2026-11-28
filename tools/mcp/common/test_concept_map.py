@@ -162,7 +162,7 @@ class TestRealMap(unittest.TestCase):
         from snapshot_index import SnapshotIndex, build
 
         index = SnapshotIndex(build(str(_REPO_ROOT)))
-        flagged = self.map.undeclared_types(index.has_type)
+        flagged = self.map.undeclared_types(index.declares_type)
         self.assertEqual(
             flagged, [],
             "concept-map entries name types absent from the source tree: "

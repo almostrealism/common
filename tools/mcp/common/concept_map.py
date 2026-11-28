@@ -243,7 +243,9 @@ class ConceptMap:
 
         Args:
             type_exists: Returns whether a type name is declared in the source
-                tree (e.g. ``SnapshotIndex.has_type``).
+                tree (e.g. ``SnapshotIndex.declares_type``). A predicate that
+                also accepts merely-imported names would let a deleted canonical
+                type pass whenever another file still imports it.
 
         Returns:
             ``(entry, missing)`` pairs, one per entry that names at least one
