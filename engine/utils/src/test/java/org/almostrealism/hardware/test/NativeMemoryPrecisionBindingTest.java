@@ -275,9 +275,33 @@ public class NativeMemoryPrecisionBindingTest extends TestSuiteBase {
 	 * @return the provider, with its round-trip memory already released
 	 */
 	private NativeMemoryProvider bindHardwareWithRoundTrip(Precision hardware) {
+		requireRoundTripPrecision(hardware);
+
 		NativeMemoryProvider bound = calloc(hardware);
 		assertRoundTrip(bound);
 		return bound;
+	}
+
+	/**
+	 * Fails fast if the given precision is not one {@link NativeArrayCopy} can round-trip. Its native
+	 * code copies {@code double*} for {@link Precision#FP64} and {@code float*} for every other
+	 * precision, so an {@link Precision#FP16} element — two bytes, not four — would have a four-byte
+	 * {@code float} written into and read out of it, overrunning the calloc allocation and corrupting
+	 * memory before the cross-precision guard this test exercises is ever reached. The round-trip tests
+	 * therefore require an {@link Precision#FP32} or {@link Precision#FP64} hardware precision rather
+	 * than silently treating {@link Precision#FP16} as {@link Precision#FP32}. (The direct-guard,
+	 * concurrency, and {@link Malloc}/{@link Free} tests never copy precision-width memory, so they
+	 * remain valid at any hardware precision.)
+	 *
+	 * @param precision the hardware precision about to be round-tripped
+	 */
+	private static void requireRoundTripPrecision(Precision precision) {
+		if (precision != Precision.FP32 && precision != Precision.FP64) {
+			Assert.fail(NativeArrayCopy.class.getName() + " round-trips only FP32 and FP64, but the hardware" +
+					" precision is " + precision + "; its float-based native path would overrun a " +
+					precision.bytes() + "-byte-per-element allocation. Run this test at an FP32 or FP64" +
+					" hardware precision.");
+		}
 	}
 
 	/**
