@@ -432,8 +432,10 @@ public class AudioScenePdslCutoverTest extends AudioSceneTestBase {
 			runner.setup().get().run();
 			logAutomationValues(scene, channelCount, seed);
 		} finally {
-			if (runner != null) runner.destroy();
-			sink.destroy();
+			List<Runnable> releases = new ArrayList<>();
+			if (runner != null) releases.add(runner::destroy);
+			releases.add(sink::destroy);
+			Destroyable.releaseAll(releases);
 		}
 	}
 
@@ -830,8 +832,10 @@ public class AudioScenePdslCutoverTest extends AudioSceneTestBase {
 			runner.reset();
 		} finally {
 			MixdownManager.enablePdslMixdown = prevPdsl;
-			if (runner != null) runner.destroy();
-			sink.destroy();
+			List<Runnable> releases = new ArrayList<>();
+			if (runner != null) releases.add(runner::destroy);
+			releases.add(sink::destroy);
+			Destroyable.releaseAll(releases);
 		}
 	}
 
