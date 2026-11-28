@@ -35,6 +35,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiFunction;
 
 import static org.junit.Assert.assertEquals;
@@ -253,30 +254,41 @@ public class WorkstreamRegistrationHandlerTest extends TestSuiteBase {
      * own over the shared registry, and a registration talks to the network
      * between looking for an existing workstream and storing a new one.
      *
-     * <p>The pull-request lookup stands in for that network call. The first
-     * registration to reach it holds there until the second has reached it too
-     * or {@link #OVERLAP_WAIT_MILLIS} has passed. If registrations could
-     * overlap, the second would arrive at once, both would have found nothing,
-     * and both would create a workstream. Because they cannot, the second is
-     * still waiting for the first to finish, the wait runs out, and the second
-     * then finds the workstream the first created.</p>
+     * <p>The pull-request lookup stands in for that network call. Only the
+     * first call to reach it holds there, until a later call has reached it
+     * too or {@link #OVERLAP_WAIT_MILLIS} has passed; every later call returns
+     * at once. Overlap is recorded only when a call enters while another is
+     * still inside, so a lookup the second registration makes after the first
+     * has finished is not mistaken for overlap. If registrations could
+     * overlap, the second would enter while the first waits, both would have
+     * found nothing, and both would create a workstream. Because they cannot,
+     * the second is still waiting for the first to finish, the wait runs out,
+     * and the second then finds the workstream the first created.</p>
      */
     @Test(timeout = 30000)
     public void concurrentRegistrationsOfOneBranchCreateOneWorkstream() throws Exception {
         SlackNotifier notifier = downstreamNotifier(false);
         NotifierRegistry registry = new NotifierRegistry(notifier, null);
         CountDownLatch firstInside = new CountDownLatch(1);
-        CountDownLatch bothInside = new CountDownLatch(2);
+        CountDownLatch laterArrived = new CountDownLatch(1);
+        AtomicInteger calls = new AtomicInteger();
+        AtomicInteger inside = new AtomicInteger();
         AtomicBoolean overlapped = new AtomicBoolean();
         BiFunction<String, String, List<PullRequest>> lookup = (ownerRepo, branch) -> {
-            firstInside.countDown();
-            bothInside.countDown();
+            if (inside.incrementAndGet() > 1) {
+                overlapped.set(true);
+            }
             try {
-                if (bothInside.await(OVERLAP_WAIT_MILLIS, TimeUnit.MILLISECONDS)) {
-                    overlapped.set(true);
+                if (calls.getAndIncrement() == 0) {
+                    firstInside.countDown();
+                    laterArrived.await(OVERLAP_WAIT_MILLIS, TimeUnit.MILLISECONDS);
+                } else {
+                    laterArrived.countDown();
                 }
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
+            } finally {
+                inside.decrementAndGet();
             }
             return Collections.emptyList();
         };
