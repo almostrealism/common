@@ -146,7 +146,7 @@ public record GitHubWebhookEvent(String eventType, JsonNode payload) {
         PullRequest pr = pullRequest();
         if (pr.isMerged()) {
             String by = pr.mergedBy() != null ? pr.mergedBy() : senderLogin();
-            return pr.slackLink() + " merged into `" + pr.baseBranch() + "` by " + by;
+            return pr.slackLink() + " merged into " + pr.baseBranchCode() + " by " + by;
         }
         return pr.slackLink() + " closed without merging by " + senderLogin();
     }

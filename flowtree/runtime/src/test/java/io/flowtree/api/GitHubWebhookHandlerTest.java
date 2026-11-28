@@ -278,6 +278,30 @@ public class GitHubWebhookHandlerTest extends TestSuiteBase {
         assertTrue(message, !message.contains("<!channel>"));
     }
 
+    /**
+     * A contributor-controlled base branch cannot break out of the Slack code
+     * span it is rendered in: a backtick in the ref name is removed, so a ref
+     * such as {@code master`<!channel>} cannot close the span and activate the
+     * injected mention.
+     */
+    @Test(timeout = 30000)
+    public void baseBranchWithSlackMarkupCannotBreakOut() {
+        String json = "{\"action\":\"closed\",\"number\":42,"
+                + "\"pull_request\":{\"number\":42,"
+                + "\"html_url\":\"https://github.com/example-org/example-repo/pull/42\","
+                + "\"title\":\"Add the example\","
+                + "\"state\":\"closed\",\"merged\":true,"
+                + "\"merged_at\":\"2026-01-01T00:00:00Z\",\"merged_by\":{\"login\":\"merger\"},"
+                + "\"head\":{\"ref\":\"" + BRANCH + "\",\"repo\":{\"clone_url\":\"" + REPO + "\"}},"
+                + "\"base\":{\"ref\":\"master`<!channel>\"}},\"sender\":{\"login\":\"actor\"}}";
+        byte[] body = json.getBytes(StandardCharsets.UTF_8);
+        assertEquals(Outcome.POSTED, deliverSigned("d-baseref", body));
+        assertEquals(1, posted.size());
+        String message = posted.get(0);
+        assertTrue(message, message.contains("merged into `master<!channel>` by merger"));
+        assertTrue(message, !message.contains("`master`<!channel>`"));
+    }
+
     /** A branch no workstream tracks is ignored without posting. */
     @Test(timeout = 30000)
     public void unmatchedBranchIsIgnored() {

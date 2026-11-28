@@ -181,6 +181,23 @@ public record PullRequest(JsonNode json) {
     }
 
     /**
+     * Returns the base branch as a Slack inline code span, safe to drop into
+     * message text. A git ref name is contributor-controlled and may contain a
+     * backtick — the one character that would close the span and let the
+     * remainder be read as active mrkdwn, such as the mention {@code <!channel>}
+     * or link markup. Every backtick is removed so the content cannot break
+     * out; inside a code span Slack renders all other characters literally, so
+     * no further escaping is needed.
+     *
+     * @return the base branch wrapped in backticks with any backticks removed
+     *         from the name, or an empty string when the base branch is absent
+     */
+    public String baseBranchCode() {
+        String base = baseBranch();
+        return base == null ? "" : "`" + base.replace("`", "") + "`";
+    }
+
+    /**
      * Returns the login of the user who merged the pull request.
      *
      * @return the {@code merged_by.login}, or {@code null} when it is not
