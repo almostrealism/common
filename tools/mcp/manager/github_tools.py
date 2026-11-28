@@ -972,9 +972,11 @@ def github_pr_check_status(
     and check runs for that exact commit. This answers whether the CI
     pipeline has run for the latest commit and whether it passed.
 
-    The ``pipeline_current`` flag in the response indicates whether at
-    least one workflow run targets the PR's HEAD commit SHA — if False,
-    the run results shown are for an older commit.
+    The ``pipeline_current`` flag in the response indicates whether a
+    readable signal targets the PR's HEAD commit SHA — a workflow run
+    matching that SHA, or, on the degraded path, a combined commit status
+    (which is always queried for the HEAD commit). If False, the run
+    results shown are for an older commit.
 
     Run-level status can lag per-job state while a pipeline is executing;
     for the authoritative per-job breakdown of any run listed here, use
