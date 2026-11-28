@@ -22,7 +22,14 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.Reader;
+import java.nio.charset.CharacterCodingException;
+import java.nio.charset.CharsetDecoder;
+import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.text.Normalizer;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -63,18 +70,51 @@ public final class PrivateLinkDetector {
     /** Marker substituted for a matched link anywhere text is redacted for logging. */
     public static final String REDACTION = "<REDACTED-PRIVATE-LINK>";
 
+    /** The number of characters of a file {@link #scanFileContent(Path)} holds at once. */
+    static final int SCAN_WINDOW_CHARS = 1 << 20;
+
+    /**
+     * The characters of one window carried into the next by
+     * {@link #scanFileContent(Path)}; far longer than any link, so a link that
+     * straddles a window boundary is whole in the second window.
+     */
+    static final int SCAN_OVERLAP_CHARS = 4096;
+
     /** Classpath location of the canonical pattern list and block message. */
     private static final String RESOURCE = "/io/flowtree/private-link-patterns.json";
 
     /**
-     * One compiled detection rule: the name it is reported as, the pattern, and
-     * whether it is also matched against the whitespace-collapsed variant.
+     * One compiled detection rule: the name it is reported as, the pattern,
+     * whether it is also matched against the whitespace-collapsed variant, and
+     * the pattern {@link #redact(String)} replaces.
      *
-     * @param name     the pattern name reported by {@link #scan(String)}
-     * @param pattern  the compiled regular expression
-     * @param collapse whether to also match against the whitespace-collapsed text
+     * <p>A collapse-scanned rule describes a URL, and its pattern may match only
+     * a prefix of that URL (the host and application segment). Its redaction
+     * pattern therefore extends the match to the end of the non-whitespace run,
+     * so the session or share suffix that follows is redacted with it rather
+     * than left in the output.</p>
+     *
+     * @param name      the pattern name reported by {@link #scan(String)}
+     * @param pattern   the compiled regular expression
+     * @param collapse  whether to also match against the whitespace-collapsed text
+     * @param redaction the pattern whose matches {@link #redact(String)} replaces
      */
-    private record Rule(String name, Pattern pattern, boolean collapse) {
+    private record Rule(String name, Pattern pattern, boolean collapse, Pattern redaction) {
+
+        /**
+         * Compiles a rule from its specification.
+         *
+         * @param name     the pattern name
+         * @param regex    the regular expression source
+         * @param collapse whether the rule describes a URL that is also
+         *                 matched against the whitespace-collapsed text
+         * @return the compiled rule
+         */
+        static Rule compile(String name, String regex, boolean collapse) {
+            Pattern pattern = Pattern.compile(regex);
+            return new Rule(name, pattern, collapse,
+                    collapse ? Pattern.compile(regex + "\\S*") : pattern);
+        }
     }
 
     /** The compiled detection rules, in declaration order. */
@@ -122,9 +162,10 @@ public final class PrivateLinkDetector {
     /**
      * A JSON string escape for a solidus ({@code \/}) or a {@code \\uXXXX}
      * code-point escape. GitHub decodes both when it stores a PR/issue body, so
-     * a proxy caller can hide a link as {@code claude.ai\/code\/...} or
-     * {@code claude.ai/...} in the serialised JSON it forwards; decoding
-     * them during normalisation means the scan sees what GitHub will.
+     * a proxy caller can hide a link in the serialised JSON it forwards by
+     * escaping the slashes of its path or a letter of its host; decoding them
+     * during normalisation means the scan sees what GitHub will. (No intact
+     * example appears here: this file is itself scanned when it is staged.)
      */
     private static final Pattern JSON_ESCAPE =
             Pattern.compile("\\\\u([0-9A-Fa-f]{4})|\\\\(/)");
@@ -152,8 +193,8 @@ public final class PrivateLinkDetector {
             }
             JsonNode root = mapper.readTree(in);
             for (JsonNode entry : root.get("patterns")) {
-                PATTERNS.add(new Rule(entry.get("name").asText(),
-                        Pattern.compile(entry.get("regex").asText()),
+                PATTERNS.add(Rule.compile(entry.get("name").asText(),
+                        entry.get("regex").asText(),
                         entry.path("collapse").asBoolean(false)));
             }
             BLOCK_MESSAGE = root.get("block_message").asText();
@@ -235,6 +276,82 @@ public final class PrivateLinkDetector {
     }
 
     /**
+     * Returns the {@linkplain #scanFileContent(String) content patterns} that
+     * match the file at {@code path}, read in bounded windows so a large file is
+     * never loaded into memory whole.
+     *
+     * <p>A link is ASCII, so the content is decoded strictly as UTF-8 and, only
+     * when that fails, leniently as ISO-8859-1 — a file that is not valid UTF-8
+     * is still scanned rather than slipping through. Each window of
+     * {@link #SCAN_WINDOW_CHARS} characters is scanned with the last
+     * {@link #SCAN_OVERLAP_CHARS} characters of the previous one prepended, so a
+     * link that straddles a window boundary is still seen.</p>
+     *
+     * @param path the file to scan
+     * @return the matched content pattern names, deduplicated; empty when clean
+     * @throws IOException if the file cannot be read
+     */
+    public static List<String> scanFileContent(Path path) throws IOException {
+        try {
+            return scanFileContent(path, StandardCharsets.UTF_8.newDecoder()
+                    .onMalformedInput(CodingErrorAction.REPORT)
+                    .onUnmappableCharacter(CodingErrorAction.REPORT));
+        } catch (CharacterCodingException notUtf8) {
+            return scanFileContent(path, StandardCharsets.ISO_8859_1.newDecoder());
+        }
+    }
+
+    /**
+     * Scans the file at {@code path}, decoded with {@code decoder}, window by
+     * window as described in {@link #scanFileContent(Path)}.
+     *
+     * @param path    the file to scan
+     * @param decoder the decoder for the file's bytes
+     * @return the matched content pattern names, deduplicated
+     * @throws IOException if the file cannot be read or, for a strict decoder,
+     *                     is not validly encoded
+     */
+    private static List<String> scanFileContent(Path path, CharsetDecoder decoder)
+            throws IOException {
+        List<String> hits = new ArrayList<>();
+        char[] buffer = new char[SCAN_WINDOW_CHARS];
+        String carry = "";
+        try (Reader reader = new InputStreamReader(Files.newInputStream(path), decoder)) {
+            int filled;
+            while ((filled = fill(reader, buffer)) > 0) {
+                String window = carry + new String(buffer, 0, filled);
+                for (String hit : scanFileContent(window)) {
+                    if (!hits.contains(hit)) {
+                        hits.add(hit);
+                    }
+                }
+                carry = window.substring(Math.max(0, window.length() - SCAN_OVERLAP_CHARS));
+            }
+        }
+        return hits;
+    }
+
+    /**
+     * Reads from {@code reader} until {@code buffer} is full or the stream ends.
+     *
+     * @param reader the reader to drain
+     * @param buffer the buffer to fill
+     * @return the number of characters read; {@code 0} at end of stream
+     * @throws IOException if reading fails
+     */
+    private static int fill(Reader reader, char[] buffer) throws IOException {
+        int filled = 0;
+        while (filled < buffer.length) {
+            int read = reader.read(buffer, filled, buffer.length - filled);
+            if (read < 0) {
+                break;
+            }
+            filled += read;
+        }
+        return filled;
+    }
+
+    /**
      * Returns the matched pattern names in {@code text} that indicate an actual
      * private session link or id, restricted to {@link #LINK_PATTERNS}. Use this
      * where ordinary attribution trailers are handled elsewhere (a commit
@@ -253,7 +370,9 @@ public final class PrivateLinkDetector {
     /**
      * Returns {@code text} with every private-link match replaced by
      * {@link #REDACTION}. The returned value is safe to log: the matched link,
-     * session id, or trailer is never reproduced. A link obfuscated by
+     * session id, or trailer is never reproduced. A URL match is redacted
+     * through to the end of its non-whitespace run, so the session or share
+     * suffix after the matched prefix goes with it. A link obfuscated by
      * whitespace — detected only on the collapsed variant and not removable by
      * a per-line substitution — causes the whole string to be redacted, so a
      * fragment can never survive.
@@ -267,7 +386,7 @@ public final class PrivateLinkDetector {
         }
         String redacted = normalise(text);
         for (Rule rule : PATTERNS) {
-            redacted = rule.pattern().matcher(redacted).replaceAll(REDACTION);
+            redacted = rule.redaction().matcher(redacted).replaceAll(REDACTION);
         }
         // A whitespace-split URL survives per-line substitution but is still
         // detected on the collapsed form; if any collapse-scanned pattern still

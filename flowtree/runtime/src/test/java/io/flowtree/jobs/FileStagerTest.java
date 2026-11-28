@@ -741,6 +741,35 @@ public class FileStagerTest extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * A file whose content is clean but whose path embeds a session id is not
+	 * staged: the path is published with the commit, so it would carry the id
+	 * into the repository. The refusal entry is redacted.
+	 */
+	@Test(timeout = 30000)
+	public void skipsCleanFileWhosePathCarriesSessionId() throws IOException {
+		Path tempDir = Files.createTempDirectory("stager-test");
+		try {
+			String session = "session_" + "fakefakefake1234";
+			String name = session + ".md";
+			Files.writeString(tempDir.resolve(name), "nothing private here");
+			Files.writeString(tempDir.resolve("clean.md"), "nothing private here");
+
+			FileStagingConfig config = FileStagingConfig.builder().build();
+			StagingResult result = new FileStager().evaluateFiles(
+				Arrays.asList(name, "clean.md"), config,
+				tempDir.toFile(), (String... args) -> 0);
+
+			assertEquals(Collections.singletonList("clean.md"), result.getStagedFiles());
+			assertTrue(result.getSkippedFiles().stream()
+				.anyMatch(s -> s.contains("private link in path")
+					&& s.contains(PrivateLinkDetector.REDACTION)));
+			assertTrue(result.getSkippedFiles().stream().noneMatch(s -> s.contains(session)));
+		} finally {
+			deleteRecursively(tempDir);
+		}
+	}
+
 	/** Verifies that files missing from disk (deleted files) are still staged for removal. */
 	@Test(timeout = 30000)
 	public void handlesDeletedFiles() throws IOException {

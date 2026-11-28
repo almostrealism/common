@@ -70,7 +70,7 @@ _EMBEDDED_SPEC = {
         },
         {
             "name": "claude_noreply_identity",
-            "regex": r"(?i)[a-z0-9._%+-]*@(?:anthropic\.com|users\.noreply\.anthropic\.com)",
+            "regex": r"(?i)@(?:users\.noreply\.)?anthropic\.com",
         },
     ],
     "block_message": (
@@ -113,33 +113,50 @@ def _locate_resource() -> Optional[str]:
     return None
 
 
-def _load_spec() -> dict:
-    """Load the canonical spec from the shared JSON, falling back to the embedded copy."""
+def _load_spec() -> tuple:
+    """Load the canonical spec from the shared JSON.
+
+    Falls back to the embedded copy only when the resource is absent (the
+    Python tools shipped without the flowtree resources). A resource that is
+    present but unreadable, malformed, or incomplete is a configuration error,
+    not an absence: falling back would leave Python enforcing stale rules while
+    Java refuses to load the same file. The error is returned alongside the
+    embedded spec so :func:`check_and_block` can fail closed on every write.
+
+    Returns:
+        A ``(spec, error)`` pair; ``error`` is ``None`` when the spec loaded.
+    """
     path = _locate_resource()
-    if path:
-        try:
-            with open(path, "r", encoding="utf-8") as handle:
-                spec = json.load(handle)
-            if spec.get("patterns") and spec.get("block_message"):
-                return spec
-        except (OSError, ValueError):
-            pass
-    return _EMBEDDED_SPEC
+    if not path:
+        return _EMBEDDED_SPEC, None
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            spec = json.load(handle)
+    except (OSError, ValueError) as exc:
+        return _EMBEDDED_SPEC, f"could not load {path}: {exc}"
+    if not isinstance(spec, dict) or not spec.get("patterns") or not spec.get("block_message"):
+        return _EMBEDDED_SPEC, f"{path} has no patterns or no block_message"
+    return spec, None
 
 
-_SPEC = _load_spec()
+_SPEC, SPEC_ERROR = _load_spec()
 
 BLOCK_MESSAGE: str = _SPEC["block_message"]
 
 _COMPILED = [(entry["name"], re.compile(entry["regex"]), bool(entry.get("collapse")))
              for entry in _SPEC["patterns"]]
 
+# The pattern redact() replaces for each rule. A collapse-scanned rule is a URL
+# rule that may match only its host+app prefix, so its match is extended to the
+# end of the non-whitespace run and the session/share suffix is redacted too.
+_REDACTIONS = [re.compile(entry["regex"] + r"\S*") if entry.get("collapse")
+               else re.compile(entry["regex"])
+               for entry in _SPEC["patterns"]]
+
 _ZERO_WIDTH = re.compile(r"[​‌‍⁠﻿]")
 
-# A JSON string escape for a solidus (\/) or a \uXXXX code-point escape. GitHub
-# decodes both when it stores a PR/issue body, so a proxy caller can hide a link
-# as "claude.ai\/code\/..." or "claude.ai/..." in the serialised JSON it
-# forwards; decoding them here means the scan sees the same text GitHub will.
+# A JSON string escape for a solidus or a code-point escape, both decoded by
+# GitHub when it stores a body. No intact example: this file is scanned when staged.
 _JSON_ESCAPE = re.compile(r"\\u([0-9A-Fa-f]{4})|\\(/)")
 
 
@@ -205,11 +222,13 @@ def redact(text: str) -> str:
     """Return ``text`` with every private-link match replaced by a redaction marker.
 
     Safe to log: the matched link, session id, or trailer is never reproduced.
+    A URL match is redacted through to the end of its non-whitespace run, so
+    the session or share suffix after the matched prefix goes with it.
     """
     if not text:
         return text or ""
     redacted = _normalise(text)
-    for _name, pattern, _collapse in _COMPILED:
+    for pattern in _REDACTIONS:
         redacted = pattern.sub("<REDACTED-PRIVATE-LINK>", redacted)
     # A whitespace-split URL survives the per-line substitution above but is
     # still detected on the collapsed form; if any collapse-scanned pattern
@@ -250,7 +269,8 @@ def check_and_block(route: str, target: str, texts: dict,
 
     Args:
         route: The write route being guarded (the tool name).
-        target: A redaction-safe description of the write target.
+        target: A description of the write target. It is redacted here, because
+            it is built from caller-controlled names (``owner/repo``).
         texts: A mapping of field name to field text to scan. ``None`` values
             are skipped.
         recorder: Optional callback invoked with a redaction-safe incident
@@ -259,8 +279,21 @@ def check_and_block(route: str, target: str, texts: dict,
             log + owner alert) and must never receive or echo the raw text.
 
     Returns:
-        ``None`` when nothing matched, or the :func:`block_result` dict.
+        ``None`` when nothing matched, the :func:`block_result` dict when a
+        field carries a leak, or a configuration-error dict when the canonical
+        pattern resource is present but could not be loaded (:data:`SPEC_ERROR`)
+        — the guard fails closed rather than enforce stale rules.
     """
+    if SPEC_ERROR:
+        return {
+            "ok": False,
+            "error": ("Refusing the write: the private-link pattern resource is "
+                      f"invalid ({SPEC_ERROR}). Fix the resource before retrying."),
+            "blocked": "private_link_config",
+            "route": route,
+            "target": redact(target),
+        }
+    target = redact(target)
     matched: List[str] = []
     offending_field = ""
     for field, value in texts.items():

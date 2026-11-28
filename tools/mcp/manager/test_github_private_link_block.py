@@ -106,6 +106,70 @@ class PrivateLinkBlockTest(unittest.TestCase):
             self.assertNotIn(_SESSION, handle.read())
 
 
+class _FakeServer:
+    """A stand-in server whose controller post returns a scripted result."""
+
+    def __init__(self, results):
+        self.results = list(results)
+        self.posts = []
+
+    def _controller_post(self, path, payload):
+        self.posts.append((path, payload))
+        return self.results.pop(0)
+
+    def _get_token_workstream_id(self):
+        return "ws"
+
+    def _get_token_label(self):
+        return "caller"
+
+    def _audit(self, *args, **kwargs):
+        pass
+
+
+class AlertDeliveryTest(unittest.TestCase):
+    """Only an alert the controller accepted starts the rate-limit window."""
+
+    def setUp(self):
+        import private_link_incident
+        self.incident = private_link_incident
+        self._tmp = tempfile.NamedTemporaryFile(suffix=".jsonl", delete=False, mode="w")
+        self._tmp.close()
+        os.environ["AR_PRIVATE_LINK_INCIDENT_LOG"] = self._tmp.name
+        self._saved_last = private_link_incident._last_alert_at
+        private_link_incident._last_alert_at = -1e9
+
+    def tearDown(self):
+        self.incident._last_alert_at = self._saved_last
+        os.environ.pop("AR_PRIVATE_LINK_INCIDENT_LOG", None)
+        os.unlink(self._tmp.name)
+
+    def test_failed_alert_is_retried_on_next_incident(self):
+        fake = _FakeServer([{"ok": False, "error": "unreachable"}, {"ok": True}])
+        self.incident.record(fake, "github_create_pr", "org/repo new PR", ["bare_session_id"])
+        self.incident.record(fake, "github_create_pr", "org/repo new PR", ["bare_session_id"])
+        self.assertEqual(2, len(fake.posts))
+        with open(self._tmp.name, "r", encoding="utf-8") as handle:
+            self.assertIn("private_link_alert_failure", handle.read())
+        # Alert failures are logged durably but are not incidents themselves.
+        self.assertEqual(2, len(self.incident.query_incidents()))
+
+    def test_delivered_alert_suppresses_the_next_one(self):
+        fake = _FakeServer([{"ok": True}, {"ok": True}])
+        self.incident.record(fake, "github_create_pr", "org/repo new PR", ["bare_session_id"])
+        self.incident.record(fake, "github_create_pr", "org/repo new PR", ["bare_session_id"])
+        self.assertEqual(1, len(fake.posts))
+
+    def test_record_redacts_target(self):
+        fake = _FakeServer([{"ok": True}])
+        incident = self.incident.record(
+            fake, "github_create_pr", "org/" + _SESSION, ["bare_session_id"])
+        self.assertNotIn(_SESSION, incident["target"])
+        self.assertNotIn(_SESSION, fake.posts[0][1]["text"])
+        with open(self._tmp.name, "r", encoding="utf-8") as handle:
+            self.assertNotIn(_SESSION, handle.read())
+
+
 class RelativeIncidentLogPathTest(unittest.TestCase):
     """A bare (directory-less) incident-log path must still record an incident."""
 

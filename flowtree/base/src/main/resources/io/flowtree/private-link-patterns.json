@@ -31,8 +31,8 @@
     },
     {
       "name": "claude_noreply_identity",
-      "regex": "(?i)[a-z0-9._%+-]*@(?:anthropic\\.com|users\\.noreply\\.anthropic\\.com)",
-      "description": "A Claude/Anthropic identity e-mail address used in attribution trailers."
+      "regex": "(?i)@(?:users\\.noreply\\.)?anthropic\\.com",
+      "description": "A Claude/Anthropic identity e-mail address used in attribution trailers. Only the domain is matched: an unanchored local-part prefix made every position of a long run of address characters a fresh attempt, so a large file took quadratic time to scan."
     }
   ],
   "block_message": "BLOCKED: this write was refused because it contains a private Claude session link or identifier.\n\nIncluding it is actively harmful. It leaks the owner's private session data into a public repository, exposing the owner's privacy and security. Once published the link persists in the repository's edit history, in GitHub notification e-mails, and in every fork and mirror of the repository, and it cannot be fully retracted even if the visible copy is later deleted.\n\nYou have been instructed, explicitly and repeatedly, never to do this. Doing it again is being treated as malice, not as a mistake. This attempt is being recorded as an incident and reported to the owner, and there will be consequences.\n\nStop now. Examine why you were about to include this link. Remove it entirely. Do not look for another field, another encoding, or another route to carry it. Resubmit only once the content contains no Claude session link, no session id, and no attribution line."

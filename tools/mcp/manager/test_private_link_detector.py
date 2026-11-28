@@ -7,7 +7,9 @@ scanner (or a reviewer) would flag.
 
 import json
 import os
+import tempfile
 import unittest
+from unittest import mock
 
 import private_link_detector as det
 
@@ -54,11 +56,24 @@ class DetectorMatchTest(unittest.TestCase):
         self.assertFalse(det.contains_private_link(
             "The training session improved accuracy."))
 
-    def test_literal_session_underscore_before_word_does_not_match(self):
+    def test_trailing_underscore_session_word_does_not_match(self):
         # The collapsed variant must not join "session_" to the next prose word
         # and fabricate a bare-session-id match from ordinary text.
         self.assertFalse(det.contains_private_link(
             "The session_ identifier is documented here."))
+
+
+class LargeInputTest(unittest.TestCase):
+    """Scanning stays linear on a long run of address-like characters."""
+
+    def test_long_address_character_run_scans_quickly(self):
+        import time
+        started = time.monotonic()
+        self.assertEqual([], det.scan("x" * 1_000_000))
+        self.assertLess(time.monotonic() - started, 5.0)
+
+    def test_identity_domain_still_matches(self):
+        self.assertTrue(det.contains_private_link("mail noreply@" + "anthropic.com"))
 
 
 class ObfuscationBypassTest(unittest.TestCase):
@@ -95,7 +110,7 @@ class ObfuscationBypassTest(unittest.TestCase):
         self.assertTrue(det.contains_private_link(escaped))
 
     def test_json_unicode_escape(self):
-        escaped = "\\u0063laude.ai/code/" + _SESSION
+        escaped = "\\u0063" + "laude.ai" + "/code/" + _SESSION
         self.assertTrue(det.contains_private_link(escaped))
 
     def test_zero_width_revealed_by_decoding(self):
@@ -128,7 +143,35 @@ class RedactionTest(unittest.TestCase):
         self.assertIn("<REDACTED-PRIVATE-LINK>", redacted)
 
 
+class UrlSuffixRedactionTest(unittest.TestCase):
+    """A URL rule that matches only a prefix must still redact the whole URL."""
+
+    def test_share_suffix_is_redacted(self):
+        redacted = det.redact("see " + _SHARE_URL + " now")
+        self.assertNotIn("abc123def456", redacted)
+        self.assertEqual("see https://<REDACTED-PRIVATE-LINK> now", redacted)
+
+    def test_hyphenated_session_suffix_is_redacted(self):
+        url = "https://" + _CLAUDE_HOST + "/code/session-" + "abcdef123456"
+        redacted = det.redact(url + ")")
+        self.assertNotIn("abcdef123456", redacted)
+        self.assertNotIn("session-", redacted)
+
+    def test_clean_text_is_unchanged(self):
+        self.assertEqual("plain words", det.redact("plain words"))
+
+
 class CheckAndBlockTest(unittest.TestCase):
+
+    def test_target_is_redacted(self):
+        target = "org/" + _SESSION + " new PR"
+        recorded = []
+        result = det.check_and_block(
+            "github_create_pr", target, {"body": _CODE_SESSION_URL},
+            recorder=recorded.append)
+        self.assertNotIn(_SESSION, result["target"])
+        self.assertIn("<REDACTED-PRIVATE-LINK>", result["target"])
+        self.assertNotIn(_SESSION, recorded[0]["target"])
 
     def test_block_result_shape(self):
         recorded = []
@@ -167,10 +210,58 @@ class EmbeddedFallbackSyncTest(unittest.TestCase):
         self.assertIsNotNone(path, "canonical pattern resource must be locatable")
         with open(path, "r", encoding="utf-8") as handle:
             spec = json.load(handle)
-        resource_regexes = [(p["name"], p["regex"]) for p in spec["patterns"]]
-        embedded_regexes = [(p["name"], p["regex"]) for p in det._EMBEDDED_SPEC["patterns"]]
-        self.assertEqual(resource_regexes, embedded_regexes)
+        # Every behaviour-affecting field is compared, the collapse flag included.
+        def rules(patterns):
+            return [(p["name"], p["regex"], bool(p.get("collapse"))) for p in patterns]
+        self.assertEqual(rules(spec["patterns"]), rules(det._EMBEDDED_SPEC["patterns"]))
+        self.assertEqual(spec["version"], det._EMBEDDED_SPEC["version"])
         self.assertEqual(spec["block_message"], det._EMBEDDED_SPEC["block_message"])
+
+    def test_canonical_resource_loads_without_error(self):
+        self.assertIsNone(det.SPEC_ERROR)
+
+
+class SpecLoadingTest(unittest.TestCase):
+    """A present-but-invalid resource is an error, never a silent fallback."""
+
+    def _load_with(self, contents):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "patterns.json")
+            if contents is not None:
+                with open(path, "w", encoding="utf-8") as handle:
+                    handle.write(contents)
+            located = path if contents is not None else None
+            with mock.patch.object(det, "_locate_resource", return_value=located):
+                return det._load_spec()
+
+    def test_absent_resource_uses_embedded_spec(self):
+        spec, error = self._load_with(None)
+        self.assertIs(det._EMBEDDED_SPEC, spec)
+        self.assertIsNone(error)
+
+    def test_malformed_resource_is_an_error(self):
+        spec, error = self._load_with("{not json")
+        self.assertIs(det._EMBEDDED_SPEC, spec)
+        self.assertIsNotNone(error)
+
+    def test_incomplete_resource_is_an_error(self):
+        _spec, error = self._load_with(json.dumps({"patterns": []}))
+        self.assertIn("no patterns", error)
+
+    def test_valid_resource_is_used(self):
+        valid = {"patterns": [{"name": "x", "regex": "x"}], "block_message": "no"}
+        spec, error = self._load_with(json.dumps(valid))
+        self.assertEqual(valid, spec)
+        self.assertIsNone(error)
+
+    def test_guard_fails_closed_on_spec_error(self):
+        with mock.patch.object(det, "SPEC_ERROR", "bad resource"):
+            result = det.check_and_block(
+                "github_create_pr", "org/repo new PR", {"body": "a clean body"})
+        self.assertIsNotNone(result)
+        self.assertFalse(result["ok"])
+        self.assertEqual("private_link_config", result["blocked"])
+        self.assertIn("bad resource", result["error"])
 
     def test_block_message_states_the_required_points(self):
         message = det.BLOCK_MESSAGE.lower()

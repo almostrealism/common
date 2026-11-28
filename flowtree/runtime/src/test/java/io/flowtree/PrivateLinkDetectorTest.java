@@ -19,6 +19,8 @@ package io.flowtree;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
+import java.io.ByteArrayOutputStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -122,8 +124,8 @@ public class PrivateLinkDetectorTest extends TestSuiteBase {
     }
 
     /**
-     * A link whose solidus is JSON-escaped ({@code claude.ai\/code\/...}), as a
-     * serialised GitHub body carries it, is decoded and detected.
+     * A link whose path separators are JSON-escaped solidi, as a serialised
+     * GitHub body carries them, is decoded and detected.
      */
     @Test(timeout = 30000)
     public void seesThroughJsonEscapedSolidus() {
@@ -135,7 +137,7 @@ public class PrivateLinkDetectorTest extends TestSuiteBase {
     @Test(timeout = 30000)
     public void seesThroughJsonUnicodeEscape() {
         assertTrue(PrivateLinkDetector.containsPrivateLink(
-                "\\u0063laude.ai/code/" + SESSION));
+                "\\u0063" + "laude.ai" + "/code/" + SESSION));
     }
 
     /**
@@ -168,7 +170,7 @@ public class PrivateLinkDetectorTest extends TestSuiteBase {
         String redacted = PrivateLinkDetector.redact(
                 "see https://" + HOST + "/co\nde/" + SESSION + " for the trace");
         assertFalse(redacted.contains(SESSION));
-        assertFalse(redacted.contains("claude.ai/code"));
+        assertFalse(redacted.contains(HOST + "/code"));
         assertTrue(redacted.contains(PrivateLinkDetector.REDACTION));
     }
 
@@ -178,6 +180,100 @@ public class PrivateLinkDetectorTest extends TestSuiteBase {
         assertTrue(PrivateLinkDetector.scanFileContent(
                 "This file documents the Co-Authored" + "-By Claude policy.").isEmpty());
         assertFalse(PrivateLinkDetector.scanFileContent("link: " + CODE_URL).isEmpty());
+    }
+
+    /**
+     * A URL rule that matches only the host and application segment still
+     * redacts the share suffix that follows it.
+     */
+    @Test(timeout = 30000)
+    public void redactionRemovesTheShareSuffix() {
+        String redacted = PrivateLinkDetector.redact(
+                "see https://" + HOST + "/share/" + "abc123def456" + " now");
+        assertFalse(redacted.contains("abc123def456"));
+        assertEquals("see https://" + PrivateLinkDetector.REDACTION + " now", redacted);
+    }
+
+    /** A hyphenated session suffix after the code segment is redacted with it. */
+    @Test(timeout = 30000)
+    public void redactionRemovesAHyphenatedSessionSuffix() {
+        String redacted = PrivateLinkDetector.redact(
+                "https://" + HOST + "/code/session-" + "abcdef123456" + " trailing");
+        assertFalse(redacted.contains("abcdef123456"));
+        assertFalse(redacted.contains("session-"));
+        assertTrue(redacted.endsWith(" trailing"));
+    }
+
+    /** Clean text is returned from redaction unchanged. */
+    @Test(timeout = 30000)
+    public void redactionLeavesCleanTextUnchanged() {
+        assertEquals("plain words", PrivateLinkDetector.redact("plain words"));
+    }
+
+    /** A clean file scans clean and a file carrying a link is caught. */
+    @Test(timeout = 30000)
+    public void scanFilePathDetectsALink() throws Exception {
+        Path clean = Files.createTempFile("private-link-clean", ".txt");
+        Path leaking = Files.createTempFile("private-link-leak", ".txt");
+        try {
+            Files.writeString(clean, "nothing to see here\n");
+            Files.writeString(leaking, "notes\nlink: " + CODE_URL + "\n");
+            assertTrue(PrivateLinkDetector.scanFileContent(clean).isEmpty());
+            assertTrue(PrivateLinkDetector.scanFileContent(leaking)
+                    .contains("claude_code_session_path"));
+        } finally {
+            Files.deleteIfExists(clean);
+            Files.deleteIfExists(leaking);
+        }
+    }
+
+    /**
+     * A link that straddles the boundary between two scan windows is caught,
+     * because the tail of one window is carried into the next.
+     */
+    @Test(timeout = 30000)
+    public void scanFilePathCatchesALinkAcrossAWindowBoundary() throws Exception {
+        Path file = Files.createTempFile("private-link-window", ".txt");
+        try {
+            String padding = "x".repeat(PrivateLinkDetector.SCAN_WINDOW_CHARS - 10);
+            Files.writeString(file, padding + " " + CODE_URL + " end\n");
+            assertTrue(PrivateLinkDetector.scanFileContent(file)
+                    .contains("claude_code_session_path"));
+        } finally {
+            Files.deleteIfExists(file);
+        }
+    }
+
+    /** A file that is not valid UTF-8 is still scanned, leniently. */
+    @Test(timeout = 30000)
+    public void scanFilePathScansInvalidUtf8() throws Exception {
+        Path file = Files.createTempFile("private-link-latin1", ".bin");
+        try {
+            ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+            bytes.write(0xC3);
+            bytes.write(0x28);
+            bytes.write(("x " + CODE_URL).getBytes(StandardCharsets.US_ASCII));
+            Files.write(file, bytes.toByteArray());
+            assertFalse(PrivateLinkDetector.scanFileContent(file).isEmpty());
+        } finally {
+            Files.deleteIfExists(file);
+        }
+    }
+
+    /**
+     * The detector's own source and this test's source scan clean, so the
+     * staged-file guard does not refuse to commit the code that implements it.
+     */
+    @Test(timeout = 30000)
+    public void detectorSourcesDoNotTripTheContentScan() throws Exception {
+        Path detector = Path.of("..", "base", "src", "main", "java", "io", "flowtree",
+                "PrivateLinkDetector.java");
+        Path test = Path.of("src", "test", "java", "io", "flowtree",
+                "PrivateLinkDetectorTest.java");
+        assertTrue(Files.isRegularFile(detector));
+        assertTrue(Files.isRegularFile(test));
+        assertEquals(List.of(), PrivateLinkDetector.scanFileContent(detector));
+        assertEquals(List.of(), PrivateLinkDetector.scanFileContent(test));
     }
 
     /** The block message states the points the owner requires. */

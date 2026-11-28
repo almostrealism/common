@@ -422,7 +422,7 @@ public class CommitMessageBuilderTest extends TestSuiteBase {
     @Test(timeout = 30000)
     public void resolveRemovesTrailingAuthorAttribution() throws IOException {
         writeCommitTxt("Fix bug X\n\nThe guard was inverted.\n\n"
-                + "Co-Authored-By: Claude <noreply@anthropic.com>\n");
+                + "Co-Authored-By: Claude <noreply@" + "anthropic.com>\n");
         CodingAgentJob job = job("do the work");
         assertEquals("Fix bug X\n\nThe guard was inverted.", job.commitMessageBuilder().resolve(job));
         assertEquals(CommitMessageBuilder.SOURCE_AGENT, job.getCommitMessageSource());
@@ -431,7 +431,7 @@ public class CommitMessageBuilderTest extends TestSuiteBase {
     /** {@link CommitMessageBuilder#resolve} fails when attribution cannot be removed safely. */
     @Test(timeout = 30000)
     public void resolveFailsWhenAttributionIsNotSafelyRemovable() throws IOException {
-        writeCommitTxt("Fix bug X\n\nCo-Authored-By: Claude <noreply@anthropic.com>\n\n"
+        writeCommitTxt("Fix bug X\n\nCo-Authored-By: Claude <noreply@" + "anthropic.com>\n\n"
                 + "Body content written after the trailer.");
         CodingAgentJob job = job("do the work");
         try {
@@ -439,7 +439,7 @@ public class CommitMessageBuilderTest extends TestSuiteBase {
             fail("Expected an IllegalStateException for unremovable author attribution");
         } catch (IllegalStateException e) {
             assertTrue("Failure must name the offending content",
-                    e.getMessage().contains("Co-Authored-By: Claude <noreply@anthropic.com>"));
+                    e.getMessage().contains("Co-Authored-By: Claude <noreply@" + "anthropic.com>"));
         }
     }
 

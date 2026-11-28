@@ -57,14 +57,16 @@ def _append_incident(record: dict) -> None:
 
 
 def _should_alert() -> bool:
-    """Return whether enough time has passed since the last alert to send another."""
+    """Return whether enough time has passed since the last delivered alert to send another."""
+    with _alert_lock:
+        return time.monotonic() - _last_alert_at >= _ALERT_MIN_INTERVAL_SECONDS
+
+
+def _mark_alert_delivered() -> None:
+    """Start the rate-limit window; called only once the controller accepted an alert."""
     global _last_alert_at
     with _alert_lock:
-        now = time.monotonic()
-        if now - _last_alert_at < _ALERT_MIN_INTERVAL_SECONDS:
-            return False
-        _last_alert_at = now
-        return True
+        _last_alert_at = time.monotonic()
 
 
 def guard(server, route: str, target: str, **texts) -> Optional[dict]:
@@ -78,7 +80,9 @@ def guard(server, route: str, target: str, **texts) -> Optional[dict]:
     Args:
         server: The ar-manager server module.
         route: The write route being guarded (the tool name).
-        target: A redaction-safe description of the write target.
+        target: A description of the write target. It may embed
+            caller-controlled names (``owner/repo``), so it is redacted before
+            it is returned, logged, or recorded.
         **texts: Named fields to scan (e.g. ``title=...``, ``body=...``). A
             ``None`` value is skipped.
 
@@ -99,7 +103,8 @@ def record(server, route: str, target: str, matched_patterns: List[str],
         server: The ar-manager server module, used for its controller client,
             token context, and audit log.
         route: The write route that was refused (the tool name).
-        target: A redaction-safe description of the write target.
+        target: A description of the write target; redacted here before it
+            is written anywhere.
         matched_patterns: The pattern names that matched (no raw text).
         job_id: The job the block occurred under, if known.
         workstream_id: The workstream the block occurred under, if known.
@@ -107,6 +112,7 @@ def record(server, route: str, target: str, matched_patterns: List[str],
     Returns:
         The redacted incident record that was written.
     """
+    target = private_link_detector.redact(target)
     resolved_ws = workstream_id or _safe(lambda: server._get_token_workstream_id()) or ""
     caller = _safe(lambda: server._get_token_label()) or ""
     incident = {
@@ -142,15 +148,24 @@ def _alert_owner(server, incident: dict) -> None:
             f"workstream={incident['workstream_id']}. "
             "The link was redacted; see the private-link incident log.")
     try:
-        server._controller_post("/api/alerts", {
+        result = server._controller_post("/api/alerts", {
             "text": text[:1000],
             "recipients": ["michael"],
             "severity": "ERROR",
             "caller": incident.get("caller") or "private-link-guard",
         })
     except Exception as exc:  # noqa: BLE001 - alerting must never break the block
-        print(f"ar-manager: could not alert owner of private-link incident: {exc}",
+        result = {"ok": False, "error": str(exc)}
+    # The controller client reports failure as an ok=False dict rather than
+    # raising; only an accepted alert starts the window, so a failure retries.
+    if isinstance(result, dict) and result.get("ok") is False:
+        error = private_link_detector.redact(str(result.get("error", "")))
+        print(f"ar-manager: could not alert owner of private-link incident: {error}",
               file=sys.stderr)
+        _append_incident({"timestamp": _utc_now(), "type": "private_link_alert_failure",
+                          "route": incident["route"], "error": error})
+        return
+    _mark_alert_delivered()
 
 
 def query_incidents(limit: int = 50) -> List[dict]:
@@ -160,7 +175,9 @@ def query_incidents(limit: int = 50) -> List[dict]:
         limit: The maximum number of incidents to return.
 
     Returns:
-        A list of redacted incident records; empty when none have been recorded.
+        A list of redacted incident records; empty when none have been
+        recorded. Alert-failure entries in the same log are not incidents and
+        are omitted.
     """
     path = _incident_log_path()
     records: List[dict] = []
@@ -170,9 +187,11 @@ def query_incidents(limit: int = 50) -> List[dict]:
                 line = line.strip()
                 if line:
                     try:
-                        records.append(json.loads(line))
+                        entry = json.loads(line)
                     except ValueError:
                         continue
+                    if isinstance(entry, dict) and entry.get("type") == "private_link_block":
+                        records.append(entry)
     except OSError:
         return []
     records.reverse()

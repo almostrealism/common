@@ -22,11 +22,6 @@ import org.almostrealism.io.ConsoleFeatures;
 
 import java.io.File;
 import java.io.IOException;
-import java.nio.ByteBuffer;
-import java.nio.charset.CharacterCodingException;
-import java.nio.charset.CharsetDecoder;
-import java.nio.charset.CodingErrorAction;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
@@ -578,13 +573,16 @@ public class FileStager implements ConsoleFeatures {
     }
 
     /**
-     * Scans {@code f}'s content for a private link and, when it must not be
-     * staged, records the incident (for an actual link) and adds a redacted
-     * skip entry. Shared by the merge-carried fast path and guardrail 5 so a
-     * link is blocked whatever brought the file in.
+     * Scans {@code file}'s repository path and {@code f}'s content for a private
+     * link and, when the file must not be staged, records the incident (for an
+     * actual link) and adds a redacted skip entry. Shared by the merge-carried
+     * fast path and guardrail 5 so a link is blocked whatever brought the file
+     * in.
      *
-     * <p>The file path is redacted everywhere it is logged or surfaced, so a
-     * path that itself embeds a session id is never republished.</p>
+     * <p>The path is checked as well as the content because it is published
+     * too: a clean file named after a session id would otherwise carry the id
+     * into the repository. The path is redacted everywhere it is logged or
+     * surfaced, so a path that embeds a session id is never republished.</p>
      *
      * @param f           the staged file to scan
      * @param file        the repository-relative path, for the skip entry and log
@@ -598,6 +596,14 @@ public class FileStager implements ConsoleFeatures {
             return false;
         }
         String redactedPath = PrivateLinkDetector.redact(file);
+        // TODO(review): bare_session_id blocks ordinary names (session_ plus a long word); consider scanLinks here.
+        List<String> inPath = PrivateLinkDetector.scanFileContent(file);
+        if (!inPath.isEmpty()) {
+            log("Blocked (private link in path): " + redactedPath);
+            new PrivateLinkIncident("harness_staged_path", redactedPath, inPath).record();
+            skippedFiles.add(redactedPath + " (private link in path)");
+            return true;
+        }
         List<String> matched = scanContentForPrivateLink(f);
         if (matched == null) {
             log("Blocked (content unreadable, cannot verify for private link): " + redactedPath);
@@ -616,38 +622,27 @@ public class FileStager implements ConsoleFeatures {
     /**
      * Returns the private-link content patterns that match {@code f}'s content,
      * an empty list when it is clean, or {@code null} when the file could not be
-     * read at all. A link is ASCII, so content is decoded strictly as UTF-8 and,
-     * only when that fails, leniently as ISO-8859-1 — a file that is not valid
-     * UTF-8 is still scanned rather than slipping through unscanned. A genuine
-     * read failure (the file vanished, a permission error) returns {@code null}
-     * so the caller fails closed: a guard meant to prevent leaks must not pass a
-     * file it could not inspect. The scan uses
-     * {@link PrivateLinkDetector#scanFileContent(String)}, so quoting an
-     * attribution word in source or docs is not a match.
+     * read at all. The scan is {@link PrivateLinkDetector#scanFileContent(java.nio.file.Path)},
+     * which reads in bounded windows (a large merge-carried file is never loaded
+     * whole) and does not treat a quoted attribution word as a match. A read
+     * failure returns {@code null} so the caller fails closed: a guard meant to
+     * prevent leaks must not pass a file it could not inspect. The failure is
+     * logged with its detail redacted, since a file-system message usually
+     * carries the full path.
      *
      * @param f the staged file to scan
      * @return the matched content pattern names (empty when clean), or
      *         {@code null} when the file could not be read
      */
     private List<String> scanContentForPrivateLink(File f) {
-        byte[] bytes;
         try {
-            bytes = Files.readAllBytes(f.toPath());
+            return PrivateLinkDetector.scanFileContent(f.toPath());
         } catch (IOException | RuntimeException e) {
             warn("Could not read " + PrivateLinkDetector.redact(f.getName())
-                    + " to scan it for a private link: " + e.getMessage());
+                    + " to scan it for a private link: "
+                    + PrivateLinkDetector.redact(String.valueOf(e.getMessage())));
             return null;
         }
-        String content;
-        try {
-            CharsetDecoder decoder = StandardCharsets.UTF_8.newDecoder()
-                    .onMalformedInput(CodingErrorAction.REPORT)
-                    .onUnmappableCharacter(CodingErrorAction.REPORT);
-            content = decoder.decode(ByteBuffer.wrap(bytes)).toString();
-        } catch (CharacterCodingException notUtf8) {
-            content = new String(bytes, StandardCharsets.ISO_8859_1);
-        }
-        return PrivateLinkDetector.scanFileContent(content);
     }
 
     /**
