@@ -54,9 +54,33 @@ import java.util.concurrent.ConcurrentHashMap;
  * {@link #publish} runs the primary step under its own conditions and then the
  * companion step under its own.</p>
  *
+ * <h2>The companion step does not depend on an auto-PR request</h2>
+ * <p>A dependent-repo push breaks the dependent repository's default branch once
+ * the primary change merges, whether or not the job that pushed asked for a
+ * primary pull request of its own. The review and verification jobs that do most
+ * dependent-repo pushing are not submitted with an auto-PR request, so gating the
+ * companion step on one left those pushes with no pull request at all — invisible,
+ * unmergeable, and breaking the dependent repo on merge. {@link #publish}
+ * therefore opens the companion for every dependent-repo push even when no
+ * {@link AutoPrContext} was registered, falling back to a neutral description and
+ * a non-draft pull request, and still cross-linking a primary pull request the
+ * completion event reports.</p>
+ *
  * @author Michael Murray
  */
 final class AutoPullRequestPublisher implements ConsoleFeatures {
+
+    /**
+     * Fallback title/body for a companion pull request opened without a
+     * registered {@link AutoPrContext}. It stands in wherever the dependent
+     * commit's own message yields nothing to use: when the message cannot be
+     * read at all, when it is blank, and — for the body specifically — when the
+     * message is a subject line with no explanation after it (see
+     * {@link GitHubProxyHandler#pullRequestTitle} and
+     * {@link GitHubProxyHandler#pullRequestBody}). The job description is never
+     * used here because it may carry the agent's prompt.
+     */
+    private static final String DEFAULT_COMPANION_DESCRIPTION = "Dependent-repo companion change";
 
     /** The GitHub operations used to open, find, and comment on pull requests. */
     private final GitHubProxyHandler github;
@@ -108,9 +132,11 @@ final class AutoPullRequestPublisher implements ConsoleFeatures {
      *
      * <p>Opens the primary pull request when the job requested one and none was
      * detected, then — independently — opens or reuses a companion pull request
-     * for every dependent-repo push. When the job requested no pull request but
-     * pushed to a dependent repo, nothing is opened and the unreviewed commits
-     * are logged.</p>
+     * for every dependent-repo push. The companion step runs even when the job
+     * requested no pull request of its own: a dependent-repo push still breaks
+     * the dependent repository on merge, so it is opened with a neutral
+     * description and as a non-draft pull request, cross-linked to a primary pull
+     * request the event reports when there is one.</p>
      *
      * @param event the successful completion event, mutated in place with the
      *              primary and companion pull-request URLs
@@ -126,6 +152,15 @@ final class AutoPullRequestPublisher implements ConsoleFeatures {
                     ? prCtx.githubOrg : GitHubProxyHandler.extractOrgFromRepoUrl(prCtx.repoUrl);
             primaryToken = github.resolveGithubToken(org);
             primaryOwnerRepo = GitHubProxyHandler.extractOwnerRepo(prCtx.repoUrl);
+        } else if (event.getPullRequestUrl() != null) {
+            // No context, but the completion detected an existing primary PR:
+            // recover its owner/repo and token from the URL so the cross-link
+            // is reciprocal rather than one-way from the companion body.
+            primaryOwnerRepo = PullRequest.ownerRepoFromUrl(event.getPullRequestUrl());
+            if (primaryOwnerRepo != null) {
+                primaryToken = github.resolveGithubToken(
+                        GitHubProxyHandler.extractOrgFromRepoUrl("https://github.com/" + primaryOwnerRepo));
+            }
         }
 
         // Primary pull request: only when requested and none already exists.
@@ -133,22 +168,20 @@ final class AutoPullRequestPublisher implements ConsoleFeatures {
             openPrimaryPullRequest(event, prCtx, primaryOwnerRepo, primaryToken);
         }
 
-        // Companion pull requests: run under their own conditions, not nested in
-        // the primary guard above.
+        // Companion step: own conditions, not gated on the primary guard or on an
+        // auto-PR request (class javadoc explains the no-context fallbacks).
         List<DependentRepoPush> pushes = event.getDependentRepoPushes();
         if (pushes.isEmpty()) {
             return;
         }
-        if (prCtx == null) {
-            warn("Dependent-repo commits are unreviewed -- no pull request was requested for this"
-                    + " job, so no companion pull request was opened: " + DependentRepoPush.describe(pushes));
-            return;
-        }
 
+        String description = prCtx != null ? prCtx.description : DEFAULT_COMPANION_DESCRIPTION;
+        boolean draft = prCtx != null && prCtx.draft;
         String primaryUrl = event.getPullRequestUrl();
         List<String> companionUrls = new ArrayList<>();
         for (DependentRepoPush push : pushes) {
-            String companion = publishCompanion(push, prCtx, primaryUrl, primaryOwnerRepo, primaryToken);
+            String companion = publishCompanion(push, description, draft, primaryUrl,
+                    primaryOwnerRepo, primaryToken);
             if (companion != null) {
                 companionUrls.add(companion);
             }
@@ -193,14 +226,15 @@ final class AutoPullRequestPublisher implements ConsoleFeatures {
      * cross-link on the primary.
      *
      * @param push              the dependent-repo push
-     * @param prCtx             the auto-PR context (for draft flag and fallback)
+     * @param description       fallback title/body when the commit yields none
+     * @param draft             whether to open the companion as a draft
      * @param primaryUrl        the primary pull request URL, or {@code null}
      * @param primaryOwnerRepo  the primary repo's {@code owner/repo}, or {@code null}
      * @param primaryToken      the primary org's token, or {@code null}
      * @return the companion pull request URL, or {@code null} when none was opened
      */
-    private String publishCompanion(DependentRepoPush push, AutoPrContext prCtx, String primaryUrl,
-            String primaryOwnerRepo, String primaryToken) {
+    private String publishCompanion(DependentRepoPush push, String description, boolean draft,
+            String primaryUrl, String primaryOwnerRepo, String primaryToken) {
         String org = GitHubProxyHandler.extractOrgFromRepoUrl(push.repoUrl());
         String token = github.resolveGithubToken(org);
         if (token == null) {
@@ -234,12 +268,12 @@ final class AutoPullRequestPublisher implements ConsoleFeatures {
             // Follow the dependent repo's own commit: a reused PR keeps whatever
             // title it was first opened with, so refresh it from the new commit.
             github.refreshPullRequestFromCommit(ownerRepo, existing, push.commitHash(),
-                    prCtx.description, suffix, token);
+                    description, suffix, token);
             return existing.htmlUrl();
         }
 
         String companionUrl = github.createPullRequestFromCommit(ownerRepo, push.branch(),
-                defaultBranch, push.commitHash(), prCtx.description, prCtx.draft, token, suffix);
+                defaultBranch, push.commitHash(), description, draft, token, suffix);
         if (companionUrl == null) {
             return null;
         }
