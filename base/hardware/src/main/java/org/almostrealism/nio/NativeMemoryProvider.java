@@ -75,6 +75,14 @@ import java.util.function.Supplier;
  * the {@link NativeCompiler} supplied at construction or, when none was supplied (the shared-memory
  * bridge), one it constructs on first use.</p>
  *
+ * <p>{@link NativeRead} and {@link NativeWrite} generate different C for each {@link Precision}, but JNI
+ * binds them under a per-class symbol that carries no precision and {@link org.almostrealism.c.BaseNative}
+ * loads each class once per JVM. A calloc-mode provider's first array copy therefore binds these
+ * operations at this provider's precision for the whole JVM; a later calloc provider at a different
+ * precision cannot reuse them, so its first copy fails fast with a {@link HardwareException} rather than
+ * reading the wrong element width and overrunning its buffers. {@link Malloc}/{@link Free} are
+ * precision-independent and are not guarded this way.</p>
+ *
  * <h2>Reclamation</h2>
  *
  * <p>Both modes are tracked by {@link HardwareMemoryProvider} for metrics and leak detection, but they

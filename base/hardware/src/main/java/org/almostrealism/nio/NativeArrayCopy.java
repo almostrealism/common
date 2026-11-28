@@ -56,6 +56,20 @@ public abstract class NativeArrayCopy extends BaseNative {
 	}
 
 	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>The copy operations emit different native code per precision — a single array-region call for
+	 * FP64, a converting loop through a stack buffer for FP32 — so binding one precision's Java object to
+	 * the other precision's already-loaded native code copies the wrong element width and overruns the
+	 * buffer. Both directions are therefore precision-dependent and guarded against cross-precision
+	 * rebinding.</p>
+	 *
+	 * @return {@code true}
+	 */
+	@Override
+	protected boolean isPrecisionDependent() { return true; }
+
+	/**
 	 * Returns the opening of the generated JNI function, up to and including its opening brace,
 	 * followed by a verbose trace of the call when {@link #enableVerbose} is set.
 	 *
