@@ -71,6 +71,8 @@ jobs:
     environment: production
     permissions:
       contents: read
+      # Reads the rehearsal result of the commit being deployed.
+      actions: read
     env:
       # The agent pool is rebuilt alongside the controller stack by default;
       # answer 'false' to the redeploy_agents input to deploy the stack alone.
@@ -82,6 +84,16 @@ jobs:
           # A deploy always ships master, whatever ref the dispatch was run from.
           ref: master
           fetch-depth: 0
+
+      # Before anything is quiesced or rebuilt: the commit must already have
+      # been deployed once, short of the swap, by the `Deploy rehearsal` job of
+      # its master push run (rebuild.sh --rehearse, the same script this job
+      # runs below). There is no override; a commit that has not passed it is
+      # fixed, not deployed.
+      - name: Require a passing deploy rehearsal of this commit
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python3 tools/ci/require_rehearsed_commit.py "$(git rev-parse HEAD)"
 
       - name: Stop accepting new agent jobs
         id: quiesce

@@ -11,7 +11,7 @@ if _DIR not in sys.path:
 from consult_evidence import TIER_CURRENT, EvidenceList  # noqa: E402
 from inference import (  # noqa: E402
     REFORMULATE_SYSTEM_PROMPT, SYSTEM_PROMPT, InferenceBackend,
-    build_consult_prompt,
+    build_consult_prompt, revision_instructions,
 )
 
 
@@ -85,6 +85,47 @@ class TestSystemPrompts(unittest.TestCase):
         self.assertIn("EVIDENCE BLOCK", prompt)
         self.assertIn("Turn 1", prompt)
         self.assertEqual(system, SYSTEM_PROMPT)
+
+
+class TestRevisionInstructions(unittest.TestCase):
+    """The prompt section that asks for a revision of a flagged answer."""
+
+    WARNING = {"sentence": "It exits 3 [D1].", "reason": "value",
+               "marker": "[D1]", "missing": ["3"]}
+
+    def test_the_draft_and_each_flagged_sentence_are_shown(self):
+        text = revision_instructions("  Draft body [D1].\nBASIS: documentation  ",
+                                     [self.WARNING])
+        self.assertTrue(text.startswith(
+            "## Your Draft Answer\n\nDraft body [D1].\nBASIS: documentation\n\n"))
+        self.assertIn('- "It exits 3 [D1]." — value, cited [D1] '
+                      "(not found in the cited items: 3)", text)
+        self.assertTrue(text.endswith("Finish with the BASIS: and CONFLICTS: lines."))
+
+    def test_an_uncited_sentence_without_missing_items(self):
+        text = revision_instructions("d", [{"sentence": "S.", "reason": "uncited"}])
+        self.assertIn('- "S." — uncited, cited nothing\n', text)
+        self.assertNotIn("not found in the cited items", text)
+
+    def test_every_warning_gets_its_own_line(self):
+        second = {"sentence": "Two.", "reason": "identifier", "marker": "[N1]",
+                  "missing": ["Foo", "Bar"]}
+        text = revision_instructions("d", [self.WARNING, second])
+        flagged = [line for line in text.splitlines() if line.startswith("- ")]
+        self.assertEqual(len(flagged), 2)
+        self.assertIn("(not found in the cited items: Foo, Bar)", flagged[1])
+
+    def test_revise_sends_the_revision_prompt_under_the_answering_contract(self):
+        backend = _Recorder("revised [D1]")
+        synthesis = backend.revise("q", evidence="EVIDENCE BLOCK", draft="DRAFT TEXT",
+                                   warnings=[self.WARNING], history="Turn 1")
+        self.assertEqual(synthesis.text, "revised [D1]")
+        prompt, system = backend.calls[0]
+        self.assertEqual(system, SYSTEM_PROMPT)
+        self.assertIn("EVIDENCE BLOCK", prompt)
+        self.assertIn("Turn 1", prompt)
+        self.assertIn("DRAFT TEXT", prompt)
+        self.assertIn("## Sentences The Citation Check Could Not Support", prompt)
 
 
 if __name__ == "__main__":
