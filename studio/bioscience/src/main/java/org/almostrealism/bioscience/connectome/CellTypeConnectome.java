@@ -241,8 +241,9 @@ public class CellTypeConnectome implements CollectionFeatures, Destroyable {
 	 * @param names     the type names in index order
 	 * @return the tensors, owned by the caller
 	 * @throws IOException              if a file cannot be read
-	 * @throws IllegalArgumentException if a row is malformed, names an index out of range, or gives
-	 *                                  a type a size below one or a negative outgoing synapse count
+	 * @throws IllegalArgumentException if a row is malformed, names an index out of range, holds a
+	 *                                  weight that is not finite in single precision, or gives a
+	 *                                  type a size below one or a negative outgoing synapse count
 	 */
 	private static StateDictionary readTextTensors(File directory, List<String> names) throws IOException {
 		int t = names.size();
@@ -273,7 +274,13 @@ public class CellTypeConnectome implements CollectionFeatures, Destroyable {
 						+ " is not an entry of the " + t + " x " + t + " matrix");
 			}
 
-			weights.putFloat((post * t + pre) * Float.BYTES, Float.parseFloat(fields[2]));
+			float value = Float.parseFloat(fields[2]);
+			if (!Float.isFinite(value)) {
+				throw new IllegalArgumentException("Line " + (i + 1) + " of " + WEIGHTS_TEXT_FILE
+						+ " holds the non-finite weight " + fields[2]);
+			}
+
+			weights.putFloat((post * t + pre) * Float.BYTES, value);
 		}
 
 		Map<String, PackedCollection> tensors = new HashMap<>();

@@ -143,7 +143,7 @@ public class CellTypeRateModelTest extends CellTypeRateChecks {
 	@TestDepth(2)
 	@TestProperties(longRunning = true, excludeProfiles = TestUtils.PIPELINE)
 	public void sugarDrivesMn9() throws IOException {
-		int steps = 1000;
+		int steps = STEPS;
 
 		try (CellTypeConnectome connectome = loadConnectome();
 			 RatePopulation population = population(connectome)) {
@@ -151,6 +151,7 @@ public class CellTypeRateModelTest extends CellTypeRateChecks {
 			int[] grns = SUGAR_GRNS.stream().mapToInt(connectome::indexOf).toArray();
 			int[] control = matchedControl(connectome, grns);
 			log("control=" + Arrays.toString(IntStream.of(control).mapToObj(connectome.getTypeNames()::get).toArray()));
+			assertEquals(MATCHED_CONTROL, names(connectome, control));
 
 			SimulationRunner runner = new SimulationRunner(population, DT);
 			double baseline = response(runner, population, mn9, new int[0], steps);
@@ -214,7 +215,7 @@ public class CellTypeRateModelTest extends CellTypeRateChecks {
 	@TestDepth(2)
 	@TestProperties(longRunning = true, excludeProfiles = TestUtils.PIPELINE)
 	public void matchesRateReference() throws IOException {
-		int steps = 1000;
+		int steps = STEPS;
 		File directory = requireResourceIn(RATES_PROPERTY, DEFAULT_RATES_DIRECTORY, RATES_MANIFEST,
 				ComputeRequirement.GPU, ComputeRequirement.CPU);
 		JsonObject manifest = NeuronConnectomeChecks.json(directory, RATES_MANIFEST).getAsJsonObject();
@@ -226,6 +227,7 @@ public class CellTypeRateModelTest extends CellTypeRateChecks {
 			 RatePopulation population = population(connectome);
 			 StateDictionary reference = new StateDictionary(directory.getPath())) {
 			int mn9 = connectome.indexOf(MN9);
+			assertConstants(manifest.getAsJsonObject("constants"));
 			assertDrivenSets(connectome, driven);
 			assertEquals(names(connectome, matchedControl(connectome, indices(connectome, SUGAR_GRNS))),
 					names(driven.getAsJsonArray("control")));

@@ -331,6 +331,27 @@ public class CellTypeConnectomeLoadTest extends TestSuiteBase {
 	}
 
 	/**
+	 * An entry of the text layout whose weight is not a finite single-precision value, whether
+	 * written as {@code NaN}, as an infinity or as a number beyond the single-precision range, is
+	 * rejected, since it would make every rate it reaches non-finite; the largest finite
+	 * single-precision weight loads as given.
+	 */
+	@Test(timeout = 60000)
+	public void rejectsNonFiniteTextEntry() throws IOException {
+		assertThrowsLoad(writeTextDirectory(TEXT_COUNTS, TEXT_WEIGHTS + "0\t1\tNaN\n"));
+		assertThrowsLoad(writeTextDirectory(TEXT_COUNTS, TEXT_WEIGHTS + "0\t1\tInfinity\n"));
+		assertThrowsLoad(writeTextDirectory(TEXT_COUNTS, TEXT_WEIGHTS + "0\t1\t-Infinity\n"));
+		assertThrowsLoad(writeTextDirectory(TEXT_COUNTS, TEXT_WEIGHTS + "0\t1\t1e39\n"));
+
+		try (CellTypeConnectome connectome = CellTypeConnectome.load(writeTextDirectory(TEXT_COUNTS,
+				TEXT_WEIGHTS_HEADER + "0\t1\t" + Float.MAX_VALUE + "\n"))) {
+			double[] weights = connectome.getWeights().toArray();
+			Assert.assertEquals(Float.MAX_VALUE, weights[1], 0.0);
+			Assert.assertEquals(0.0, weights[0], 0.0);
+		}
+	}
+
+	/**
 	 * A counts table of the text layout that does not list every type, in index order, with an
 	 * integer size and outgoing synapse count is rejected.
 	 */

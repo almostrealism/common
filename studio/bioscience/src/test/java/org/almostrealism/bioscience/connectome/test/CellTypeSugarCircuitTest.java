@@ -69,9 +69,10 @@ public class CellTypeSugarCircuitTest extends CellTypeRateChecks {
 	 * MN9's included, within {@link #RATE_ALLOWANCE}; and MN9's GRN rise exceeds its control rise
 	 * by at least {@value #MARGIN_FRACTION} of the recorded margin.
 	 *
-	 * <p>The driven sets are read from the fixture but must be the experiment the tests define
-	 * (see {@link #assertDrivenSets}), so a regenerated fixture cannot drive other types and
-	 * still agree with its own recorded rates.</p>
+	 * <p>The run length is {@link #STEPS}, not the fixture's. The driven sets and constants are
+	 * read from the fixture but must be the experiment the tests define (see
+	 * {@link #assertDrivenSets} and {@link #assertConstants}), so a regenerated fixture cannot
+	 * drive other types or run other dynamics and still agree with its own recorded rates.</p>
 	 */
 	@Test(timeout = 300000)
 	public void sugarDrivesMn9() throws IOException {
@@ -79,11 +80,12 @@ public class CellTypeSugarCircuitTest extends CellTypeRateChecks {
 		JsonObject reference = NeuronConnectomeChecks.json(directory, SUGAR_CIRCUIT_REFERENCE_FILE).getAsJsonObject();
 		JsonObject driven = reference.getAsJsonObject("driven");
 		JsonObject expectedFinal = reference.getAsJsonObject("final");
-		int steps = reference.getAsJsonObject("constants").get("steps").getAsInt();
+		int steps = STEPS;
 
 		try (CellTypeConnectome connectome = CellTypeConnectome.load(directory);
 			 RatePopulation population = population(connectome)) {
 			int mn9 = connectome.indexOf(MN9);
+			assertConstants(reference.getAsJsonObject("constants"));
 			assertDrivenSets(connectome, driven);
 			SimulationRunner runner = new SimulationRunner(population, DT);
 
@@ -116,8 +118,9 @@ public class CellTypeSugarCircuitTest extends CellTypeRateChecks {
 	/**
 	 * {@link #assertDrivenSets} accepts the driven sets the fixture records and rejects every
 	 * departure from the experiment: a driven baseline, a GRN run without all of
-	 * {@link #SUGAR_GRNS}, and a control that is short, gustatory, not sensory, repeated, or
-	 * outside 20% of its GRN type's outgoing synapse count. Each rejected control breaks one part
+	 * {@link #SUGAR_GRNS}, and a control that is short, gustatory, not sensory, repeated,
+	 * outside 20% of its GRN type's outgoing synapse count, or valid under that rule but not the
+	 * seeded draw {@link #MATCHED_CONTROL}. Each rejected control breaks one part
 	 * of the rule and satisfies the others, so every part is shown to be checked.
 	 */
 	@Test(timeout = 300000)
@@ -157,6 +160,43 @@ public class CellTypeSugarCircuitTest extends CellTypeRateChecks {
 			// Sensory, non-gustatory and distinct, but matched to the wrong GRN types' counts.
 			assertDrivenSetsRejected(connectome, driven, "control",
 					List.of(control.get(2), control.get(1), control.get(0), control.get(3)));
+
+			// The first two control types swapped: each is a candidate for its new GRN type, none is
+			// repeated, but the set is not the seeded draw.
+			List<String> swapped = List.of(control.get(1), control.get(0), control.get(2), control.get(3));
+			for (int i = 0; i < swapped.size(); i++) {
+				int type = connectome.indexOf(swapped.get(i));
+				assertTrue(swapped.get(i) + " is not a candidate for " + SUGAR_GRNS.get(i),
+						IntStream.of(controlCandidates(connectome, connectome.indexOf(SUGAR_GRNS.get(i))))
+								.anyMatch(candidate -> candidate == type));
+			}
+
+			assertDrivenSetsRejected(connectome, driven, "control", swapped);
+		}
+	}
+
+	/**
+	 * {@link #assertConstants} accepts the constants the fixture records and rejects a change to
+	 * any one of them, a shorter run among them, so the fixture cannot set the experiment's
+	 * workload or dynamics.
+	 */
+	@Test(timeout = 60000)
+	public void constantsAreTheExperiment() throws IOException {
+		JsonObject constants = NeuronConnectomeChecks.json(sugarCircuit(), SUGAR_CIRCUIT_REFERENCE_FILE)
+				.getAsJsonObject().getAsJsonObject("constants");
+		assertConstants(constants);
+
+		for (String name : List.of("dt", "tau", "r_max", "gain", "drive", "steps")) {
+			JsonObject altered = constants.deepCopy();
+			altered.addProperty(name, name.equals("steps") ? STEPS / 10 : constants.get(name).getAsDouble() * 2);
+
+			try {
+				assertConstants(altered);
+			} catch (AssertionError expected) {
+				continue;
+			}
+
+			Assert.fail("Changing " + name + " to " + altered.get(name) + " was accepted");
 		}
 	}
 

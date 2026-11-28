@@ -57,6 +57,9 @@ public abstract class CellTypeRateChecks extends TestSuiteBase {
 	/** The drive written into the input of each driven type. */
 	protected static final double DRIVE = 50.0;
 
+	/** The number of steps of each driven run, 1 s of simulated time at {@link #DT}. */
+	protected static final int STEPS = 1000;
+
 	/**
 	 * The largest absolute difference allowed between a rate the platform reaches and the FP64
 	 * rate the reference script reached for the same run. Rates lie in {@code [0, R_MAX]}.
@@ -83,6 +86,14 @@ public abstract class CellTypeRateChecks extends TestSuiteBase {
 	 * The conversion script draws with a port of that generator from the same seed.
 	 */
 	protected static final long CONTROL_SEED = 20261026L;
+
+	/**
+	 * The control types, one per entry of {@link #SUGAR_GRNS}, that a {@link java.util.Random}
+	 * seeded with {@link #CONTROL_SEED} draws on the full MaleCNS cell-type matrix. The draw needs
+	 * the full matrix's candidate lists, so a test without that matrix compares with this record,
+	 * and the full-matrix test requires its own draw to equal it.
+	 */
+	protected static final List<String> MATCHED_CONTROL = List.of("GNG642", "JO-B1_a", "SAxx01", "BM_Vt_PoOc");
 
 	/** The file of the committed sugar circuit holding its driven types and expected rates. */
 	protected static final String SUGAR_CIRCUIT_REFERENCE_FILE = "rate-reference.json";
@@ -170,7 +181,9 @@ public abstract class CellTypeRateChecks extends TestSuiteBase {
 	 * Checks that the driven sets a reference records are the experiment these tests define, so
 	 * that a stale or independently drawn reference cannot stand in for it: no type is driven in
 	 * the baseline run, the GRN run drives {@link #SUGAR_GRNS}, and the control run drives one
-	 * distinct type per GRN type, each among that GRN type's {@link #controlCandidates}.
+	 * distinct type per GRN type, each among that GRN type's {@link #controlCandidates}, and
+	 * altogether the seeded draw {@link #MATCHED_CONTROL}. The candidate rule is checked before
+	 * the draw, so a set breaking the rule is reported as such.
 	 *
 	 * @param connectome the loaded connectome the reference belongs to
 	 * @param driven     the reference's driven type names, keyed by run
@@ -188,6 +201,25 @@ public abstract class CellTypeRateChecks extends TestSuiteBase {
 			assertTrue(control.get(i) + " is not a control candidate for " + SUGAR_GRNS.get(i),
 					IntStream.of(candidates).anyMatch(candidate -> candidate == type));
 		}
+
+		assertTrue("the control " + control + " is not the seeded draw " + MATCHED_CONTROL,
+				MATCHED_CONTROL.equals(control));
+	}
+
+	/**
+	 * Checks that the constants a reference records are the ones these tests run with, so that a
+	 * reference regenerated with other constants, fewer steps for one, cannot stand in for the
+	 * experiment while agreeing with its own recorded rates.
+	 *
+	 * @param constants the reference's constants
+	 */
+	protected void assertConstants(JsonObject constants) {
+		assertEquals(DT, constants.get("dt").getAsDouble(), 0.0);
+		assertEquals(TAU, constants.get("tau").getAsDouble(), 0.0);
+		assertEquals(R_MAX, constants.get("r_max").getAsDouble(), 0.0);
+		assertEquals(GAIN, constants.get("gain").getAsDouble(), 0.0);
+		assertEquals(DRIVE, constants.get("drive").getAsDouble(), 0.0);
+		assertEquals(STEPS, constants.get("steps").getAsInt());
 	}
 
 	/**
