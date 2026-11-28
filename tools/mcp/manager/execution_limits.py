@@ -903,8 +903,10 @@ _MAX_TEST_METHODS = 40
 # this validator as the literal token "tests/*.py", ends in ".py", and would be
 # counted as one file, yet the shell expands it to an unbounded number of files.
 # A file path carrying any of these is therefore not an explicit single file.
-# Mirrors GLOB_METACHARACTERS in PostCompletionCommandValidator.java and
-# GLOB_METACHARS in .claude/hooks/lib/pytest_broad_run_check.py.
+# Mirrors GLOB_METACHARACTERS in PostCompletionCommandValidator.java. The
+# pre-execution hook .claude/hooks/lib/pytest_broad_run_check.py does not yet
+# reject these, so this submission validator is intentionally stricter than
+# the hook (fail-safe); aligning the hook is tracked as a follow-up.
 _GLOB_METACHARACTERS = "*?[]{}"
 
 

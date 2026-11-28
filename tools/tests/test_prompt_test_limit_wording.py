@@ -35,7 +35,9 @@ _SEP = r"(?:[\s#-])+"
 _STALE_PATTERNS = [
     re.compile(_SEP.join(["one", "test", "per", "invocation"]), re.IGNORECASE),
     re.compile(r"\b" + _SEP.join(["entry", "per", "invocation"]) + r"\b", re.IGNORECASE),
-    re.compile(_SEP.join(["exactly", "one", "(?:node" + _SEP + "id|test)", "per", "invocation"]),
+    re.compile(_SEP.join(["exactly", "one",
+                          "(?:explicit" + _SEP + ")?(?:node" + _SEP + "id|test)",
+                          "per", "invocation"]),
                re.IGNORECASE),
     re.compile(_SEP.join(["bare", "class", "selector", "is", "rejected"]), re.IGNORECASE),
 ]
@@ -95,6 +97,17 @@ class TestPromptTestLimitWording(unittest.TestCase):
         self.assertEqual(
             [(1, "bare class selector is rejected")],
             _stale_wording("a bare class\nselector is rejected here"))
+
+    def test_explicit_node_id_phrase_is_detected(self):
+        # The most direct stale restatement -- "exactly one explicit node id
+        # per invocation" -- must be caught even with "explicit" between "one"
+        # and "node id", and whether or not "explicit" is present.
+        self.assertEqual(
+            [(1, "exactly one explicit node id per invocation")],
+            _stale_wording("exactly one explicit node id per invocation"))
+        self.assertEqual(
+            [(1, "exactly one node id per invocation")],
+            _stale_wording("exactly one node id per invocation"))
 
     def test_current_wording_is_not_flagged(self):
         # The current limit's wording, and a diagnostic "one at a time", are
