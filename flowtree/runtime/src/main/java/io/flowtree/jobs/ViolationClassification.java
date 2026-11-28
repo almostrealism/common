@@ -81,10 +81,19 @@ public final class ViolationClassification {
      * where it runs, so it must not be retried.
      *
      * @param reason why the violation is environment-determined; recorded as the
-     *               rule's retirement reason on the completion event
+     *               rule's retirement reason on the completion event. Must be
+     *               non-null and non-blank: {@link EnforcementRunner} folds it
+     *               into the retirement record a reader relies on to know why
+     *               the rule was never retried, so an empty reason would leave
+     *               that record with no explanation.
      * @return an environment-determined classification carrying {@code reason}
+     * @throws IllegalArgumentException if {@code reason} is {@code null} or blank
      */
     public static ViolationClassification environmentDetermined(String reason) {
+        if (reason == null || reason.isBlank()) {
+            throw new IllegalArgumentException(
+                    "An environment-determined classification requires a non-blank reason");
+        }
         return new ViolationClassification(true, reason);
     }
 

@@ -172,6 +172,51 @@ public class EnforcementRunnerViolationClassificationTest extends TestSuiteBase 
     }
 
     /**
+     * When the job-wide total-attempt ceiling stops a rule before the rule has
+     * reached its own per-pass cap, the rule is left violated — and the reason
+     * it stopped must still reach the completion event, not merely the log. A
+     * rule with a per-rule cap equal to {@link CodingAgentJob#DEFAULT_MAX_RULE_ENTRIES}
+     * that re-enters pass after pass eventually hits the global ceiling of
+     * {@link CodingAgentJob#DEFAULT_MAX_TOTAL_ENFORCEMENT_ATTEMPTS} mid-pass, so
+     * the final pass exits with fewer than its cap of attempts: exactly the path
+     * that previously only logged a warning.
+     */
+    @Test(timeout = 30000)
+    public void globalCeilingRetirementReasonReachesTheEvent() {
+        AtomicInteger corrections = new AtomicInteger();
+
+        EnforcementRule rule = new EnforcementRule() {
+            @Override public String getName() { return "never-resolves"; }
+            @Override public boolean isViolated(CodingAgentJob job) { return true; }
+            @Override public String buildCorrectionPrompt(CodingAgentJob job) { return "try again"; }
+            @Override public int getMaxRetries() { return CodingAgentJob.DEFAULT_MAX_RULE_ENTRIES; }
+        };
+
+        CodingAgentJob job = new CodingAgentJob("ceiling-1", "Do the work") {
+            @Override
+            protected void runCorrectionSession(String correctionPrompt, String activity) {
+                corrections.incrementAndGet();
+            }
+        };
+        job.setWorkingDirectory(tempDir.toString());
+        job.setEnforceOrganizationalPlacement(false);
+        job.addEnforcementRule(rule);
+
+        job.runEnforcementRules();
+
+        assertEquals("The job-wide ceiling must bound the total correction sessions",
+                CodingAgentJob.DEFAULT_MAX_TOTAL_ENFORCEMENT_ATTEMPTS, corrections.get());
+
+        CodingAgentJobEvent event = job.createEvent(null);
+        String message = event.getErrorMessage();
+        assertNotNull("The retirement reason must be recorded on the completion event", message);
+        assertTrue("The event must name the retired rule: " + message,
+                message.contains("never-resolves"));
+        assertTrue("The event must say the rule stopped at the job-wide ceiling: " + message,
+                message.contains("job-wide ceiling"));
+    }
+
+    /**
      * The control: a rule that does not override the classification keeps the
      * agent-fixable default, so it is still retried — the opposite of the
      * environment-determined rule above, which runs no correction session at

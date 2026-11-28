@@ -327,8 +327,12 @@ class EnforcementRunner implements ConsoleFeatures {
                             if (stalledOn != null) stalledRules.put(ruleName, stalledOn);
                         }
                     } else if (totalAttempts >= CodingAgentJob.DEFAULT_MAX_TOTAL_ENFORCEMENT_ATTEMPTS) {
-                        warn("Enforcement rule '" + ruleName
-                                + "': stopped because the total enforcement attempt cap was reached");
+                        // The job-wide ceiling stopped this rule before its own cap; the rule
+                        // is left violated, so record why alongside the other retirement paths
+                        // rather than only logging it.
+                        recordRetirement(ruleName, "reached the job-wide ceiling of "
+                                + CodingAgentJob.DEFAULT_MAX_TOTAL_ENFORCEMENT_ATTEMPTS
+                                + " total enforcement attempts before the violation was resolved");
                     }
                 } else if ("post-completion-command".equals(ruleName) && ((PostCompletionCommandRule) rule).isCapHit()) {
                     job.setPostCompletionCapHit(true);
