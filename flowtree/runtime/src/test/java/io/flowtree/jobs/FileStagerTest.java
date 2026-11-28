@@ -16,11 +16,13 @@
 
 package io.flowtree.jobs;
 
+import io.flowtree.PrivateLinkDetector;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
@@ -61,6 +63,38 @@ public class FileStagerTest extends TestSuiteBase {
 			assertTrue(result.getStagedFiles().contains("Foo.java"));
 			assertTrue(result.getStagedFiles().contains("Bar.java"));
 			assertTrue(result.getSkippedFiles().isEmpty());
+		} finally {
+			deleteRecursively(tempDir);
+		}
+	}
+
+	/**
+	 * A staged file whose content carries a private Claude session link is not
+	 * staged — it would reach the public repository on push — while a sibling
+	 * file that only mentions an attribution word is staged normally.
+	 */
+	@Test(timeout = 30000)
+	public void skipsFileWhoseContentCarriesPrivateLink() throws IOException {
+		Path tempDir = Files.createTempDirectory("stager-test");
+		try {
+			String link = "https://" + "claude" + ".ai/code/session_" + "fakefakefake1234";
+			Files.writeString(tempDir.resolve("notes.md"), "Done, see " + link);
+			Files.writeString(tempDir.resolve("Doc.java"),
+				"// documents the Co-Authored" + "-By Claude policy\npublic class Doc {}");
+
+			FileStagingConfig config = FileStagingConfig.builder().build();
+			FileStager stager = new FileStager();
+			StagingResult result = stager.evaluateFiles(
+				Arrays.asList("notes.md", "Doc.java"),
+				config,
+				tempDir.toFile(),
+				(String... args) -> 0
+			);
+
+			assertFalse(result.getStagedFiles().contains("notes.md"));
+			assertTrue(result.getStagedFiles().contains("Doc.java"));
+			assertTrue(result.getSkippedFiles().stream()
+				.anyMatch(s -> s.startsWith("notes.md") && s.contains("private link")));
 		} finally {
 			deleteRecursively(tempDir);
 		}
@@ -564,6 +598,173 @@ public class FileStagerTest extends TestSuiteBase {
 				+ result.getSkippedFiles(),
 				result.getSkippedFiles().isEmpty());
 			assertEquals(Collections.singletonList("tools/canary/last-run.txt"), result.getStagedFiles());
+		} finally {
+			deleteRecursively(tempDir);
+		}
+	}
+
+	/**
+	 * A file the merge carried in from the base branch is still scanned for a
+	 * private link before it is staged: the merge-carried exemption skips the
+	 * agent-edit guardrails, but not the leak guard. A clean merge-carried
+	 * sibling stages normally.
+	 */
+	@Test(timeout = 30000)
+	public void scansMergeCarriedFileForPrivateLink() throws IOException {
+		Path tempDir = Files.createTempDirectory("stager-test");
+		try {
+			String sha = "abc1234def5678901234567890abcdef1234567";
+			String link = "https://" + "claude" + ".ai/code/session_" + "fakefakefake1234";
+			Files.writeString(tempDir.resolve("notes.md"), "carried: " + link);
+			Files.writeString(tempDir.resolve("clean.md"), "ordinary base-branch content");
+
+			FileStagingConfig config = FileStagingConfig.builder().mergeParent(sha).build();
+			FileStager.GitOperations gitOps = new FileStager.GitOperations() {
+				@Override
+				public int execute(String... args) {
+					return 0;
+				}
+
+				@Override
+				public String executeWithOutput(String... args) {
+					if (args.length >= 1 && "rev-parse".equals(args[0])) {
+						return sha + "\n";
+					}
+					if (args.length >= 1 && "ls-tree".equals(args[0])) {
+						return "notes.md\nclean.md\n";
+					}
+					return "";
+				}
+
+				@Override
+				public String executeForStdout(String... args) {
+					return Arrays.asList(args).contains("HEAD..." + sha)
+						? "notes.md\u0000clean.md\u0000\n" : "";
+				}
+			};
+
+			StagingResult result = new FileStager().evaluateFiles(
+				Arrays.asList("notes.md", "clean.md"), config, tempDir.toFile(), gitOps);
+
+			assertFalse("a merge-carried file with a private link must not stage",
+				result.getStagedFiles().contains("notes.md"));
+			assertTrue("a clean merge-carried file must still stage",
+				result.getStagedFiles().contains("clean.md"));
+			assertTrue(result.getSkippedFiles().stream()
+				.anyMatch(s -> s.startsWith("notes.md") && s.contains("private link")));
+		} finally {
+			deleteRecursively(tempDir);
+		}
+	}
+
+	/**
+	 * A file whose content is not valid UTF-8 but carries an ASCII private link
+	 * is still scanned (decoded leniently) and blocked, rather than slipping
+	 * through because a strict UTF-8 read failed.
+	 */
+	@Test(timeout = 30000)
+	public void scansNonUtf8FileForPrivateLink() throws IOException {
+		Path tempDir = Files.createTempDirectory("stager-test");
+		try {
+			String link = "https://" + "claude" + ".ai/code/session_" + "fakefakefake1234";
+			byte[] ascii = ("see " + link).getBytes(StandardCharsets.UTF_8);
+			byte[] content = new byte[ascii.length + 2];
+			content[0] = (byte) 0xFF;
+			content[1] = (byte) 0xFE;
+			System.arraycopy(ascii, 0, content, 2, ascii.length);
+			Files.write(tempDir.resolve("latin1.txt"), content);
+
+			FileStagingConfig config = FileStagingConfig.builder().build();
+			StagingResult result = new FileStager().evaluateFiles(
+				Collections.singletonList("latin1.txt"), config,
+				tempDir.toFile(), (String... args) -> 0);
+
+			assertFalse(result.getStagedFiles().contains("latin1.txt"));
+			assertTrue(result.getSkippedFiles().stream()
+				.anyMatch(s -> s.startsWith("latin1.txt") && s.contains("private link")));
+		} finally {
+			deleteRecursively(tempDir);
+		}
+	}
+
+	/**
+	 * A file whose content cannot be read at all fails closed: it is skipped as
+	 * unverifiable rather than staged unscanned. A directory presented as a
+	 * changed path reproduces an unreadable file deterministically.
+	 */
+	@Test(timeout = 30000)
+	public void failsClosedWhenContentCannotBeRead() throws IOException {
+		Path tempDir = Files.createTempDirectory("stager-test");
+		try {
+			Files.createDirectory(tempDir.resolve("unreadable"));
+
+			FileStagingConfig config = FileStagingConfig.builder().build();
+			StagingResult result = new FileStager().evaluateFiles(
+				Collections.singletonList("unreadable"), config,
+				tempDir.toFile(), (String... args) -> 0);
+
+			assertTrue(result.getStagedFiles().isEmpty());
+			assertTrue(result.getSkippedFiles().stream()
+				.anyMatch(s -> s.startsWith("unreadable") && s.contains("cannot verify")));
+		} finally {
+			deleteRecursively(tempDir);
+		}
+	}
+
+	/**
+	 * When a blocked file's own path embeds a session id, the refusal entry is
+	 * redacted so the guard does not republish the identifier it exists to keep
+	 * private.
+	 */
+	@Test(timeout = 30000)
+	public void redactsSessionIdInBlockedFilePath() throws IOException {
+		Path tempDir = Files.createTempDirectory("stager-test");
+		try {
+			String session = "session_" + "fakefakefake1234";
+			String name = session + ".md";
+			String link = "https://" + "claude" + ".ai/code/" + session;
+			Files.writeString(tempDir.resolve(name), "see " + link);
+
+			FileStagingConfig config = FileStagingConfig.builder().build();
+			StagingResult result = new FileStager().evaluateFiles(
+				Collections.singletonList(name), config,
+				tempDir.toFile(), (String... args) -> 0);
+
+			assertTrue(result.getStagedFiles().isEmpty());
+			assertTrue("the refusal entry must be redacted",
+				result.getSkippedFiles().stream()
+					.anyMatch(s -> s.contains(PrivateLinkDetector.REDACTION)));
+			assertTrue("the raw session id must not be republished in the refusal",
+				result.getSkippedFiles().stream().noneMatch(s -> s.contains(session)));
+		} finally {
+			deleteRecursively(tempDir);
+		}
+	}
+
+	/**
+	 * A file whose content is clean but whose path embeds a session id is not
+	 * staged: the path is published with the commit, so it would carry the id
+	 * into the repository. The refusal entry is redacted.
+	 */
+	@Test(timeout = 30000)
+	public void skipsCleanFileWhosePathCarriesSessionId() throws IOException {
+		Path tempDir = Files.createTempDirectory("stager-test");
+		try {
+			String session = "session_" + "fakefakefake1234";
+			String name = session + ".md";
+			Files.writeString(tempDir.resolve(name), "nothing private here");
+			Files.writeString(tempDir.resolve("clean.md"), "nothing private here");
+
+			FileStagingConfig config = FileStagingConfig.builder().build();
+			StagingResult result = new FileStager().evaluateFiles(
+				Arrays.asList(name, "clean.md"), config,
+				tempDir.toFile(), (String... args) -> 0);
+
+			assertEquals(Collections.singletonList("clean.md"), result.getStagedFiles());
+			assertTrue(result.getSkippedFiles().stream()
+				.anyMatch(s -> s.contains("private link in path")
+					&& s.contains(PrivateLinkDetector.REDACTION)));
+			assertTrue(result.getSkippedFiles().stream().noneMatch(s -> s.contains(session)));
 		} finally {
 			deleteRecursively(tempDir);
 		}

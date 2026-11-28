@@ -16,6 +16,7 @@
 
 package io.flowtree.jobs;
 
+import io.flowtree.PrivateLinkDetector;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.After;
 import org.junit.Before;
@@ -133,6 +134,61 @@ public class CommitMessageBuilderTest extends TestSuiteBase {
         assertTrue("Body provenance must cover a present-but-unusable commit.txt, not claim none was"
                         + " written: " + msg,
                 msg.contains("did not provide a usable commit.txt"));
+        assertEquals(CommitMessageBuilder.SOURCE_PROMPT_FALLBACK, job.getCommitMessageSource());
+    }
+
+    /**
+     * A {@code commit.txt} carrying a private Claude session link fails the job
+     * with the owner's block message rather than being committed to the public
+     * history. The link literal is assembled from fragments so this test source
+     * carries no intact link.
+     */
+    @Test(timeout = 30000)
+    public void resolveRefusesCommitTxtWithPrivateLink() throws IOException {
+        Path incidentLog = Files.createTempFile("commit-msg-incident", ".jsonl");
+        Files.deleteIfExists(incidentLog);
+        String previous = System.getProperty("ar.privateLinkIncidentLog");
+        System.setProperty("ar.privateLinkIncidentLog", incidentLog.toString());
+        try {
+            String link = "https://" + "claude" + ".ai/code/session_" + "fakefakefake1234";
+            writeCommitTxt("Fix bug X\n\nClaude" + "-Session: " + link);
+            CodingAgentJob job = job("do the work");
+            try {
+                job.commitMessageBuilder().resolve(job);
+                fail("a commit.txt with a private session link must be refused");
+            } catch (IllegalStateException expected) {
+                assertTrue(expected.getMessage().toLowerCase().contains("malice"));
+                assertFalse("the failure must not echo the link",
+                        expected.getMessage().contains("fakefakefake1234"));
+            }
+        } finally {
+            if (previous == null) {
+                System.clearProperty("ar.privateLinkIncidentLog");
+            } else {
+                System.setProperty("ar.privateLinkIncidentLog", previous);
+            }
+            Files.deleteIfExists(incidentLog);
+        }
+    }
+
+    /**
+     * The harness fallback never carries a private Claude session link into the
+     * public history: a link reaching the fallback (here through a change-named
+     * subject, since the fallback is harness-authored and cannot be refused like
+     * an agent's commit.txt) is redacted rather than committed verbatim.
+     */
+    @Test(timeout = 30000)
+    public void fallbackRedactsPrivateLinkFromChangeSubject() throws IOException, InterruptedException {
+        initGitRepository();
+        String session = "session_" + "fakefakefake1234";
+        Files.writeString(tempDir.resolve(session + ".md"), "notes\n", StandardCharsets.UTF_8);
+
+        CodingAgentJob job = job("do the work");
+        String msg = job.commitMessageBuilder().resolve(job);
+        assertFalse("A private link in a change-named subject must not reach the message: " + msg,
+                msg.contains(session));
+        assertTrue("The leaked identifier must be redacted: " + msg,
+                msg.contains(PrivateLinkDetector.REDACTION));
         assertEquals(CommitMessageBuilder.SOURCE_PROMPT_FALLBACK, job.getCommitMessageSource());
     }
 
@@ -366,7 +422,7 @@ public class CommitMessageBuilderTest extends TestSuiteBase {
     @Test(timeout = 30000)
     public void resolveRemovesTrailingAuthorAttribution() throws IOException {
         writeCommitTxt("Fix bug X\n\nThe guard was inverted.\n\n"
-                + "Co-Authored-By: Claude <noreply@anthropic.com>\n");
+                + "Co-Authored-By: Claude <noreply@" + "anthropic.com>\n");
         CodingAgentJob job = job("do the work");
         assertEquals("Fix bug X\n\nThe guard was inverted.", job.commitMessageBuilder().resolve(job));
         assertEquals(CommitMessageBuilder.SOURCE_AGENT, job.getCommitMessageSource());
@@ -375,7 +431,7 @@ public class CommitMessageBuilderTest extends TestSuiteBase {
     /** {@link CommitMessageBuilder#resolve} fails when attribution cannot be removed safely. */
     @Test(timeout = 30000)
     public void resolveFailsWhenAttributionIsNotSafelyRemovable() throws IOException {
-        writeCommitTxt("Fix bug X\n\nCo-Authored-By: Claude <noreply@anthropic.com>\n\n"
+        writeCommitTxt("Fix bug X\n\nCo-Authored-By: Claude <noreply@" + "anthropic.com>\n\n"
                 + "Body content written after the trailer.");
         CodingAgentJob job = job("do the work");
         try {
@@ -383,7 +439,7 @@ public class CommitMessageBuilderTest extends TestSuiteBase {
             fail("Expected an IllegalStateException for unremovable author attribution");
         } catch (IllegalStateException e) {
             assertTrue("Failure must name the offending content",
-                    e.getMessage().contains("Co-Authored-By: Claude <noreply@anthropic.com>"));
+                    e.getMessage().contains("Co-Authored-By: Claude <noreply@" + "anthropic.com>"));
         }
     }
 

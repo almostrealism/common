@@ -16,6 +16,8 @@
 
 package io.flowtree.jobs;
 
+import io.flowtree.PrivateLinkDetector;
+import io.flowtree.PrivateLinkIncident;
 import io.flowtree.git.GitOperations;
 
 import java.io.IOException;
@@ -159,7 +161,8 @@ class CommitMessageBuilder {
         }
         job.warn("No commit.txt found in dependent repo " + repoRoot
                 + " — falling back to a repository-named message");
-        return AuthorAttribution.stripLines(buildDependentFallbackMessage(repoRoot));
+        return redactFallbackPrivateLink(job,
+                AuthorAttribution.stripLines(buildDependentFallbackMessage(repoRoot)));
     }
 
     /**
@@ -190,7 +193,29 @@ class CommitMessageBuilder {
         job.warn("No commit.txt found or it was empty — generating a commit message from the"
                 + " files the job changed");
         source = SOURCE_PROMPT_FALLBACK;
-        return AuthorAttribution.stripLines(buildFallbackMessage(job));
+        return redactFallbackPrivateLink(job, AuthorAttribution.stripLines(buildFallbackMessage(job)));
+    }
+
+    /**
+     * Returns a harness-generated fallback message with any private Claude
+     * session link redacted.
+     *
+     * <p>Unlike {@link #rejectPrivateLink}, which fails the job over the agent's
+     * own {@code commit.txt}, the fallback is the harness's own text: a stray
+     * link in it (a session id embedded in a change-named subject, say) is
+     * redacted rather than made fatal, so the harness can still commit the work
+     * while never publishing the link. A clean message is returned unchanged.</p>
+     *
+     * @param job     the orchestrator, used for logging
+     * @param message the harness fallback message
+     * @return the message with any private link redacted; never {@code null}
+     */
+    private static String redactFallbackPrivateLink(CodingAgentJob job, String message) {
+        if (!PrivateLinkDetector.containsPrivateLink(message)) {
+            return message;
+        }
+        job.warn("Redacted a private Claude session link from the harness fallback commit message");
+        return PrivateLinkDetector.redact(message);
     }
 
     /**
@@ -210,6 +235,7 @@ class CommitMessageBuilder {
      * @return the message with attribution removed; never {@code null}
      */
     private static String sanitizeAttribution(CodingAgentJob job, String message) {
+        rejectPrivateLink(job, message);
         String sanitized = AuthorAttribution.sanitize(message);
         if (sanitized == null) {
             throw new IllegalStateException(
@@ -224,6 +250,35 @@ class CommitMessageBuilder {
                     + String.join(" / ", AuthorAttribution.attributionLines(message)));
         }
         return sanitized;
+    }
+
+    /**
+     * Refuses an agent-authored commit message that carries a private Claude
+     * session link or id.
+     *
+     * <p>A commit message is public the moment it is pushed, and it cannot be
+     * retracted from forks and notification e-mails, so a session link here is
+     * never committed: the incident is recorded (with the link redacted) and the
+     * job fails with the owner's block message, the same way un-removable author
+     * attribution does. It checks only the hard link/id patterns
+     * ({@link PrivateLinkDetector#scanLinks}); ordinary attribution trailers are
+     * left to {@link AuthorAttribution}, which removes them. This runs only on
+     * the agent's own {@code commit.txt}; the harness fallbacks carry no agent
+     * text.</p>
+     *
+     * @param job     the orchestrator, used for logging and to name the failure
+     * @param message the trimmed {@code commit.txt} content
+     * @throws IllegalStateException if the message carries a private link
+     */
+    private static void rejectPrivateLink(CodingAgentJob job, String message) {
+        List<String> matched = PrivateLinkDetector.scanLinks(message);
+        if (matched.isEmpty()) {
+            return;
+        }
+        new PrivateLinkIncident("harness_commit_message", "commit.txt", matched).record();
+        job.warn("Refusing commit.txt: it carries a private Claude session link ("
+                + String.join(",", matched) + "); the link was redacted");
+        throw new IllegalStateException(PrivateLinkDetector.blockMessage());
     }
 
     /**
