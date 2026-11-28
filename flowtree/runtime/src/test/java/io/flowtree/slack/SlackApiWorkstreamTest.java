@@ -1080,6 +1080,49 @@ public class SlackApiWorkstreamTest extends TestSuiteBase {
     }
 
     /**
+     * A registration that names a repository and an <em>explicit empty</em>
+     * {@code settledCiTrigger} is honoured as a deliberate clear: the default is
+     * applied only when the field is absent, matching the presence-signal
+     * convention the update endpoint uses. A client that supplies an empty value
+     * wants no settled CI, and the create path must not override that choice.
+     */
+    @Test(timeout = 10000)
+    public void testApiRegisterExplicitEmptyTriggerIsNotDefaulted() throws Exception {
+        SlackNotifier notifier = new SlackNotifier(null);
+        SlackListener listener = new SlackListener(notifier);
+
+        FlowTreeApiEndpoint endpoint = new FlowTreeApiEndpoint(0, notifier);
+        endpoint.setListener(listener);
+        endpoint.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false);
+
+        try {
+            int port = endpoint.getListeningPort();
+            String body = "{\"defaultBranch\":\"feature/explicit-empty\","
+                + "\"baseBranch\":\"master\","
+                + "\"repoUrl\":\"git@github.com:almostrealism/common.git\","
+                + "\"settledCiTrigger\":\"\","
+                + "\"channelName\":\"w-explicit-empty\"}";
+
+            HttpURLConnection conn = (HttpURLConnection) new URL(
+                    "http://localhost:" + port + "/api/workstreams").openConnection();
+            conn.setRequestMethod("POST");
+            conn.setDoOutput(true);
+            conn.setRequestProperty("Content-Type", "application/json");
+            try (OutputStream os = conn.getOutputStream()) {
+                os.write(body.getBytes(StandardCharsets.UTF_8));
+            }
+            assertEquals(200, conn.getResponseCode());
+
+            Workstream registered = notifier.findWorkstreamByBranch("feature/explicit-empty");
+            assertNotNull("Workstream should be findable by branch", registered);
+            assertNull("an explicit empty settledCiTrigger is honoured as a clear, not defaulted",
+                    registered.getSettledCiTrigger());
+        } finally {
+            endpoint.stop();
+        }
+    }
+
+    /**
      * A workstream created by a submission takes the branch, base branch, and
      * repository from it — and nothing else. {@code requiredLabels} on a
      * submission constrains that one job; it must not become a permanent

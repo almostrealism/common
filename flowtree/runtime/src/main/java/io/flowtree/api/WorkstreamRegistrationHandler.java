@@ -524,22 +524,24 @@ final class WorkstreamRegistrationHandler {
      * exact match always wins, so a workstream that genuinely tracks
      * {@code (branch, repo)} is never returned as a dependent-repo match.</p>
      *
-     * <p>A registration that names a {@code repoUrl} but no
-     * {@code settledCiTrigger} is given the {@link CiTrigger#defaultSettled()
-     * default} ({@code deployment:test}). A branch workstream whose merge gate
-     * is a long-running test run must carry a trigger, or its pull request
-     * settles the review loop and then stalls in {@code ci: auto-review} with
-     * no test run ever started. The controller is the single chokepoint every
-     * registration passes through, so defaulting here closes the gap for any
-     * client that omits the field when a workstream is first created. An
-     * already-registered workstream — matched by {@code (branch, repo)} or as a
-     * dependent repo above — is returned before this point and keeps whatever
-     * trigger it already has; repairing one that was registered without a
-     * trigger is left to the path that re-applies it on update. The default is
-     * gated on a {@code repoUrl}
-     * because a workstream with no repository runs no CI; an operator who
-     * truly wants none clears it with an empty {@code settledCiTrigger} on the
-     * update endpoint, which this create path does not reach.</p>
+     * <p>A registration that names a {@code repoUrl} but omits
+     * {@code settledCiTrigger} entirely is given the
+     * {@link CiTrigger#defaultSettled() default} ({@code deployment:test}). A
+     * branch workstream whose merge gate is a long-running test run must carry a
+     * trigger, or its pull request settles the review loop and then stalls in
+     * {@code ci: auto-review} with no test run ever started. The controller is
+     * the single chokepoint every registration passes through, so defaulting
+     * here closes the gap for any client that omits the field when a workstream
+     * is first created. An already-registered workstream — matched by
+     * {@code (branch, repo)} or as a dependent repo above — is returned before
+     * this point and keeps whatever trigger it already has; repairing one that
+     * was registered without a trigger is left to the path that re-applies it on
+     * update. The default is gated on a {@code repoUrl} because a workstream
+     * with no repository runs no CI. The default fires only on an absent field,
+     * matching the presence-signal convention the update endpoint uses for this
+     * and the sibling fields: a client that supplies an explicit empty
+     * {@code settledCiTrigger} wants none, and the create path honours that
+     * clear rather than overriding it with the default.</p>
      *
      * @param body          the raw request body JSON
      * @param defaultBranch the branch the workstream tracks; must be non-empty
@@ -572,6 +574,7 @@ final class WorkstreamRegistrationHandler {
         List<String> dependentRepos = JsonFieldExtractor.extractStringArray(body, "dependentRepos");
         List<String> completionListeners = extractCompletionListeners(body);
         boolean dispatchCapable = JsonFieldExtractor.extractBoolean(body, "dispatchCapable");
+        boolean hasSettledCiTrigger = JsonFieldExtractor.hasField(body, "settledCiTrigger");
         List<String> trackerCapabilities;
         CiTrigger settledCiTrigger;
         try {
@@ -691,9 +694,10 @@ final class WorkstreamRegistrationHandler {
             workstream.setPlanInstructions(planInstructions);
         }
 
-        // Default a missing trigger so no branch workstream is left unable to
-        // start its merge-gating test run; see this method's javadoc.
-        if (settledCiTrigger == null && repoUrl != null && !repoUrl.isEmpty()) {
+        // Default only an absent trigger so no branch workstream is left unable
+        // to start its merge-gating test run, while an explicit empty clears it;
+        // see this method's javadoc.
+        if (!hasSettledCiTrigger && repoUrl != null && !repoUrl.isEmpty()) {
             settledCiTrigger = CiTrigger.defaultSettled();
         }
         workstream.setSettledCiTrigger(settledCiTrigger);
