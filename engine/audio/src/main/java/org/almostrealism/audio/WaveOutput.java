@@ -42,6 +42,7 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
@@ -497,21 +498,25 @@ public class WaveOutput implements Lifecycle, Destroyable, CodeFeatures {
 	/**
 	 * Releases the channel writers and, when this output allocated its own buffer, that buffer.
 	 * A buffer supplied by the caller is left to the caller.
+	 *
+	 * <p>The writers, the channel-producer views and the owned buffer are released through
+	 * {@link Destroyable#releaseAll} so that a failure releasing one does not strand the rest;
+	 * in particular the owned buffer is released even when an earlier view release fails.</p>
 	 */
 	@Override
 	public void destroy() {
-		if (channels != null) {
-			channels.forEach(Writer::destroy);
+		List<Runnable> releases = new ArrayList<>();
+		if (channels != null)
+			for (Writer channel : channels) releases.add(channel::destroy);
+		if (data != null)
+			for (CollectionProducer producer : data) releases.add(producer::destroy);
+		if (ownedData != null) releases.add(ownedData::destroy);
+
+		try {
+			Destroyable.releaseAll(releases);
+		} finally {
 			channels = null;
-		}
-
-		if (data != null) {
-			data.forEach(CollectionProducer::destroy);
 			data = null;
-		}
-
-		if (ownedData != null) {
-			ownedData.destroy();
 			ownedData = null;
 		}
 	}

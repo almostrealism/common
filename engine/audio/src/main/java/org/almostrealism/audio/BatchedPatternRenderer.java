@@ -27,7 +27,8 @@ import org.almostrealism.collect.computations.AggregatedProducerComputation;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.time.TemporalFeatures;
 
-import java.util.Arrays;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Batched pattern renderer implementing the four-kernel chain used by
@@ -111,22 +112,34 @@ public class BatchedPatternRenderer implements CollectionFeatures, TemporalFeatu
 	 * after the renderer is dropped. Synchronizing on this renderer, as every dispatch does,
 	 * means a dispatch in progress finishes before its buffers are released. A renderer is not
 	 * used again after it is destroyed.</p>
+	 *
+	 * <p>The releases are independent, so they are run through {@link Destroyable#releaseAll} to
+	 * attempt every one even when a native release fails: one buffer failing to release does not
+	 * strand the rest. The dispatch references are cleared whether or not a release failed.</p>
 	 */
 	@Override
 	public synchronized void destroy() {
-		if (sssSources != null) Destroyable.destroy(Arrays.asList(sssSources));
-		if (percSources != null) Destroyable.destroy(Arrays.asList(percSources));
-		Destroyable.destroy(sssScalars);
-		Destroyable.destroy(percScalars);
-		sssSources = null;
-		sssScalars = null;
-		percSources = null;
-		percScalars = null;
-		sssDispatch = null;
-		sssSourcesClear = null;
-		percDispatchDry = null;
-		percDispatchWet = null;
-		percSourcesClear = null;
+		List<Runnable> releases = new ArrayList<>();
+		if (sssSources != null)
+			for (PackedCollection source : sssSources) releases.add(() -> Destroyable.destroy(source));
+		if (percSources != null)
+			for (PackedCollection source : percSources) releases.add(() -> Destroyable.destroy(source));
+		releases.add(() -> Destroyable.destroy(sssScalars));
+		releases.add(() -> Destroyable.destroy(percScalars));
+
+		try {
+			Destroyable.releaseAll(releases);
+		} finally {
+			sssSources = null;
+			sssScalars = null;
+			percSources = null;
+			percScalars = null;
+			sssDispatch = null;
+			sssSourcesClear = null;
+			percDispatchDry = null;
+			percDispatchWet = null;
+			percSourcesClear = null;
+		}
 	}
 
 	/** Compile-once fully-fused SSS dispatch, reused across ticks; built on first {@link #sssDispatch}. */

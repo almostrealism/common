@@ -167,14 +167,21 @@ public final class BatchedPatternLayerRenderer implements PatternFeatures, Destr
 	 * afterward is recompiled lazily on first use. A renderer's destroy waits for a dispatch
 	 * already in progress on it, since both synchronize on the renderer.</p>
 	 *
+	 * <p>Every renderer is removed from the cache first, then all are destroyed through
+	 * {@link Destroyable#releaseAll} so that one renderer failing to release its buffers does
+	 * not leave the others — already dropped from the map — with their device buffers
+	 * allocated and no longer reachable to release.</p>
+	 *
 	 * <p>Invoked when the last {@link org.almostrealism.studio.AudioScene} is destroyed,
 	 * the point at which no render can be in progress, so no useful sharing is lost.</p>
 	 */
 	public static void clearCompiledRenderers() {
+		List<Runnable> releases = new ArrayList<>();
 		for (List<Integer> shape : List.copyOf(rendererCache.keySet())) {
 			BatchedPatternRenderer renderer = rendererCache.remove(shape);
-			if (renderer != null) renderer.destroy();
+			if (renderer != null) releases.add(renderer::destroy);
 		}
+		Destroyable.releaseAll(releases);
 	}
 
 	/**
