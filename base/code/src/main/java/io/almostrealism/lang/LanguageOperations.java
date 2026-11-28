@@ -231,6 +231,32 @@ public interface LanguageOperations {
 	String assignment(String destination, String expression);
 
 	/**
+	 * Returns a statement that adds {@code value} to the element {@code destination} as one
+	 * indivisible update, so that kernel threads accumulating into the same element concurrently
+	 * all contribute and none of their additions is lost (see
+	 * {@link io.almostrealism.code.AtomicAccumulation}).
+	 *
+	 * <p>The order in which concurrent additions land is not defined. The accumulated value is
+	 * therefore exact only when every partial sum is exactly representable at the precision of the
+	 * destination; otherwise it agrees with an ordered sum to within floating-point rounding.</p>
+	 *
+	 * <p>The default refuses: a language that cannot express an indivisible update of a
+	 * floating-point element at its precision must not be asked to render one, rather than
+	 * silently rendering a plain read-modify-write that would lose colliding updates.</p>
+	 *
+	 * @param destination the rendered element to accumulate into, an addressable element of an
+	 *                    array in device or host memory
+	 * @param value       the rendered value to add
+	 * @return the accumulation statement, without a statement terminator
+	 * @throws UnsupportedOperationException if this language cannot render an atomic accumulation
+	 *         at its precision
+	 */
+	default String atomicAccumulation(String destination, String value) {
+		throw new UnsupportedOperationException(getClass().getSimpleName() +
+				" cannot render an atomic accumulation at " + getPrecision());
+	}
+
+	/**
 	 * Returns the annotation or keyword required for a variable with the given physical scope.
 	 *
 	 * @param access the accessibility level

@@ -100,6 +100,39 @@ public class OpenCLLanguageOperations extends CLanguageOperations {
 		return super.nameForType(type);
 	}
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>The base OpenCL profile has no floating-point atomic add, so the update is a
+	 * compare-and-swap loop over the bits of the element: {@code atomic_cmpxchg} on a
+	 * {@code uint} view for 32-bit elements, and {@code atom_cmpxchg} on a {@code ulong} view
+	 * for 64-bit elements, which requires a device supporting
+	 * {@code cl_khr_int64_base_atomics}. {@link CLComputeContext} enables that extension in an
+	 * FP64 program that contains an atomic update ({@link CLComputeContext#INT64_ATOMICS_PRAGMA});
+	 * a device without it rejects that kernel when it is compiled.</p>
+	 *
+	 * <p>The element is read without an atomic operation only once, before the loop. Each retry
+	 * starts from the value the failed compare-and-swap returned, which the swap read atomically,
+	 * so a stale or torn first read only costs one more iteration.</p>
+	 *
+	 * @throws UnsupportedOperationException if the precision is not a 32 or 64-bit floating-point
+	 *         precision
+	 */
+	@Override
+	public String atomicAccumulation(String destination, String value) {
+		boolean wide = atomicElementBytes() == 8;
+		String bits = wide ? "ulong" : "uint";
+		String type = getPrecision().typeName();
+		String swap = wide ? "atom_cmpxchg" : "atomic_cmpxchg";
+		return "{ volatile __global " + bits + " *ar_atomic_p = (volatile __global " + bits + " *) &(" +
+				destination + "); " + type + " ar_atomic_v = " + value + "; " +
+				bits + " ar_atomic_r = *ar_atomic_p; " + bits + " ar_atomic_o; " +
+				"do { ar_atomic_o = ar_atomic_r; " +
+				"ar_atomic_r = " + swap + "(ar_atomic_p, ar_atomic_o, as_" + bits + "(as_" + type +
+				"(ar_atomic_o) + ar_atomic_v)); } " +
+				"while (ar_atomic_r != ar_atomic_o); }";
+	}
+
 	@Override
 	public String annotationForPhysicalScope(Accessibility access, PhysicalScope scope) {
 		String volatilePrefix = Hardware.getLocalHardware().isMemoryVolatile() ? "volatile " : "";

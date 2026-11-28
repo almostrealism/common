@@ -89,6 +89,19 @@ public interface ExpressionProperties<T> {
 	public default boolean isMasked() { return false; }
 
 	/**
+	 * Returns the expression that a write to this expression lands in.
+	 *
+	 * <p>For most expressions that is the expression itself. An expression that only wraps the
+	 * element it stands for, such as a {@link Mask} guarding an array reference, returns the
+	 * wrapped element instead, exactly as its {@link Expression#assign(Expression) assignment}
+	 * writes to that element. A statement that updates an element in place without an
+	 * assignment, such as an atomic accumulation, writes to this target.</p>
+	 *
+	 * @return the expression that receives a write to this one; this expression by default
+	 */
+	public default Expression<T> getAssignmentTarget() { return self(); }
+
+	/**
 	 * Checks if this expression is the index of the kernel thread evaluating it.
 	 *
 	 * @return {@code true} if this is a kernel index; default implementation returns {@code false}

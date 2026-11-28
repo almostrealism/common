@@ -1191,6 +1191,19 @@ public class Scope<T> extends ArrayList<Scope<T>>
 	}
 
 	/**
+	 * Returns whether any {@link Statement#isAtomicUpdate() atomic update} is among the statements
+	 * of this scope, of its children, or of the scopes it requires: whether the code generated
+	 * from it needs whatever a language demands of a program that uses atomics.
+	 *
+	 * @return {@code true} if a statement anywhere in this scope's program is an atomic update
+	 */
+	public boolean containsAtomicUpdate() {
+		return getStatements().stream().anyMatch(Statement::isAtomicUpdate)
+				|| getChildren().stream().anyMatch(Scope::containsAtomicUpdate)
+				|| getRequiredScopes().stream().anyMatch(Scope::containsAtomicUpdate);
+	}
+
+	/**
 	 * {@inheritDoc}
 	 *
 	 * <p>Like {@link #containsAssignment(ArrayVariable, long, long)}, the names are read off the

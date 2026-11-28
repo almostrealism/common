@@ -48,6 +48,24 @@ public class CudaLanguageOperations extends CLanguageOperations {
 		super(precision, false, false);
 	}
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Renders the native {@code atomicAdd}, which CUDA provides for {@code float} and, on
+	 * devices of compute capability 6.0 and later, for {@code double}. Every kernel is compiled
+	 * for the exact architecture of its device ({@link CUDevice#compile}), and the CUDA headers
+	 * declare the {@code double} overload only for 6.0 and later, so an older device rejects an
+	 * FP64 accumulation when the kernel is compiled rather than producing a lossy update.</p>
+	 *
+	 * @throws UnsupportedOperationException if the precision is not a 32 or 64-bit floating-point
+	 *         precision
+	 */
+	@Override
+	public String atomicAccumulation(String destination, String value) {
+		atomicElementBytes();
+		return "atomicAdd(&(" + destination + "), " + value + ")";
+	}
+
 	@Override
 	public boolean isNumericBoolean() {
 		return false;

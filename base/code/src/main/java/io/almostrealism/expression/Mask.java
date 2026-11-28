@@ -76,6 +76,17 @@ public class Mask<T extends Number> extends Conditional<T> {
 		return getMaskedValue().assign(exp);
 	}
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>A write to a mask lands in the target of its masked value, the same element
+	 * {@link #assign(Expression)} assigns to.</p>
+	 */
+	@Override
+	public Expression<T> getAssignmentTarget() {
+		return getMaskedValue().getAssignmentTarget();
+	}
+
 	@Override
 	public CollectionExpression delta(CollectionExpression target) {
 		return getMaskedValue().delta(target);

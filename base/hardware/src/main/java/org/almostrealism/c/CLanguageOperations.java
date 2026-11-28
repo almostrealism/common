@@ -215,6 +215,62 @@ public class CLanguageOperations extends DefaultLanguageOperations {
 	}
 
 	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Native kernels run their global range on several host threads at once, so the update
+	 * is a compare-and-swap loop over the bits of the element, using the {@code __atomic}
+	 * builtins that both clang and gcc provide: the sum is retried until no other thread has
+	 * changed the element between its read and the swap.</p>
+	 *
+	 * @throws UnsupportedOperationException if the precision is not a 32 or 64-bit floating-point
+	 *         precision
+	 */
+	@Override
+	public String atomicAccumulation(String destination, String value) {
+		String bits = atomicBitsType();
+		String type = getPrecision().typeName();
+		return "{ " + bits + " *ar_atomic_p = (" + bits + " *) &(" + destination + "); " +
+				type + " ar_atomic_v = " + value + "; " +
+				"union { " + type + " f; " + bits + " i; } ar_atomic_o, ar_atomic_n; " +
+				"ar_atomic_o.i = __atomic_load_n(ar_atomic_p, __ATOMIC_RELAXED); " +
+				"do { ar_atomic_n.f = ar_atomic_o.f + ar_atomic_v; } " +
+				"while (!__atomic_compare_exchange_n(ar_atomic_p, &ar_atomic_o.i, ar_atomic_n.i, " +
+				"0, __ATOMIC_RELAXED, __ATOMIC_RELAXED)); }";
+	}
+
+	/**
+	 * Returns the unsigned integer type with the same width as a floating-point element at the
+	 * precision of this language, through which a compare-and-swap of the element is performed.
+	 *
+	 * @return {@code unsigned int} for 32-bit elements, {@code unsigned long long} for 64-bit
+	 * @throws UnsupportedOperationException if the precision is not a 32 or 64-bit floating-point
+	 *         precision
+	 */
+	protected String atomicBitsType() {
+		return atomicElementBytes() == 4 ? "unsigned int" : "unsigned long long";
+	}
+
+	/**
+	 * Returns the width of the floating-point element an atomic accumulation at the precision of
+	 * this language updates, refusing any precision the accumulation is not defined for: an
+	 * {@link #atomicAccumulation(String, String) atomic accumulation} adds
+	 * floating-point values, so an integer precision is refused even when its width matches.
+	 *
+	 * @return 4 for a 32-bit floating-point precision, 8 for a 64-bit one
+	 * @throws UnsupportedOperationException if the precision is not a 32 or 64-bit floating-point
+	 *         precision
+	 */
+	protected int atomicElementBytes() {
+		int bytes = getPrecision().bytes();
+		if (!getPrecision().isFloatingPoint() || (bytes != 4 && bytes != 8)) {
+			throw new UnsupportedOperationException(getClass().getSimpleName() +
+					" has no atomic accumulation at " + getPrecision());
+		}
+
+		return bytes;
+	}
+
+	/**
 	 * Returns the statement terminator for C code.
 	 *
 	 * @return the semicolon character
