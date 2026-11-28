@@ -363,6 +363,12 @@ public class ReanalysisResumeTest extends TestSuiteBase {
 					" reported error(s), " + library.allDetails().count() + " complete item(s), validated model " +
 					launch.store.getValidatedModel() + ", errors " + errors);
 
+			Assert.assertEquals("only the readable files are encoded; the records of the deleted and " +
+					"truncated files are skipped, not resynthesised from their stored FFT magnitudes",
+					count - 2, provider.started.get());
+			Assert.assertEquals("the orphaned records stay out of the complete set: only readable files remain",
+					count - 2, library.allDetails().count());
+
 			for (File readable : wavFiles.subList(2, count)) {
 				Assert.assertTrue("every readable file completes for the new model: " + readable,
 						library.getAllIdentifiers().contains(
@@ -380,6 +386,64 @@ public class ReanalysisResumeTest extends TestSuiteBase {
 			Assert.assertEquals("the next launch encodes nothing again", 0, relaunchModel.started.get());
 			Assert.assertEquals("a file already marked corrupt is warned and skipped, not reported: "
 					+ relaunchErrors, 0, relaunchErrors.size());
+		}
+	}
+
+	/**
+	 * A sample whose audio was edited after the previous release analysed it, and
+	 * which is still valid audio, has a new content identifier on the next launch.
+	 * The re-analysis encodes the edited audio once under that new identifier, and
+	 * the record of the audio as it was before the edit is an orphan: it is not
+	 * resynthesised from its stored FFT magnitudes and stays out of
+	 * {@link AudioLibrary#allDetails()}.
+	 *
+	 * <p>The previous release's store is written from copies in a separate
+	 * directory, so the library's own paths are hashed for the first time when it
+	 * opens, as they are in a new process.</p>
+	 *
+	 * @throws Exception if the library fails
+	 */
+	@Test(timeout = 300000)
+	public void anEditedSampleIsEncodedOnceUnderItsNewIdentifier() throws Exception {
+		int count = 4;
+		Path previousDir = Files.createDirectories(tempDir.resolve("previous"));
+		List<File> previousFiles = SineWaveFiles.generate(previousDir, count, SAMPLE_RATE, SAMPLE_DURATION);
+		writePreviousReleaseStore(previousFiles);
+
+		for (File f : previousFiles.subList(1, count)) {
+			Files.copy(f.toPath(), samplesDir.resolve(f.getName()));
+		}
+
+		Path editDir = Files.createDirectories(tempDir.resolve("edit"));
+		File editedSource = SineWaveFiles.generate(editDir, 1, SAMPLE_RATE, 2 * SAMPLE_DURATION).get(0);
+		File edited = Files.copy(editedSource.toPath(), samplesDir.resolve(previousFiles.get(0).getName())).toFile();
+
+		String oldId = new FileWaveDataProvider(previousFiles.get(0).getPath()).getIdentifier();
+		String newId = new FileWaveDataProvider(edited.getPath()).getIdentifier();
+		Assert.assertNotEquals("the edit changes the content identifier", oldId, newId);
+
+		List<Exception> errors = Collections.synchronizedList(new ArrayList<>());
+		GatedProvider provider = new GatedProvider(Integer.MAX_VALUE);
+		try (Launch launch = new Launch()) {
+			AudioLibrary library = launch.open(provider, errors);
+			library.refresh().get(WAIT_MILLIS, TimeUnit.MILLISECONDS);
+
+			Assert.assertEquals("the re-analysis must not fail: " + errors, 0, errors.size());
+			Assert.assertEquals("each file is encoded once; the pre-edit record is not resynthesised",
+					count, provider.started.get());
+
+			int editedFrames = (int) (2 * SAMPLE_DURATION * SAMPLE_RATE);
+			Assert.assertEquals("the edited audio is encoded exactly once: " + provider.clipFrames,
+					1, Collections.frequency(provider.clipFrames, editedFrames));
+
+			Assert.assertTrue("the edited sample completes under its new identifier",
+					library.getAllIdentifiers().contains(newId));
+			Assert.assertFalse("the pre-edit record is not part of the complete set",
+					library.getAllIdentifiers().contains(oldId));
+			Assert.assertEquals("only the files now in the library are complete",
+					count, library.allDetails().count());
+			Assert.assertTrue("no complete item carries the pre-edit identifier",
+					library.allDetails().noneMatch(d -> oldId.equals(d.getIdentifier())));
 		}
 	}
 
