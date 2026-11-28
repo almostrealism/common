@@ -226,6 +226,34 @@ public class BatchedPatternRendererTest extends TestSuiteBase implements Tempora
 		}
 	}
 
+	/**
+	 * Destroying a renderer releases the bound input buffers of both dispatches. The renderer
+	 * cache shares renderers JVM-wide, and the compiled-kernel caches keep each dispatch and
+	 * its buffers reachable after the renderer is dropped, so these buffers are released only
+	 * if the renderer releases them.
+	 */
+	@Test(timeout = 120000)
+	public void destroyReleasesBoundBuffers() {
+		BatchedPatternRenderer renderer = new BatchedPatternRenderer(
+				N, SOURCE_LENGTH, TARGET_LENGTH, SAMPLE_RATE, FILTER_ORDER);
+		renderer.sssDispatch(LAYERS);
+		renderer.percDispatch(LAYERS, true);
+
+		PackedCollection[] sssSources = renderer.getSssSources();
+		PackedCollection[] percSources = renderer.getPercSources();
+		PackedCollection sssScalars = renderer.getSssScalars();
+		PackedCollection percScalars = renderer.getPercScalars();
+
+		renderer.destroy();
+
+		for (int l = 0; l < LAYERS; l++) {
+			Assert.assertTrue("sss source " + l + " must be released", sssSources[l].isDestroyed());
+			Assert.assertTrue("perc source " + l + " must be released", percSources[l].isDestroyed());
+		}
+		Assert.assertTrue("the sss scalar store must be released", sssScalars.isDestroyed());
+		Assert.assertTrue("the perc scalar store must be released", percScalars.isDestroyed());
+	}
+
 	/** Asserts that every element of every buffer is exactly zero. */
 	private void assertAllZero(String label, PackedCollection[] buffers) {
 		for (int b = 0; b < buffers.length; b++) {

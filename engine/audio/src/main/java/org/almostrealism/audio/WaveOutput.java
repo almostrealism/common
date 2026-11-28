@@ -149,6 +149,13 @@ public class WaveOutput implements Lifecycle, Destroyable, CodeFeatures {
 	/** Per-channel writer receptors that accept push data from the processing pipeline. */
 	private List<Writer> channels;
 
+	/**
+	 * The buffer this output allocated for itself, released by {@link #destroy()}; {@code null}
+	 * when the caller supplied the buffer. The channel producers in {@link #data} refer to views
+	 * of it, and destroying a view does not release the memory it delegates to.
+	 */
+	private WaveData ownedData;
+
 	/** Creates a WaveOutput with no destination file (in-memory capture, default timeline size). */
 	public WaveOutput() { this((File) null); }
 
@@ -215,6 +222,7 @@ public class WaveOutput implements Lifecycle, Destroyable, CodeFeatures {
 
 	/**
 	 * Creates a WaveOutput with full control over channel count, buffer size, and sample rate.
+	 * The output allocates its own buffer and releases it when it is {@link #destroy() destroyed}.
 	 *
 	 * @param f          supplier producing the destination WAV file
 	 * @param bits       bit depth for encoding
@@ -226,7 +234,7 @@ public class WaveOutput implements Lifecycle, Destroyable, CodeFeatures {
 		this(f, bits, new WaveData(
 				stereo ? 2 : 1,
 				maxFrames <= 0 ? defaultTimelineFrames : maxFrames,
-				Math.toIntExact(sampleRate)));
+				Math.toIntExact(sampleRate)), true);
 	}
 
 	/**
@@ -252,14 +260,28 @@ public class WaveOutput implements Lifecycle, Destroyable, CodeFeatures {
 	 *
 	 * @param f    supplier producing the destination WAV file, or null for in-memory capture
 	 * @param bits bit depth for encoding
-	 * @param data WaveData providing the underlying channel buffers and sample rate
+	 * @param data WaveData providing the underlying channel buffers and sample rate; it remains the
+	 *             caller's, and is not released when this output is destroyed
 	 */
 	public WaveOutput(Supplier<File> f, int bits, WaveData data) {
+		this(f, bits, data, false);
+	}
+
+	/**
+	 * Creates a WaveOutput backed by a WaveData object, recording whether this output owns it.
+	 *
+	 * @param f     supplier producing the destination WAV file, or null for in-memory capture
+	 * @param bits  bit depth for encoding
+	 * @param data  WaveData providing the underlying channel buffers and sample rate
+	 * @param owned whether {@link #destroy()} releases {@code data}
+	 */
+	private WaveOutput(Supplier<File> f, int bits, WaveData data, boolean owned) {
 		this(f, bits, data.getSampleRate(),
 				data.getChannelCount() > 1 ? List.of(
 						CollectionFeatures.getInstance().p(data.getChannelData(0)),
 						CollectionFeatures.getInstance().p(data.getChannelData(1))) :
 				List.of(CollectionFeatures.getInstance().p(data.getChannelData(0))));
+		this.ownedData = owned ? data : null;
 	}
 
 	/**
@@ -472,6 +494,10 @@ public class WaveOutput implements Lifecycle, Destroyable, CodeFeatures {
 		channels.forEach(Writer::reset);
 	}
 
+	/**
+	 * Releases the channel writers and, when this output allocated its own buffer, that buffer.
+	 * A buffer supplied by the caller is left to the caller.
+	 */
 	@Override
 	public void destroy() {
 		if (channels != null) {
@@ -482,6 +508,11 @@ public class WaveOutput implements Lifecycle, Destroyable, CodeFeatures {
 		if (data != null) {
 			data.forEach(CollectionProducer::destroy);
 			data = null;
+		}
+
+		if (ownedData != null) {
+			ownedData.destroy();
+			ownedData = null;
 		}
 	}
 

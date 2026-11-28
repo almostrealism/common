@@ -160,18 +160,21 @@ public final class BatchedPatternLayerRenderer implements PatternFeatures, Destr
 	 * resident for the whole process, a baseline that grows with the diversity of the
 	 * work rather than with what is live.</p>
 	 *
-	 * <p>Dropping the map references lets the garbage collector reclaim the native buffers
-	 * backing each renderer (a {@link PackedCollection}'s native memory is released once it
-	 * is unreachable). A shape rendered again afterward is recompiled lazily on first use.
-	 * Only the map entries are removed; a dispatch already holding a renderer reference
-	 * keeps it alive for the duration of that dispatch, so clearing concurrently with an
-	 * in-flight render is safe — it affects only subsequent lookups.</p>
+	 * <p>Each renderer removed is {@link BatchedPatternRenderer#destroy() destroyed}, releasing
+	 * its bound input buffers. Dropping the map reference alone would leave them to the
+	 * garbage collector, which never reclaims them: the compiled-kernel caches keep each
+	 * renderer's dispatches, and through them its buffers, reachable. A shape rendered again
+	 * afterward is recompiled lazily on first use. A renderer's destroy waits for a dispatch
+	 * already in progress on it, since both synchronize on the renderer.</p>
 	 *
 	 * <p>Invoked when the last {@link org.almostrealism.studio.AudioScene} is destroyed,
 	 * the point at which no render can be in progress, so no useful sharing is lost.</p>
 	 */
 	public static void clearCompiledRenderers() {
-		rendererCache.clear();
+		for (List<Integer> shape : List.copyOf(rendererCache.keySet())) {
+			BatchedPatternRenderer renderer = rendererCache.remove(shape);
+			if (renderer != null) renderer.destroy();
+		}
 	}
 
 	/**

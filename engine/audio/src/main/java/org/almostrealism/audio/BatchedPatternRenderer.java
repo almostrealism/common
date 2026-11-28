@@ -16,6 +16,7 @@
 
 package org.almostrealism.audio;
 
+import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.audio.filter.MultiOrderFilterEnvelopeProcessor;
@@ -25,6 +26,8 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.AggregatedProducerComputation;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.time.TemporalFeatures;
+
+import java.util.Arrays;
 
 /**
  * Batched pattern renderer implementing the four-kernel chain used by
@@ -58,7 +61,7 @@ import org.almostrealism.time.TemporalFeatures;
  *
  * @see org.almostrealism.audio.filter.AudioProcessingUtils
  */
-public class BatchedPatternRenderer implements CollectionFeatures, TemporalFeatures {
+public class BatchedPatternRenderer implements CollectionFeatures, TemporalFeatures, Destroyable {
 
 	/** Number of notes processed per batch. */
 	private final int n;
@@ -95,6 +98,35 @@ public class BatchedPatternRenderer implements CollectionFeatures, TemporalFeatu
 		this.sampleRate = sampleRate;
 		this.filterOrder = filterOrder;
 		this.padHalf = filterOrder / 2;
+	}
+
+	/**
+	 * Releases the bound input buffers of both dispatches and forgets the compiled dispatches
+	 * that read them. The per-layer pitch-ratio, envelope and offset buffers are views of the
+	 * two scalar stores, so releasing the stores and the per-layer source buffers releases
+	 * everything this renderer allocated.
+	 *
+	 * <p>The buffers are released here rather than left to the garbage collector because the
+	 * compiled-kernel caches keep the dispatches, and through them these buffers, reachable
+	 * after the renderer is dropped. Synchronizing on this renderer, as every dispatch does,
+	 * means a dispatch in progress finishes before its buffers are released. A renderer is not
+	 * used again after it is destroyed.</p>
+	 */
+	@Override
+	public synchronized void destroy() {
+		if (sssSources != null) Destroyable.destroy(Arrays.asList(sssSources));
+		if (percSources != null) Destroyable.destroy(Arrays.asList(percSources));
+		Destroyable.destroy(sssScalars);
+		Destroyable.destroy(percScalars);
+		sssSources = null;
+		sssScalars = null;
+		percSources = null;
+		percScalars = null;
+		sssDispatch = null;
+		sssSourcesClear = null;
+		percDispatchDry = null;
+		percDispatchWet = null;
+		percSourcesClear = null;
 	}
 
 	/** Compile-once fully-fused SSS dispatch, reused across ticks; built on first {@link #sssDispatch}. */
