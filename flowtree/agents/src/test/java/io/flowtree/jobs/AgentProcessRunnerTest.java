@@ -129,4 +129,31 @@ public class AgentProcessRunnerTest extends TestSuiteBase {
         assertTrue("the injected turn written to stdin is echoed to stdout: " + result.output(),
                 result.output().contains("injected-turn"));
     }
+
+    /**
+     * A stdin consumer that fails after launch — modelling a broken pipe
+     * surfaced as an {@link UncheckedIOException} — must not escape
+     * {@code runAttempt} nor leave the started child running. The failure is
+     * caught, the child is torn down, and a {@code -1} result is returned
+     * rather than the exception propagating and leaking the process. The long
+     * {@code sleep} stands in for an agent that would otherwise outlive the
+     * failed setup; because the run returns inside the 5s timeout, the child
+     * was destroyed rather than left to run its full duration.
+     */
+    @Test(timeout = 5000)
+    public void stdinConsumerFailureTearsDownTheChildAndReportsFailure() {
+        ProcessBuilder pb = new ProcessBuilder("sleep", "30");
+        AgentProcessRunner.applyRequestToProcessBuilder(pb,
+                AgentRunRequest.builder().prompt("x").deliverMailboxToSession(true).build(),
+                true);
+
+        AgentProcessRunner.Result result = AgentProcessRunner.runAttempt(
+                pb, false, 60_000L, "stream-stdin-failure-test", null, null,
+                stdin -> { throw new UncheckedIOException(new IOException("broken pipe")); },
+                SILENT);
+
+        assertEquals("a failed stdin setup reports -1 rather than propagating",
+                -1, result.exitCode());
+        assertTrue("a torn-down child produced no output", result.output().isBlank());
+    }
 }

@@ -257,14 +257,22 @@ public final class AgentProcessRunner {
             long pid = process.pid();
             logger.log("Process started (PID: " + pid + ")");
 
-            if (stdinConsumer != null) {
-                stdinConsumer.accept(process.getOutputStream());
-            }
-
             Runnable killAction = () -> {
                 process.descendants().forEach(ProcessHandle::destroyForcibly);
                 process.destroyForcibly();
             };
+
+            if (stdinConsumer != null) {
+                try {
+                    stdinConsumer.accept(process.getOutputStream());
+                } catch (RuntimeException e) {
+                    killAction.run();
+                    logger.warn("Streaming stdin setup failed; destroyed child process (PID "
+                            + pid + "): " + e.getMessage());
+                    return new Result(-1, out.toString(), killed.get(), loopKilled.get(),
+                            (System.nanoTime() - startNanos) / 1_000_000L);
+                }
+            }
 
             AtomicLong lastOutputAt = new AtomicLong(System.currentTimeMillis());
             monitor = new AgentInactivityMonitor(

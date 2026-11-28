@@ -243,6 +243,13 @@ public final class AgentRunRequest {
      * runner that cannot stream input leaves the session on the existing pull
      * model regardless of this flag.</p>
      *
+     * <p>Setting it today opens the stream-json launch path and the stdin pipe
+     * but does not yet inject any messages: the mailbox-to-stdin pump is a
+     * deferred stage, so a flagged session currently receives EOF on stdin
+     * immediately and terminates as a non-streaming session would. The flag is
+     * the stable request surface the pump will honour once it lands; until
+     * then it carries the plumbing, not mid-session delivery.</p>
+     *
      * @return {@code true} to request mid-session mailbox delivery over stdin
      */
     public boolean isDeliverMailboxToSession() { return deliverMailboxToSession; }
