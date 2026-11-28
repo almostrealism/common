@@ -70,6 +70,15 @@ class TestSystemPrompts(unittest.TestCase):
                        "[D1]", "BASIS:", "CONFLICTS:"):
             self.assertIn(phrase, SYSTEM_PROMPT)
 
+    def test_consult_prompt_defines_the_concept_map_tier(self):
+        # The evidence list leads with CONCEPT MAP items cited as [M#]; the
+        # contract must name both or the model treats them as unknown.
+        from consult_evidence import KIND_CONCEPT, EvidenceItem
+        label = EvidenceItem(id="M1", kind=KIND_CONCEPT, text="t").tier_label()
+        self.assertTrue(label.startswith("CONCEPT MAP"))
+        self.assertIn("CONCEPT MAP item (tier M)", SYSTEM_PROMPT)
+        self.assertIn("[M1]", SYSTEM_PROMPT)
+
     def test_reformulation_does_not_use_the_answering_contract(self):
         # The BASIS/CONFLICTS trailer would otherwise leak into stored notes.
         backend = _Recorder("rewritten")

@@ -18,6 +18,7 @@ from typing import Optional
 from urllib.parse import quote
 
 import github_api
+import github_check_status
 import server
 from server import mcp
 
@@ -971,9 +972,11 @@ def github_pr_check_status(
     and check runs for that exact commit. This answers whether the CI
     pipeline has run for the latest commit and whether it passed.
 
-    The ``pipeline_current`` flag in the response indicates whether at
-    least one workflow run targets the PR's HEAD commit SHA — if False,
-    the run results shown are for an older commit.
+    The ``pipeline_current`` flag in the response indicates whether a
+    readable signal targets the PR's HEAD commit SHA — a workflow run
+    matching that SHA, or, on the degraded path, a combined commit status
+    (which is always queried for the HEAD commit). If False, the run
+    results shown are for an older commit.
 
     Run-level status can lag per-job state while a pipeline is executing;
     for the authoritative per-job breakdown of any run listed here, use
@@ -996,6 +999,15 @@ def github_pr_check_status(
         Dictionary with pr_number, head_sha, pipeline_current flag,
         overall_status, workflow_runs list, and check_runs list. Failed
         check runs include html_url and details_url for log access.
+
+        A sub-request that fails (for example, a token with Actions:read but
+        not Checks:read on a repository, where the check-runs endpoint 403s)
+        does not fail the whole call: the result still answers ok=True with
+        the signals that were readable, carries ``partial: true`` and an
+        ``errors`` dict naming the failed request(s), and ``overall_status``
+        is derived from the workflow runs and, where available, the combined
+        commit status. ``overall_status`` is ``unknown`` only when no signal
+        at all could be read.
     """
     server._require_scope("github")
     if org and repo:
@@ -1048,6 +1060,11 @@ def github_pr_check_status(
     if not head_sha:
         return {"ok": False, "error": "Could not determine PR head commit SHA"}
 
+    # Sub-request failures are collected here rather than failing the whole
+    # call: a token may be able to read one endpoint but not another on the
+    # same repository, and a partial answer is more useful than none.
+    partial_errors: dict = {}
+
     # Fetch workflow runs for the head SHA
     runs_result = server._github_request(
         "GET",
@@ -1055,7 +1072,8 @@ def github_pr_check_status(
     )
 
     if isinstance(runs_result, dict) and runs_result.get("ok") is False:
-        return runs_result
+        partial_errors["workflow_runs_error"] = runs_result
+        runs_result = {}
 
     workflow_runs = []
     pipeline_current = False
@@ -1082,11 +1100,12 @@ def github_pr_check_status(
     )
 
     if isinstance(check_result, dict) and check_result.get("ok") is False:
-        return {
-            "ok": False,
-            "error": "Failed to fetch check runs",
-            "check_runs_error": check_result,
-        }
+        # A fine-grained PAT may have Actions:read but not Checks:read on a
+        # given repository, so check-runs 403s while workflow runs succeed.
+        # Record the error and fall back to workflow runs / commit status
+        # below rather than discarding the data already fetched.
+        partial_errors["check_runs_error"] = check_result
+        check_result = {}
 
     check_runs = []
     if isinstance(check_result, dict):
@@ -1110,29 +1129,27 @@ def github_pr_check_status(
                 check_info["details_url"] = check.get("details_url", "")
             check_runs.append(check_info)
 
-    # Derive overall status
-    if not workflow_runs and not check_runs:
-        overall = "no_runs"
-    elif workflow_runs and not pipeline_current:
-        overall = "stale"
-    else:
-        # An in-progress check (status != "completed") means CI is still
-        # running even if other checks have already concluded — report
-        # "pending" rather than letting completed conclusions decide.
-        has_incomplete_checks = any(
-            r.get("status") != "completed" for r in check_runs
+    # When the primary signals could not be read, the combined commit status
+    # is a second, independently-permissioned signal (Commit statuses: read),
+    # so try it as a fallback rather than returning a status derived from
+    # nothing. This covers a forbidden check-runs request and equally a
+    # forbidden workflow-runs request that left no check runs to fall back on.
+    commit_status_state = ""
+    if partial_errors and not check_runs:
+        status_result = server._github_request(
+            "GET",
+            f"/repos/{owner}/{repo}/commits/{head_sha}/status",
         )
-        conclusions = [r["conclusion"] for r in check_runs if r.get("conclusion")]
-        if has_incomplete_checks:
-            overall = "pending"
-        elif not conclusions:
-            overall = "pending"
-        elif any(c == "failure" for c in conclusions):
-            overall = "failure"
-        elif all(c in ("success", "skipped", "neutral") for c in conclusions):
-            overall = "success"
-        else:
-            overall = "mixed"
+        if isinstance(status_result, dict) and status_result.get("ok") is False:
+            partial_errors["commit_status_error"] = status_result
+        elif isinstance(status_result, dict) and status_result.get("total_count", 0):
+            commit_status_state = status_result.get("state", "")
+            pipeline_current = True
+
+    overall = github_check_status.overall_status(
+        workflow_runs, check_runs, commit_status_state, pipeline_current,
+        bool(partial_errors),
+    )
 
     next_steps: list = []
     if overall == "no_runs":
@@ -1154,8 +1171,13 @@ def github_pr_check_status(
         next_steps = ["All checks passed; the PR is ready to review or merge"]
     elif overall == "pending":
         next_steps = ["CI is still running; check back later"]
+    elif overall == "unknown":
+        next_steps = [
+            "CI status could not be read; see 'errors' for the failed "
+            "request(s) and confirm the token's permissions on this repository",
+        ]
 
-    return {
+    result = {
         "ok": True,
         "pr_number": effective_pr,
         "repo": f"{owner}/{repo}",
@@ -1167,6 +1189,13 @@ def github_pr_check_status(
         "check_runs": check_runs,
         "next_steps": next_steps,
     }
+    # A partial result still answers ok=True (the workflow runs and/or commit
+    # status were read); the failed sub-requests are surfaced under 'errors'
+    # so the caller sees the status is incomplete and why.
+    if partial_errors:
+        result["partial"] = True
+        result["errors"] = partial_errors
+    return result
 
 @mcp.tool()
 def github_pr_labels(

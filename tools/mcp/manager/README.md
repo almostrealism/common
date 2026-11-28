@@ -52,6 +52,7 @@ is a thin orchestration facade that:
 | `workstream_update_config` | write | Update workstream settings |
 | `phase_config_explain` | read | Explain per-phase runner/model/effort/provider resolution and dry-run validate a submission |
 | `workspace_update_config` | write | Update workspace-level config (name, default channel, runner defaults) |
+| `workspace_get_config` | read | Read a workspace's non-credential config (name, slackTeamId, default channel, defaultPhaseConfig, phaseConfigs); never returns credentials |
 | `send_message` | write | Send a Slack message |
 | `mailbox_peek` | read | Show a workstream's conversation without waiting or consuming it |
 | `job_report_blocked` | write | Report that the current job cannot proceed; ends it `BLOCKED` |
@@ -375,8 +376,9 @@ before the submission ever reaches the controller:
   selector at all, more than those caps, a Surefire wildcard (`*`, `?`), the `+`
   method-list separator, `!` negation, a `%regex[...]` pattern, or an unresolvable
   `$VAR` is rejected — references `AR_TEST_GROUP`/`AR_TEST_GROUPS`, or runs pytest
-  against a directory, a whole file, or more than one node id instead of exactly
-  one explicit node id. A `post_completion_command` runs unattended, so it is held
+  with no path, against a directory, or with more than 5 test files or 40 node ids
+  instead of a bounded selection of explicit `.py` files or `file.py::test_name`
+  node ids. A `post_completion_command` runs unattended, so it is held
   to one stricter rule on top of that: every `-Dtest` entry must name a
   `Class#method`, not a bare class.
 - **`post_completion_timeout_seconds`** — rejected above 2400 (40 minutes).
@@ -720,6 +722,7 @@ has an ID the model cites and a tier that says what it may supply:
 
 | ID | Kind | Tier | May supply |
 |----|------|------|------------|
+| `M1` | curated concept-map entry (`docs/internals/consult-concept-map.md`), matched on the question, keywords and context; presented first | M | present fact: the type that already represents the concept and how to extend it; carried into follow-ups with its concept name and canonical types |
 | `D1` | documentation chunk | A | present fact for the snapshot |
 | `I1` | snapshot-index fact (a script's header or exit codes, a literal constant) | A | present fact for the snapshot |
 | `N1` | note, current: on the target branch or merged into it, or on the caller's own branch, within 45 days | B | a fact the documentation lacks; the answer then opens with a fixed sentence saying it rests on notes |

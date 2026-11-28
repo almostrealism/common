@@ -413,6 +413,15 @@ class SnapshotIndex:
         """Whether a type name is declared in, or imported by, the snapshot."""
         return name in self._types or name in self._external
 
+    def declares_type(self, name: str) -> bool:
+        """Whether a type name is *declared* in the snapshot.
+
+        Unlike :meth:`has_type`, a name that is only imported by a source file
+        (an ``external_types`` entry) does not count: this reports whether the
+        source tree itself declares the type.
+        """
+        return name in self._types
+
     def type_paths(self, name: str) -> list[str]:
         """Files declaring the type ``name``."""
         return list(self._types.get(name, []))

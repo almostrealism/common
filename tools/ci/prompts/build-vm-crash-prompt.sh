@@ -77,9 +77,11 @@ for class in $CRASHED_CLASSES; do
 done
 
 # ── Build MCP test runner commands ─────────────────────────────────
-# One start_test_run invocation per crashed class -- never several classes
-# grouped into one test_classes list, the same one-test-per-invocation rule
-# applied everywhere else this rule covers (see build-resolve-prompt.sh).
+# One start_test_run invocation per crashed class, each naming a single
+# Class#method -- never several classes grouped into one test_classes list.
+# This is deliberately tighter than the general test-execution limit (at most
+# 5 test classes and 40 named methods per invocation): a crash is isolated one
+# candidate method at a time so JMX monitoring can attribute the fault to it.
 # jmx_monitoring does NOT exempt the Class#method requirement: it is a
 # caller-controlled flag with no trust boundary of its own, so a bare class
 # name is rejected even with jmx_monitoring:true. The crashed test class is

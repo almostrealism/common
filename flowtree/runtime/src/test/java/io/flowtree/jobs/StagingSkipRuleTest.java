@@ -150,6 +150,85 @@ public class StagingSkipRuleTest extends TestSuiteBase {
     }
 
     /**
+     * When every skipped file was rejected by a guardrail the job cannot bypass
+     * (an excluded pattern, a binary file), the violation is environment-determined
+     * — retrying cannot change the guardrail — and the reason names the files.
+     */
+    @Test(timeout = 30000)
+    public void classifyEnvironmentDeterminedWhenEverySkipIsUnbypassable() {
+        StagingResult preview = new StagingResult(Collections.emptyList(), Arrays.asList(
+                "generated/data.bin (binary file)",
+                "build/output.log (excluded pattern)"));
+        StubJob job = new StubJob(preview);
+        ViolationClassification classification = new StagingSkipRule().classifyViolation(job);
+        assertTrue("A tree of only unbypassable skips is environment-determined",
+                classification.isEnvironmentDetermined());
+        assertTrue("The reason must name the rejected files: " + classification.getReason(),
+                classification.getReason().contains("data.bin")
+                        && classification.getReason().contains("output.log"));
+    }
+
+    /**
+     * A protected test-file skip has a documented workaround (edit a method the
+     * branch introduced, or add a new one), so the violation stays agent-fixable
+     * even when it travels alongside an unbypassable skip.
+     */
+    @Test(timeout = 30000)
+    public void classifyAgentFixableWhenAProtectedTestFileIsSkipped() {
+        StagingResult preview = new StagingResult(Collections.emptyList(), Arrays.asList(
+                "generated/data.bin (binary file)",
+                "src/test/java/FooTest.java (protected - existing test method(s) changed: testFoo)"));
+        StubJob job = new StubJob(preview);
+        ViolationClassification classification = new StagingSkipRule().classifyViolation(job);
+        assertFalse("A skip the agent can work around keeps the violation agent-fixable",
+                classification.isEnvironmentDetermined());
+    }
+
+    /** With nothing reportable to act on, the classification defaults to agent-fixable. */
+    @Test(timeout = 30000)
+    public void classifyAgentFixableWhenNothingReportableIsSkipped() {
+        StubJob job = new StubJob(withSkip("commit.txt (excluded pattern)"));
+        assertFalse(new StagingSkipRule().classifyViolation(job).isEnvironmentDetermined());
+    }
+
+    /**
+     * An unbypassable marker is matched only against the trailing reason, never
+     * against the path: a path that literally contains {@code (binary file)}
+     * but whose actual reason is actionable (a new type the audit refused) must
+     * stay agent-fixable, not be retired as environment-determined.
+     */
+    @Test(timeout = 30000)
+    public void classifyAgentFixableWhenMarkerAppearsOnlyInsideThePath() {
+        StubJob job = new StubJob(withSkip(
+                "docs/(binary file)/Notes.java (unresolved new type: Notes)"));
+        assertFalse("A marker inside the path must not be read as the skip reason",
+                new StagingSkipRule().classifyViolation(job).isEnvironmentDetermined());
+    }
+
+    /**
+     * The reason is parsed correctly even when it contains its own parentheses
+     * (as a protected test-method skip does), so such a skip stays agent-fixable
+     * rather than being misread by a naive match on the last parenthesis.
+     */
+    @Test(timeout = 30000)
+    public void classifyAgentFixableWhenReasonContainsParentheses() {
+        StubJob job = new StubJob(withSkip(
+                "src/test/java/FooTest.java (protected - existing test method(s) changed: testFoo)"));
+        assertFalse(new StagingSkipRule().classifyViolation(job).isEnvironmentDetermined());
+    }
+
+    /**
+     * A size-limit skip ({@code exceeds <size>}) is unbypassable even when the
+     * path contains parentheses, so a tree of only such skips is
+     * environment-determined.
+     */
+    @Test(timeout = 30000)
+    public void classifyEnvironmentDeterminedForExceedsReasonWithParenthesesInPath() {
+        StubJob job = new StubJob(withSkip("assets/(large)/model.bin (exceeds 5 MB)"));
+        assertTrue(new StagingSkipRule().classifyViolation(job).isEnvironmentDetermined());
+    }
+
+    /**
      * End-to-end through {@link CodingAgentJob#runEnforcementRules()}: a
      * skip during the first preview must trigger a correction session that
      * names the skipped file, and once the "agent" (the stub) resolves it,
