@@ -1456,7 +1456,7 @@ public class AudioLibrary implements ConsoleFeatures {
 			String modelId = currentModelId();
 			if (store != null) store.setEmbeddingModel(modelId);
 			List<String> stale = completeIdentifiers.revalidate(modelId, id -> isComplete(resolveDetails(id)));
-			if (!stale.isEmpty()) log(stale.size() + " item(s) have no " + modelId + " features and will be recomputed");
+			if (!stale.isEmpty()) log(stale.size() + " item(s) have no " + modelId + " features; recomputing those still backed by a file or marked persistent");
 
 			CompletableFuture<Void> future = new CompletableFuture<>();
 
