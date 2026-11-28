@@ -63,6 +63,15 @@ public class NodeConfig {
 	/** The {@code kind} suffix that marks a typed entry's kind value. */
 	private static final String KIND_SUFFIX = ".kind";
 
+	/** The {@code image} suffix that names a container Node's worker image. */
+	private static final String IMAGE_SUFFIX = ".image";
+
+	/** The {@code cpus} suffix that bounds a container Node's CPU allotment. */
+	private static final String CPUS_SUFFIX = ".cpus";
+
+	/** The {@code memory} suffix that bounds a container Node's memory allotment. */
+	private static final String MEMORY_SUFFIX = ".memory";
+
 	/** The infix separating a node index from its per-node label key. */
 	private static final String LABELS_INFIX = ".labels.";
 
@@ -84,16 +93,41 @@ public class NodeConfig {
 	private final Map<String, String> labels;
 
 	/**
+	 * The container image a container Node runs its worker from, or {@code null}
+	 * when this entry describes a host-resident kind that needs no image.
+	 */
+	private final String image;
+
+	/**
+	 * The CPU allotment passed to the container runtime (the value of a
+	 * {@code docker run --cpus} flag), or {@code null} to leave it unbounded.
+	 */
+	private final String cpus;
+
+	/**
+	 * The memory allotment passed to the container runtime (the value of a
+	 * {@code docker run --memory} flag), or {@code null} to leave it unbounded.
+	 */
+	private final String memory;
+
+	/**
 	 * Constructs a configuration entry for a single Node.
 	 *
 	 * @param index   The Node id / configuration index; must be non-negative.
 	 * @param kind    The kind of Node; must not be {@code null}.
 	 * @param labels  The capability labels to apply; copied defensively.
+	 * @param image   The container image for a container kind, or {@code null}.
+	 * @param cpus    The CPU allotment for a container kind, or {@code null}.
+	 * @param memory  The memory allotment for a container kind, or {@code null}.
 	 */
-	NodeConfig(int index, NodeKind kind, Map<String, String> labels) {
+	NodeConfig(int index, NodeKind kind, Map<String, String> labels,
+			String image, String cpus, String memory) {
 		this.index = index;
 		this.kind = kind;
 		this.labels = new LinkedHashMap<>(labels);
+		this.image = image;
+		this.cpus = cpus;
+		this.memory = memory;
 	}
 
 	/**
@@ -112,6 +146,34 @@ public class NodeConfig {
 	 */
 	public NodeKind kind() {
 		return kind;
+	}
+
+	/**
+	 * Returns the container image a container Node runs its worker from.
+	 *
+	 * @return  the configured image, or {@code null} when none was configured
+	 *          (always {@code null} for a host-resident kind).
+	 */
+	public String image() {
+		return image;
+	}
+
+	/**
+	 * Returns the CPU allotment to pass to the container runtime.
+	 *
+	 * @return  the configured CPU limit, or {@code null} to leave it unbounded.
+	 */
+	public String cpus() {
+		return cpus;
+	}
+
+	/**
+	 * Returns the memory allotment to pass to the container runtime.
+	 *
+	 * @return  the configured memory limit, or {@code null} to leave it unbounded.
+	 */
+	public String memory() {
+		return memory;
 	}
 
 	/**
@@ -174,22 +236,25 @@ public class NodeConfig {
 	 *          entries, so a legacy configuration keeps falling back unchanged.
 	 * @throws IllegalArgumentException  If a kind value is unknown, an index is not a
 	 *         non-negative integer, the indices are not a contiguous range from zero,
-	 *         or a {@code nodes.<i>.labels.*} entry has no matching
-	 *         {@code nodes.<i>.kind} (a mislabelled Node is reported rather than
-	 *         silently dropped).
+	 *         or a {@code nodes.<i>.labels.*} / {@code nodes.<i>.image|cpus|memory}
+	 *         entry has no matching {@code nodes.<i>.kind} (a mislabelled or
+	 *         misconfigured Node is reported rather than silently dropped).
 	 */
 	public static List<NodeConfig> parse(Properties p) {
 		Map<Integer, NodeKind> kinds = new TreeMap<>();
 		Map<Integer, Map<String, String>> labelsByIndex = new TreeMap<>();
+		Map<Integer, String> imageByIndex = new TreeMap<>();
+		Map<Integer, String> cpusByIndex = new TreeMap<>();
+		Map<Integer, String> memoryByIndex = new TreeMap<>();
 
 		for (Object keyObj : p.keySet()) {
 			String key = (String) keyObj;
 			if (!key.startsWith(NODE_PREFIX)) continue;
 			if (key.startsWith(GROUP_LABEL_PREFIX)) continue;
 
-			// A per-node label may use any key, including "kind", so the .labels.
-			// infix is matched before the .kind suffix: nodes.<i>.labels.kind is the
-			// label "kind" on node <i>, not the kind of node <i>.labels.
+			// A per-node label may use any key, including "kind" or "image", so the
+			// .labels. infix is matched before every scalar suffix: nodes.<i>.labels.kind
+			// is the label "kind" on node <i>, not the kind of node <i>.labels.
 			int infix = key.indexOf(LABELS_INFIX, NODE_PREFIX.length());
 			if (infix >= 0) {
 				int index = parseIndex(key.substring(NODE_PREFIX.length(), infix), key);
@@ -200,26 +265,33 @@ public class NodeConfig {
 				int index = parseIndex(key.substring(NODE_PREFIX.length(),
 						key.length() - KIND_SUFFIX.length()), key);
 				kinds.put(index, NodeKind.forKey(p.getProperty(key)));
+			} else if (key.endsWith(IMAGE_SUFFIX)) {
+				imageByIndex.put(parseIndex(key.substring(NODE_PREFIX.length(),
+						key.length() - IMAGE_SUFFIX.length()), key), p.getProperty(key));
+			} else if (key.endsWith(CPUS_SUFFIX)) {
+				cpusByIndex.put(parseIndex(key.substring(NODE_PREFIX.length(),
+						key.length() - CPUS_SUFFIX.length()), key), p.getProperty(key));
+			} else if (key.endsWith(MEMORY_SUFFIX)) {
+				memoryByIndex.put(parseIndex(key.substring(NODE_PREFIX.length(),
+						key.length() - MEMORY_SUFFIX.length()), key), p.getProperty(key));
 			}
 		}
 
 		if (kinds.isEmpty()) {
-			if (!labelsByIndex.isEmpty()) {
-				throw new IllegalArgumentException("Typed node labels were configured for "
-						+ "indices " + labelsByIndex.keySet() + " but no nodes.<i>.kind entry "
-						+ "is present; add the matching kind or move the labels to the legacy "
-						+ "nodes.labels.* namespace");
+			if (!labelsByIndex.isEmpty() || !imageByIndex.isEmpty()
+					|| !cpusByIndex.isEmpty() || !memoryByIndex.isEmpty()) {
+				throw new IllegalArgumentException("Typed node attributes were configured "
+						+ "but no nodes.<i>.kind entry is present; add the matching kind or "
+						+ "move the labels to the legacy nodes.labels.* namespace");
 			}
 
 			return new ArrayList<>();
 		}
 
-		for (Integer labelIndex : labelsByIndex.keySet()) {
-			if (!kinds.containsKey(labelIndex)) {
-				throw new IllegalArgumentException("Typed node labels for index " + labelIndex
-						+ " have no matching nodes." + labelIndex + ".kind entry");
-			}
-		}
+		requireMatchingKind(kinds, labelsByIndex.keySet());
+		requireMatchingKind(kinds, imageByIndex.keySet());
+		requireMatchingKind(kinds, cpusByIndex.keySet());
+		requireMatchingKind(kinds, memoryByIndex.keySet());
 
 		List<NodeConfig> result = new ArrayList<>(kinds.size());
 		int expected = 0;
@@ -233,10 +305,31 @@ public class NodeConfig {
 
 			Map<String, String> labels = labelsByIndex.getOrDefault(entry.getKey(),
 					new LinkedHashMap<>());
-			result.add(new NodeConfig(entry.getKey(), entry.getValue(), labels));
+			result.add(new NodeConfig(entry.getKey(), entry.getValue(), labels,
+					imageByIndex.get(entry.getKey()), cpusByIndex.get(entry.getKey()),
+					memoryByIndex.get(entry.getKey())));
 		}
 
 		return result;
+	}
+
+	/**
+	 * Verifies that every index carrying a typed attribute (a label or a resource
+	 * override) also declares a {@code nodes.<i>.kind}, so a misconfigured Node is
+	 * reported rather than silently dropped.
+	 *
+	 * @param kinds            the parsed kinds, keyed by index.
+	 * @param attributeIndices the indices that carry an attribute.
+	 * @throws IllegalArgumentException  If an attribute index has no matching kind.
+	 */
+	private static void requireMatchingKind(Map<Integer, NodeKind> kinds,
+			Iterable<Integer> attributeIndices) {
+		for (Integer index : attributeIndices) {
+			if (!kinds.containsKey(index)) {
+				throw new IllegalArgumentException("Typed node attributes for index " + index
+						+ " have no matching nodes." + index + ".kind entry");
+			}
+		}
 	}
 
 	/**

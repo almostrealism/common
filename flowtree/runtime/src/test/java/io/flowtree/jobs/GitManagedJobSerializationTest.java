@@ -16,6 +16,7 @@
 
 package io.flowtree.jobs;
 
+import io.flowtree.job.Job;
 import io.flowtree.job.JobFactory;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
@@ -324,6 +325,36 @@ public class GitManagedJobSerializationTest extends TestSuiteBase {
 		assertTrue("enforceChanges", restored.isEnforceChanges());
 		assertEquals(original.getDeduplicationMode(), restored.getDeduplicationMode());
 		assertTrue("enforceMavenDependencies", restored.isEnforceMavenDependencies());
+	}
+
+	/**
+	 * Verifies the exact boundary a {@code DockerNode} and its
+	 * {@link io.flowtree.jobs.CodingAgentJobWorker} cross: the Node encodes the
+	 * dequeued job with {@link Job#toWire()} and the worker reconstructs it with
+	 * {@link Job#decode(String)}. A property that failed to survive this round-trip
+	 * would silently change what the containerized worker runs, so this asserts the
+	 * full job — prompt, branches, repo and credential — reaches the worker intact.
+	 */
+	@Test(timeout = 30000)
+	public void codingAgentJobSurvivesWorkerWireRoundTrip() {
+		CodingAgentJob original = new CodingAgentJob("task-worker", "Container prompt");
+		original.setTargetBranch("feature/container");
+		original.setBaseBranch("master");
+		original.setRepoUrl("https://github.com/org/repo");
+		original.setArManagerToken("tok-worker-123");
+		original.setMaxTurns(40);
+
+		Job decoded = Job.decode(original.toWire());
+
+		assertNotNull("the worker-side decode must reconstruct the job", decoded);
+		assertTrue("the decoded job keeps its concrete type", decoded instanceof CodingAgentJob);
+		CodingAgentJob restored = (CodingAgentJob) decoded;
+		assertEquals(original.getPrompt(), restored.getPrompt());
+		assertEquals(original.getTargetBranch(), restored.getTargetBranch());
+		assertEquals(original.getBaseBranch(), restored.getBaseBranch());
+		assertEquals(original.getRepoUrl(), restored.getRepoUrl());
+		assertEquals(original.getArManagerToken(), restored.getArManagerToken());
+		assertEquals(original.getMaxTurns(), restored.getMaxTurns());
 	}
 
 	// ── Factory tests ────────────────────────────────────────────────────────

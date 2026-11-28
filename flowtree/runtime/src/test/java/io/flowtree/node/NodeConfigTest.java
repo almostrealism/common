@@ -219,6 +219,66 @@ public class NodeConfigTest extends TestSuiteBase {
 		}
 	}
 
+	/** A docker entry carries its image and resource overrides through to the config. */
+	@Test(timeout = 10000)
+	public void readsDockerResourceOverrides() {
+		Properties p = new Properties();
+		p.setProperty("nodes.0.kind", "docker");
+		p.setProperty("nodes.0.image", "flowtree/agent:latest");
+		p.setProperty("nodes.0.cpus", "4");
+		p.setProperty("nodes.0.memory", "4g");
+
+		NodeConfig config = NodeConfig.parse(p).get(0);
+
+		Assert.assertEquals(NodeKind.DOCKER, config.kind());
+		Assert.assertEquals("flowtree/agent:latest", config.image());
+		Assert.assertEquals("4", config.cpus());
+		Assert.assertEquals("4g", config.memory());
+	}
+
+	/**
+	 * A container kind takes neither the group host labels nor the host's automatic
+	 * labels — its platform is a property of its image — but keeps its own labels.
+	 */
+	@Test(timeout = 10000)
+	public void containerKindTakesNoHostLabels() {
+		Properties p = new Properties();
+		p.setProperty("nodes.0.kind", "docker");
+		p.setProperty("nodes.0.image", "flowtree/agent:latest");
+		p.setProperty("nodes.0.labels.platform", "linux");
+
+		Map<String, String> hostLabels = new HashMap<>();
+		hostLabels.put("hostname", "build-host");
+
+		NodeConfig config = NodeConfig.parse(p).get(0);
+		Node node = new Node(null, 0, 4, 4);
+		config.applyLabels(node, hostLabels);
+
+		Assert.assertEquals("the container keeps its configured platform", "linux",
+				node.getLabels().get("platform"));
+		Assert.assertNull("a host label is not copied onto a container node",
+				node.getLabels().get("hostname"));
+	}
+
+	/**
+	 * A {@code nodes.<i>.image} with no matching {@code nodes.<i>.kind} is reported
+	 * rather than silently dropped, exactly as an orphan label is.
+	 */
+	@Test(timeout = 10000)
+	public void resourceOverrideWithoutKindRejected() {
+		Properties p = new Properties();
+		p.setProperty("nodes.0.kind", "docker");
+		p.setProperty("nodes.0.image", "flowtree/agent:latest");
+		p.setProperty("nodes.1.cpus", "8");
+
+		try {
+			NodeConfig.parse(p);
+			Assert.fail("a resource override for an index with no kind must be rejected");
+		} catch (IllegalArgumentException expected) {
+			// a misconfigured node must surface rather than lose its override
+		}
+	}
+
 	/** A non-numeric index is reported as a malformed key rather than ignored. */
 	@Test(timeout = 10000)
 	public void malformedIndexRejected() {

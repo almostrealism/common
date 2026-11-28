@@ -110,6 +110,24 @@ public interface Job extends Runnable, KeyValueStore {
 	}
 
 	/**
+	 * Returns the {@link Consumer} previously supplied to
+	 * {@link #setOutputConsumer(Consumer)}, or {@code null} when none was set.
+	 *
+	 * <p>A Node that executes this {@link Job} in an isolated runtime (for example a
+	 * container) runs a separate copy of the job there and never calls its own
+	 * {@link #run()}, so the local job's output consumer is never fired by the job
+	 * itself. Such a Node reads this consumer to forward the output it received from
+	 * the isolated runtime, delivering it to the same place an in-process run would.
+	 * The default implementation returns {@code null}, so a job that produces no
+	 * output needs no override.</p>
+	 *
+	 * @return the registered output consumer, or {@code null} if none was set
+	 */
+	default Consumer<JobOutput> getOutputConsumer() {
+		return null;
+	}
+
+	/**
 	 * Returns the labels that a Node must possess in order to execute this
 	 * {@link Job}.
 	 *

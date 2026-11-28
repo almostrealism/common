@@ -297,10 +297,23 @@ whether a credential-reference / redaction design replaces the inlined secrets w
 handle the worker resolves locally; the per-Node injection boundary is necessary but
 not, on its own, sufficient.
 
-**Open questions:** where the Server reads the credential superset from (an
-operator env file like `macos/agent.env`, or the `ar-secrets` path); whether
-per-workstream env (`CodingAgentJob` per-workstream env vars, `CodingAgentJob.java`)
-is injected by the Server or remains inside the job record.
+**Stage 2 decision (conservative).** Stage 2 retains today's in-transit exposure: the
+job's credentials (`arManagerToken`, `agentEnv`) continue to travel inside the encoded
+job payload, exactly as they do on the wire between Servers now, and the containerized
+worker decodes and uses them directly. The `DockerNode` therefore injects no separate
+credential env of its own — the only writable, per-job surface it adds is a distinct
+transcript directory, so cross-container isolation holds — and no new secret crosses a
+boundary that today's wire does not already cross. The alternative, a
+credential-reference / redaction design that replaces the inlined secrets with a handle
+the worker resolves locally, is **the open owner question carried out of Stage 2**: it
+changes the wire contract and the controller's credential store, so it needs an owner
+decision before it is built, and it is deferred rather than guessed at here.
+
+**Open questions:** whether to adopt the credential-reference / redaction design above;
+where the Server reads the credential superset from (an operator env file like
+`macos/agent.env`, or the `ar-secrets` path); whether per-workstream env
+(`CodingAgentJob` per-workstream env vars, `CodingAgentJob.java`) is injected by the
+Server or remains inside the job record.
 
 ### Decision 8 — Resource limits — recommend runtime-enforced per-Node limits
 
@@ -422,19 +435,69 @@ one-to-one onto these five stages.
   path. No deployment changes: existing agents read unchanged `agent.properties`
   and behave exactly as before.
 
-### Stage 2 — Docker Node + container worker
+### Stage 2 — Docker Node + container worker — **IMPLEMENTED (stub-launcher verified)**
 
-**Changes**
-- `DockerNode extends Node` overriding `launch`: encode the dequeued job, allocate a
-  per-job transcript subdir, `docker run` the worker image with per-Node
-  `--cpus/--memory`, the job bytes, and per-job credentials/`:ro` mounts; stream
-  stdout to the job's output consumer; map exit status to completion/failure.
-- New `io.flowtree.jobs.CodingAgentJobWorker` main: decode one job, wire output,
-  `job.run()`, exit with status. No `Server`, no `NodeGroup`.
+**Changes (as landed)**
+- `DockerNode extends Node` overrides `launch`: it encodes the dequeued job, allocates a
+  per-job transcript subdir, starts the worker container through an injectable
+  `ContainerLauncher` with per-Node `--cpus/--memory` and the job fed to stdin, streams
+  the container output under a coarse outer silence guard, forwards the worker's output
+  to the job's own `Job.getOutputConsumer()`, and throws on a non-zero container exit so
+  the inherited worker loop records the job as failed via `addFailedJob`.
+- The launch seam is reached through a `ContainerLauncher` interface (`ContainerRequest`,
+  `ContainerSession`), whose production implementation `DockerCliContainerLauncher` shells
+  to the `docker` CLI; a test substitutes a stub launcher, so the Node is proven without a
+  real runtime (`DockerNodeTest`).
+- New `io.flowtree.jobs.CodingAgentJobWorker` main: decode one job via `Job.decode`,
+  remap the working directory by setting `flowtree.workingDirectory` to the container
+  root, install its own output consumer, run the job, and frame the result
+  (`ContainerWorkerResult`) onto stdout with a liveness heartbeat. No `Server`, no
+  `NodeGroup`.
+- `NodeKind.DOCKER` (`describesHost()=false`) and the `nodes.<i>.image/cpus/memory`
+  fields on `NodeConfig` select and configure a Docker Node from typed config.
 - `DockerNode.sendKill` override: `docker kill`/`rm` the running task's container.
-- A worker image (reusing the existing `Dockerfile`) whose entrypoint runs the
-  worker main instead of the Server. The existing writable-mount guard
-  (`entrypoint.sh`) is retained for the worker.
+
+**The seven design contracts, as resolved in this stage**
+1. *Output transport* — the worker installs its own `Consumer<JobOutput>` (no
+   `OutputServer`) and frames the output onto stdout; `DockerNode` parses it and forwards
+   it to the job's own consumer (new `Job.getOutputConsumer()`).
+2. *Success/failure signal* — the worker exits zero once the job's future completes (the
+   job self-reports via its completion event, matching the native loop, which only treats
+   a thrown exception as a failure); a non-zero exit means the worker/container could not
+   run the job, which `DockerNode` throws and the loop maps to `addFailedJob`.
+3. *workingDirectory remap* — the worker sets `flowtree.workingDirectory` to the
+   container root, which `GitManagedJob.run()` already uses to null any host-absolute path
+   and resolve every checkout under that root.
+4. *Streaming/heartbeat* — the worker emits a periodic heartbeat line; the `DockerNode`
+   outer guard resets on any container output and only kills a container wedged below the
+   inner `AgentInactivityMonitor` window.
+5. *Credential exposure* — conservative option taken; see Decision 7 (secrets ride the job
+   payload as today; credential-reference/redaction is the deferred owner question).
+6. *Platform-label enforcement* — the submission-time defaulting that closes the empty-
+   requirements gap belongs on `CodingAgentJobFactory`/the submission tooling (both at the
+   file-length cap and outside this stage's scope); it is **not** implemented here and
+   remains the risk-table item. Until it lands, mixed-kind routing is safe only for jobs
+   that already carry the right required labels — which the controller stamps today.
+7. *sendKill* — `DockerNode.sendKill` kills the running task's container via the launcher.
+
+- Not changed here (Stage 5): the agent image's `entrypoint.sh`/`Dockerfile`/compose. That
+  image's `ENTRYPOINT` always starts a Server, so `DockerCliContainerLauncher` passes the
+  request command's first element as `--entrypoint` and the `DockerNode` command is
+  `java -cp /app/lib/* io.flowtree.jobs.CodingAgentJobWorker` (the image's library
+  directory). The in-image startup checks therefore do not run for a worker container;
+  the per-job request is what keeps the transcript directory the only writable mount.
+- Review-round hardening: container names and transcript directories carry a per-launch
+  nonce (a factory gives every job it creates the same task id, and task ids are
+  sanitized for the runtime); `sendKill` reaches every container registered for the
+  task, registration happens before the container starts, and a cancellation is sticky
+  (re-applied by the silence guard) so a kill during startup is not lost; the host's
+  `FLOWTREE_ROOT_HOST`/`FLOWTREE_ROOT_PORT` are forwarded so the job can resolve its
+  `0.0.0.0` workstream/tool URLs (the address must be reachable from inside the
+  container); and the result frame carries the full `CodingAgentJobOutput` (prompt,
+  session id, exit code), which the `DockerNode` reconstructs.
+- Still open for the owner (Decision 7): no agent credential (`CLAUDE_CODE_OAUTH_TOKEN`,
+  `ANTHROPIC_API_KEY`) or git identity is injected into the worker container by this
+  stage; only what already rides the job payload reaches it.
 
 **Tests that prove it**
 - Round-trip: `GitManagedJobSerializationTest.roundTripFactory` already proves a
