@@ -561,12 +561,21 @@ public class ReshapeProducer
 	 * {@inheritDoc}
 	 *
 	 * <p>Binding an {@link #getOwnOrder() ordering of the explicit shape} obtains the
-	 * {@link TraversalOrdering#getArgumentCount() arguments that ordering reads}.</p>
+	 * {@link TraversalOrdering#getArgumentCount() arguments that ordering reads}. A reshaped
+	 * producer that is a {@link Process} is a {@link #getChildren() child} of this reshape, so
+	 * the arguments preparing it obtains are counted at its own position of the process tree;
+	 * any other reshaped producer is prepared outside of that tree, so what preparing it obtains,
+	 * as {@link ScopeLifecycle#getPreparedArgumentBound(Stream, int)} counts it, is reported
+	 * here.</p>
 	 */
 	@Override
 	public int getScopeArgumentCount(int cap) {
 		TraversalOrdering own = getOwnOrder();
-		return own == null ? 0 : own.getArgumentCount();
+		int count = own == null ? 0 : own.getArgumentCount();
+		if (producer instanceof Process || count > cap) return count;
+
+		return (int) Math.min(Integer.MAX_VALUE, (long) count +
+				ScopeLifecycle.getPreparedArgumentBound(Stream.of(producer), cap - count));
 	}
 
 	@Override

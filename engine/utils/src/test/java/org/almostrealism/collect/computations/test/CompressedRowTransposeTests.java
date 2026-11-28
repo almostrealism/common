@@ -16,6 +16,7 @@
 
 package org.almostrealism.collect.computations.test;
 
+import io.almostrealism.code.ScopeLifecycle;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalOrdering;
 import io.almostrealism.collect.TraversalPolicy;
@@ -26,6 +27,7 @@ import org.almostrealism.algebra.computations.SegmentedWeightedSumComputation;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.CompressedRowTraversalOrdering;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.SplitIndexTraversalOrdering;
 import org.almostrealism.util.TestDepth;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
@@ -323,6 +325,36 @@ public class CompressedRowTransposeTests extends TestSuiteBase implements Matrix
 		PackedCollection matrix = new PackedCollection(shape(4, 6), 0, view, 0,
 				CompressedRowTraversalOrdering.of(6, OFFSETS, COLUMNS));
 		assertMatchesDenseTranspose(matrix, m -> matmul(m, cp(pack(1.0, 2.0, 3.0, 4.0))));
+	}
+
+	/**
+	 * The transpose of a sparse matrix whose entries are themselves read through an ordering (here
+	 * stored in reverse and read back through a permutation) addresses the entries as the matrix
+	 * does, through that ordering, so its product equals the product of the dense transpose.
+	 */
+	@Test(timeout = 60000)
+	public void matmulTransposeOfNestedOrderedView() {
+		PackedCollection reversed = pack(8.0, -7.0, 6.0, 5.0, -4.0, 3.0, -1.0, 2.0);
+		PackedCollection entries = new PackedCollection(shape(8), 0, reversed, 0,
+				SplitIndexTraversalOrdering.of(7, 6, 5, 4, 3, 2, 1, 0));
+		PackedCollection matrix = new PackedCollection(shape(4, 6), 0, entries, 0,
+				CompressedRowTraversalOrdering.of(6, OFFSETS, COLUMNS));
+		assertMatchesDenseTranspose(matrix, m -> matmul(m, cp(pack(1.0, 2.0, 3.0, 4.0))));
+		assertMatchesDenseTranspose(matrix, m -> m.multiply(c(2.0)));
+	}
+
+	/**
+	 * Preparing the transpose binds the ordering of the transpose, so the transpose reports the
+	 * arguments that ordering reads, and nothing for the producer of the matrix, which is a
+	 * position of the process tree in its own right.
+	 */
+	@Test(timeout = 60000)
+	public void transposeReportsTheArgumentsOfItsOrdering() {
+		PackedCollection matrix = sparse();
+		CompressedRowTraversalOrdering order = (CompressedRowTraversalOrdering) matrix.getShape().getOrder();
+		ScopeLifecycle view = (ScopeLifecycle) cp(matrix).transpose();
+		assertEquals(order.transpose().getArgumentCount(), view.getScopeArgumentCount(Integer.MAX_VALUE));
+		assertTrue(order.transpose().getArgumentCount() > 0);
 	}
 
 	/**
