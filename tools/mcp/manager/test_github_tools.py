@@ -445,6 +445,29 @@ class TestGithubPrCheckStatus(unittest.TestCase):
     @patch.object(server, "_resolve_github_repo",
                   return_value=("owner", "repo", "feature/x", None))
     @patch.object(server, "_github_request")
+    def test_workflow_runs_forbidden_falls_back_to_commit_status(
+            self, mock_gh, mock_repo):
+        # Workflow runs forbidden but check-runs readable and empty: the
+        # combined commit status is the only remaining signal and must be
+        # consulted. Without the fallback this would report 'unknown'.
+        mock_gh.side_effect = [
+            self._make_pr(42, sha="abc123"),
+            {"ok": False, "error": "HTTP 403: Resource not accessible by "
+                                   "personal access token"},
+            {"check_runs": []},
+            {"state": "success", "total_count": 1, "statuses": [{}]},
+        ]
+        result = server.github_pr_check_status(pr_number=42)
+        self.assertTrue(result["ok"])
+        self.assertTrue(result["partial"])
+        self.assertIn("workflow_runs_error", result["errors"])
+        self.assertNotIn("check_runs_error", result["errors"])
+        self.assertEqual(result["overall_status"], "success")
+        self.assertTrue(result["pipeline_current"])
+
+    @patch.object(server, "_resolve_github_repo",
+                  return_value=("owner", "repo", "feature/x", None))
+    @patch.object(server, "_github_request")
     def test_unknown_when_no_signal_readable(self, mock_gh, mock_repo):
         # Every CI signal fails to read: the result is partial and 'unknown',
         # never a misleading 'no_runs'.

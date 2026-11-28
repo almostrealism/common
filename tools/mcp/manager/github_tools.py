@@ -1127,11 +1127,13 @@ def github_pr_check_status(
                 check_info["details_url"] = check.get("details_url", "")
             check_runs.append(check_info)
 
-    # When the check runs could not be read, the combined commit status is a
-    # second, independently-permissioned signal (Commit statuses: read), so
-    # try it as a fallback rather than returning a status derived from nothing.
+    # When the primary signals could not be read, the combined commit status
+    # is a second, independently-permissioned signal (Commit statuses: read),
+    # so try it as a fallback rather than returning a status derived from
+    # nothing. This covers a forbidden check-runs request and equally a
+    # forbidden workflow-runs request that left no check runs to fall back on.
     commit_status_state = ""
-    if "check_runs_error" in partial_errors:
+    if partial_errors and not check_runs:
         status_result = server._github_request(
             "GET",
             f"/repos/{owner}/{repo}/commits/{head_sha}/status",
