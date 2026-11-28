@@ -64,10 +64,9 @@ class RegisterWorkstreamConflictWorkflowTests(unittest.TestCase):
         trigger = self.workflow[_ON]
         self.assertEqual(["pull_request_target"], list(trigger))
         self.assertEqual(["master"], trigger["pull_request_target"]["branches"])
-        # Covers a PR opened conflicted, reopened, or pushed to while
-        # conflicted. Asserting the full set, not just "opened", keeps a later
-        # edit from dropping reopened or synchronize and silently leaving those
-        # conflicted PRs unregistered.
+        # A conflicted PR must be registered however it reaches a conflicted
+        # state: opened conflicted, reopened, or pushed to while conflicted.
+        # Assert the whole set so dropping reopened or synchronize fails here.
         self.assertEqual(
             {"opened", "reopened", "synchronize"},
             set(trigger["pull_request_target"]["types"]))
