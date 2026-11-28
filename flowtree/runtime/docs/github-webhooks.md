@@ -13,7 +13,7 @@ endpoints and for how workstreams map to channels.
 
 | Event | Action | Message |
 |-------|--------|---------|
-| `pull_request` | `closed`, merged | `PR #N (title) merged into `base` by user` |
+| `pull_request` | `closed`, merged | `PR #N (title) merged into base by user` |
 | `pull_request` | `closed`, not merged | `PR #N (title) closed without merging by user` |
 | `pull_request` | `converted_to_draft` | `PR #N (title) converted to draft by user` |
 | `pull_request` | `ready_for_review` | `PR #N (title) marked ready for review by user` |
