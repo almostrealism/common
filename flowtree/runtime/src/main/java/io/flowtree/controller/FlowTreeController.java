@@ -1231,6 +1231,7 @@ public class FlowTreeController implements ConsoleFeatures {
                     log("Loaded workspace mapping for " + orgToWorkspace.size() + " org(s)");
                 }
                 apiEndpoint.setWorkspaceLookup(loadedConfig::findWorkspace);
+                apiEndpoint.setGitHubWebhookSecret(loadedConfig.getGithubWebhookSecret());
                 apiEndpoint.setWorkspaceRenameHook((oldId, newId) -> loadedConfig.renameWorkspace(oldId, newId, listener.getWorkstreams().values()));
             }
 

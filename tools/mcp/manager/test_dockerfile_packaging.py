@@ -23,6 +23,8 @@ import re
 import sys
 import unittest
 
+import yaml
+
 _MANAGER_DIR = os.path.dirname(os.path.abspath(__file__))
 _DOCKERFILE = os.path.join(_MANAGER_DIR, "Dockerfile")
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(_MANAGER_DIR)))
@@ -373,6 +375,33 @@ class SnapshotIndexPackagingTests(unittest.TestCase):
         with open(compose) as handle:
             text = handle.read()
         self.assertIn("CORPUS_COMMIT: ${CORPUS_COMMIT:-unknown}", text)
+
+    def test_ci_image_build_passes_the_checked_out_commit(self):
+        """The CI ``docker-build`` job records the commit it checked out.
+
+        Without the build argument the CI-built image reports the corpus
+        commit ``unknown``. The value must name the commit the job's checkout
+        fetched: the pull request head, or the pushed commit when there is none.
+        """
+        analysis = os.path.join(_REPO_ROOT, ".github", "workflows", "analysis.yaml")
+        with open(analysis) as handle:
+            steps = yaml.safe_load(handle)["jobs"]["docker-build"]["steps"]
+        build = next((step for step in steps
+                      if "tools/mcp/manager/Dockerfile" in step.get("run", "")), None)
+        self.assertIsNotNone(build, "docker-build no longer builds ar-manager")
+        self.assertEqual(build.get("env", {}).get("CORPUS_COMMIT"),
+                         "${{ github.event.pull_request.head.sha || github.sha }}")
+        self.assertIn('--build-arg "CORPUS_COMMIT=${CORPUS_COMMIT}"', build["run"])
+        verify = next((step for step in steps
+                       if '["corpus"]["commit"]' in step.get("run", "")), None)
+        self.assertIsNotNone(verify, "docker-build does not check the recorded commit")
+        self.assertEqual(verify.get("env", {}).get("CORPUS_COMMIT"),
+                         build["env"]["CORPUS_COMMIT"])
+        self.assertIn('[ "$RECORDED" != "$CORPUS_COMMIT" ]', verify["run"])
+        checkout = next(step for step in steps
+                        if str(step.get("uses", "")).startswith("actions/checkout"))
+        self.assertEqual(checkout.get("with", {}).get("ref"),
+                         "${{ github.event.pull_request.head.sha }}")
 
 
 class DockerfilePackagingTests(unittest.TestCase):
