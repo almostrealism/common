@@ -499,32 +499,44 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 			return ExpressionFeatures.getInstance().e(foldIntMod(id.getAsLong(), m, id.getAsLong() < 0));
 		}
 
-		if (enableRemoveMultiples) {
-			int count = input.countNodes();
+		// Every reduction below rewrites the dividend using Euclidean periodicity
+		// (a + k*m) % m == a % m, or returns the dividend when its range fits one
+		// modulus block. Those identities only stay consistent with the evaluator
+		// for a positive modulus: foldIntMod chooses Math.floorMod vs truncated %
+		// from the dividend's static isPossiblyNegative() status, and both the
+		// residue sign and that status depend on the modulus sign. Dropping a
+		// negative multiple, for instance, can leave a non-negative dividend whose
+		// truncated residue has the opposite sign from the floored residue the
+		// original computes. A negative constant modulus therefore keeps its Mod
+		// unreduced (a constant dividend is still folded above, with its true sign).
+		if (m > 0) {
+			if (enableRemoveMultiples) {
+				int count = input.countNodes();
 
-			w: while (input instanceof Sum && !input.isFP()) {
-				input = Sum.of(input.getChildren().stream()
-						.filter(e -> !e.isMultiple(mod).orElse(false))
-						.toArray(Expression[]::new));
-				if (input.countNodes() == count) break w;
-				count = input.countNodes();
+				w: while (input instanceof Sum && !input.isFP()) {
+					input = Sum.of(input.getChildren().stream()
+							.filter(e -> !e.isMultiple(mod).orElse(false))
+							.toArray(Expression[]::new));
+					if (input.countNodes() == count) break w;
+					count = input.countNodes();
+				}
 			}
-		}
 
-		// Applied after removing multiples, which can leave a bare inner modulus
-		if (!input.isFP()) {
-			Optional<Expression<?>> reduced = input.reducedModulo(m);
-			if (reduced.isPresent()) return reduced.get();
-		}
+			// Applied after removing multiples, which can leave a bare inner modulus
+			if (!input.isFP()) {
+				Optional<Expression<?>> reduced = input.reducedModulo(m);
+				if (reduced.isPresent()) return reduced.get();
+			}
 
-		OptionalLong u = input.upperBound();
-		if (!input.isPossiblyNegative() && u.isPresent() && u.getAsLong() < m) {
-			return input;
-		}
+			OptionalLong u = input.upperBound();
+			if (!input.isPossiblyNegative() && u.isPresent() && u.getAsLong() < m) {
+				return input;
+			}
 
-		if (!input.isFP()) {
-			if (enableMod2Optimization && m > 0 && Long.bitCount(m) == 1 && m < Integer.MAX_VALUE) {
-				return And.of(input, new IntegerConstant((int) m - 1));
+			if (!input.isFP()) {
+				if (enableMod2Optimization && Long.bitCount(m) == 1 && m < Integer.MAX_VALUE) {
+					return And.of(input, new IntegerConstant((int) m - 1));
+				}
 			}
 		}
 
