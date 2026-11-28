@@ -92,8 +92,8 @@ def _host_url():
 
 ZERO_WIDTH = ["​", "‌", "‍", "﻿"]
 
-# Confusable code points for ASCII letters of "claude.ai". NFKC does NOT fold
-# these back to ASCII, so a guard needs confusable folding, not just NFKC.
+# Confusable code points for ASCII letters of the private host. NFKC does NOT
+# fold these back to ASCII, so a guard needs confusable folding, not just NFKC.
 HOMOGLYPHS = {
     "a": "а",   # Cyrillic small a
     "e": "е",   # Cyrillic small e
@@ -405,7 +405,7 @@ def surfaces():
 
 
 _LITERAL_SECRET = re.compile(
-    r"(?:https?://)?(?:[\w-]+\.)*c\s*l\s*a\s*u\s*d\s*e\.a\s*i/"
+    r"(?:https?://)?(?:[\w-]+\.)*c\s*l\s*a\s*u\s*d\s*e\.a\s*i(?:/|\b)"
     r"|\bsession_[A-Za-z0-9]{16,}\b")
 
 
@@ -414,8 +414,8 @@ def assert_no_literal_secret_in_source(path):
 
     The corpus must build every link and id from fragments at run time so that
     nothing committed is itself a publishable leak. This scans the given source
-    file for a literal private-host URL or a bare session-id token and raises
-    :class:`AssertionError` if one is present.
+    file for a literal private host (with or without a path) or a bare
+    session-id token and raises :class:`AssertionError` if one is present.
     """
     with open(path, encoding="utf-8") as handle:
         source = handle.read()

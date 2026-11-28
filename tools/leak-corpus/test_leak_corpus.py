@@ -24,6 +24,7 @@ anything and never performs a GitHub or network write.
 """
 import importlib.util
 import os
+import tempfile
 import unicodedata
 import unittest
 
@@ -71,11 +72,55 @@ class CorpusIntegrityTests(unittest.TestCase):
         self.assertTrue(leak_corpus.all_cases())
         self.assertGreaterEqual(len(leak_corpus.kinds()), 15)
 
-    def test_the_corpus_source_holds_no_literal_secret(self):
-        leak_corpus.assert_no_literal_secret_in_source(leak_corpus.__file__)
+    def test_no_committed_corpus_file_holds_a_literal_secret(self):
+        """No committed file in the corpus directory holds a literal secret.
 
-    def test_this_test_source_holds_no_literal_secret(self):
-        leak_corpus.assert_no_literal_secret_in_source(os.path.abspath(__file__))
+        The literal-free guarantee is a property of the whole corpus directory,
+        not only the two source modules: a fixture, data, or documentation file
+        added here later must not smuggle in a publishable link or id either.
+        Scan every committed file in the directory, skipping the generated
+        bytecode cache (which is not committed — see ``.gitignore``).
+        """
+        scanned = 0
+        for entry in sorted(os.listdir(HERE)):
+            path = os.path.join(HERE, entry)
+            if not os.path.isfile(path):
+                continue
+            leak_corpus.assert_no_literal_secret_in_source(path)
+            scanned += 1
+        self.assertGreaterEqual(scanned, 3,
+                                "expected at least the generator, this test, and "
+                                "the README to be scanned")
+
+    def test_scanner_rejects_a_bare_host_without_a_path(self):
+        """A committed bare host with no path is a literal secret too.
+
+        The host is one of the two tokens the corpus assembles from fragments,
+        so a literal bare host leaking into a committed file must be rejected —
+        not only a full host/path URL. The host here is built at run time via
+        ``leak_corpus._host`` so this test source stays literal-free.
+        """
+        bare = leak_corpus._host()
+        with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False,
+                                         encoding="utf-8") as handle:
+            handle.write("host is " + bare + " end\n")
+            temp = handle.name
+        try:
+            with self.assertRaises(AssertionError):
+                leak_corpus.assert_no_literal_secret_in_source(temp)
+        finally:
+            os.remove(temp)
+
+    def test_scanner_passes_a_literal_free_file(self):
+        """A file with no private host or session id must not be flagged."""
+        with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False,
+                                         encoding="utf-8") as handle:
+            handle.write("a benign note mentioning a public domain example.com\n")
+            temp = handle.name
+        try:
+            leak_corpus.assert_no_literal_secret_in_source(temp)
+        finally:
+            os.remove(temp)
 
     def test_canonical_tokens_are_plain(self):
         """Each canonical token is ASCII, NFKC-stable and free of zero-width."""
