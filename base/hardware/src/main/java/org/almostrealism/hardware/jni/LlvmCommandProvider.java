@@ -17,6 +17,7 @@
 package org.almostrealism.hardware.jni;
 
 import org.almostrealism.hardware.Hardware;
+import org.almostrealism.hardware.HardwareException;
 import org.almostrealism.hardware.cl.CLDataContext;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
@@ -101,9 +102,13 @@ import java.util.List;
  * AR_HARDWARE_NATIVE_LIBS=Contents/Resources/lib
  *
  * // Adds:
- * -IContents/Resources/include
+ * -isystem Contents/Resources/include
  * -LContents/Resources/lib
  * }</pre>
+ *
+ * <p>The bundled include directory holds the SDK's own headers, so it is a system include
+ * directory: the compiler reports no warnings from those headers, while warnings in the
+ * generated code remain visible.</p>
  *
  * <h2>Platform-Specific Flags</h2>
  *
@@ -119,6 +124,10 @@ import java.util.List;
  * // macOS only:
  * -framework OpenCL
  * }</pre>
+ *
+ * <p>Only the local toolchain can find that framework, so a non-local toolchain with
+ * {@code AR_HARDWARE_CL_NATIVE} enabled is rejected with a {@link HardwareException}
+ * naming both settings, rather than failing later at link time.</p>
  *
  * <h2>Subclass Customization</h2>
  *
@@ -182,7 +191,7 @@ public abstract class LlvmCommandProvider implements CompilerCommandProvider, Co
 	private String path;
 	/** The shared library flag ("shared" for Linux, "dynamiclib" for macOS). */
 	private String cmd;
-	/** List of include path flags (-I...) for JNI headers and custom includes. */
+	/** Include path flags: -isystem for the bundled SDK headers, -I for the JNI headers. */
 	private List<String> includes;
 	/** Whether using a compiler from the system PATH (true) or a custom toolchain path (false). */
 	private boolean localToolchain;
@@ -211,7 +220,8 @@ public abstract class LlvmCommandProvider implements CompilerCommandProvider, Co
 		includes = new ArrayList<>();
 
 		if (!localToolchain) {
-			includes.add("-I" + includePath);
+			includes.add("-isystem");
+			includes.add(includePath);
 		}
 
 		String baseInclude = System.getProperty("java.home") + "/include";
@@ -296,6 +306,13 @@ public abstract class LlvmCommandProvider implements CompilerCommandProvider, Co
 		if (!localToolchain) command.add("-w");
 
 		if (CLDataContext.enableClNative) {
+			if (!localToolchain) {
+				throw new HardwareException("AR_HARDWARE_CL_NATIVE is enabled, but native OpenCL code"
+						+ " cannot be built with the non-local toolchain " + path + ": it is linked against"
+						+ " the OpenCL framework, which only the system toolchain can find. Disable"
+						+ " AR_HARDWARE_CL_NATIVE or use the local toolchain.");
+			}
+
 			command.add("-framework");
 			command.add("OpenCL");
 		}
