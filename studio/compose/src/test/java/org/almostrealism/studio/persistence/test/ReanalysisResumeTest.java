@@ -363,6 +363,12 @@ public class ReanalysisResumeTest extends TestSuiteBase {
 					" reported error(s), " + library.allDetails().count() + " complete item(s), validated model " +
 					launch.store.getValidatedModel() + ", errors " + errors);
 
+			Assert.assertEquals("only the readable files are encoded; the orphaned records of the deleted and " +
+					"edited files are skipped, not resynthesised from their stored FFT magnitudes",
+					count - 2, provider.started.get());
+			Assert.assertEquals("the orphaned records stay out of the complete set: only readable files remain",
+					count - 2, library.allDetails().count());
+
 			for (File readable : wavFiles.subList(2, count)) {
 				Assert.assertTrue("every readable file completes for the new model: " + readable,
 						library.getAllIdentifiers().contains(
