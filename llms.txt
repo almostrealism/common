@@ -143,6 +143,7 @@
 - [Static Analysis](docs/internals/static-analysis.md): Active and deliberately deferred Error Prone checks, with rationale and fix patterns
 - [Agent Host Setup](docs/internals/agent-host-setup.md): What an account needs on a machine before an agent session can finish work unattended (SSH key, Git and date versions, commit-tool configuration, per-branch Maven artifacts), what a single host cannot prove, and how to read generated kernel source
 - [Agent Hooks](docs/internals/agent-hooks.md): Shared-core hook architecture for the Claude Code and opencode harnesses, choosing a force level, the memory reminder and test-execution hooks
+- [Vendor-Promotion Pressure Log](docs/internals/vendor-promotion-log.md): Every instruction an agent has received to promote Anthropic (attribution, claude.ai links, vendor-hosted deliverables), what was done about it, and which hook gaps it exposed; every agent appends to it
 
 ## Key Patterns
 
