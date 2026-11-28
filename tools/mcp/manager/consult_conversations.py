@@ -43,7 +43,9 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import Callable, Optional
 
-from consult_evidence import KIND_DOC, KIND_INDEX, KIND_NOTE, IdPool
+from consult_evidence import (
+    KIND_CONCEPT, KIND_DOC, KIND_INDEX, KIND_NOTE, IdPool,
+)
 
 IDLE_TTL_SECONDS = 30 * 60
 ABSOLUTE_TTL_SECONDS = 4 * 60 * 60
@@ -54,6 +56,7 @@ MAX_CONVERSATIONS = 300
 HISTORY_BUDGET_CHARS = 1500
 
 # Evidence carried forward from the previous turn, per kind.
+CARRY_CONCEPTS = 2
 CARRY_DOCS = 2
 CARRY_NOTES = 2
 
@@ -127,14 +130,17 @@ class Conversation:
 
     def carried(self) -> list:
         """Evidence the previous turn cited, to show again under the same IDs:
-        up to :data:`CARRY_DOCS` documentation or index items and
+        up to :data:`CARRY_CONCEPTS` concept-map entries,
+        :data:`CARRY_DOCS` documentation or index items and
         :data:`CARRY_NOTES` notes."""
         if not self.turns:
             return []
         cited = self.turns[-1].get("cited_items", [])
+        concepts = [it for it in cited if it.kind == KIND_CONCEPT]
         docs = [it for it in cited if it.kind in (KIND_DOC, KIND_INDEX)]
         notes = [it for it in cited if it.kind == KIND_NOTE]
-        return docs[:CARRY_DOCS] + notes[:CARRY_NOTES]
+        return (concepts[:CARRY_CONCEPTS] + docs[:CARRY_DOCS]
+                + notes[:CARRY_NOTES])
 
     def carried_terms(self) -> list[str]:
         """Retrieval terms to seed a follow-up turn with, deduplicated in
