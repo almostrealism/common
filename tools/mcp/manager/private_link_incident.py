@@ -46,7 +46,9 @@ def _append_incident(record: dict) -> None:
     """Append a redacted incident record to the queryable JSONL log."""
     path = _incident_log_path()
     try:
-        os.makedirs(os.path.dirname(path), exist_ok=True)
+        directory = os.path.dirname(path)
+        if directory:
+            os.makedirs(directory, exist_ok=True)
         with open(path, "a", encoding="utf-8") as handle:
             handle.write(json.dumps(record) + "\n")
     except OSError as exc:

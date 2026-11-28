@@ -161,7 +161,8 @@ class CommitMessageBuilder {
         }
         job.warn("No commit.txt found in dependent repo " + repoRoot
                 + " — falling back to a repository-named message");
-        return AuthorAttribution.stripLines(buildDependentFallbackMessage(repoRoot));
+        return redactFallbackPrivateLink(job,
+                AuthorAttribution.stripLines(buildDependentFallbackMessage(repoRoot)));
     }
 
     /**
@@ -192,7 +193,29 @@ class CommitMessageBuilder {
         job.warn("No commit.txt found or it was empty — generating a commit message from the"
                 + " files the job changed");
         source = SOURCE_PROMPT_FALLBACK;
-        return AuthorAttribution.stripLines(buildFallbackMessage(job));
+        return redactFallbackPrivateLink(job, AuthorAttribution.stripLines(buildFallbackMessage(job)));
+    }
+
+    /**
+     * Returns a harness-generated fallback message with any private Claude
+     * session link redacted.
+     *
+     * <p>Unlike {@link #rejectPrivateLink}, which fails the job over the agent's
+     * own {@code commit.txt}, the fallback is the harness's own text: a stray
+     * link in it (a session id embedded in a change-named subject, say) is
+     * redacted rather than made fatal, so the harness can still commit the work
+     * while never publishing the link. A clean message is returned unchanged.</p>
+     *
+     * @param job     the orchestrator, used for logging
+     * @param message the harness fallback message
+     * @return the message with any private link redacted; never {@code null}
+     */
+    private static String redactFallbackPrivateLink(CodingAgentJob job, String message) {
+        if (!PrivateLinkDetector.containsPrivateLink(message)) {
+            return message;
+        }
+        job.warn("Redacted a private Claude session link from the harness fallback commit message");
+        return PrivateLinkDetector.redact(message);
     }
 
     /**

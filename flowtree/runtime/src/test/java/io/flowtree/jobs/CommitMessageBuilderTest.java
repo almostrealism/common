@@ -16,6 +16,7 @@
 
 package io.flowtree.jobs;
 
+import io.flowtree.PrivateLinkDetector;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.After;
 import org.junit.Before;
@@ -168,6 +169,27 @@ public class CommitMessageBuilderTest extends TestSuiteBase {
             }
             Files.deleteIfExists(incidentLog);
         }
+    }
+
+    /**
+     * The harness fallback never carries a private Claude session link into the
+     * public history: a link reaching the fallback (here through a change-named
+     * subject, since the fallback is harness-authored and cannot be refused like
+     * an agent's commit.txt) is redacted rather than committed verbatim.
+     */
+    @Test(timeout = 30000)
+    public void fallbackRedactsPrivateLinkFromChangeSubject() throws IOException, InterruptedException {
+        initGitRepository();
+        String session = "session_" + "fakefakefake1234";
+        Files.writeString(tempDir.resolve(session + ".md"), "notes\n", StandardCharsets.UTF_8);
+
+        CodingAgentJob job = job("do the work");
+        String msg = job.commitMessageBuilder().resolve(job);
+        assertFalse("A private link in a change-named subject must not reach the message: " + msg,
+                msg.contains(session));
+        assertTrue("The leaked identifier must be redacted: " + msg,
+                msg.contains(PrivateLinkDetector.REDACTION));
+        assertEquals(CommitMessageBuilder.SOURCE_PROMPT_FALLBACK, job.getCommitMessageSource());
     }
 
     /**

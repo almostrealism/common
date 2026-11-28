@@ -47,10 +47,12 @@ _EMBEDDED_SPEC = {
         {
             "name": "claude_ai_session_or_app_url",
             "regex": r"(?i)claude\.ai/(?:code|chat|artifacts?|share|projects?|recents?|c)(?:/|\b)",
+            "collapse": True,
         },
         {
             "name": "claude_code_session_path",
             "regex": r"(?i)claude\.ai/code/session[_-]?[a-z0-9]{6,}",
+            "collapse": True,
         },
         {
             "name": "bare_session_id",
@@ -129,23 +131,41 @@ _SPEC = _load_spec()
 
 BLOCK_MESSAGE: str = _SPEC["block_message"]
 
-_COMPILED = [(entry["name"], re.compile(entry["regex"])) for entry in _SPEC["patterns"]]
+_COMPILED = [(entry["name"], re.compile(entry["regex"]), bool(entry.get("collapse")))
+             for entry in _SPEC["patterns"]]
 
 _ZERO_WIDTH = re.compile(r"[​‌‍⁠﻿]")
+
+# A JSON string escape for a solidus (\/) or a \uXXXX code-point escape. GitHub
+# decodes both when it stores a PR/issue body, so a proxy caller can hide a link
+# as "claude.ai\/code\/..." or "claude.ai/..." in the serialised JSON it
+# forwards; decoding them here means the scan sees the same text GitHub will.
+_JSON_ESCAPE = re.compile(r"\\u([0-9A-Fa-f]{4})|\\(/)")
+
+
+def _decode_json_escapes(text: str) -> str:
+    """Decode ``\\uXXXX`` and ``\\/`` JSON string escapes the way GitHub does."""
+    if "\\" not in text:
+        return text
+    return _JSON_ESCAPE.sub(
+        lambda m: chr(int(m.group(1), 16)) if m.group(1) else "/", text)
 
 
 def _normalise(text: str) -> str:
     """Canonicalise text so obfuscated forms match the same as plain ones.
 
-    Applies Unicode NFKC folding, strips zero-width characters, and decodes
-    URL percent-encoding and HTML entities (twice, to catch double-encoding).
+    Applies Unicode NFKC folding and strips zero-width characters, then decodes
+    URL percent-encoding, HTML entities, and JSON string escapes, re-stripping
+    zero-width characters after each decode pass (twice, to catch
+    double-encoding) since a decode can reveal a freshly encoded zero-width
+    character that would otherwise keep a link split.
     """
     if not text:
         return ""
-    result = unicodedata.normalize("NFKC", text)
-    result = _ZERO_WIDTH.sub("", result)
+    result = _ZERO_WIDTH.sub("", unicodedata.normalize("NFKC", text))
     for _ in range(2):
-        decoded = html.unescape(unquote(result))
+        decoded = _ZERO_WIDTH.sub(
+            "", _decode_json_escapes(html.unescape(unquote(result))))
         if decoded == result:
             break
         result = decoded
@@ -167,12 +187,10 @@ def scan(text: str) -> List[str]:
     if not text:
         return []
     normalised = _normalise(text)
-    # TODO(review): the collapsed variant can join a trailing "session_" to the
-    # next prose word, fabricating a bare-session-id match; see review memory.
-    variants = [normalised, _collapsed(normalised)]
+    collapsed = _collapsed(normalised)
     hits: List[str] = []
-    for name, pattern in _COMPILED:
-        if any(pattern.search(variant) for variant in variants):
+    for name, pattern, collapse in _COMPILED:
+        if pattern.search(normalised) or (collapse and pattern.search(collapsed)):
             if name not in hits:
                 hits.append(name)
     return hits
@@ -190,10 +208,17 @@ def redact(text: str) -> str:
     """
     if not text:
         return text or ""
-    normalised = _normalise(text)
-    redacted = normalised
-    for _name, pattern in _COMPILED:
+    redacted = _normalise(text)
+    for _name, pattern, _collapse in _COMPILED:
         redacted = pattern.sub("<REDACTED-PRIVATE-LINK>", redacted)
+    # A whitespace-split URL survives the per-line substitution above but is
+    # still detected on the collapsed form; if any collapse-scanned pattern
+    # still matches there, redact wholesale so the returned value can never
+    # reproduce a link fragment.
+    collapsed = _collapsed(redacted)
+    for _name, pattern, collapse in _COMPILED:
+        if collapse and pattern.search(collapsed):
+            return "<REDACTED-PRIVATE-LINK>"
     return redacted
 
 

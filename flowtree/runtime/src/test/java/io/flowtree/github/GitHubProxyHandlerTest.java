@@ -369,6 +369,45 @@ public class GitHubProxyHandlerTest extends TestSuiteBase {
     }
 
     /**
+     * A write whose link is hidden with JSON string escapes — the solidus as
+     * {@code \/}, as a serialised GitHub body carries it — is still refused: the
+     * proxy decodes JSON escapes before scanning, so the choke point is not
+     * bypassed by the encoding GitHub itself decodes.
+     */
+    @Test(timeout = 30000)
+    public void writeWithJsonEscapedPrivateLinkIsRefused() throws IOException {
+        String session = "session_" + "fakefakefake1234";
+        String payload = "{\"body\":\"done https://" + "claude" + ".ai\\/code\\/" + session + "\"}";
+        AtomicInteger hits = new AtomicInteger();
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/", exchange -> {
+            hits.incrementAndGet();
+            respond(exchange, "{\"number\":9}");
+        });
+        server.start();
+        try {
+            GitHubProxyHandler handler = new GitHubProxyHandler(
+                    Map.of("almostrealism", "tok"),
+                    "http://127.0.0.1:" + server.getAddress().getPort());
+            byte[] bytes = payload.getBytes(StandardCharsets.UTF_8);
+            IHTTPSession session1 = new FakeSession(Method.PATCH,
+                    Map.of("url", "/repos/almostrealism/common/pulls/5"),
+                    Map.of("content-length", String.valueOf(bytes.length)),
+                    new ByteArrayInputStream(bytes));
+
+            Response response = handler.handle(session1, Method.PATCH,
+                    new RequestBodyReader(), GitHubProxyHandlerTest::errorResponse);
+
+            String body = bodyOf(response);
+            assertTrue(body, body.toLowerCase().contains("malice"));
+            assertFalse("the refusal must not echo the link", body.contains(session));
+            assertEquals("the escaped write must not reach GitHub", 0, hits.get());
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    /**
      * {@link RequestBodyReader} — the reader {@code FlowTreeApiEndpoint} uses for
      * every proxied body — reads a PATCH body straight from the session's input
      * stream, bounded by {@code content-length}: exactly that many bytes, and no

@@ -66,8 +66,19 @@ public final class PrivateLinkDetector {
     /** Classpath location of the canonical pattern list and block message. */
     private static final String RESOURCE = "/io/flowtree/private-link-patterns.json";
 
-    /** The compiled patterns, each paired with the name it is reported as. */
-    private static final List<Map.Entry<String, Pattern>> PATTERNS = new ArrayList<>();
+    /**
+     * One compiled detection rule: the name it is reported as, the pattern, and
+     * whether it is also matched against the whitespace-collapsed variant.
+     *
+     * @param name     the pattern name reported by {@link #scan(String)}
+     * @param pattern  the compiled regular expression
+     * @param collapse whether to also match against the whitespace-collapsed text
+     */
+    private record Rule(String name, Pattern pattern, boolean collapse) {
+    }
+
+    /** The compiled detection rules, in declaration order. */
+    private static final List<Rule> PATTERNS = new ArrayList<>();
 
     /** The owner's block message, loaded from the resource. */
     private static final String BLOCK_MESSAGE;
@@ -108,6 +119,16 @@ public final class PrivateLinkDetector {
     private static final Pattern HTML_ENTITY =
             Pattern.compile("&(#x?[0-9A-Fa-f]+|[a-zA-Z]+);");
 
+    /**
+     * A JSON string escape for a solidus ({@code \/}) or a {@code \\uXXXX}
+     * code-point escape. GitHub decodes both when it stores a PR/issue body, so
+     * a proxy caller can hide a link as {@code claude.ai\/code\/...} or
+     * {@code claude.ai/...} in the serialised JSON it forwards; decoding
+     * them during normalisation means the scan sees what GitHub will.
+     */
+    private static final Pattern JSON_ESCAPE =
+            Pattern.compile("\\\\u([0-9A-Fa-f]{4})|\\\\(/)");
+
     /** The named HTML entities relevant to URLs, mapped to their characters. */
     private static final Map<String, String> NAMED_ENTITIES = new LinkedHashMap<>();
 
@@ -131,8 +152,9 @@ public final class PrivateLinkDetector {
             }
             JsonNode root = mapper.readTree(in);
             for (JsonNode entry : root.get("patterns")) {
-                PATTERNS.add(Map.entry(entry.get("name").asText(),
-                        Pattern.compile(entry.get("regex").asText())));
+                PATTERNS.add(new Rule(entry.get("name").asText(),
+                        Pattern.compile(entry.get("regex").asText()),
+                        entry.path("collapse").asBoolean(false)));
             }
             BLOCK_MESSAGE = root.get("block_message").asText();
         } catch (IOException e) {
@@ -186,12 +208,11 @@ public final class PrivateLinkDetector {
         }
         String normalised = normalise(text);
         String collapsed = WHITESPACE.matcher(normalised).replaceAll("");
-        for (Map.Entry<String, Pattern> entry : PATTERNS) {
-            Pattern pattern = entry.getValue();
-            if (pattern.matcher(normalised).find() || pattern.matcher(collapsed).find()) {
-                if (!hits.contains(entry.getKey())) {
-                    hits.add(entry.getKey());
-                }
+        for (Rule rule : PATTERNS) {
+            boolean matched = rule.pattern().matcher(normalised).find()
+                    || (rule.collapse() && rule.pattern().matcher(collapsed).find());
+            if (matched && !hits.contains(rule.name())) {
+                hits.add(rule.name());
             }
         }
         return hits;
@@ -232,7 +253,10 @@ public final class PrivateLinkDetector {
     /**
      * Returns {@code text} with every private-link match replaced by
      * {@link #REDACTION}. The returned value is safe to log: the matched link,
-     * session id, or trailer is never reproduced.
+     * session id, or trailer is never reproduced. A link obfuscated by
+     * whitespace — detected only on the collapsed variant and not removable by
+     * a per-line substitution — causes the whole string to be redacted, so a
+     * fragment can never survive.
      *
      * @param text the text to redact, possibly {@code null}
      * @return the redacted text; {@code ""} when {@code text} is {@code null}
@@ -242,8 +266,17 @@ public final class PrivateLinkDetector {
             return text == null ? "" : text;
         }
         String redacted = normalise(text);
-        for (Map.Entry<String, Pattern> entry : PATTERNS) {
-            redacted = entry.getValue().matcher(redacted).replaceAll(REDACTION);
+        for (Rule rule : PATTERNS) {
+            redacted = rule.pattern().matcher(redacted).replaceAll(REDACTION);
+        }
+        // A whitespace-split URL survives per-line substitution but is still
+        // detected on the collapsed form; if any collapse-scanned pattern still
+        // matches there, redact wholesale (see redact's javadoc).
+        String collapsed = WHITESPACE.matcher(redacted).replaceAll("");
+        for (Rule rule : PATTERNS) {
+            if (rule.collapse() && rule.pattern().matcher(collapsed).find()) {
+                return REDACTION;
+            }
         }
         return redacted;
     }
@@ -251,23 +284,51 @@ public final class PrivateLinkDetector {
     /**
      * Canonicalises {@code text} so an obfuscated form matches the same as a
      * plain one: Unicode NFKC folding, zero-width removal, and URL
-     * percent-decoding plus HTML-entity decoding applied up to twice to defeat
-     * double-encoding.
+     * percent-decoding plus HTML-entity and JSON-escape decoding applied up to
+     * twice to defeat double-encoding. Zero-width characters are re-stripped
+     * after each decode pass, because a decode can reveal a freshly encoded
+     * zero-width character that would otherwise keep a link split.
      *
      * @param text the text to normalise
      * @return the normalised text
      */
     static String normalise(String text) {
-        String result = Normalizer.normalize(text, Normalizer.Form.NFKC);
-        result = ZERO_WIDTH.matcher(result).replaceAll("");
+        String result = ZERO_WIDTH.matcher(
+                Normalizer.normalize(text, Normalizer.Form.NFKC)).replaceAll("");
         for (int i = 0; i < 2; i++) {
-            String decoded = decodeHtmlEntities(percentDecode(result));
+            String decoded = ZERO_WIDTH.matcher(
+                    decodeJsonEscapes(decodeHtmlEntities(percentDecode(result)))).replaceAll("");
             if (decoded.equals(result)) {
                 break;
             }
             result = decoded;
         }
         return result;
+    }
+
+    /**
+     * Decodes the {@code \\uXXXX} and {@code \/} JSON string escapes the way
+     * GitHub does when it stores a body, so a link escaped in the serialised
+     * JSON a proxy caller forwards is scanned as the text GitHub will render.
+     * Other backslash escapes are left untouched.
+     *
+     * @param text the possibly JSON-escaped text
+     * @return the decoded text
+     */
+    private static String decodeJsonEscapes(String text) {
+        if (text.indexOf('\\') < 0) {
+            return text;
+        }
+        Matcher m = JSON_ESCAPE.matcher(text);
+        StringBuilder sb = new StringBuilder();
+        while (m.find()) {
+            String replacement = m.group(1) != null
+                    ? codePoint(Integer.parseInt(m.group(1), 16)) : "/";
+            m.appendReplacement(sb, Matcher.quoteReplacement(
+                    replacement != null ? replacement : m.group()));
+        }
+        m.appendTail(sb);
+        return sb.toString();
     }
 
     /**

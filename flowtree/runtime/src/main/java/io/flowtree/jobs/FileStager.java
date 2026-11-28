@@ -22,6 +22,11 @@ import org.almostrealism.io.ConsoleFeatures;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.nio.charset.CharacterCodingException;
+import java.nio.charset.CharsetDecoder;
+import java.nio.charset.CodingErrorAction;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
@@ -350,6 +355,12 @@ public class FileStager implements ConsoleFeatures {
             boolean isDeleted = !f.exists();
 
             if (isMergeCarried(file, isDeleted, mergeBaseFiles, parentChanges, differFromParent)) {
+                // The merge-carried exemption skips the agent-edit guardrails,
+                // but a private link reaching the public repository is blocked
+                // whatever brought the file in (see blocksForPrivateLink).
+                if (blocksForPrivateLink(f, file, isDeleted, skippedFiles)) {
+                    continue;
+                }
                 log("Staging (merge-carried from "
                         + TestMethodProtection.shortSha(mergeParent) + "): " + file);
                 stagedFiles.add(file);
@@ -418,15 +429,9 @@ public class FileStager implements ConsoleFeatures {
             }
 
             // Guardrail 5: a private Claude session link in the file's content
-            // would reach the public repository on push (see scanContentForPrivateLink).
-            if (!isDeleted) {
-                List<String> matched = scanContentForPrivateLink(f);
-                if (!matched.isEmpty()) {
-                    log("Blocked (private link in content): " + file);
-                    new PrivateLinkIncident("harness_staged_file", file, matched).record();
-                    skippedFiles.add(file + " (private link in content)");
-                    continue;
-                }
+            // would reach the public repository on push (see blocksForPrivateLink).
+            if (blocksForPrivateLink(f, file, isDeleted, skippedFiles)) {
+                continue;
             }
 
             // File passed all guardrails
@@ -573,22 +578,76 @@ public class FileStager implements ConsoleFeatures {
     }
 
     /**
+     * Scans {@code f}'s content for a private link and, when it must not be
+     * staged, records the incident (for an actual link) and adds a redacted
+     * skip entry. Shared by the merge-carried fast path and guardrail 5 so a
+     * link is blocked whatever brought the file in.
+     *
+     * <p>The file path is redacted everywhere it is logged or surfaced, so a
+     * path that itself embeds a session id is never republished.</p>
+     *
+     * @param f           the staged file to scan
+     * @param file        the repository-relative path, for the skip entry and log
+     * @param isDeleted   whether the file is absent from the working tree
+     * @param skippedFiles the skip list a blocked file is added to
+     * @return {@code true} when the file must not be staged
+     */
+    private boolean blocksForPrivateLink(File f, String file, boolean isDeleted,
+                                         List<String> skippedFiles) {
+        if (isDeleted) {
+            return false;
+        }
+        String redactedPath = PrivateLinkDetector.redact(file);
+        List<String> matched = scanContentForPrivateLink(f);
+        if (matched == null) {
+            log("Blocked (content unreadable, cannot verify for private link): " + redactedPath);
+            skippedFiles.add(redactedPath + " (unreadable - cannot verify for private link)");
+            return true;
+        }
+        if (!matched.isEmpty()) {
+            log("Blocked (private link in content): " + redactedPath);
+            new PrivateLinkIncident("harness_staged_file", redactedPath, matched).record();
+            skippedFiles.add(redactedPath + " (private link in content)");
+            return true;
+        }
+        return false;
+    }
+
+    /**
      * Returns the private-link content patterns that match {@code f}'s content,
-     * or an empty list when it is clean. Reads the file as UTF-8; a file that is
-     * not readable or not UTF-8 is treated as clean rather than blocking a commit
-     * on an I/O error (the size and binary guardrails have already passed). The
-     * scan uses {@link PrivateLinkDetector#scanFileContent(String)}, so quoting
-     * an attribution word in source or docs is not a match.
+     * an empty list when it is clean, or {@code null} when the file could not be
+     * read at all. A link is ASCII, so content is decoded strictly as UTF-8 and,
+     * only when that fails, leniently as ISO-8859-1 — a file that is not valid
+     * UTF-8 is still scanned rather than slipping through unscanned. A genuine
+     * read failure (the file vanished, a permission error) returns {@code null}
+     * so the caller fails closed: a guard meant to prevent leaks must not pass a
+     * file it could not inspect. The scan uses
+     * {@link PrivateLinkDetector#scanFileContent(String)}, so quoting an
+     * attribution word in source or docs is not a match.
      *
      * @param f the staged file to scan
-     * @return the matched content pattern names; empty, never {@code null}
+     * @return the matched content pattern names (empty when clean), or
+     *         {@code null} when the file could not be read
      */
     private List<String> scanContentForPrivateLink(File f) {
+        byte[] bytes;
         try {
-            return PrivateLinkDetector.scanFileContent(Files.readString(f.toPath()));
+            bytes = Files.readAllBytes(f.toPath());
         } catch (IOException | RuntimeException e) {
-            return List.of();
+            warn("Could not read " + PrivateLinkDetector.redact(f.getName())
+                    + " to scan it for a private link: " + e.getMessage());
+            return null;
         }
+        String content;
+        try {
+            CharsetDecoder decoder = StandardCharsets.UTF_8.newDecoder()
+                    .onMalformedInput(CodingErrorAction.REPORT)
+                    .onUnmappableCharacter(CodingErrorAction.REPORT);
+            content = decoder.decode(ByteBuffer.wrap(bytes)).toString();
+        } catch (CharacterCodingException notUtf8) {
+            content = new String(bytes, StandardCharsets.ISO_8859_1);
+        }
+        return PrivateLinkDetector.scanFileContent(content);
     }
 
     /**

@@ -1,21 +1,23 @@
 {
   "version": 1,
-  "description": "Canonical, configurable pattern list for detecting private Claude session data before it reaches a public surface (GitHub, Slack, commit messages). Loaded by io.flowtree.PrivateLinkDetector (Java) and tools/mcp/manager/private_link_detector.py (Python). Both engines use the same regexes, which are written in the common subset of java.util.regex and Python re. Edit this file to change what is blocked; keep the Python embedded fallback in sync (asserted by test_private_link_detector.py).",
+  "description": "Canonical, configurable pattern list for detecting private Claude session data before it reaches a public surface (GitHub, Slack, commit messages). Loaded by io.flowtree.PrivateLinkDetector (Java) and tools/mcp/manager/private_link_detector.py (Python). Both engines use the same regexes, which are written in the common subset of java.util.regex and Python re. A pattern with \"collapse\": true is also matched against a whitespace-stripped variant of the text, so a link broken across lines is still caught; a pattern without it (the default) is matched only against the normalised text, so joining whitespace cannot fabricate a match from ordinary prose. Edit this file to change what is blocked; keep the Python embedded fallback in sync (asserted by test_private_link_detector.py).",
   "patterns": [
     {
       "name": "claude_ai_session_or_app_url",
       "regex": "(?i)claude\\.ai/(?:code|chat|artifacts?|share|projects?|recents?|c)(?:/|\\b)",
-      "description": "A claude.ai application URL: code session, chat, artifact, share, project, or recents. Matches http, https, www and bare host forms because the host+path fragment is enough."
+      "collapse": true,
+      "description": "A claude.ai application URL: code session, chat, artifact, share, project, or recents. Matches http, https, www and bare host forms because the host+path fragment is enough. Scanned against the whitespace-collapsed variant too, because whitespace never belongs inside a URL."
     },
     {
       "name": "claude_code_session_path",
       "regex": "(?i)claude\\.ai/code/session[_-]?[a-z0-9]{6,}",
-      "description": "A Claude Code session permalink."
+      "collapse": true,
+      "description": "A Claude Code session permalink. Scanned against the whitespace-collapsed variant too, because whitespace never belongs inside a URL."
     },
     {
       "name": "bare_session_id",
       "regex": "(?i)session_[a-z0-9]{8,}",
-      "description": "A bare Claude session identifier with no surrounding URL."
+      "description": "A bare Claude session identifier with no surrounding URL. Not collapse-scanned: joining a trailing 'session_' to the next prose word would fabricate a match."
     },
     {
       "name": "claude_session_trailer",

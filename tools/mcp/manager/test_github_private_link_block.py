@@ -8,6 +8,7 @@ so this file contains no intact private link.
 """
 
 import os
+import shutil
 import sys
 import tempfile
 import unittest
@@ -103,6 +104,34 @@ class PrivateLinkBlockTest(unittest.TestCase):
         # The incident log never contains the raw link.
         with open(self._tmp.name, "r", encoding="utf-8") as handle:
             self.assertNotIn(_SESSION, handle.read())
+
+
+class RelativeIncidentLogPathTest(unittest.TestCase):
+    """A bare (directory-less) incident-log path must still record an incident."""
+
+    def test_append_incident_with_bare_relative_path(self):
+        import private_link_incident
+        prev = os.environ.get("AR_PRIVATE_LINK_INCIDENT_LOG")
+        cwd = os.getcwd()
+        tmp = tempfile.mkdtemp()
+        try:
+            os.chdir(tmp)
+            # A bare filename has an empty os.path.dirname; os.makedirs("") used
+            # to raise FileNotFoundError and the swallowed error dropped the record.
+            os.environ["AR_PRIVATE_LINK_INCIDENT_LOG"] = "incidents.jsonl"
+            private_link_incident._append_incident(
+                {"type": "private_link_block", "route": "r", "matched_patterns": []})
+            recorded = os.path.join(tmp, "incidents.jsonl")
+            self.assertTrue(os.path.isfile(recorded))
+            with open(recorded, "r", encoding="utf-8") as handle:
+                self.assertIn("private_link_block", handle.read())
+        finally:
+            os.chdir(cwd)
+            if prev is None:
+                os.environ.pop("AR_PRIVATE_LINK_INCIDENT_LOG", None)
+            else:
+                os.environ["AR_PRIVATE_LINK_INCIDENT_LOG"] = prev
+            shutil.rmtree(tmp, ignore_errors=True)
 
 
 if __name__ == "__main__":

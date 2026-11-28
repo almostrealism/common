@@ -54,6 +54,12 @@ class DetectorMatchTest(unittest.TestCase):
         self.assertFalse(det.contains_private_link(
             "The training session improved accuracy."))
 
+    def test_literal_session_underscore_before_word_does_not_match(self):
+        # The collapsed variant must not join "session_" to the next prose word
+        # and fabricate a bare-session-id match from ordinary text.
+        self.assertFalse(det.contains_private_link(
+            "The session_ identifier is documented here."))
+
 
 class ObfuscationBypassTest(unittest.TestCase):
     """The detector must see through the obfuscations a motivated agent would try."""
@@ -83,6 +89,21 @@ class ObfuscationBypassTest(unittest.TestCase):
         md = "[my session](" + _CODE_SESSION_URL + ")"
         self.assertTrue(det.contains_private_link(md))
 
+    def test_json_escaped_solidus(self):
+        # A serialised GitHub body escapes the solidus as \/.
+        escaped = "https://" + _CLAUDE_HOST + "\\/code\\/" + _SESSION
+        self.assertTrue(det.contains_private_link(escaped))
+
+    def test_json_unicode_escape(self):
+        escaped = "\\u0063laude.ai/code/" + _SESSION
+        self.assertTrue(det.contains_private_link(escaped))
+
+    def test_zero_width_revealed_by_decoding(self):
+        # The zero-width is only present after percent-decoding, so it must be
+        # re-stripped after the decode pass for the split link to be seen.
+        split = "https://" + _CLAUDE_HOST + "/co%E2%80%8Bde/" + _SESSION
+        self.assertTrue(det.contains_private_link(split))
+
 
 class RedactionTest(unittest.TestCase):
 
@@ -96,6 +117,15 @@ class RedactionTest(unittest.TestCase):
         redacted = det.redact("prefix " + _SESSION + " suffix")
         self.assertIn("prefix", redacted)
         self.assertIn("suffix", redacted)
+
+    def test_redaction_hides_whitespace_split_link(self):
+        # A URL split by whitespace inside its path is detected only on the
+        # collapsed variant and cannot be surgically removed, so redact() must
+        # fall back to wholesale redaction rather than leak a fragment.
+        redacted = det.redact("see https://" + _CLAUDE_HOST + "/co\nde/" + _SESSION)
+        self.assertNotIn(_SESSION, redacted)
+        self.assertNotIn(_CLAUDE_HOST + "/code", redacted)
+        self.assertIn("<REDACTED-PRIVATE-LINK>", redacted)
 
 
 class CheckAndBlockTest(unittest.TestCase):

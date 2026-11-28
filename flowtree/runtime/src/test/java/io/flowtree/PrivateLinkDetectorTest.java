@@ -121,6 +121,57 @@ public class PrivateLinkDetectorTest extends TestSuiteBase {
         assertTrue(redacted.contains("end"));
     }
 
+    /**
+     * A link whose solidus is JSON-escaped ({@code claude.ai\/code\/...}), as a
+     * serialised GitHub body carries it, is decoded and detected.
+     */
+    @Test(timeout = 30000)
+    public void seesThroughJsonEscapedSolidus() {
+        assertTrue(PrivateLinkDetector.containsPrivateLink(
+                "https://" + HOST + "\\/code\\/" + SESSION));
+    }
+
+    /** A link with a {@code \\uXXXX} JSON code-point escape is decoded and detected. */
+    @Test(timeout = 30000)
+    public void seesThroughJsonUnicodeEscape() {
+        assertTrue(PrivateLinkDetector.containsPrivateLink(
+                "\\u0063laude.ai/code/" + SESSION));
+    }
+
+    /**
+     * A zero-width character introduced by decoding (percent-encoded inside the
+     * path) is removed after the decode pass, so the split link is detected.
+     */
+    @Test(timeout = 30000)
+    public void seesThroughZeroWidthRevealedByDecoding() {
+        assertTrue(PrivateLinkDetector.containsPrivateLink(
+                "https://" + HOST + "/co%E2%80%8Bde/" + SESSION));
+    }
+
+    /**
+     * Ordinary prose where a literal {@code session_} precedes a word is not
+     * flagged: the bare-id pattern is not matched against the whitespace-collapsed
+     * variant, so joining it to the next word cannot fabricate a session id.
+     */
+    @Test(timeout = 30000)
+    public void collapsedVariantDoesNotFabricateBareSessionId() {
+        assertFalse(PrivateLinkDetector.containsPrivateLink(
+                "The session_ identifier is documented here."));
+    }
+
+    /**
+     * Redaction of a URL split by whitespace inside its path — detected only on
+     * the collapsed variant — redacts wholesale, leaving no recoverable fragment.
+     */
+    @Test(timeout = 30000)
+    public void redactionHidesAWhitespaceSplitLink() {
+        String redacted = PrivateLinkDetector.redact(
+                "see https://" + HOST + "/co\nde/" + SESSION + " for the trace");
+        assertFalse(redacted.contains(SESSION));
+        assertFalse(redacted.contains("claude.ai/code"));
+        assertTrue(redacted.contains(PrivateLinkDetector.REDACTION));
+    }
+
     /** Content scanning ignores a quoted attribution word but catches a real link. */
     @Test(timeout = 30000)
     public void scanFileContentIgnoresAttributionWordsButCatchesLinks() {
