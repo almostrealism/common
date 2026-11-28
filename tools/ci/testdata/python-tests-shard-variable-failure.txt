@@ -1,0 +1,26 @@
+test_every_template_lints_clean (test_execution_limits.TestCiPromptTemplatesLintClean.test_every_template_lints_clean) ...
+  test_every_template_lints_clean (test_execution_limits.TestCiPromptTemplatesLintClean.test_every_template_lints_clean) (template='flaky-hunt.txt') ... FAIL
+
+======================================================================
+FAIL: test_every_template_lints_clean (test_execution_limits.TestCiPromptTemplatesLintClean.test_every_template_lints_clean) (template='flaky-hunt.txt')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/runner/work/common/common/tools/mcp/manager/test_execution_limits.py", line 1249, in test_every_template_lints_clean
+    self.assertEqual([], lint_prompt_for_broad_test_instructions(f.read()))
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: Lists differ: [] != [(57, 'selection: never a whole module, a wildcard, or `AR_TEST_GROUP`/`AR_TEST_GROUPS` [41 chars]ce')]
+
+Second list contains 1 additional elements.
+First extra element 0:
+(57, 'selection: never a whole module, a wildcard, or `AR_TEST_GROUP`/`AR_TEST_GROUPS` partitioning.', 'AR_TEST_GROUP/AR_TEST_GROUPS reference')
+
+- []
++ [(57,
++   'selection: never a whole module, a wildcard, or `AR_TEST_GROUP`/`AR_TEST_GROUPS` '
++   'partitioning.',
++   'AR_TEST_GROUP/AR_TEST_GROUPS reference')]
+
+----------------------------------------------------------------------
+Ran 1036 tests in 41.207s
+
+FAILED (failures=1)

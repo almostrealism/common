@@ -47,7 +47,7 @@ source "${SCRIPT_DIR}/prompt-render.sh"
 # ── Read crash summary if available ────────────────────────────────
 CRASH_SUMMARY=""
 if [ -f "${CRASH_DIR}/crash-summary.txt" ]; then
-    CRASH_SUMMARY=$(cat "${CRASH_DIR}/crash-summary.txt")
+    CRASH_SUMMARY=$(redact_ci_shard_variables < "${CRASH_DIR}/crash-summary.txt")
 fi
 
 # ── Extract crashed test class names from the summary ──────────────

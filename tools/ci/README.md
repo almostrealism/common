@@ -439,6 +439,16 @@ assignment, an unbounded pytest run — but they parse command text and are a ba
 prompt written to violate the rule fails loudly at the two mechanically-enforced surfaces
 above regardless of the hooks.
 
+Those surfaces reject any prompt that names the shard variables, including a quoted CI
+log that happens to mention them (a failing test's assertion message, a printed
+environment). So every builder passes the CI output it quotes — a failure log, a failure
+or crash summary, a round's leads, the branch's new TODO lines — through
+`prompt-render.sh`'s `redact_ci_shard_variables`, which replaces each name with
+`<redacted CI shard variable>`. Only quoted output is redacted, never a prompt's own
+instruction text, and neither lint skips any part of a prompt, so an instruction to use
+the variables is still rejected wherever it appears. `tools/tests/test_quoted_ci_evidence.py`
+and `QuotedCiEvidenceSubmissionTest` (`flowtree/runtime`) cover both lints.
+
 Each `build-*-prompt.sh` reads its sibling template, substitutes the environment
 variables named in its header, and writes the result to an output-file argument.
 Most take that path as their only required argument; a few need additional file
