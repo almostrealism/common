@@ -344,6 +344,28 @@ public class CellTypeConnectomeLoadTest extends TestSuiteBase {
 		assertThrowsLoad(writeTextDirectory(header + "LB3a\t4.5\t17\nMN9\t2\t1\nKenyon\t5\t6\n", TEXT_WEIGHTS));
 	}
 
+	/**
+	 * A counts table of the text layout giving a type no neurons, a negative size or a negative
+	 * outgoing synapse count is rejected, since {@link CellTypeConnectome#inverseTypeSizes()}
+	 * would scale that type's row by an invalid factor; a size of one and no outgoing synapses,
+	 * the smallest valid counts, load as given.
+	 */
+	@Test(timeout = 60000)
+	public void rejectsInvalidTextCounts() throws IOException {
+		String header = "type\tsize\tout_synapses\n";
+		String rest = "MN9\t2\t1\nKenyon\t5\t6\n";
+		assertThrowsLoad(writeTextDirectory(header + "LB3a\t0\t17\n" + rest, TEXT_WEIGHTS));
+		assertThrowsLoad(writeTextDirectory(header + "LB3a\t-4\t17\n" + rest, TEXT_WEIGHTS));
+		assertThrowsLoad(writeTextDirectory(header + "LB3a\t4\t-1\n" + rest, TEXT_WEIGHTS));
+		assertThrowsLoad(writeTextDirectory(header + "LB3a\t4\t17\nMN9\t2\t1\nKenyon\t0\t6\n", TEXT_WEIGHTS));
+
+		try (CellTypeConnectome connectome = CellTypeConnectome.load(
+				writeTextDirectory(header + "LB3a\t1\t0\n" + rest, TEXT_WEIGHTS))) {
+			Assert.assertArrayEquals(new double[] { 1, 2, 5 }, connectome.getTypeSizes().toArray(), 0.0);
+			Assert.assertArrayEquals(new double[] { 0, 1, 6 }, connectome.getOutSynapses().toArray(), 0.0);
+		}
+	}
+
 	/** A type name listed twice is rejected. */
 	@Test(timeout = 60000)
 	public void rejectsDuplicateTypeName() throws IOException {

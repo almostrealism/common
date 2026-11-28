@@ -76,6 +76,10 @@ INFLUENCE_HOPS = 2
 CIRCUIT_LARGEST_CHECKS = 50
 CIRCUIT_SAMPLED_CHECKS = 40
 CIRCUIT_ZERO_CHECKS = 10
+CIRCUIT_COMMAND = ("python male_cns_cell_types.py circuit --source <male-cns release>"
+                   " --matrix <models-derived>/male-cns/cell-type-matrix"
+                   " --rates <models-derived>/male-cns/cell-type-rate-reference"
+                   " --output src/test/resources/connectome/cell-type-sugar-circuit")
 
 
 def aggregate(body_ids, body_types, transmitters, weights):
@@ -634,7 +638,12 @@ def read_text_tensors(directory):
 
 
 def write_circuit_readme(path, source, names, reference, cut, command):
-    """Writes the README of the committed rate circuit."""
+    """Writes the README of the committed rate circuit.
+
+    The README is committed, so ``command`` is the regeneration command written with the
+    ``<male-cns release>``/``<models-derived>`` placeholders of the module README rather than the paths
+    of the host that ran it; the source directory actually read is recorded separately.
+    """
     full = reference["full_matrix"]["mn9_final"]
     lines = [
         "# MaleCNS v1.0 cell-type sugar rate circuit",
@@ -784,8 +793,8 @@ def circuit_main(argv):
     with open(os.path.join(args.output, RATE_REFERENCE_OUTPUT), "w") as out:
         json.dump(rate_reference, out, indent=1)
 
-    command = "python " + " ".join([os.path.basename(__file__), "circuit"] + argv)
-    write_circuit_readme(os.path.join(args.output, "README.md"), args.source, cut_names, rate_reference, cut, command)
+    write_circuit_readme(os.path.join(args.output, "README.md"), args.source, cut_names, rate_reference, cut,
+                         CIRCUIT_COMMAND)
 
     outputs = [WEIGHTS_TEXT_OUTPUT, COUNTS_OUTPUT, TYPES_OUTPUT, ANNOTATIONS_OUTPUT, SPOT_CHECKS_OUTPUT,
                RATE_REFERENCE_OUTPUT, "README.md"]

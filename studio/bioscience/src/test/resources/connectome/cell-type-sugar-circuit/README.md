@@ -39,4 +39,4 @@ Source directory: `/Users/Shared/models/male-cns-v1.0`; full matrix SHA-256 `ee1
 
 ## Command
 
-    python male_cns_cell_types.py circuit --source /Users/Shared/models/male-cns-v1.0 --matrix /Users/Shared/models-derived/male-cns/cell-type-matrix --rates /Users/worker/models-derived/male-cns/cell-type-rate-reference --output src/test/resources/connectome/cell-type-sugar-circuit
+    python male_cns_cell_types.py circuit --source <male-cns release> --matrix <models-derived>/male-cns/cell-type-matrix --rates <models-derived>/male-cns/cell-type-rate-reference --output src/test/resources/connectome/cell-type-sugar-circuit

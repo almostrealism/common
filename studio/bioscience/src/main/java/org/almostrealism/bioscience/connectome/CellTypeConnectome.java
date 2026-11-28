@@ -241,7 +241,8 @@ public class CellTypeConnectome implements CollectionFeatures, Destroyable {
 	 * @param names     the type names in index order
 	 * @return the tensors, owned by the caller
 	 * @throws IOException              if a file cannot be read
-	 * @throws IllegalArgumentException if a row is malformed or names an index out of range
+	 * @throws IllegalArgumentException if a row is malformed, names an index out of range, or gives
+	 *                                  a type a size below one or a negative outgoing synapse count
 	 */
 	private static StateDictionary readTextTensors(File directory, List<String> names) throws IOException {
 		int t = names.size();
@@ -249,8 +250,16 @@ public class CellTypeConnectome implements CollectionFeatures, Destroyable {
 		ByteBuffer outSynapses = values(t);
 		List<String[]> counts = typeRows(directory, COUNTS_FILE, names);
 		for (int i = 0; i < t; i++) {
-			sizes.putFloat(i * Float.BYTES, Integer.parseInt(counts.get(i)[1]));
-			outSynapses.putFloat(i * Float.BYTES, Integer.parseInt(counts.get(i)[2]));
+			int size = Integer.parseInt(counts.get(i)[1]);
+			int out = Integer.parseInt(counts.get(i)[2]);
+			if (size <= 0 || out < 0) {
+				throw new IllegalArgumentException("Line " + (i + 2) + " of " + COUNTS_FILE + " gives type "
+						+ names.get(i) + " size " + size + " and " + out + " outgoing synapses; a type has"
+						+ " at least one neuron and no negative synapse count");
+			}
+
+			sizes.putFloat(i * Float.BYTES, size);
+			outSynapses.putFloat(i * Float.BYTES, out);
 		}
 
 		ByteBuffer weights = values(t * t);
