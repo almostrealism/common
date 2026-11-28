@@ -3,7 +3,12 @@ set -euo pipefail
 
 cd "$(dirname "$0")/../.."
 
-SECRETS_DIR="${SECRETS_DIR:-/Users/Shared/flowtree/secrets}"
+# The host directory every piece of the stack's state lives under: secrets,
+# data, configuration. Every host path below derives from it, so a rehearsal
+# (--rehearse) on a machine that is not the deploy host points it at a scratch
+# directory and touches nothing else.
+FLOWTREE_HOST_DIR="${FLOWTREE_HOST_DIR:-/Users/Shared/flowtree}"
+SECRETS_DIR="${SECRETS_DIR:-${FLOWTREE_HOST_DIR}/secrets}"
 # The agent pool's configuration file. It is gitignored, so a fresh checkout
 # (a CI runner workspace, for instance) never contains it — an unattended
 # caller must point FLOWTREE_AGENT_ENV at a copy that lives outside the
@@ -40,6 +45,15 @@ Usage: flowtree/runtime/rebuild.sh [services...] [--agents] [--with-llm]
                  and pull the default model. Used by the OpencodeRunner.
                  Override the model with LLM_MODEL (default: qwen3-coder:30b).
                  Override the host port with LLM_PORT (default: 11434).
+  --rehearse     Do everything a deploy does up to and including the
+                 preflight - the Maven build, every image build with the same
+                 flags, and the isolated preflight of the new images - then
+                 stop: nothing running is stopped, replaced or pruned. Images
+                 are built under a separate compose project name
+                 (REHEARSAL_PROJECT, default flowtree-rehearsal) so a
+                 rehearsal never retags the images a live stack runs. CI runs
+                 this on every pull request and every push to master, and the
+                 deploy workflow refuses a commit whose rehearsal did not pass.
   service names  Rebuild specific controller-stack services
 
 Examples:
@@ -64,6 +78,10 @@ project, and a replacement that does not become healthy is rolled back to
 the images that were running before.
 
 Environment variables consulted on every run:
+  FLOWTREE_HOST_DIR      the host directory the stack's secrets, data and
+                         configuration live under (default:
+                         /Users/Shared/flowtree); every other host path
+                         defaults beneath it
   FLOWTREE_CONTROLLER_ENV
                          path to the controller stack's operator settings file
                          (default: ${SECRETS_DIR}/controller.env). It lives
@@ -99,11 +117,13 @@ AGENTS=false
 AGENTS_ONLY=false
 WITH_LLM=false
 USE_CACHE=false
+REHEARSE=false
 SERVICES=()
 
 for arg in "$@"; do
   case "${arg}" in
     --help|-h)      usage ;;
+    --rehearse)     REHEARSE=true ;;
     --agents)       AGENTS=true ;;
     --agents-only)  AGENTS_ONLY=true ;;
     --with-llm|--llm) WITH_LLM=true ;;
@@ -111,6 +131,24 @@ for arg in "$@"; do
     *)              SERVICES+=("${arg}") ;;
   esac
 done
+
+# ── Rehearsal ──────────────────────────────────────────────────────
+#
+# A rehearsal builds and preflights exactly what a deploy would, under its own
+# compose project name: compose names the images it builds after the project,
+# so the live stack's image tags are never touched. Agent images are built but
+# never started, so the values the agent compose file needs to interpolate
+# (the two it requires, and the SSH key directory its volume list names) get
+# placeholders; none is a secret, and none reaches a running container.
+if [ "${REHEARSE}" = true ]; then
+  export COMPOSE_PROJECT_NAME="${REHEARSAL_PROJECT:-flowtree-rehearsal}"
+  export FLOWTREE_ROOT_HOST="${FLOWTREE_ROOT_HOST:-rehearsal.invalid}"
+  export CLAUDE_CODE_OAUTH_TOKEN="${CLAUDE_CODE_OAUTH_TOKEN:-rehearsal-placeholder}"
+  export SSH_KEY_DIR="${SSH_KEY_DIR:-${FLOWTREE_HOST_DIR}/rehearsal-ssh}"
+  mkdir -p "${SSH_KEY_DIR}"
+  echo "Rehearsal: building and preflighting under compose project ${COMPOSE_PROJECT_NAME};" \
+    "nothing running will be stopped or replaced."
+fi
 
 # ── Agent configuration ────────────────────────────────────────────
 #
@@ -194,8 +232,8 @@ if [ ${#SERVICES[@]} -eq 0 ] || printf '%s\n' "${SERVICES[@]}" | grep -qwE "flee
   FLEET_SERVICES_SELECTED=true
 fi
 
-FLEET_DB_DATA_DIR="${FLEET_DB_DATA_DIR:-/Users/Shared/flowtree/fleet-db}"
-FLEET_GRAFANA_DATA_DIR="${FLEET_GRAFANA_DATA_DIR:-/Users/Shared/flowtree/grafana}"
+FLEET_DB_DATA_DIR="${FLEET_DB_DATA_DIR:-${FLOWTREE_HOST_DIR}/fleet-db}"
+FLEET_GRAFANA_DATA_DIR="${FLEET_GRAFANA_DATA_DIR:-${FLOWTREE_HOST_DIR}/grafana}"
 
 # docker compose interpolates the whole file on EVERY invocation from the
 # project directory — `exec`, `logs`, `ps`, the deploy workflow's own
@@ -470,12 +508,13 @@ DEPLOY_WAIT_TIMEOUT="${DEPLOY_WAIT_TIMEOUT:-6000}"
 PREFLIGHT_SERVICES=(ar-memory ar-tracker flowtree-controller ar-manager)
 # Host paths the preflight shares read-only (or, for the model cache, as a
 # download cache only). They match the mounts in ${CONTROLLER_COMPOSE}.
-HOST_FLOWTREE_DIR="/Users/Shared/flowtree"
+HOST_FLOWTREE_DIR="${FLOWTREE_HOST_DIR}"
 
 # compose_project FILE: the compose project name FILE runs under, which is
 # also the prefix of the image names compose gives the services it builds.
 compose_project() {
-  local name
+  local name="${COMPOSE_PROJECT_NAME:-}"
+  [ -z "${name}" ] || { echo "${name}"; return 0; }
   name="$(docker compose -f "$1" config 2>/dev/null | sed -n 's/^name: *//p' | head -1 || true)"
   echo "${name:-$(basename "$(dirname "$1")")}"
 }
@@ -583,6 +622,17 @@ preflight_controller_stack() {
   # An empty workstream list: the controller starts with no Slack
   # workspaces, no GitHub organisations and nothing to schedule.
   printf 'workstreams: []\n' > "${dir}/controller/workstreams.yaml"
+  # A rehearsal runs on a machine with no stack state; the shared read-only
+  # mounts below must still exist. The deploy host already has them.
+  # ar-manager refuses to start without a token file, so a rehearsal makes a
+  # throwaway one; the preflight publishes no ports, so it reaches nothing.
+  if [ "${REHEARSE}" = true ]; then
+    mkdir -p "${HOST_FLOWTREE_DIR}/manager" "${HOST_FLOWTREE_DIR}/memory-data/model-cache" "${SECRETS_DIR}"
+    if [ ! -s "${HOST_FLOWTREE_DIR}/manager/manager-tokens.json" ]; then
+      AR_MANAGER_TOKEN_FILE="${HOST_FLOWTREE_DIR}/manager/manager-tokens.json" \
+        tools/mcp/manager/generate-token.sh rehearsal read >/dev/null
+    fi
+  fi
 
   # Each service runs the image just built for the real project, never
   # rebuilds or pulls, publishes nothing, and keeps its writable state in
@@ -612,7 +662,7 @@ services:
     ports: !reset []
     volumes: !override
       - ${dir}/controller:/config
-      - ${HOST_FLOWTREE_DIR}/secrets:/secrets:ro
+      - ${SECRETS_DIR}:/secrets:ro
   ar-manager:
     image: ${project}-ar-manager
     pull_policy: never
@@ -620,7 +670,7 @@ services:
     ports: !reset []
     volumes: !override
       - ${HOST_FLOWTREE_DIR}/manager:/config:ro
-      - ${HOST_FLOWTREE_DIR}/secrets:/secrets:ro
+      - ${SECRETS_DIR}:/secrets:ro
       - ${dir}/manager-state:/state
 EOF
 
@@ -628,6 +678,19 @@ EOF
   echo "Preflight: starting the new images in the isolated project ${preflight_project}: ${selected[*]}"
   "${preflight[@]}" up -d --no-build --wait --wait-timeout "${DEPLOY_WAIT_TIMEOUT}" "${selected[@]}" \
     || status=$?
+  # The new ar-manager must carry its documentation corpus: without it the
+  # server starts and passes its healthcheck but answers consult from nothing.
+  # The deploy workflow checks the live stack the same way after the swap.
+  if [ "${status}" -eq 0 ] && printf '%s\n' "${selected[@]}" | grep -qx ar-manager; then
+    local docs
+    docs="$("${preflight[@]}" exec -T ar-manager sh -c \
+      'find "$AR_DOCS_DIR" -name "*.md" -o -name "*.html" | wc -l' 2>/dev/null | tr -d '[:space:]' || true)"
+    echo "Preflight: ${docs:-0} documentation files in the new ar-manager image"
+    if [ "${docs:-0}" -lt 50 ]; then
+      echo "ERROR: the new ar-manager image has no usable documentation corpus (${docs:-0} files)." >&2
+      status=1
+    fi
+  fi
   if [ "${status}" -ne 0 ]; then
     "${preflight[@]}" ps -a >&2 || true
     "${preflight[@]}" logs --no-color --tail 100 >&2 || true
@@ -840,7 +903,7 @@ if [ "${AGENTS}" = true ] || [ "${AGENTS_ONLY}" = true ]; then
   # Pre-create the per-agent transcript subdirectories on the host so the
   # bind mounts resolve. Each agent gets a DISTINCT subdir (never shared)
   # — see the volume policy in flowtree/runtime/agent/docker-compose.yml.
-  TRANSCRIPT_DIR_HOST="${TRANSCRIPT_DIR_HOST:-/Users/Shared/flowtree/agent-transcripts}"
+  TRANSCRIPT_DIR_HOST="${TRANSCRIPT_DIR_HOST:-${FLOWTREE_HOST_DIR}/agent-transcripts}"
   for sub in $(grep -oE '/agent-[A-Za-z0-9_-]+:/agent-transcripts:rw' "${AGENT_COMPOSE}" | cut -d: -f1); do
     mkdir -p "${TRANSCRIPT_DIR_HOST}${sub}"
   done
@@ -856,6 +919,13 @@ fi
 
 if [ "${AGENTS_ONLY}" = false ]; then
   preflight_controller_stack
+fi
+
+# A rehearsal ends here: everything a deploy builds was built, and the new
+# controller-stack images passed the same preflight a deploy requires.
+if [ "${REHEARSE}" = true ]; then
+  echo "Rehearsal passed: every image built and the preflight passed; nothing running was touched."
+  exit 0
 fi
 
 # ── Swap ───────────────────────────────────────────────────────────

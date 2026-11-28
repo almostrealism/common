@@ -746,8 +746,27 @@ too. A sentence making a polarity or exclusivity claim ("only", "never",
 "does not", "always", "one X per Y") must be echoed by a cited passage that
 makes a claim of the same kind about the same things; one that is not — the
 shape of a confident "it does not do X, only Y" that no evidence says — is
-flagged `polarity`. Failing sentences are marked `[unsupported]` in the answer
-and listed in `citation_warnings`. A question naming a file the snapshot does not contain is
+flagged `polarity`. When any sentence fails, the model is asked once to revise
+its answer, from the same evidence, with each failing sentence and its reason in
+front of it (`InferenceBackend.revise`). The revision is kept only if it has
+fewer warnings, does not answer "Not documented." where the draft answered,
+leaves a non-empty answer body, keeps every `BASIS:`/`CONFLICTS:` trailer
+line the draft had (dropping just one is rejected), and leaves the draft's
+reported conflicts unchanged (the retry repairs citations, so it may not drop,
+add or rewrite a `CONFLICTS:` entry that would otherwise alter the published
+conflict metadata), does not raise the count of uncited claims (a
+grounded-but-uncited sentence is not a warning, so fixing a flagged citation by
+dropping a marker instead of correcting it must not be rewarded with a lower
+warning count), and leaves every sentence the verifier did not flag unchanged
+(the model is shown only the flagged sentences and told to keep the rest as
+they are, so a revision may not rewrite, drop, reorder or duplicate an
+unflagged, correctly cited sentence — those must survive in the draft's order
+and count — nor add a sentence beyond one in place of each flagged sentence,
+so a new claim appended or inserted between unflagged sentences keeps the
+draft, while removing a flagged sentence is accepted);
+`citation_retry` in the response records the warning counts before and after
+and which answer was `kept`. Sentences that still fail are marked
+`[unsupported]` in the answer and listed in `citation_warnings`. A question naming a file the snapshot does not contain is
 answered directly with `nonexistent: true`.
 
 The snapshot index is built in the Dockerfile's `docs` stage before the prune

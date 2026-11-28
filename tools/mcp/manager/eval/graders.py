@@ -26,6 +26,9 @@ The grader vocabulary (see ``validate_case``):
 - ``history_must_include`` — list of case-insensitive regexes that must match
                            the response's ``history`` field
 - ``min_conflicts``      — floor on ``len(conflicts)``
+- ``retry_kept``         — ``revision`` | ``draft`` | ``none``: which answer the
+                           one citation retry kept, or ``none`` when the draft
+                           drew no warnings and no retry ran
 - ``note_tiers``         — ``{memory id: tier}``: the tier each of those notes
                            was presented with
 - ``must_mark_unsupported`` — list of case-insensitive regexes; each must match
@@ -46,8 +49,11 @@ EXPECT_KEYS = frozenset({
     "must_cite_any", "must_not_cite", "must_flag_stale", "basis_in",
     "max_citation_warnings", "min_citation_warnings", "must_mark_unsupported",
     "must_not_mark_unsupported", "history_must_include", "min_conflicts",
-    "note_tiers",
+    "retry_kept", "note_tiers",
 })
+
+# Values of ``retry_kept``: the answer the citation retry kept, or no retry.
+RETRY_OUTCOMES = ("revision", "draft", "none")
 
 # Expectation keys whose value is a list of case-insensitive regexes.
 _REGEX_LIST_KEYS = ("must_include", "must_not_include", "must_mark_unsupported",
@@ -344,6 +350,12 @@ def grade(response: dict, expect: dict) -> GradeResult:
             f"{n} warnings, fewer than {expect['min_citation_warnings']}",
         )
 
+    if "retry_kept" in expect:
+        retry = response.get("citation_retry")
+        kept = retry.get("kept") if isinstance(retry, dict) else "none"
+        result.record("retry_kept", kept == expect["retry_kept"],
+                      f"citation retry kept {kept!r}, expected {expect['retry_kept']!r}")
+
     if "note_tiers" in expect:
         presented = {e.get("memory_id"): e.get("tier")
                      for e in response.get("evidence", []) or [] if e.get("kind") == "note"}
@@ -462,6 +474,9 @@ def validate_case(case: dict) -> list[str]:
         unknown = set(expect) - EXPECT_KEYS
         if unknown:
             errors.append(f"{cid}: {label} has unknown keys {sorted(unknown)}")
+        if "retry_kept" in expect and expect["retry_kept"] not in RETRY_OUTCOMES:
+            errors.append(
+                f"{cid}: {label} retry_kept {expect['retry_kept']!r} not in {RETRY_OUTCOMES}")
         if "note_tiers" in expect and not (
                 isinstance(expect["note_tiers"], dict)
                 and all(isinstance(v, str) for v in expect["note_tiers"].values())):
@@ -568,14 +583,16 @@ def validate_case(case: dict) -> list[str]:
                         and not _is_string_list(turn["keywords"]):
                     errors.append(
                         f"{cid}: turns[{i}] 'keywords' must be a list of strings")
-                if "scripted" in turn and (not isinstance(turn["scripted"], str)
-                                           or not turn["scripted"]):
-                    errors.append(
-                        f"{cid}: turns[{i}] 'scripted' must be a non-empty string")
+                for key in ("scripted", "revised"):
+                    if key in turn and (not isinstance(turn[key], str)
+                                        or not turn[key]):
+                        errors.append(
+                            f"{cid}: turns[{i}] {key!r} must be a non-empty "
+                            f"string")
 
     if "answerable" in case and not isinstance(case["answerable"], bool):
         errors.append(f"{cid}: 'answerable' must be a boolean")
-    for key in ("scripted", "observed_response", "memories", "now"):
+    for key in ("scripted", "revised", "observed_response", "memories", "now"):
         if key in case and (not isinstance(case[key], str) or not case[key]):
             errors.append(f"{cid}: {key!r} must be a non-empty string")
     for key in ("branch_states", "caller"):
