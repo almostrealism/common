@@ -42,7 +42,9 @@ import java.util.function.Consumer;
  *       {@code OutputServer.getCurrentServer()}; with no Server that singleton is
  *       {@code null}. The worker installs its own {@link Consumer} instead, captures
  *       the job's output, and writes it as a single framed {@link ContainerWorkerResult}
- *       line to standard output for the host Node to forward.</li>
+ *       line to standard output for the host Node to forward. A job that emits no
+ *       output produces no result line, so the host forwards nothing, exactly as a
+ *       native run would fire no output event.</li>
  *   <li><b>Success/failure signal.</b> {@link GitManagedJob#run()} is {@code final},
  *       catches execution exceptions, and always completes its future, so the worker
  *       cannot infer the job's outcome from {@code run()} returning — and does not
@@ -149,22 +151,9 @@ public final class CodingAgentJobWorker {
 			pool.shutdownNow();
 		}
 
-		out.println(result(captured.get()).encodeLine());
+		CodingAgentJobOutput output = captured.get();
+		if (output != null) out.println(ContainerWorkerResult.of(output).encodeLine());
 		return EXIT_COMPLETED;
-	}
-
-	/**
-	 * Builds the result to report, defaulting every field when the job produced no
-	 * {@link CodingAgentJobOutput} (for example a non-coding job, or one that failed
-	 * before emitting output).
-	 *
-	 * @param output  the captured output, or {@code null}.
-	 * @return  the result to frame onto standard output.
-	 */
-	private static ContainerWorkerResult result(CodingAgentJobOutput output) {
-		if (output == null) return new ContainerWorkerResult(0, "", "");
-		return new ContainerWorkerResult(output.getExitCode(), output.getSessionId(),
-				output.getOutput());
 	}
 
 	/**

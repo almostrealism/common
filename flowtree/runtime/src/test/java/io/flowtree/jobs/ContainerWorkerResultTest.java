@@ -44,6 +44,23 @@ public class ContainerWorkerResultTest extends TestSuiteBase {
 		Assert.assertEquals("line one\nline two\nline three", restored.output());
 	}
 
+	/** The prompt survives the round-trip and is restored onto the job output. */
+	@Test(timeout = 10000)
+	public void promptSurvivesRoundTripIntoJobOutput() {
+		CodingAgentJobOutput emitted = new CodingAgentJobOutput("task-1", "fix\nthe build",
+				"done", "session-1", 4);
+
+		ContainerWorkerResult restored = ContainerWorkerResult.parseLine(
+				ContainerWorkerResult.of(emitted).encodeLine());
+		CodingAgentJobOutput output = restored.toJobOutput("task-1");
+
+		Assert.assertEquals("task-1", output.getTaskId());
+		Assert.assertEquals("fix\nthe build", output.getPrompt());
+		Assert.assertEquals("done", output.getOutput());
+		Assert.assertEquals("session-1", output.getSessionId());
+		Assert.assertEquals(4, output.getExitCode());
+	}
+
 	/** The framed result line is a single line, so a multi-line transcript cannot split it. */
 	@Test(timeout = 10000)
 	public void resultLineIsSingleLine() {

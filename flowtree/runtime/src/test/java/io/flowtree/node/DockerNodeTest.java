@@ -17,6 +17,7 @@
 package io.flowtree.node;
 
 import io.flowtree.job.Job;
+import io.flowtree.jobs.CodingAgentJobOutput;
 import io.flowtree.jobs.CodingAgentJobWorker;
 import io.flowtree.jobs.ContainerWorkerResult;
 import org.almostrealism.io.JobOutput;
@@ -58,7 +59,7 @@ public class DockerNodeTest extends TestSuiteBase {
 	@Test(timeout = 10000)
 	public void encodesJobOnceIntoTheRequest() throws Exception {
 		StubLauncher launcher = new StubLauncher(StubSession.completing(0, null));
-		DockerNode node = new DockerNode(null, 0, 4, 4, dockerConfig(), launcher);
+		DockerNode node = new DockerNode(null, 4, 4, dockerConfig(), launcher);
 		StubJob job = new StubJob("task-encode");
 
 		node.launch(job);
@@ -80,7 +81,7 @@ public class DockerNodeTest extends TestSuiteBase {
 	@Test(timeout = 10000)
 	public void eachJobGetsAnIsolatedTranscriptDirectory() throws Exception {
 		StubLauncher launcher = new StubLauncher(StubSession.completing(0, null));
-		DockerNode node = new DockerNode(null, 0, 4, 4, dockerConfig(), launcher);
+		DockerNode node = new DockerNode(null, 4, 4, dockerConfig(), launcher);
 
 		node.launch(new StubJob("task-a"));
 		node.launch(new StubJob("task-b"));
@@ -101,7 +102,7 @@ public class DockerNodeTest extends TestSuiteBase {
 	@Test(timeout = 10000)
 	public void nonZeroContainerExitFailsTheJob() {
 		StubLauncher launcher = new StubLauncher(StubSession.completing(3, null));
-		DockerNode node = new DockerNode(null, 0, 4, 4, dockerConfig(), launcher);
+		DockerNode node = new DockerNode(null, 4, 4, dockerConfig(), launcher);
 
 		try {
 			node.launch(new StubJob("task-fail"));
@@ -117,7 +118,7 @@ public class DockerNodeTest extends TestSuiteBase {
 	public void forwardsWorkerOutputToTheJobConsumer() throws Exception {
 		ContainerWorkerResult result = new ContainerWorkerResult(0, "session-1", "the agent output");
 		StubLauncher launcher = new StubLauncher(StubSession.completing(0, result.encodeLine()));
-		DockerNode node = new DockerNode(null, 0, 4, 4, dockerConfig(), launcher);
+		DockerNode node = new DockerNode(null, 4, 4, dockerConfig(), launcher);
 
 		StubJob job = new StubJob("task-ok");
 		AtomicReference<JobOutput> received = new AtomicReference<>();
@@ -137,7 +138,7 @@ public class DockerNodeTest extends TestSuiteBase {
 	public void sendKillKillsTheRunningContainer() throws Exception {
 		StubSession session = StubSession.blockingExit(0, null);
 		StubLauncher launcher = new StubLauncher(session);
-		DockerNode node = new DockerNode(null, 0, 4, 4, dockerConfig(), launcher);
+		DockerNode node = new DockerNode(null, 4, 4, dockerConfig(), launcher);
 		StubJob job = new StubJob("task-cancel");
 
 		Thread runner = new Thread(() -> {
@@ -161,12 +162,125 @@ public class DockerNodeTest extends TestSuiteBase {
 		runner.join(5000);
 	}
 
+	/** Two concurrent jobs sharing one task id get distinct containers and transcripts. */
+	@Test(timeout = 10000)
+	public void jobsSharingATaskIdGetDistinctContainers() throws Exception {
+		StubLauncher launcher = new StubLauncher(StubSession.completing(0, null));
+		DockerNode node = new DockerNode(null, 4, 4, dockerConfig(), launcher);
+
+		node.launch(new StubJob("task-shared"));
+		node.launch(new StubJob("task-shared"));
+
+		ContainerRequest first = launcher.requests.get(0);
+		ContainerRequest second = launcher.requests.get(1);
+		Assert.assertNotEquals("a shared task id must not share a container name",
+				first.name(), second.name());
+		Assert.assertNotEquals("a shared task id must not share a transcript directory",
+				first.transcriptHostDir(), second.transcriptHostDir());
+	}
+
+	/** Task ids that sanitize to the same text still get distinct containers. */
+	@Test(timeout = 10000)
+	public void sanitizationCollisionsGetDistinctContainers() throws Exception {
+		StubLauncher launcher = new StubLauncher(StubSession.completing(0, null));
+		DockerNode node = new DockerNode(null, 4, 4, dockerConfig(), launcher);
+
+		node.launch(new StubJob("a/b"));
+		node.launch(new StubJob("a?b"));
+
+		ContainerRequest first = launcher.requests.get(0);
+		ContainerRequest second = launcher.requests.get(1);
+		Assert.assertNotEquals("distinct container names", first.name(), second.name());
+		Assert.assertNotEquals("distinct transcript directories",
+				first.transcriptHostDir(), second.transcriptHostDir());
+	}
+
+	/** A cancellation that arrives while the container is starting still kills it. */
+	@Test(timeout = 10000)
+	public void sendKillDuringStartupKillsTheContainer() {
+		StubLauncher launcher = new StubLauncher(StubSession.completing(0, null));
+		DockerNode node = new DockerNode(null, 4, 4, dockerConfig(), launcher);
+		launcher.onLaunch = () -> node.sendKill("task-starting", 0);
+
+		try {
+			node.launch(new StubJob("task-starting"));
+			Assert.fail("a job cancelled during startup must not complete normally");
+		} catch (Exception expected) {
+			Assert.assertTrue("the failure names the cancellation",
+					expected.getMessage().contains("cancelled"));
+		}
+
+		String name = launcher.requests.get(0).name();
+		Assert.assertTrue("the container is killed again once it has started",
+				launcher.killed.stream().filter(name::equals).count() >= 2);
+	}
+
+	/** The container runs the worker in place of the image entrypoint. */
+	@Test(timeout = 10000)
+	public void containerCommandReplacesTheImageEntrypoint() throws Exception {
+		StubLauncher launcher = new StubLauncher(StubSession.completing(0, null));
+		DockerNode node = new DockerNode(null, 4, 4, dockerConfig(), launcher);
+		node.launch(new StubJob("task-entrypoint"));
+
+		List<String> run = new DockerCliContainerLauncher().runCommand(launcher.requests.get(0));
+		int entrypoint = run.indexOf("--entrypoint");
+		int image = run.indexOf("flowtree/agent:test");
+
+		Assert.assertTrue("the image entrypoint is overridden", entrypoint >= 0);
+		Assert.assertEquals("the entrypoint is the java launcher", "java", run.get(entrypoint + 1));
+		Assert.assertTrue("the entrypoint override precedes the image", entrypoint < image);
+		Assert.assertEquals("the worker main is the last argument",
+				CodingAgentJobWorker.class.getName(), run.get(run.size() - 1));
+		Assert.assertTrue("the worker classpath is the image's library directory",
+				run.subList(image, run.size()).contains(DockerNode.WORKER_CLASSPATH));
+	}
+
+	/** The controller's address is forwarded from the host environment into the container. */
+	@Test(timeout = 10000)
+	public void forwardsTheControllerAddress() throws Exception {
+		StubLauncher launcher = new StubLauncher(StubSession.completing(0, null));
+		Map<String, String> environment = Map.of("FLOWTREE_ROOT_HOST", "controller.example",
+				"FLOWTREE_ROOT_PORT", "7766", "UNRELATED_SECRET", "do-not-forward");
+		DockerNode node = new DockerNode(null, 4, 4, dockerConfig(), launcher, environment);
+
+		node.launch(new StubJob("task-env"));
+
+		Map<String, String> env = launcher.requests.get(0).env();
+		Assert.assertEquals("controller.example", env.get("FLOWTREE_ROOT_HOST"));
+		Assert.assertEquals("7766", env.get("FLOWTREE_ROOT_PORT"));
+		Assert.assertFalse("only the controller address is forwarded",
+				env.containsKey("UNRELATED_SECRET"));
+	}
+
+	/** The forwarded output keeps the coding-agent metadata the worker captured. */
+	@Test(timeout = 10000)
+	public void forwardedOutputKeepsCodingAgentMetadata() throws Exception {
+		ContainerWorkerResult result = new ContainerWorkerResult(2, "session-9",
+				"the prompt", "the agent output");
+		StubLauncher launcher = new StubLauncher(StubSession.completing(0, result.encodeLine()));
+		DockerNode node = new DockerNode(null, 4, 4, dockerConfig(), launcher);
+
+		StubJob job = new StubJob("task-meta");
+		AtomicReference<JobOutput> received = new AtomicReference<>();
+		job.setOutputConsumer(received::set);
+		node.launch(job);
+
+		Assert.assertTrue("the forwarded output is a coding-agent output",
+				received.get() instanceof CodingAgentJobOutput);
+		CodingAgentJobOutput output = (CodingAgentJobOutput) received.get();
+		Assert.assertEquals("task-meta", output.getTaskId());
+		Assert.assertEquals("the prompt", output.getPrompt());
+		Assert.assertEquals("session-9", output.getSessionId());
+		Assert.assertEquals(2, output.getExitCode());
+		Assert.assertEquals("the agent output", output.getOutput());
+	}
+
 	/** A missing image is reported at construction rather than failing opaquely later. */
 	@Test(timeout = 10000)
 	public void requiresAnImage() {
 		NodeConfig noImage = new NodeConfig(0, NodeKind.DOCKER, Map.of(), null, null, null);
 		try {
-			new DockerNode(null, 0, 4, 4, noImage, new StubLauncher(StubSession.completing(0, null)));
+			new DockerNode(null, 4, 4, noImage, new StubLauncher(StubSession.completing(0, null)));
 			Assert.fail("a docker node without an image must be rejected");
 		} catch (IllegalArgumentException expected) {
 			Assert.assertTrue("the message names the missing image key",
@@ -191,6 +305,9 @@ public class DockerNodeTest extends TestSuiteBase {
 		/** The session returned for every launch. */
 		private final StubSession session;
 
+		/** Run inside {@link #launch(ContainerRequest)}, or {@code null} for nothing. */
+		private Runnable onLaunch;
+
 		/**
 		 * @param session  the session every launch returns.
 		 */
@@ -201,6 +318,7 @@ public class DockerNodeTest extends TestSuiteBase {
 		@Override
 		public ContainerSession launch(ContainerRequest request) {
 			requests.add(request);
+			if (onLaunch != null) onLaunch.run();
 			return session.named(request.name());
 		}
 

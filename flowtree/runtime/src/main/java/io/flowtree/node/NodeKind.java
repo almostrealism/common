@@ -67,7 +67,7 @@ public enum NodeKind {
 
 		@Override
 		Node create(NodeGroup group, int maxJobs, int maxPeers, NodeConfig config) {
-			return new DockerNode(group, config.index(), maxJobs, maxPeers, config);
+			return new DockerNode(group, maxJobs, maxPeers, config);
 		}
 	};
 

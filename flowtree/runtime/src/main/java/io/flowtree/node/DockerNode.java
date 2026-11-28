@@ -23,8 +23,11 @@ import org.almostrealism.io.JobOutput;
 
 import java.io.BufferedReader;
 import java.io.IOException;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -46,8 +49,20 @@ import java.util.function.Consumer;
  * get wrong between jobs.</p>
  *
  * <p>Isolation is a property of what each launch contains: a distinct container name
- * and a distinct per-job transcript directory, with no shared writable mount. Three
- * contracts that a Server normally supplies are met here:</p>
+ * and a distinct per-job transcript directory, with no shared writable mount. Both
+ * carry a per-launch nonce besides the task id, because a task id is not a per-job
+ * identifier — a factory hands the same task id to every job it creates, and those
+ * jobs may run concurrently on several Docker Nodes of the same host.</p>
+ *
+ * <p>The container runs the worker in place of the image's own entrypoint (which
+ * starts a Server), so the in-image startup checks do not run; the per-job request
+ * built here is what keeps the only writable mount the per-job transcript directory.
+ * The controller's address ({@code FLOWTREE_ROOT_HOST}, {@code FLOWTREE_ROOT_PORT}) is
+ * forwarded from the host Server's environment, so the job can resolve the
+ * {@code 0.0.0.0} placeholder in its workstream and tool URLs the same way it does
+ * in-process. That address must be reachable from inside the container.</p>
+ *
+ * <p>Three contracts that a Server normally supplies are met here:</p>
  * <ul>
  *   <li><b>Output transport.</b> The worker writes the job's output as a framed
  *       {@link ContainerWorkerResult} line; this Node parses it and forwards the output
@@ -58,9 +73,12 @@ import java.util.function.Consumer;
  *       {@code launch}, so the inherited worker loop records the job as failed via
  *       {@code addFailedJob}. A job that merely failed its own task still exits zero and
  *       reports its own status, matching native behaviour.</li>
- *   <li><b>Cancellation.</b> {@link #sendKill(String, int)} additionally kills the
- *       running task's container, so a cancellation reaches a containerized agent that
- *       the base kill (which only drops queued jobs and broadcasts a message) cannot.</li>
+ *   <li><b>Cancellation.</b> {@link #sendKill(String, int)} additionally kills every
+ *       container running the task, so a cancellation reaches a containerized agent
+ *       that the base kill (which only drops queued jobs and broadcasts a message)
+ *       cannot. A container is registered before it is started and a cancellation is
+ *       sticky, so a kill that arrives while the runtime is still starting the
+ *       container is re-applied until the container's output ends.</li>
  * </ul>
  *
  * @author  Michael Murray
@@ -75,6 +93,18 @@ public class DockerNode extends Node {
 
 	/** Prefix for the per-job container name, which also carries the task id. */
 	private static final String CONTAINER_NAME_PREFIX = "flowtree-job-";
+
+	/**
+	 * The classpath of the worker inside the agent image, where the image places the
+	 * runtime jar and its dependencies.
+	 */
+	static final String WORKER_CLASSPATH = "/app/lib/*";
+
+	/**
+	 * Host environment variables forwarded into every container: the controller's
+	 * address, which the job needs to resolve its workstream and tool URLs.
+	 */
+	static final List<String> FORWARDED_ENV = List.of("FLOWTREE_ROOT_HOST", "FLOWTREE_ROOT_PORT");
 
 	/** Environment variable naming the host transcript root the per-job dir sits under. */
 	private static final String TRANSCRIPT_ROOT_ENV = "FLOWTREE_TRANSCRIPT_ROOT";
@@ -113,23 +143,29 @@ public class DockerNode extends Node {
 	/** The host transcript root the per-job transcript directory sits under. */
 	private final String transcriptRoot;
 
+	/** The host environment values forwarded into every container, by variable name. */
+	private final Map<String, String> forwardedEnv;
+
 	/** The outer silence-guard window in milliseconds. */
 	private final long outerSilenceGuardMillis;
 
-	/** The containers currently running a job, keyed by task id, so a kill can reach them. */
-	private final Map<String, String> runningContainers = new ConcurrentHashMap<>();
+	/**
+	 * The containers registered for each task id, so a kill can reach every container
+	 * running the task, including one that is still being started.
+	 */
+	private final Map<String, Set<RunningContainer>> runningContainers = new ConcurrentHashMap<>();
 
 	/**
-	 * Constructs a Docker Node that drives the real {@code docker} CLI.
+	 * Constructs a Docker Node that drives the real {@code docker} CLI. The node id is
+	 * the configuration's {@link NodeConfig#index() index}.
 	 *
 	 * @param parent    the owning group; {@code null} starts no worker thread.
-	 * @param id        the node id within the group.
 	 * @param maxJobs   maximum queued jobs before shedding to peers.
 	 * @param maxPeers  maximum peer connections.
-	 * @param config    the typed configuration supplying the image and resource limits.
+	 * @param config    the typed configuration supplying the id, image and resource limits.
 	 */
-	public DockerNode(NodeGroup parent, int id, int maxJobs, int maxPeers, NodeConfig config) {
-		this(parent, id, maxJobs, maxPeers, config, new DockerCliContainerLauncher());
+	public DockerNode(NodeGroup parent, int maxJobs, int maxPeers, NodeConfig config) {
+		this(parent, maxJobs, maxPeers, config, new DockerCliContainerLauncher());
 	}
 
 	/**
@@ -137,18 +173,35 @@ public class DockerNode extends Node {
 	 * substitute a stub that records requests and returns canned output.
 	 *
 	 * @param parent    the owning group; {@code null} starts no worker thread.
-	 * @param id        the node id within the group.
 	 * @param maxJobs   maximum queued jobs before shedding to peers.
 	 * @param maxPeers  maximum peer connections.
-	 * @param config    the typed configuration supplying the image and resource limits.
+	 * @param config    the typed configuration supplying the id, image and resource limits.
 	 * @param launcher  the launcher that starts and cancels containers.
 	 */
-	DockerNode(NodeGroup parent, int id, int maxJobs, int maxPeers, NodeConfig config,
+	DockerNode(NodeGroup parent, int maxJobs, int maxPeers, NodeConfig config,
 			ContainerLauncher launcher) {
-		super(parent, id, maxJobs, maxPeers);
+		this(parent, maxJobs, maxPeers, config, launcher, System.getenv());
+	}
+
+	/**
+	 * Constructs a Docker Node with an explicit {@link ContainerLauncher} and host
+	 * environment, so a test can control both the runtime and the values forwarded into
+	 * each container.
+	 *
+	 * @param parent       the owning group; {@code null} starts no worker thread.
+	 * @param maxJobs      maximum queued jobs before shedding to peers.
+	 * @param maxPeers     maximum peer connections.
+	 * @param config       the typed configuration supplying the id, image and resource limits.
+	 * @param launcher     the launcher that starts and cancels containers.
+	 * @param environment  the host environment the transcript root and forwarded
+	 *                     controller address are read from.
+	 */
+	DockerNode(NodeGroup parent, int maxJobs, int maxPeers, NodeConfig config,
+			ContainerLauncher launcher, Map<String, String> environment) {
+		super(parent, config.index(), maxJobs, maxPeers);
 
 		if (config.image() == null || config.image().isEmpty()) {
-			throw new IllegalArgumentException("A docker node requires a nodes." + id
+			throw new IllegalArgumentException("A docker node requires a nodes." + config.index()
 					+ ".image; none was configured");
 		}
 
@@ -157,7 +210,8 @@ public class DockerNode extends Node {
 		this.cpus = config.cpus();
 		this.memory = config.memory();
 		this.containerRoot = CodingAgentJobWorker.DEFAULT_CONTAINER_ROOT;
-		this.transcriptRoot = resolveTranscriptRoot();
+		this.transcriptRoot = resolveTranscriptRoot(environment);
+		this.forwardedEnv = forwardedEnv(environment);
 		this.outerSilenceGuardMillis = DEFAULT_OUTER_SILENCE_GUARD_MILLIS;
 	}
 
@@ -173,30 +227,44 @@ public class DockerNode extends Node {
 	@Override
 	protected void launch(Job j) throws Exception {
 		String taskId = j.getTaskId();
-		String containerName = containerName(taskId);
-		ContainerRequest request = buildRequest(j, containerName, taskId);
+		String launchId = launchId(taskId);
+		String containerName = CONTAINER_NAME_PREFIX + launchId;
+		ContainerRequest request = buildRequest(j, containerName, launchId);
 
-		ContainerSession session = launcher.launch(request);
-		runningContainers.put(taskId, containerName);
+		RunningContainer container = register(taskId, containerName);
 		try {
-			ContainerWorkerResult result = consumeOutput(session);
+			if (container.isCancelled()) {
+				throw new IOException("Task " + taskId + " was cancelled before container "
+						+ containerName + " started");
+			}
+
+			ContainerSession session = launcher.launch(request);
+			if (container.isCancelled()) launcher.kill(containerName);
+
+			ContainerWorkerResult result = consumeOutput(session, container);
 			int exit = session.awaitExit();
 
 			if (result != null) forwardOutput(j, result);
 
+			if (container.isCancelled()) {
+				throw new IOException("Container " + containerName + " for job " + taskId
+						+ " was killed because the task was cancelled");
+			}
 			if (exit != 0) {
 				throw new IOException("Container " + containerName + " for job " + taskId
 						+ " exited with status " + exit);
 			}
 		} finally {
-			runningContainers.remove(taskId);
+			unregister(taskId, container);
 		}
 	}
 
 	/**
-	 * Additionally kills the running task's container, so a cancellation reaches a
-	 * containerized agent. The base behaviour (dropping queued jobs and broadcasting
-	 * the kill) still runs first.
+	 * Additionally kills every container registered for the task, so a cancellation
+	 * reaches a containerized agent. The base behaviour (dropping queued jobs and
+	 * broadcasting the kill) still runs first. Each container is marked cancelled
+	 * before it is killed, so a container the runtime had not yet created when this
+	 * kill ran is killed once it starts.
 	 *
 	 * @param task   the task id of the jobs to cancel.
 	 * @param relay  the number of additional hops to relay the kill signal.
@@ -205,12 +273,48 @@ public class DockerNode extends Node {
 	public void sendKill(String task, int relay) {
 		super.sendKill(task, relay);
 
-		String containerName = runningContainers.get(task);
-		if (containerName != null) {
-			displayMessage("Killing container " + containerName
+		Set<RunningContainer> containers = runningContainers.get(task);
+		if (containers == null) return;
+
+		for (RunningContainer container : containers) {
+			container.cancel();
+			displayMessage("Killing container " + container.name()
 					+ " for cancelled task " + task);
-			launcher.kill(containerName);
+			launcher.kill(container.name());
 		}
+	}
+
+	/**
+	 * Registers a container for a task before it is started, so a cancellation that
+	 * arrives during startup can find it.
+	 *
+	 * @param taskId         the task the container runs.
+	 * @param containerName  the container's unique name.
+	 * @return  the registered container.
+	 */
+	private RunningContainer register(String taskId, String containerName) {
+		RunningContainer container = new RunningContainer(containerName);
+		runningContainers.compute(taskId, (key, containers) -> {
+			Set<RunningContainer> set = containers == null
+					? ConcurrentHashMap.newKeySet() : containers;
+			set.add(container);
+			return set;
+		});
+		return container;
+	}
+
+	/**
+	 * Removes a finished container from its task's registrations, dropping the task
+	 * entry once no container runs it.
+	 *
+	 * @param taskId     the task the container ran.
+	 * @param container  the finished container.
+	 */
+	private void unregister(String taskId, RunningContainer container) {
+		runningContainers.computeIfPresent(taskId, (key, containers) -> {
+			containers.remove(container);
+			return containers.isEmpty() ? null : containers;
+		});
 	}
 
 	/**
@@ -220,16 +324,19 @@ public class DockerNode extends Node {
 	 *
 	 * @param j              the job to run.
 	 * @param containerName  the unique container name.
-	 * @param taskId         the job's task id.
+	 * @param launchId       the per-launch identifier naming the transcript directory.
 	 * @return  the container request.
 	 */
-	private ContainerRequest buildRequest(Job j, String containerName, String taskId) {
-		return new ContainerRequest.Builder(containerName, image)
+	private ContainerRequest buildRequest(Job j, String containerName, String launchId) {
+		ContainerRequest.Builder builder = new ContainerRequest.Builder(containerName, image)
 				.cpus(cpus)
 				.memory(memory)
-				.env(CodingAgentJobWorker.CONTAINER_ROOT_ENV, containerRoot)
-				.transcript(transcriptDir(taskId), TRANSCRIPT_MOUNT)
-				.command(List.of("java", CodingAgentJobWorker.class.getName()))
+				.env(CodingAgentJobWorker.CONTAINER_ROOT_ENV, containerRoot);
+		forwardedEnv.forEach(builder::env);
+		return builder
+				.transcript(transcriptRoot + "/" + launchId, TRANSCRIPT_MOUNT)
+				.command(List.of("java", "--enable-native-access=ALL-UNNAMED",
+						"-cp", WORKER_CLASSPATH, CodingAgentJobWorker.class.getName()))
 				.encodedJob(j.toWire())
 				.build();
 	}
@@ -239,16 +346,18 @@ public class DockerNode extends Node {
 	 * silence guard on each line, ignoring heartbeats, and capturing the worker's
 	 * framed result line.
 	 *
-	 * @param session  the running container session.
+	 * @param session    the running container session.
+	 * @param container  the registration whose cancellation the guard re-applies.
 	 * @return  the parsed worker result, or {@code null} if the worker reported none.
 	 * @throws IOException  if the guard killed the container for silence, or the stream
 	 *                      could not be read.
 	 */
-	private ContainerWorkerResult consumeOutput(ContainerSession session) throws IOException {
+	private ContainerWorkerResult consumeOutput(ContainerSession session,
+			RunningContainer container) throws IOException {
 		BufferedReader reader = session.output();
 		AtomicLong lastActivity = new AtomicLong(System.currentTimeMillis());
 		AtomicBoolean killed = new AtomicBoolean(false);
-		Thread guard = startSilenceGuard(session, lastActivity, killed);
+		Thread guard = startSilenceGuard(session, container, lastActivity, killed);
 
 		ContainerWorkerResult result = null;
 		try {
@@ -273,17 +382,22 @@ public class DockerNode extends Node {
 
 	/**
 	 * Starts a daemon thread that kills the container if it emits nothing — not even a
-	 * worker heartbeat — for longer than the outer silence guard window.
+	 * worker heartbeat — for longer than the outer silence guard window, and that
+	 * re-applies a cancellation on every poll so a kill issued before the runtime had
+	 * created the container still takes effect.
 	 *
 	 * @param session       the container to watch and, if silent, kill.
+	 * @param container     the registration whose cancellation is re-applied.
 	 * @param lastActivity  the timestamp of the last line seen, updated by the reader.
 	 * @param killed        set {@code true} when the guard kills the container.
 	 * @return  the started guard thread.
 	 */
-	private Thread startSilenceGuard(ContainerSession session, AtomicLong lastActivity,
-			AtomicBoolean killed) {
+	private Thread startSilenceGuard(ContainerSession session, RunningContainer container,
+			AtomicLong lastActivity, AtomicBoolean killed) {
 		Thread guard = new Thread(() -> {
 			while (!Thread.currentThread().isInterrupted()) {
+				if (container.isCancelled()) launcher.kill(session.name());
+
 				if (System.currentTimeMillis() - lastActivity.get() > outerSilenceGuardMillis) {
 					killed.set(true);
 					launcher.kill(session.name());
@@ -303,9 +417,10 @@ public class DockerNode extends Node {
 	}
 
 	/**
-	 * Forwards the worker's output to the job's own output consumer as a plain
-	 * {@link JobOutput}, so a containerized run records its output at the same host
-	 * sink an in-process run would.
+	 * Forwards the worker's output to the job's own output consumer as the job output
+	 * the worker captured — with its prompt, session id and agent exit code — so a
+	 * containerized run records the same output at the same host sink an in-process
+	 * run would.
 	 *
 	 * @param j       the job the output belongs to.
 	 * @param result  the worker's parsed result.
@@ -313,35 +428,27 @@ public class DockerNode extends Node {
 	private void forwardOutput(Job j, ContainerWorkerResult result) {
 		Consumer<JobOutput> consumer = j.getOutputConsumer();
 		if (consumer != null) {
-			consumer.accept(new JobOutput(j.getTaskId(), "", "", result.output()));
+			consumer.accept(result.toJobOutput(j.getTaskId()));
 		}
 	}
 
 	/**
-	 * Returns the unique container name for a task id, sanitized to the characters a
-	 * container runtime accepts.
+	 * Returns the identifier of one launch: the task id, sanitized to the characters a
+	 * container runtime accepts in a name, followed by a random nonce. The nonce makes
+	 * the container name and transcript directory unique even when several jobs share
+	 * a task id or two task ids sanitize to the same text.
 	 *
 	 * @param taskId  the job's task id.
-	 * @return  the container name.
+	 * @return  the per-launch identifier.
 	 */
-	private static String containerName(String taskId) {
-		return CONTAINER_NAME_PREFIX + sanitize(taskId);
-	}
-
-	/**
-	 * Returns the per-job host transcript directory, a distinct subdirectory of the
-	 * transcript root for each task so no two containers share a writable path.
-	 *
-	 * @param taskId  the job's task id.
-	 * @return  the per-job transcript directory.
-	 */
-	private String transcriptDir(String taskId) {
-		return transcriptRoot + "/" + sanitize(taskId);
+	static String launchId(String taskId) {
+		String nonce = UUID.randomUUID().toString().replace("-", "").substring(0, 12);
+		return sanitize(taskId) + "-" + nonce;
 	}
 
 	/**
 	 * Replaces every character a container runtime does not accept in a name with a
-	 * dash, so an arbitrary task id yields a valid, unique name.
+	 * dash.
 	 *
 	 * @param value  the raw value, possibly {@code null}.
 	 * @return  the sanitized value.
@@ -354,10 +461,69 @@ public class DockerNode extends Node {
 	/**
 	 * Resolves the host transcript root from the environment.
 	 *
+	 * @param environment  the host environment.
 	 * @return  the configured root, or {@link #DEFAULT_TRANSCRIPT_ROOT}.
 	 */
-	private static String resolveTranscriptRoot() {
-		String root = System.getenv(TRANSCRIPT_ROOT_ENV);
+	private static String resolveTranscriptRoot(Map<String, String> environment) {
+		String root = environment.get(TRANSCRIPT_ROOT_ENV);
 		return root == null || root.isEmpty() ? DEFAULT_TRANSCRIPT_ROOT : root;
+	}
+
+	/**
+	 * Selects the {@link #FORWARDED_ENV} values that are set in the host environment.
+	 *
+	 * @param environment  the host environment.
+	 * @return  the values to forward into every container, by variable name.
+	 */
+	private static Map<String, String> forwardedEnv(Map<String, String> environment) {
+		Map<String, String> forwarded = new LinkedHashMap<>();
+		for (String name : FORWARDED_ENV) {
+			String value = environment.get(name);
+			if (value != null && !value.isEmpty()) forwarded.put(name, value);
+		}
+		return forwarded;
+	}
+
+	/**
+	 * One container registered for a task, with a sticky cancellation flag that a kill
+	 * sets and the launching thread and silence guard re-check.
+	 */
+	private static final class RunningContainer {
+
+		/** The container's unique name. */
+		private final String name;
+
+		/** Set once the task is cancelled; never cleared. */
+		private final AtomicBoolean cancelled = new AtomicBoolean(false);
+
+		/**
+		 * @param name  the container's unique name.
+		 */
+		private RunningContainer(String name) {
+			this.name = name;
+		}
+
+		/**
+		 * Returns the container's unique name.
+		 *
+		 * @return  the container name.
+		 */
+		String name() {
+			return name;
+		}
+
+		/** Marks the container's task as cancelled. */
+		void cancel() {
+			cancelled.set(true);
+		}
+
+		/**
+		 * Returns whether the container's task has been cancelled.
+		 *
+		 * @return  {@code true} once {@link #cancel()} has been called.
+		 */
+		boolean isCancelled() {
+			return cancelled.get();
+		}
 	}
 }

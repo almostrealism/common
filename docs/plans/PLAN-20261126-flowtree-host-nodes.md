@@ -480,9 +480,24 @@ one-to-one onto these five stages.
    that already carry the right required labels — which the controller stamps today.
 7. *sendKill* — `DockerNode.sendKill` kills the running task's container via the launcher.
 
-- Not changed here (Stage 5): the agent image's `entrypoint.sh`/`Dockerfile`/compose. The
-  `DockerNode` runs the worker main as the container command directly, so the worker image
-  and the host install are finalized in Stages 3/5 without blocking this stage.
+- Not changed here (Stage 5): the agent image's `entrypoint.sh`/`Dockerfile`/compose. That
+  image's `ENTRYPOINT` always starts a Server, so `DockerCliContainerLauncher` passes the
+  request command's first element as `--entrypoint` and the `DockerNode` command is
+  `java -cp /app/lib/* io.flowtree.jobs.CodingAgentJobWorker` (the image's library
+  directory). The in-image startup checks therefore do not run for a worker container;
+  the per-job request is what keeps the transcript directory the only writable mount.
+- Review-round hardening: container names and transcript directories carry a per-launch
+  nonce (a factory gives every job it creates the same task id, and task ids are
+  sanitized for the runtime); `sendKill` reaches every container registered for the
+  task, registration happens before the container starts, and a cancellation is sticky
+  (re-applied by the silence guard) so a kill during startup is not lost; the host's
+  `FLOWTREE_ROOT_HOST`/`FLOWTREE_ROOT_PORT` are forwarded so the job can resolve its
+  `0.0.0.0` workstream/tool URLs (the address must be reachable from inside the
+  container); and the result frame carries the full `CodingAgentJobOutput` (prompt,
+  session id, exit code), which the `DockerNode` reconstructs.
+- Still open for the owner (Decision 7): no agent credential (`CLAUDE_CODE_OAUTH_TOKEN`,
+  `ANTHROPIC_API_KEY`) or git identity is injected into the worker container by this
+  stage; only what already rides the job payload reaches it.
 
 **Tests that prove it**
 - Round-trip: `GitManagedJobSerializationTest.roundTripFactory` already proves a

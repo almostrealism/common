@@ -159,7 +159,9 @@ public class ContainerRequest {
 	}
 
 	/**
-	 * Returns the command the container runs.
+	 * Returns the complete command the container runs. Its first element is the
+	 * executable, which replaces whatever entrypoint the image declares, so the
+	 * container runs exactly this process and nothing the image would otherwise start.
 	 *
 	 * @return  the command; never {@code null}.
 	 */
@@ -282,7 +284,8 @@ public class ContainerRequest {
 		}
 
 		/**
-		 * Sets the command the container runs.
+		 * Sets the complete command the container runs; its first element replaces the
+		 * image's entrypoint.
 		 *
 		 * @param command  the command the container runs; must not be {@code null}.
 		 * @return  this builder.

@@ -32,12 +32,15 @@ import java.util.Base64;
  *       outer silence guard sees the worker is alive even while the agent is quiet
  *       inside a long tool call;</li>
  *   <li>a single {@link #encodeLine() result} line, emitted once the job finishes,
- *       carrying the agent's exit code, session id and captured output. The host
- *       {@link #parseLine(String) parses} it and forwards the output to the job's
- *       own output consumer.</li>
+ *       carrying every field of the job's {@link CodingAgentJobOutput} — the agent's
+ *       exit code, session id, prompt and captured output. The host
+ *       {@link #parseLine(String) parses} it and forwards
+ *       {@link #toJobOutput(String) the reconstructed output} to the job's own output
+ *       consumer, so a containerized run delivers the same metadata a native run
+ *       does.</li>
  * </ul>
  *
- * <p>The session id and output are Base64-encoded so the line is newline-safe and a
+ * <p>The session id, prompt and output are Base64-encoded so the line is newline-safe and a
  * multi-line transcript never splits the framed record.</p>
  *
  * @author  Michael Murray
@@ -57,20 +60,61 @@ public class ContainerWorkerResult {
 	/** The agent session id, or an empty string when none was reported. */
 	private final String sessionId;
 
+	/** The prompt the agent was given, or an empty string when none was reported. */
+	private final String prompt;
+
 	/** The captured agent output. */
 	private final String output;
 
 	/**
-	 * Constructs a result.
+	 * Constructs a result that reports no prompt.
 	 *
 	 * @param agentExitCode  the agent process exit code.
 	 * @param sessionId      the agent session id; {@code null} is stored as empty.
 	 * @param output         the captured output; {@code null} is stored as empty.
 	 */
 	public ContainerWorkerResult(int agentExitCode, String sessionId, String output) {
+		this(agentExitCode, sessionId, "", output);
+	}
+
+	/**
+	 * Constructs a result.
+	 *
+	 * @param agentExitCode  the agent process exit code.
+	 * @param sessionId      the agent session id; {@code null} is stored as empty.
+	 * @param prompt         the prompt the agent was given; {@code null} is stored as empty.
+	 * @param output         the captured output; {@code null} is stored as empty.
+	 */
+	public ContainerWorkerResult(int agentExitCode, String sessionId, String prompt,
+			String output) {
 		this.agentExitCode = agentExitCode;
 		this.sessionId = sessionId == null ? "" : sessionId;
+		this.prompt = prompt == null ? "" : prompt;
 		this.output = output == null ? "" : output;
+	}
+
+	/**
+	 * Captures every field of a job's output, for framing onto the worker's standard
+	 * output.
+	 *
+	 * @param output  the output the job emitted; must not be {@code null}.
+	 * @return  the result carrying that output's exit code, session id, prompt and text.
+	 */
+	public static ContainerWorkerResult of(CodingAgentJobOutput output) {
+		return new ContainerWorkerResult(output.getExitCode(), output.getSessionId(),
+				output.getPrompt(), output.getOutput());
+	}
+
+	/**
+	 * Reconstructs the job output this result was captured from, so the host delivers
+	 * the same {@link CodingAgentJobOutput} — with its prompt, session id and exit code
+	 * — that an in-process run would.
+	 *
+	 * @param taskId  the task id of the job the output belongs to.
+	 * @return  the reconstructed output.
+	 */
+	public CodingAgentJobOutput toJobOutput(String taskId) {
+		return new CodingAgentJobOutput(taskId, prompt, output, sessionId, agentExitCode);
 	}
 
 	/**
@@ -92,6 +136,15 @@ public class ContainerWorkerResult {
 	}
 
 	/**
+	 * Returns the prompt the agent was given.
+	 *
+	 * @return  the prompt; never {@code null}.
+	 */
+	public String prompt() {
+		return prompt;
+	}
+
+	/**
 	 * Returns the captured agent output.
 	 *
 	 * @return  the captured agent output; never {@code null}.
@@ -107,7 +160,8 @@ public class ContainerWorkerResult {
 	 * @return  the framed result line (without a trailing newline).
 	 */
 	public String encodeLine() {
-		return RESULT_PREFIX + agentExitCode + " " + base64(sessionId) + " " + base64(output);
+		return RESULT_PREFIX + agentExitCode + " " + base64(sessionId) + " " + base64(prompt)
+				+ " " + base64(output);
 	}
 
 	/**
@@ -120,12 +174,12 @@ public class ContainerWorkerResult {
 	public static ContainerWorkerResult parseLine(String line) {
 		if (line == null || !line.startsWith(RESULT_PREFIX)) return null;
 
-		String[] parts = line.substring(RESULT_PREFIX.length()).split(" ", 3);
-		if (parts.length != 3) return null;
+		String[] parts = line.substring(RESULT_PREFIX.length()).split(" ", 4);
+		if (parts.length != 4) return null;
 
 		try {
 			return new ContainerWorkerResult(Integer.parseInt(parts[0]),
-					decode(parts[1]), decode(parts[2]));
+					decode(parts[1]), decode(parts[2]), decode(parts[3]));
 		} catch (IllegalArgumentException e) {
 			return null;
 		}

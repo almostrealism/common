@@ -35,10 +35,10 @@ import java.util.Map;
  *
  * <p>{@link #launch(ContainerRequest)} runs {@code docker run --rm -i}, feeds the
  * encoded job to the container's standard input, and streams its combined output.
- * The in-container classpath is a property of the worker image (it exposes the
- * application classes to {@code java}); this launcher only names the main class to
- * run, so the image and this command are finalized together in the host-install
- * stage.</p>
+ * The first element of {@link ContainerRequest#command()} is passed as
+ * {@code --entrypoint} and the rest as its arguments, so the request's command runs
+ * in place of the image's own entrypoint — the agent image's entrypoint starts a
+ * Server, which a container Node must never run.</p>
  *
  * @author  Michael Murray
  * @see DockerNode
@@ -50,6 +50,30 @@ public class DockerCliContainerLauncher implements ContainerLauncher, ConsoleFea
 
 	@Override
 	public ContainerSession launch(ContainerRequest request) throws IOException {
+		ProcessBuilder builder = new ProcessBuilder(runCommand(request));
+		builder.redirectErrorStream(true);
+		Process process = builder.start();
+
+		try (OutputStream stdin = process.getOutputStream()) {
+			stdin.write(request.encodedJob().getBytes(StandardCharsets.UTF_8));
+		} catch (IOException e) {
+			warn("Could not feed the encoded job to container " + request.name(), e);
+		}
+
+		return new ProcessContainerSession(request.name(), process);
+	}
+
+	/**
+	 * Returns the {@code docker run} invocation for a request: the container name,
+	 * resource limits, environment, read-only mounts and the single writable transcript
+	 * mount, then the request's command with its first element as the entrypoint.
+	 * It is an instance method because the invocation is this launcher's translation
+	 * of a runtime-neutral request into its own CLI.
+	 *
+	 * @param request  the container to start.
+	 * @return  the full command line, starting with the {@code docker} executable.
+	 */
+	List<String> runCommand(ContainerRequest request) {
 		List<String> command = new ArrayList<>();
 		command.add(DOCKER);
 		command.add("run");
@@ -80,20 +104,17 @@ public class DockerCliContainerLauncher implements ContainerLauncher, ConsoleFea
 			command.add(request.transcriptHostDir() + ":" + request.transcriptMountPath());
 		}
 
-		command.add(request.image());
-		command.addAll(request.command());
-
-		ProcessBuilder builder = new ProcessBuilder(command);
-		builder.redirectErrorStream(true);
-		Process process = builder.start();
-
-		try (OutputStream stdin = process.getOutputStream()) {
-			stdin.write(request.encodedJob().getBytes(StandardCharsets.UTF_8));
-		} catch (IOException e) {
-			warn("Could not feed the encoded job to container " + request.name(), e);
+		List<String> containerCommand = request.command();
+		if (!containerCommand.isEmpty()) {
+			command.add("--entrypoint");
+			command.add(containerCommand.get(0));
 		}
 
-		return new ProcessContainerSession(request.name(), process);
+		command.add(request.image());
+		if (containerCommand.size() > 1) {
+			command.addAll(containerCommand.subList(1, containerCommand.size()));
+		}
+		return command;
 	}
 
 	@Override
