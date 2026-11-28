@@ -199,20 +199,22 @@ public class DockerNodeTest extends TestSuiteBase {
 				first.transcriptHostDir(), second.transcriptHostDir());
 	}
 
-	/** A cancellation that arrives while the container is starting still kills it. */
+	/**
+	 * A cancellation that arrives while the container is starting still kills it, and the
+	 * launch returns normally rather than throwing — cancellation is terminal, not a
+	 * retryable failure.
+	 */
 	@Test(timeout = 10000)
-	public void sendKillDuringStartupKillsTheContainer() {
+	public void sendKillDuringStartupKillsTheContainer() throws Exception {
 		StubLauncher launcher = new StubLauncher(StubSession.completing(0, null));
 		DockerNode node = new DockerNode(null, 4, 4, dockerConfig(), launcher);
 		launcher.onLaunch = () -> node.sendKill("task-starting", 0);
 
-		try {
-			node.launch(new StubJob("task-starting"));
-			Assert.fail("a job cancelled during startup must not complete normally");
-		} catch (Exception expected) {
-			Assert.assertTrue("the failure names the cancellation",
-					expected.getMessage().contains("cancelled"));
-		}
+		StubJob job = new StubJob("task-starting");
+		node.launch(job);
+
+		Assert.assertTrue("a cancelled launch completes its future rather than hanging",
+				job.getCompletableFuture().isDone());
 
 		String name = launcher.requests.get(0).name();
 		Assert.assertTrue("the container is killed again once it has started",
@@ -333,24 +335,27 @@ public class DockerNodeTest extends TestSuiteBase {
 				launcher.requests.isEmpty());
 	}
 
-	/** A launch registered after a kill for its task has been delivered is cancelled. */
+	/**
+	 * A launch registered after a kill for its task has been delivered is cancelled: it
+	 * starts no container and returns normally, so the inherited worker loop does not
+	 * retry it.
+	 */
 	@Test(timeout = 10000)
-	public void aLaunchRegisteredAfterAKillIsCancelled() {
+	public void aLaunchRegisteredAfterAKillIsCancelled() throws Exception {
 		StubLauncher launcher = new StubLauncher(StubSession.completing(0, null));
 		DockerNode node = new DockerNode(null, 4, 4, dockerConfig(), launcher);
 
 		node.sendKill("task-late", 0);
 
-		try {
-			node.launch(new StubJob("task-late"));
-			Assert.fail("a job for an already-cancelled task must not run");
-		} catch (Exception expected) {
-			Assert.assertTrue("the failure names the cancellation",
-					expected.getMessage().contains("cancelled"));
-		}
+		StubJob job = new StubJob("task-late");
+		node.launch(job);
 
 		Assert.assertTrue("the cancelled launch never starts a container",
 				launcher.requests.isEmpty());
+		Assert.assertTrue("a cancelled launch completes its future rather than hanging",
+				job.getCompletableFuture().isDone());
+		Assert.assertFalse("a cancelled launch completes normally, not exceptionally",
+				job.getCompletableFuture().isCompletedExceptionally());
 	}
 
 	/** The container's output reader is closed once its output has been consumed. */
@@ -397,6 +402,42 @@ public class DockerNodeTest extends TestSuiteBase {
 
 		Assert.assertTrue("the launcher creates the transcript directory before mounting it",
 				Files.isDirectory(transcript));
+	}
+
+	/**
+	 * A cancelled task returns normally even though its killed container exits non-zero,
+	 * so the inherited worker loop never routes it through {@code addFailedJob}. Were the
+	 * cancellation thrown as a failure, failed-job retention would requeue the sticky-
+	 * cancelled task and cancel it again on every retry, forever.
+	 */
+	@Test(timeout = 10000)
+	public void cancellationIsTerminalRatherThanAFailure() throws Exception {
+		StubLauncher launcher = new StubLauncher(StubSession.completing(137, null));
+		DockerNode node = new DockerNode(null, 4, 4, dockerConfig(), launcher);
+		launcher.onLaunch = () -> node.sendKill("task-terminal", 0);
+
+		StubJob job = new StubJob("task-terminal");
+		node.launch(job);
+
+		Assert.assertTrue("a cancelled launch completes its future",
+				job.getCompletableFuture().isDone());
+		Assert.assertFalse("a cancelled launch completes normally, not exceptionally",
+				job.getCompletableFuture().isCompletedExceptionally());
+	}
+
+	/** With no transcript variable set, the per-job dir sits under a user-writable root. */
+	@Test(timeout = 10000)
+	public void defaultsToAUserWritableTranscriptRoot() throws Exception {
+		StubLauncher launcher = new StubLauncher(StubSession.completing(0, null));
+		DockerNode node = new DockerNode(null, 4, 4, dockerConfig(), launcher, Map.of());
+
+		node.launch(new StubJob("task-default-root"));
+
+		String transcriptDir = launcher.requests.get(0).transcriptHostDir();
+		Assert.assertTrue("the default transcript root is under the user's home",
+				transcriptDir.startsWith(System.getProperty("user.home")));
+		Assert.assertFalse("the default transcript root is not the unwritable filesystem root",
+				transcriptDir.startsWith("/agent-transcripts"));
 	}
 
 	/** A missing image is reported at construction rather than failing opaquely later. */

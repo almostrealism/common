@@ -114,8 +114,17 @@ public class DockerNode extends Node {
 	 */
 	private static final String TRANSCRIPT_ROOT_ENV = "TRANSCRIPT_DIR_HOST";
 
-	/** The host transcript root used when the environment names none. */
-	private static final String DEFAULT_TRANSCRIPT_ROOT = "/agent-transcripts";
+	/**
+	 * The host transcript root used when the environment names none: a user-writable
+	 * location under the Server user's home directory. A normal non-root host process
+	 * cannot create a directory directly under the filesystem root, so a bare
+	 * {@code /agent-transcripts} default would make every Docker job fail before
+	 * {@code docker run} unless the operator had pre-created that path. A deployment that
+	 * wants a durable shared root sets {@link #TRANSCRIPT_ROOT_ENV}.
+	 */
+	private static final String DEFAULT_TRANSCRIPT_ROOT =
+			System.getProperty("user.home", System.getProperty("java.io.tmpdir"))
+					+ "/.flowtree/agent-transcripts";
 
 	/**
 	 * How long the container may emit nothing at all — not even a worker heartbeat —
@@ -248,6 +257,13 @@ public class DockerNode extends Node {
 	 * job is still being encoded is honoured and a failure to encode the job still
 	 * completes the future rather than leaving a caller waiting forever.</p>
 	 *
+	 * <p>A cancellation is terminal, not a failure: a launch the task cancelled returns
+	 * normally rather than throwing, so the inherited worker loop does not route it
+	 * through {@code addFailedJob}. This matches the native path, where a killed job's
+	 * {@code run()} returns rather than throwing, and it is what keeps a cancelled task
+	 * from being requeued and re-cancelled forever when failed-job retention is enabled —
+	 * the sticky {@link #cancelledTasks cancellation marker} would cancel every retry.</p>
+	 *
 	 * @param j  the job to run; never {@code null}.
 	 * @throws Exception  if the container fails to run the job to completion.
 	 */
@@ -260,8 +276,9 @@ public class DockerNode extends Node {
 		RunningContainer container = register(taskId, containerName);
 		try {
 			if (container.isCancelled()) {
-				throw new IOException("Task " + taskId + " was cancelled before container "
+				displayMessage("Task " + taskId + " was cancelled before container "
 						+ containerName + " started");
+				return;
 			}
 
 			ContainerRequest request = buildRequest(j, containerName, launchId);
@@ -275,8 +292,9 @@ public class DockerNode extends Node {
 			if (result != null) forwardOutput(j, result);
 
 			if (container.isCancelled()) {
-				throw new IOException("Container " + containerName + " for job " + taskId
+				displayMessage("Container " + containerName + " for job " + taskId
 						+ " was killed because the task was cancelled");
+				return;
 			}
 			if (exit != 0) {
 				throw new IOException("Container " + containerName + " for job " + taskId
