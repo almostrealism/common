@@ -344,6 +344,50 @@ public class CompressedRowTransposeTests extends TestSuiteBase implements Matrix
 	}
 
 	/**
+	 * An ordering reads the members it reads itself and those its transpose reads, for the shape
+	 * of the matrix it describes; an unrelated ordering, or the ordering of the transpose offered
+	 * for a shape of other dimensions, does not.
+	 */
+	@Test(timeout = 60000)
+	public void readsSameMembersAcceptsOnlyTheOrderingAndItsTranspose() {
+		CompressedRowTraversalOrdering order = CompressedRowTraversalOrdering.of(6, OFFSETS, COLUMNS);
+		TraversalOrdering unrelated = SplitIndexTraversalOrdering.of(7, 6, 5, 4, 3, 2, 1, 0);
+		assertTrue(order.readsSameMembers(order, shape(4, 6)));
+		assertTrue(order.readsSameMembers(order.transpose(), shape(4, 6)));
+		assertFalse(order.readsSameMembers(unrelated, shape(4, 6)));
+		assertFalse(order.readsSameMembers(order.transpose(), shape(6, 4)));
+		assertFalse(order.readsSameMembers(order.transpose(), shape(24)));
+		assertFalse(unrelated.readsSameMembers(order, shape(8)));
+	}
+
+	/**
+	 * Reshaping a collection read through one permutation into a shape carrying an unrelated
+	 * permutation composes the two: each element of the result is the element of the collection
+	 * at the position the second permutation names, not the element of the underlying memory at
+	 * that position, on the host and in a kernel on every available backend.
+	 */
+	@Test(timeout = 60000)
+	public void reshapeIntoUnrelatedOrderingComposes() {
+		PackedCollection reversed = pack(8.0, -7.0, 6.0, 5.0, -4.0, 3.0, -1.0, 2.0);
+		PackedCollection entries = new PackedCollection(shape(8), 0, reversed, 0,
+				SplitIndexTraversalOrdering.of(7, 6, 5, 4, 3, 2, 1, 0));
+		TraversalOrdering rotation = SplitIndexTraversalOrdering.of(1, 2, 3, 4, 5, 6, 7, 0);
+		PackedCollection rotated = entries.reshape(new TraversalPolicy(rotation, 8));
+		double[] expected = { -1.0, 3.0, -4.0, 5.0, 6.0, -7.0, 8.0, 2.0 };
+
+		for (int i = 0; i < expected.length; i++) {
+			assertEquals("host element " + i, expected[i], rotated.toDouble(i));
+		}
+
+		for (ComputeRequirement backend : backends()) {
+			PackedCollection result = evaluate(cp(rotated).multiply(c(1.0)), backend);
+			for (int i = 0; i < expected.length; i++) {
+				assertEquals("element " + i + " on " + backend, expected[i], result.toDouble(i));
+			}
+		}
+	}
+
+	/**
 	 * A view without an ordering of its own over a sparse matrix inherits the matrix's ordering
 	 * only through its delegate. Its shape is dense, so its transpose must not take the sparse
 	 * path: the ordering of the transpose addresses the matrix's entries, and placing it on the

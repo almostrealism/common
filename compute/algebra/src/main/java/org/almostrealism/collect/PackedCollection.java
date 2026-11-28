@@ -1050,12 +1050,12 @@ public class PackedCollection extends MemoryDataAdapter
 	/**
 	 * {@inheritDoc}
 	 *
-	 * <p>If both this collection and the new shape carry an ordering, the ordering of the new
-	 * shape addresses what this collection's own ordering addresses (the same ordering, or another
-	 * view of the same entries, such as the transpose of a sparse matrix): the delegate of this
-	 * collection, read as the delegate reads itself, or the memory of a collection that owns its
-	 * memory. The result views that through the new ordering; nesting it in this collection would
-	 * apply both orderings.</p>
+	 * <p>If the ordering of the new shape {@link TraversalOrdering#readsSameMembers reads the
+	 * members} this collection's own ordering reads (the same ordering, or another view of the
+	 * same entries, such as the transpose of a sparse matrix), the result views the delegate of
+	 * this collection, or the memory of a collection that owns its memory, directly through it;
+	 * nesting it in this collection would apply both orderings. Any other ordering of the new
+	 * shape is composed with this collection's ordering.</p>
 	 */
 	@Override
 	public PackedCollection reshape(TraversalPolicy shape) {
@@ -1066,8 +1066,8 @@ public class PackedCollection extends MemoryDataAdapter
 			return this;
 		}
 
-		// TODO(review): any differing ordering now replaces this one instead of composing with it; confirm intended
-		boolean physical = shape.getOrder() != null && getDelegateOrdering() != null;
+		boolean physical = shape.getOrder() != null && getDelegateOrdering() != null
+				&& getDelegateOrdering().readsSameMembers(shape.getOrder(), getShape());
 		boolean owned = getDelegate() == null;
 		MemoryData target = !physical ? this : owned ? new BytesView(getMem(), getOffset() + getDelegatedLength()) : getDelegate();
 		int offset = !physical ? 0 : owned ? getOffset() : getDelegateOffset();
