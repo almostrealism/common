@@ -74,6 +74,8 @@ public final class AgentRunRequest {
     private final boolean useTmux;
     /** When {@code true}, the session may bypass the agent runtime's interactive permission prompts. */
     private final boolean bypassPermissionPrompts;
+    /** When {@code true}, the runner keeps stdin open as a stream-json channel for mid-session mailbox turns. */
+    private final boolean deliverMailboxToSession;
 
     /**
      * Key in {@link #getEnvironment()} that carries the workstream identifier
@@ -115,6 +117,7 @@ public final class AgentRunRequest {
         this.outputCapturePath = b.outputCapturePath;
         this.useTmux = b.useTmux;
         this.bypassPermissionPrompts = b.bypassPermissionPrompts;
+        this.deliverMailboxToSession = b.deliverMailboxToSession;
     }
 
     /** Returns the full instruction prompt to send to the agent. */
@@ -229,6 +232,22 @@ public final class AgentRunRequest {
     public boolean isBypassPermissionPrompts() { return bypassPermissionPrompts; }
 
     /**
+     * Returns whether the runner should keep the agent's stdin open as a
+     * {@code stream-json} input channel and deliver newly-arrived workstream
+     * mailbox messages to the running session as user turns.
+     *
+     * <p>{@code false} by default, so an unflagged session launches exactly as
+     * it does today: a single positional prompt and {@code /dev/null} stdin.
+     * The flag is honoured only by a runner whose
+     * {@link AgentCapabilities#supportsStreamingInput()} is {@code true}; a
+     * runner that cannot stream input leaves the session on the existing pull
+     * model regardless of this flag.</p>
+     *
+     * @return {@code true} to request mid-session mailbox delivery over stdin
+     */
+    public boolean isDeliverMailboxToSession() { return deliverMailboxToSession; }
+
+    /**
      * Returns the workstream identifier from the request environment, or
      * {@code null} if {@link #ENV_WORKSTREAM_ID} is absent from the map.
      */
@@ -281,6 +300,8 @@ public final class AgentRunRequest {
         private boolean useTmux;
         /** Pending permission-prompt bypass; see {@link AgentRunRequest#isBypassPermissionPrompts()}. */
         private boolean bypassPermissionPrompts;
+        /** Pending mid-session mailbox delivery flag; see {@link AgentRunRequest#isDeliverMailboxToSession()}. */
+        private boolean deliverMailboxToSession;
 
         /** Hidden default constructor; obtain instances via {@link AgentRunRequest#builder()}. */
         private Builder() {}
@@ -328,6 +349,12 @@ public final class AgentRunRequest {
         /** Grants the session the permission-prompt bypass; see {@link AgentRunRequest#isBypassPermissionPrompts()}. */
         public Builder bypassPermissionPrompts(boolean bypassPermissionPrompts) {
             this.bypassPermissionPrompts = bypassPermissionPrompts;
+            return this;
+        }
+
+        /** Requests mid-session mailbox delivery over stdin; see {@link AgentRunRequest#isDeliverMailboxToSession()}. */
+        public Builder deliverMailboxToSession(boolean deliverMailboxToSession) {
+            this.deliverMailboxToSession = deliverMailboxToSession;
             return this;
         }
 

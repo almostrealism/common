@@ -40,6 +40,12 @@ import java.util.Set;
  * @param supportsMcpHttpTransport          whether the runner supports HTTP-transport MCP servers
  * @param supportsMcpStdioTransport         whether the runner supports stdio MCP servers
  * @param supportsPermissionDenialReporting whether the runner reports tool-permission denials
+ * @param supportsStreamingInput            whether the runner can keep the session's stdin
+ *                                          open and feed it further user turns while the
+ *                                          session runs (the mechanism mid-session mailbox
+ *                                          delivery relies on); a runner that launches with a
+ *                                          single positional prompt and no stdin protocol
+ *                                          returns {@code false}
  * @param supportedModels                   set of recognised model identifiers; empty means unconstrained
  * @param supportedProviders                set of recognised provider identifiers; empty means unconstrained
  */
@@ -51,6 +57,7 @@ public record AgentCapabilities(
         boolean supportsMcpHttpTransport,
         boolean supportsMcpStdioTransport,
         boolean supportsPermissionDenialReporting,
+        boolean supportsStreamingInput,
         Set<String> supportedModels,
         Set<String> supportedProviders) {
 
@@ -69,9 +76,40 @@ public record AgentCapabilities(
     }
 
     /**
+     * Backwards-compatible nine-argument constructor that defaults
+     * {@code supportsStreamingInput} to {@code false}. Used by tests and call
+     * sites from before the streaming-input axis was added; a runner that did
+     * not declare streaming input is correctly treated as not supporting it.
+     *
+     * @param reportsCost                       whether the runner emits a USD cost figure
+     * @param reportsTurns                      whether the runner emits an agentic-turn count
+     * @param supportsEffortLevel               whether the runner accepts a thinking/effort level
+     * @param supportsMaxBudget                 whether the runner accepts a USD budget cap
+     * @param supportsMcpHttpTransport          whether the runner supports HTTP-transport MCP servers
+     * @param supportsMcpStdioTransport         whether the runner supports stdio MCP servers
+     * @param supportsPermissionDenialReporting whether the runner reports tool-permission denials
+     * @param supportedModels                   set of recognised model identifiers
+     * @param supportedProviders                set of recognised provider identifiers
+     */
+    public AgentCapabilities(boolean reportsCost,
+                             boolean reportsTurns,
+                             boolean supportsEffortLevel,
+                             boolean supportsMaxBudget,
+                             boolean supportsMcpHttpTransport,
+                             boolean supportsMcpStdioTransport,
+                             boolean supportsPermissionDenialReporting,
+                             Set<String> supportedModels,
+                             Set<String> supportedProviders) {
+        this(reportsCost, reportsTurns, supportsEffortLevel, supportsMaxBudget,
+                supportsMcpHttpTransport, supportsMcpStdioTransport,
+                supportsPermissionDenialReporting, false, supportedModels, supportedProviders);
+    }
+
+    /**
      * Backwards-compatible eight-argument constructor that defaults
+     * {@code supportsStreamingInput} to {@code false} and
      * {@code supportedProviders} to the empty set. Used by tests and call
-     * sites from before the provider-axis was added.
+     * sites from before the provider and streaming-input axes were added.
      *
      * @param reportsCost                       whether the runner emits a USD cost figure
      * @param reportsTurns                      whether the runner emits an agentic-turn count
@@ -92,7 +130,7 @@ public record AgentCapabilities(
                              Set<String> supportedModels) {
         this(reportsCost, reportsTurns, supportsEffortLevel, supportsMaxBudget,
                 supportsMcpHttpTransport, supportsMcpStdioTransport,
-                supportsPermissionDenialReporting, supportedModels, Set.of());
+                supportsPermissionDenialReporting, false, supportedModels, Set.of());
     }
 
     /**
@@ -123,6 +161,7 @@ public record AgentCapabilities(
         json.put("supportsMcpHttpTransport", supportsMcpHttpTransport);
         json.put("supportsMcpStdioTransport", supportsMcpStdioTransport);
         json.put("supportsPermissionDenialReporting", supportsPermissionDenialReporting);
+        json.put("supportsStreamingInput", supportsStreamingInput);
         ArrayNode models = json.putArray("supportedModels");
         supportedModels.forEach(models::add);
         ArrayNode providers = json.putArray("supportedProviders");

@@ -24,12 +24,14 @@ import java.io.BufferedReader;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Consumer;
 import java.util.function.Function;
 
 /**
@@ -177,12 +179,60 @@ public final class AgentProcessRunner {
                              Function<String, String> loopSignatureExtractor,
                              AgentActivityTracker activityTracker,
                              ConsoleFeatures logger) {
+        return runAttempt(pb, useTmux, inactivityTimeoutMillis, taskId,
+                loopSignatureExtractor, activityTracker, null, logger);
+    }
+
+    /**
+     * Starts the configured subprocess as
+     * {@link #runAttempt(ProcessBuilder, boolean, long, String, Function, AgentActivityTracker, ConsoleFeatures)}
+     * does, additionally handing the process's stdin to {@code stdinConsumer}
+     * once it has started, so a streaming-input runner can feed the session
+     * further user turns while it runs.
+     *
+     * <p>The process must have been configured with a {@link ProcessBuilder.Redirect#PIPE}
+     * stdin (see {@link #applyRequestToProcessBuilder(ProcessBuilder, AgentRunRequest, boolean)});
+     * {@code stdinConsumer} receives {@link Process#getOutputStream()} and owns
+     * writing to it and closing it (closing is what sends EOF and lets the
+     * session end). It is invoked on the calling thread immediately after
+     * launch and before the stdout read loop, so a consumer that does more than
+     * hand the stream to its own writer thread must not block. A {@code null}
+     * consumer leaves stdin untouched, which is correct for the {@code /dev/null}
+     * case.</p>
+     *
+     * <p>Streaming input is unavailable under tmux, whose pane supplies its own
+     * stdin and ignores the builder's redirections; when {@code useTmux} is
+     * {@code true} a non-null {@code stdinConsumer} is declined with a warning
+     * and the session runs without streaming delivery.</p>
+     *
+     * @param pb                       fully configured process builder (command, env, dirs)
+     * @param useTmux                  if true, launch via {@link TmuxSession} for a real tty
+     * @param inactivityTimeoutMillis  stdout silence duration that triggers a kill
+     * @param taskId                   task identifier used in the monitor thread name
+     * @param loopSignatureExtractor   maps an output line to an action signature, or null to disable
+     * @param activityTracker          receives every output line, or null when none are tracked
+     * @param stdinConsumer            receives the process's stdin once started, or null for none
+     * @param logger                   target for {@code log}/{@code warn} messages
+     * @return the captured result; {@link Result#exitCode} is {@code -1} on I/O failure
+     */
+    public static Result runAttempt(ProcessBuilder pb,
+                             boolean useTmux,
+                             long inactivityTimeoutMillis,
+                             String taskId,
+                             Function<String, String> loopSignatureExtractor,
+                             AgentActivityTracker activityTracker,
+                             Consumer<OutputStream> stdinConsumer,
+                             ConsoleFeatures logger) {
         if (useTmux) {
+            if (stdinConsumer != null) {
+                logger.warn("Streaming stdin delivery was requested but is unavailable under"
+                        + " tmux; the session runs without mid-session delivery.");
+            }
             return runInTmux(pb, inactivityTimeoutMillis, taskId,
                     loopSignatureExtractor, activityTracker, logger);
         }
         return runInProcess(pb, inactivityTimeoutMillis, taskId,
-                loopSignatureExtractor, activityTracker, logger);
+                loopSignatureExtractor, activityTracker, stdinConsumer, logger);
     }
 
     /** Runs the command directly as a child {@link Process}. */
@@ -191,6 +241,7 @@ public final class AgentProcessRunner {
                                        String taskId,
                                        Function<String, String> loopSignatureExtractor,
                                        AgentActivityTracker activityTracker,
+                                       Consumer<OutputStream> stdinConsumer,
                                        ConsoleFeatures logger) {
         StringBuilder out = new StringBuilder();
         AtomicBoolean killed = new AtomicBoolean(false);
@@ -205,6 +256,10 @@ public final class AgentProcessRunner {
             started = true;
             long pid = process.pid();
             logger.log("Process started (PID: " + pid + ")");
+
+            if (stdinConsumer != null) {
+                stdinConsumer.accept(process.getOutputStream());
+            }
 
             Runnable killAction = () -> {
                 process.descendants().forEach(ProcessHandle::destroyForcibly);
@@ -394,10 +449,41 @@ public final class AgentProcessRunner {
      * factoring it here prevents drift between {@code ClaudeCodeRunner} and
      * {@code OpencodeRunner} without inventing a CLI-agent base class.</p>
      *
+     * <p>Stdin is wired to {@code /dev/null}: the agent reads EOF immediately,
+     * which is correct for a session that receives one prompt and never reads
+     * further input. A runner that keeps stdin open as a streaming-input
+     * channel calls {@link #applyRequestToProcessBuilder(ProcessBuilder,
+     * AgentRunRequest, boolean)} with {@code streamingStdin=true} instead.</p>
+     *
      * @param pb      the configured process builder (already has its command)
      * @param request the run request
      */
     public static void applyRequestToProcessBuilder(ProcessBuilder pb, AgentRunRequest request) {
+        applyRequestToProcessBuilder(pb, request, false);
+    }
+
+    /**
+     * Applies the runner-agnostic portions of {@code request} to {@code pb} as
+     * {@link #applyRequestToProcessBuilder(ProcessBuilder, AgentRunRequest)}
+     * does, but choosing how stdin is wired.
+     *
+     * <p>When {@code streamingStdin} is {@code false}, stdin is redirected from
+     * {@code /dev/null}, exactly as the two-argument form. When it is
+     * {@code true}, stdin is left as a {@link ProcessBuilder.Redirect#PIPE} so
+     * the launched process's {@link Process#getOutputStream()} is a writable
+     * channel the runner feeds stream-json user turns onto; closing that end is
+     * what delivers EOF and lets the session finish. The flag is passed by a
+     * runner whose {@link io.flowtree.jobs.agent.AgentCapabilities#supportsStreamingInput()}
+     * is {@code true} and whose request asks for mid-session delivery, so a
+     * runner that cannot stream never opens the pipe.</p>
+     *
+     * @param pb             the configured process builder (already has its command)
+     * @param request        the run request
+     * @param streamingStdin {@code true} to leave stdin as a writable pipe,
+     *                       {@code false} to redirect it from {@code /dev/null}
+     */
+    public static void applyRequestToProcessBuilder(ProcessBuilder pb, AgentRunRequest request,
+                                                    boolean streamingStdin) {
         Path workDir = request.getWorkingDirectory();
         if (workDir != null) {
             pb.directory(workDir.toFile());
@@ -424,7 +510,11 @@ public final class AgentProcessRunner {
         GitOperations.augmentPath(pb);
 
         pb.redirectErrorStream(true);
-        pb.redirectInput(ProcessBuilder.Redirect.from(new File("/dev/null")));
+        if (streamingStdin) {
+            pb.redirectInput(ProcessBuilder.Redirect.PIPE);
+        } else {
+            pb.redirectInput(ProcessBuilder.Redirect.from(new File("/dev/null")));
+        }
     }
 
     /** Logs the read-loop exception either as a benign post-kill notice or a real error, per {@code killed}. */

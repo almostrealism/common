@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: in-progress
 created: 2026-11-27
 closed:
 tracker: [5f13d1c7-e94d-43d8-a614-1ec04f7aff93]
@@ -7,11 +7,92 @@ tracker: [5f13d1c7-e94d-43d8-a614-1ec04f7aff93]
 
 # PLAN-20261127: Deliver mailbox messages to a running Claude session via stream-json input
 
-Status: design only. This document is the design pass the tracker task asks for; it
-changes no production code. It is written against the code on
-`feature/mailbox-stream-json-delivery` as of this writing, and every mechanism it names
-is cited to a real class and method so the implementation stages can be checked against
-it.
+Status: in progress. This document began as the design pass the tracker task asked for;
+implementation has since started against it. It is written against the code on
+`feature/mailbox-stream-json-delivery`, and every mechanism it names is cited to a real
+class and method so the implementation stages can be checked against it. See
+**§0 Implementation status** immediately below for what has landed and what is deferred,
+and why.
+
+---
+
+## 0. Implementation status
+
+**Landed (runner-side mechanism, in `flowtree/agents`; default-off, byte-identical when
+off; verified by unit tests):**
+
+- **Stage 1 (partial) — protocol pinned from the CLI's `--help`.** `claude --input-format
+  <format>` is real, takes `text` (default) or `stream-json`, and "only works with
+  `--print`". `--replay-user-messages` "re-emit[s] user messages from stdin back on stdout
+  for acknowledgment (only ... with --input-format=stream-json and
+  --output-format=stream-json)". So **injected user turns are NOT echoed to stdout by
+  default** — §7's first option requires passing `--replay-user-messages`, otherwise the
+  pump must append injected turns to the capture itself. A full live contract run (session
+  stays alive on open stdin, EOF behaviour, malformed-line behaviour, per-turn `result`
+  accounting) still needs a credentialed binary and remains the gated integration test §10
+  Stage 1 describes; the design session's machine had no API key.
+- **Stage 2 (capability axis)** — `AgentCapabilities.supportsStreamingInput` (new record
+  component, with 9-arg and 8-arg back-compat constructors defaulting it `false`; emitted by
+  `toJson()`). `ClaudeCodeRunner` returns `true`, `OpencodeRunner` `false`. This is the
+  single source of truth for the §8 fallback decision.
+- **Stage 3 (runner wiring)** — `AgentRunRequest.deliverMailboxToSession` (+ builder);
+  `ClaudeCodeRunner#buildCommandLine` adds `--input-format stream-json` iff the request flag
+  is set (the `-p` prompt is kept); `AgentProcessRunner#applyRequestToProcessBuilder` gains a
+  `streamingStdin` overload that leaves stdin a `Redirect.PIPE` instead of `/dev/null`, and
+  `runAttempt` gains a `Consumer<OutputStream>` that is handed the process stdin after launch.
+  Streaming input declines tmux (streaming wins, with a warning). For now the consumer closes
+  stdin immediately (EOF) so a flagged session still terminates — the plumbing without
+  delivery, exactly as §10 Stage 3 specifies.
+
+**Deferred (not in this change), with the reason:**
+
+- **Stage 2 (job axis)** — threading `deliverMailboxToSession` through `CodingAgentJob` /
+  `CodingAgentJobFactory` / `CodingAgentJobCodec` / `FlowTreeApiEndpoint` /
+  `workstream_submit_tools.py`. `CodingAgentJob` (1592) and `CodingAgentJobFactory` (1590) sit
+  under the hard 1600-line `FileLength` cap with no exemption, so this requires the §4
+  `MailboxDeliveryConfig` `WireConfig` extraction (and folding the load-bearing `collaborative`
+  flag into it to reclaim room) — serialization-sensitive churn on near-cap files. Because a
+  job flag's only effect is to turn on the pump, and the pump is blocked (below), threading it
+  now would activate a mechanism that cannot yet function. The job axis therefore lands
+  **together with** the pump, once the blocking decisions are made, as one coherent change.
+- **Stage 4 (the `MailboxStdinPump`)** — blocked on two owner decisions the PR review flagged
+  as blocking, and which §9 already lists as unresolved:
+  - **§9.1 session termination.** With stdin held open the session does not exit on its own;
+    the direct runner blocks in its stdout read loop until the child closes stdout while the
+    child waits for stdin EOF, so a `finally` cannot by itself end a normal streaming run. A
+    completion signal that closes stdin from another path is **mandatory** before the pump
+    ships, and a successful-run test (returns after closing stdin, not only a shutdown test)
+    must cover it.
+  - **§9.3 sender authentication.** `MessageEndpointHandler#senderOf` accepts a
+    caller-supplied `sender`, so `exclude=job:<taskId>` does not authenticate who may inject a
+    user turn. A user turn is a higher-authority channel than a tool result; without an
+    authenticated audience/authority rule, any sender able to post to the workstream could
+    steer the live session. This must be defined and enforced before delivery, not left to a
+    later inclusion choice. The controller already binds a sender to an HMAC temp token, so
+    the enforcement point exists — but choosing the trust policy, and whether it needs a
+    controller change (which §12 currently lists as "unchanged by design"), is an owner call.
+- **Stage 5/6** follow Stage 4.
+
+**Resolved design points from the PR review (Copilot on PR #1153):**
+
+- *The `flowtree/base` helper must not re-use `ConversationCatchUp`'s URL derivation as-is.*
+  Confirmed: `ConversationCatchUp.mailboxUrlFor` calls `DeduplicationSpawner.extractControllerBaseUrl`
+  / `extractWorkstreamId`, both in `flowtree/runtime`. A `flowtree/base` helper therefore
+  **cannot** parse the workstream URL itself without inverting the layering. The helper must
+  take **already-parsed** controller base URL + workstream id + own-sender, and URL parsing
+  stays with each caller (which is in `runtime` for `ConversationCatchUp`, and on the node —
+  which already has `AR_CONTROLLER_URL` and the workstream id — for the pump). See §5.4, §12.
+- *Relaunch dedup needs an atomic cursor handoff, not two coordinated cursors.* `ConversationCatchUp`
+  reads `since=0` and renders messages, but does not currently return the mailbox head it read
+  up to; a message appended between that read and pump start is otherwise injected twice or
+  missed. The pump must be initialised from the **same read's head cursor** (catch-up returns
+  the head it consumed; the pump starts strictly after it), with a defined boundary for a
+  concurrent arrival. See §11, "Duplicate delivery across a relaunch".
+
+The `tracker:` front-matter field is intentionally retained: `docs/plans/CLAUDE.md` mandates
+the lifecycle header (including `tracker`), and plan documents are exempt from the
+temporary-identifier check (`scripts/check-temporary-identifiers.py` reads those ids from the
+plans themselves). Removing it would fail `tools/tests/test_sweep_plans.py`.
 
 Tracker task: "Deliver mailbox messages to a running Claude session via stream-json
 input." The task is to let a message sent to a workstream while its job is running reach

@@ -29,6 +29,7 @@ import org.almostrealism.io.SystemUtils;
 
 import java.io.FileWriter;
 import java.io.IOException;
+import java.io.OutputStream;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -37,6 +38,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Consumer;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -164,6 +166,7 @@ public class ClaudeCodeRunner implements AgentRunner {
                 true,   // supportsMcpHttpTransport
                 true,   // supportsMcpStdioTransport
                 true,   // supportsPermissionDenialReporting
+                true,   // supportsStreamingInput -- stdin stream-json user turns
                 models,
                 providers);
     }
@@ -226,22 +229,27 @@ public class ClaudeCodeRunner implements AgentRunner {
                     + " of " + (request.getMaxInactivityRestarts() + 1));
         }
 
+        // Streaming stdin is mutually exclusive with tmux; resolved before both.
+        boolean streamingInput = request.isDeliverMailboxToSession();
+
         ProcessBuilder pb = new ProcessBuilder(command);
-        AgentProcessRunner.applyRequestToProcessBuilder(pb, request);
+        AgentProcessRunner.applyRequestToProcessBuilder(pb, request, streamingInput);
 
         Path workDir = request.getWorkingDirectory();
         logger.log("Command: " + String.join(" ", command));
         logger.log("Working directory: "
                 + (workDir != null ? workDir.toString() : System.getProperty("user.dir")));
 
-        // Tmux is opt-in. The per-job request flag (set at submission time) and
-        // the AR_AGENT_USE_TMUX env var are independent enables: either one being
-        // on requests tmux. Default is off so deployments do not flip launch
-        // backends on merge without an explicit operator or submitter decision.
+        // Tmux is opt-in: the per-job request flag and the AR_AGENT_USE_TMUX env
+        // var are independent enables; default off. Streaming input wins over it.
         boolean tmuxRequested = request.isUseTmux()
                 || SystemUtils.isEnabled("AR_AGENT_USE_TMUX").orElse(false);
-        boolean useTmux = tmuxRequested && TmuxSession.isAvailable();
-        if (tmuxRequested && !useTmux) {
+        if (tmuxRequested && streamingInput) {
+            logger.warn("tmux and streaming-input stdin were both requested;"
+                    + " streaming input wins and tmux is declined for this session.");
+        }
+        boolean useTmux = tmuxRequested && !streamingInput && TmuxSession.isAvailable();
+        if (tmuxRequested && !streamingInput && !useTmux) {
             logger.warn("tmux launch was requested but tmux is not on PATH;"
                     + " falling back to direct process launch.");
         }
@@ -252,6 +260,7 @@ public class ClaudeCodeRunner implements AgentRunner {
                 request.getTaskId(),
                 null,
                 new AgentActivityTracker(this::classifyActivity),
+                streamingInput ? streamingStdinConsumer(logger) : null,
                 logger);
 
         String rawOutput = processResult.output();
@@ -268,6 +277,30 @@ public class ClaudeCodeRunner implements AgentRunner {
                 rawOutput, processResult.exitCode(), processResult.killedForInactivity(),
                 processResult.killedForLooping(), processResult.wallClockMs(), logger,
                 request.getRequiredMcpServers());
+    }
+
+    /**
+     * Returns the consumer that owns the streaming-input session's stdin.
+     *
+     * <p>This is the write side of {@code --input-format stream-json}: the
+     * runner hands it {@link Process#getOutputStream()} once the session has
+     * launched. At present it closes the stream immediately, sending EOF so a
+     * flagged session still terminates — the command-line and pipe plumbing is
+     * in place without any mid-session delivery yet. The mailbox-to-stdin pump
+     * replaces this consumer when it lands, writing user turns before closing.</p>
+     *
+     * @param logger target for the diagnostic if the close fails
+     * @return a consumer that closes the session's stdin
+     */
+    private Consumer<OutputStream> streamingStdinConsumer(ConsoleFeatures logger) {
+        return stdin -> {
+            try {
+                stdin.close();
+            } catch (IOException e) {
+                logger.log("Closing streaming stdin failed (session likely already gone): "
+                        + e.getMessage());
+            }
+        };
     }
 
     /**
@@ -316,6 +349,15 @@ public class ClaudeCodeRunner implements AgentRunner {
      * is set by the repository's settings and by this command line, which
      * passes the model, effort and MCP servers explicitly.</p>
      *
+     * <p>{@code --input-format stream-json} is added only when the request
+     * carries {@link AgentRunRequest#isDeliverMailboxToSession()}. It tells the
+     * CLI to read further user turns as newline-delimited JSON objects on
+     * stdin while the session runs (the mechanism mid-session mailbox delivery
+     * uses); the initial prompt is still passed positionally with {@code -p}.
+     * The CLI accepts the flag only in print mode, which this command line
+     * always is. When the flag is absent the command line is byte-identical to
+     * a non-streaming session, so an unflagged job launches exactly as before.</p>
+     *
      * @param request the source of prompt, flags, and MCP config
      * @return the argv list passed to {@link ProcessBuilder}
      */
@@ -328,6 +370,10 @@ public class ClaudeCodeRunner implements AgentRunner {
         command.add("stream-json");
         // The CLI refuses stream-json in print mode without it.
         command.add("--verbose");
+        if (request.isDeliverMailboxToSession()) {
+            command.add("--input-format");
+            command.add("stream-json");
+        }
         command.add("--setting-sources");
         command.add(SETTING_SOURCES);
         command.add("--allowedTools");

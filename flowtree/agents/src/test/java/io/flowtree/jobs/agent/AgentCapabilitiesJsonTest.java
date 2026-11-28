@@ -50,10 +50,30 @@ public class AgentCapabilitiesJsonTest extends TestSuiteBase {
         assertTrue(json.get("supportsMcpHttpTransport").asBoolean());
         assertFalse(json.get("supportsMcpStdioTransport").asBoolean());
         assertTrue(json.get("supportsPermissionDenialReporting").asBoolean());
+        // The nine-argument constructor predates the streaming-input axis, so it
+        // defaults the flag off and the JSON reports it off.
+        assertFalse(json.get("supportsStreamingInput").asBoolean());
         assertEquals(JsonFieldExtractor.MAPPER.valueToTree(List.of("opus", "claude-opus-5")),
                 json.get("supportedModels"));
         assertEquals(JsonFieldExtractor.MAPPER.valueToTree(List.of("anthropic")),
                 json.get("supportedProviders"));
+    }
+
+    /**
+     * The streaming-input flag survives into the JSON when the canonical
+     * ten-argument constructor sets it, and the two runners advertise opposite
+     * values: Claude keeps stdin open for stream-json user turns, opencode
+     * launches with a single positional prompt and cannot.
+     */
+    @Test(timeout = 5000)
+    public void streamingInputFlagIsAdvertisedPerRunner() {
+        AgentCapabilities streaming = new AgentCapabilities(false, false, false, false, false, false, false,
+                true, new LinkedHashSet<>(List.of("opus")), new LinkedHashSet<>(List.of("anthropic")));
+        assertTrue(streaming.supportsStreamingInput());
+        assertTrue(streaming.toJson().get("supportsStreamingInput").asBoolean());
+
+        assertTrue(new ClaudeCodeRunner().capabilities().supportsStreamingInput());
+        assertFalse(new OpencodeRunner().capabilities().supportsStreamingInput());
     }
 
     /** The Claude runner advertises its models in declaration order, aliases first. */
