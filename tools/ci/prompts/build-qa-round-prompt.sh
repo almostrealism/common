@@ -102,7 +102,7 @@ export TEST_RUNNER_FRAGMENT="${TEST_RUNNER_FRAGMENT:-test-runner-maven.txt}"
 # not name it ignores.
 LEADS=""
 if [ -n "${LEADS_FILE:-}" ] && [ -s "${LEADS_FILE}" ]; then
-    LEADS="$(cat "${LEADS_FILE}")"
+    LEADS="$(redact_ci_shard_variables < "${LEADS_FILE}")"
 fi
 export LEADS
 

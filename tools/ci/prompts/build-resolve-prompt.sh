@@ -56,7 +56,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=prompt-render.sh
 source "${SCRIPT_DIR}/prompt-render.sh"
 
-FAILURE_LIST=$(cat "$FAILURES_FILE")
+FAILURE_LIST=$(redact_ci_shard_variables < "$FAILURES_FILE")
 
 cat > "$OUTPUT_FILE" <<'PROMPT_HEADER'
 ## YOU BROKE THESE TESTS. YOU MUST FIX THEM.
@@ -289,7 +289,7 @@ EOF
 # the classification exists to stop.
 
 if [ -n "$PREEXISTING_FILE" ] && [ -s "$PREEXISTING_FILE" ]; then
-    PREEXISTING_LIST=$(cat "$PREEXISTING_FILE")
+    PREEXISTING_LIST=$(redact_ci_shard_variables < "$PREEXISTING_FILE")
     cat >> "$OUTPUT_FILE" <<EOF
 
 ---
@@ -317,7 +317,7 @@ EOF
 fi
 
 if [ -n "$ENVIRONMENTAL_FILE" ] && [ -s "$ENVIRONMENTAL_FILE" ]; then
-    ENVIRONMENTAL_LIST=$(cat "$ENVIRONMENTAL_FILE")
+    ENVIRONMENTAL_LIST=$(redact_ci_shard_variables < "$ENVIRONMENTAL_FILE")
     cat >> "$OUTPUT_FILE" <<EOF
 
 ---

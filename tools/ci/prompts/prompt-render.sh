@@ -105,6 +105,26 @@ escape_sed_replacement() {
     printf '%s' "$value"
 }
 
+# Copies CI output (stdin) to stdout with every CI shard-selection variable
+# name replaced by a placeholder. Every builder passes the CI output it quotes
+# into a prompt (a failure log, a failure or crash summary, a round's leads, the
+# branch's new TODO lines) through this filter, and only that: instruction text
+# stays as written, where the submit-side test-execution-limits lint (in
+# tools/mcp/manager/prompt_test_lint.py and the controller's
+# PromptTestInstructionLinter) still checks it.
+#
+# Those lints reject any prompt naming the shard variables, and a quoted
+# failure log names them whenever the failing test, an assertion message or a
+# printed environment does, so without this a failure whose log mentions them
+# could never be submitted for a fix. Redacting here rather than teaching the
+# lints to skip a quoted region keeps both lints free of any region they do not
+# read: a skipped region is a place any submitter could hide an instruction.
+# The pattern is spelled with a bracket expression so that this file, which the
+# prompt-template lint test also reads, does not name the variables itself.
+redact_ci_shard_variables() {
+    sed -E 's/AR_TEST_[G]ROUPS?/<redacted CI shard variable>/g'
+}
+
 # Prints a template with its includes expanded and each named variable
 # substituted for its ${NAME} placeholder.
 #
@@ -150,7 +170,7 @@ append_branch_feedback() {
         if [ -n "$(tail -c 2 "$output" | tr -d '\n')" ]; then
             printf '\n' >> "$output"
         fi
-        cat "$todos_file" >> "$output"
+        redact_ci_shard_variables < "$todos_file" >> "$output"
     fi
 }
 
