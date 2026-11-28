@@ -34,3 +34,10 @@ from test_male_cns import (  # noqa: E402,F401
     SourceChecksumsTest,
     TransmitterSignTest,
 )
+from test_male_cns_cell_types import (  # noqa: E402,F401
+    CutTest,
+    JavaRandomTest,
+    MatchedControlTest,
+    RateStepTest,
+    TextTensorsTest,
+)

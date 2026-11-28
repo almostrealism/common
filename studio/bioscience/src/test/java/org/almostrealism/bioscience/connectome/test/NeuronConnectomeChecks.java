@@ -60,8 +60,20 @@ public abstract class NeuronConnectomeChecks extends TestSuiteBase {
 	 * @return the directory
 	 */
 	protected File resourceDirectory(String resource) {
+		return resourceDirectory(getClass(), resource);
+	}
+
+	/**
+	 * Returns the directory of a file of the test resources, found through a given class, so a
+	 * test that does not extend this class can locate a committed fixture the same way.
+	 *
+	 * @param owner    the class whose loader finds the resource
+	 * @param resource the classpath path of a file in the directory
+	 * @return the directory
+	 */
+	protected static File resourceDirectory(Class<?> owner, String resource) {
 		try {
-			return new File(getClass().getResource(resource).toURI()).getParentFile();
+			return new File(owner.getResource(resource).toURI()).getParentFile();
 		} catch (URISyntaxException e) {
 			throw new IllegalStateException(e);
 		}

@@ -27,6 +27,7 @@ import org.almostrealism.util.TestDepth;
 import org.almostrealism.util.TestProperties;
 import org.almostrealism.util.TestSuiteBase;
 import org.almostrealism.util.TestUtils;
+import org.junit.Assert;
 import org.junit.Test;
 
 import java.io.File;
@@ -78,30 +79,43 @@ public class CellTypeConnectomeTest extends TestSuiteBase {
 	@TestDepth(2)
 	@TestProperties(longRunning = true, excludeProfiles = TestUtils.PIPELINE)
 	public void spotChecks() throws IOException {
-		File directory = requireDirectory();
+		log("spotChecks=" + assertSpotChecks(requireDirectory(), 150));
+	}
 
+	/**
+	 * Checks a cell-type matrix directory against its {@code spot-checks.json}: every recomputed
+	 * entry equals the loaded {@code W[post, pre]} exactly, its names are those of its indices,
+	 * there are at least {@code minimum} entries and at least one of them is zero. Shared by the
+	 * test on the full matrix and the test on the committed sugar circuit.
+	 *
+	 * @param directory the matrix directory
+	 * @param minimum   the fewest entries the file must hold
+	 * @return the number of entries checked
+	 * @throws IOException if a file cannot be read
+	 */
+	public static int assertSpotChecks(File directory, int minimum) throws IOException {
 		try (CellTypeConnectome connectome = CellTypeConnectome.load(directory);
 			 Reader reader = Files.newBufferedReader(new File(directory, SPOT_CHECKS_FILE).toPath(), StandardCharsets.UTF_8)) {
 			int t = connectome.getTypeCount();
 			PackedCollection weights = connectome.getWeights();
 			JsonArray checks = JsonParser.parseReader(reader).getAsJsonArray();
-			assertTrue(checks.size() >= 150);
+			Assert.assertTrue(checks.size() >= minimum);
 
 			int zeros = 0;
 			for (JsonElement element : checks) {
 				JsonObject check = element.getAsJsonObject();
 				int post = connectome.indexOf(check.get("post").getAsString());
 				int pre = connectome.indexOf(check.get("pre").getAsString());
-				assertEquals(post, check.get("post_index").getAsInt());
-				assertEquals(pre, check.get("pre_index").getAsInt());
+				Assert.assertEquals(post, check.get("post_index").getAsInt());
+				Assert.assertEquals(pre, check.get("pre_index").getAsInt());
 
 				double expected = check.get("value").getAsDouble();
-				assertEquals(check.toString(), expected, weights.toDouble(post * t + pre), 0.0);
+				Assert.assertEquals(check.toString(), expected, weights.toDouble(post * t + pre), 0.0);
 				if (expected == 0.0) zeros++;
 			}
 
-			log("spotChecks=" + checks.size() + " zeroEntries=" + zeros + " types=" + t);
-			assertTrue(zeros > 0);
+			Assert.assertTrue(zeros > 0);
+			return checks.size();
 		}
 	}
 
