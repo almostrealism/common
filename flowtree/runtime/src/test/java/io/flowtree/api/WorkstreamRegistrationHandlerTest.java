@@ -29,6 +29,12 @@ import org.junit.Test;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BiFunction;
 
 import static org.junit.Assert.assertEquals;
@@ -68,6 +74,13 @@ public class WorkstreamRegistrationHandlerTest extends TestSuiteBase {
     private static final String COMMON_BODY =
             "{\"defaultBranch\":\"" + BRANCH + "\",\"baseBranch\":\"master\","
             + "\"repoUrl\":\"" + COMMON_REPO + "\"}";
+    /**
+     * How long a registration held inside the pull-request lookup waits for a
+     * second registration to arrive there beside it, in milliseconds. Far
+     * longer than an unblocked thread needs to get there, so a second arrival
+     * within it means registrations overlap.
+     */
+    private static final long OVERLAP_WAIT_MILLIS = 1500;
 
     /** Builds a one-element pull-request listing in the given GitHub state. */
     private static List<PullRequest> prs(String state) {
@@ -111,7 +124,16 @@ public class WorkstreamRegistrationHandlerTest extends TestSuiteBase {
     /** Constructs the handler under test bound to {@code notifier} and {@code lookup}. */
     private static WorkstreamRegistrationHandler handler(SlackNotifier notifier,
             BiFunction<String, String, List<PullRequest>> lookup) {
-        NotifierRegistry notifiers = new NotifierRegistry(notifier, null);
+        return handler(new NotifierRegistry(notifier, null), lookup);
+    }
+
+    /**
+     * Constructs a handler under test over an existing registry, the way the
+     * endpoint does: a handler per request, every one of them over the same
+     * registry.
+     */
+    private static WorkstreamRegistrationHandler handler(NotifierRegistry notifiers,
+            BiFunction<String, String, List<PullRequest>> lookup) {
         return new WorkstreamRegistrationHandler(notifiers, Collections.emptyMap(), null,
                 session -> "", msg -> NanoHTTPD.newFixedLengthResponse(Response.Status.BAD_REQUEST,
                         "application/json", "{\"error\":\"" + msg + "\"}"),
@@ -222,6 +244,71 @@ public class WorkstreamRegistrationHandlerTest extends TestSuiteBase {
                 result.matchedAsDependentRepo());
         Workstream created = notifier.findWorkstreamByBranchAndRepo(BRANCH, COMMON_REPO);
         assertNotNull("a fresh workstream tracking Common must be created", created);
+    }
+
+    /**
+     * Two registrations of the same branch that arrive together create one
+     * workstream, not two. A pull request's opening starts more than one CI
+     * workflow that registers its branch, each request gets a handler of its
+     * own over the shared registry, and a registration talks to the network
+     * between looking for an existing workstream and storing a new one.
+     *
+     * <p>The pull-request lookup stands in for that network call. The first
+     * registration to reach it holds there until the second has reached it too
+     * or {@link #OVERLAP_WAIT_MILLIS} has passed. If registrations could
+     * overlap, the second would arrive at once, both would have found nothing,
+     * and both would create a workstream. Because they cannot, the second is
+     * still waiting for the first to finish, the wait runs out, and the second
+     * then finds the workstream the first created.</p>
+     */
+    @Test(timeout = 30000)
+    public void concurrentRegistrationsOfOneBranchCreateOneWorkstream() throws Exception {
+        SlackNotifier notifier = downstreamNotifier(false);
+        NotifierRegistry registry = new NotifierRegistry(notifier, null);
+        CountDownLatch firstInside = new CountDownLatch(1);
+        CountDownLatch bothInside = new CountDownLatch(2);
+        AtomicBoolean overlapped = new AtomicBoolean();
+        BiFunction<String, String, List<PullRequest>> lookup = (ownerRepo, branch) -> {
+            firstInside.countDown();
+            bothInside.countDown();
+            try {
+                if (bothInside.await(OVERLAP_WAIT_MILLIS, TimeUnit.MILLISECONDS)) {
+                    overlapped.set(true);
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+            return Collections.emptyList();
+        };
+
+        ExecutorService requests = Executors.newFixedThreadPool(2);
+        try {
+            Future<WorkstreamRegistrationHandler.Registration> first =
+                    requests.submit(() -> handler(registry, lookup).register(COMMON_BODY, BRANCH));
+            assertTrue("the first registration must reach the lookup",
+                    firstInside.await(10, TimeUnit.SECONDS));
+            Future<WorkstreamRegistrationHandler.Registration> second =
+                    requests.submit(() -> handler(registry, lookup).register(COMMON_BODY, BRANCH));
+
+            WorkstreamRegistrationHandler.Registration firstResult = first.get(20, TimeUnit.SECONDS);
+            WorkstreamRegistrationHandler.Registration secondResult = second.get(20, TimeUnit.SECONDS);
+
+            assertFalse("the second registration must not start its lookup before the"
+                    + " first has stored its workstream", overlapped.get());
+            assertFalse("the first registration creates the workstream", firstResult.existing());
+            assertTrue("the second registration is answered with the first's workstream",
+                    secondResult.existing());
+            assertSame(firstResult.workstream(), secondResult.workstream());
+            assertFalse(secondResult.matchedAsDependentRepo());
+            long tracking = notifier.getWorkstreams().values().stream()
+                    .filter(w -> BRANCH.equals(w.getDefaultBranch()) && w.matchesRepo(COMMON_REPO))
+                    .count();
+            assertEquals("exactly one workstream may track (branch, Common)", 1, tracking);
+            assertEquals("the downstream workstream and Common's own, nothing else",
+                    2, notifier.getWorkstreams().size());
+        } finally {
+            requests.shutdownNow();
+        }
     }
 
     /**

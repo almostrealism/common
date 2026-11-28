@@ -27,6 +27,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 import io.flowtree.api.FlowTreeApiEndpoint;
 import io.flowtree.controller.FlowTreeController;
 import io.flowtree.workstream.Workstream;
@@ -68,6 +69,12 @@ public final class NotifierRegistry {
     private final List<JobCompletionListener> additional = new CopyOnWriteArrayList<>();
 
     /**
+     * Held for the whole of a workstream registration; see
+     * {@link #registerExclusively(Supplier)}.
+     */
+    private final Object registrationLock = new Object();
+
+    /**
      * Creates a registry backed by the given primary notifier and optional
      * per-workspace map. The map is defensively copied.
      *
@@ -91,6 +98,44 @@ public final class NotifierRegistry {
     /** Returns the primary (fallback) notifier; may be {@code null}. */
     public SlackNotifier primary() {
         return primary;
+    }
+
+    /**
+     * Runs a workstream registration while no other registration against this
+     * registry is in progress, and returns its result.
+     *
+     * <p>Registering a workstream is a lookup followed by a creation: is there
+     * already a workstream for this branch and repository, and if not, which
+     * channel name is still free, then create and store it. Between the lookup
+     * and the store the registration talks to the network (the pull-request
+     * lookup behind a dependent-repo match, the chat channel's creation), so
+     * the two are far apart in time. Two requests for the same branch that
+     * arrive together — a pull request's opening starts more than one CI
+     * workflow that registers its branch, and a job submission can create the
+     * workstream it needs — would otherwise both find nothing and both create
+     * one. Two workstreams on one branch cannot be told apart by a later
+     * lookup that names only the branch, which then fails as ambiguous, so the
+     * duplicate is worse than a wasted record.</p>
+     *
+     * <p>The lock is this registry's because the registry is what every
+     * lookup reads: the endpoint builds a handler per request, but all of them
+     * share one registry, so it is the one object every concurrent
+     * registration has in common. It covers every branch rather than one,
+     * because the derived channel name must be unique among all workstreams
+     * and is chosen by the same lookup-then-create. A registration can take
+     * as long as its network calls do, and a second one waits that long; they
+     * are infrequent enough (one per new branch) that the wait is acceptable,
+     * and it is bounded by those calls' own timeouts.</p>
+     *
+     * @param registration the lookup-and-create to run; its lookups must go
+     *                     through this registry
+     * @param <T>          the registration's result type
+     * @return whatever {@code registration} returns
+     */
+    public <T> T registerExclusively(Supplier<T> registration) {
+        synchronized (registrationLock) {
+            return registration.get();
+        }
     }
 
     /** Returns {@code true} when this registry was built in multi-workspace mode. */

@@ -568,6 +568,20 @@ Creates a new workstream. When a `channelName` is provided and Slack is configur
 
 The workstream is registered in memory and persisted to the YAML config file via `SlackListener.registerAndPersistWorkstream()`.
 
+**Registration is idempotent.** A workstream is identified by its branch and repository together. When one already exists for the requested pair, nothing is created and the response is the existing workstream:
+
+```json
+{
+  "ok": true,
+  "existing": true,
+  "workstreamId": "ws-abc123"
+}
+```
+
+The other fields of the request are not applied to an existing workstream; a caller that needs them set sends them to the update endpoint, as `tools/ci/register-workstream.sh` does.
+
+This holds for requests that arrive together as well as one after another. Several callers register the same branch at the same moment by design: opening a pull request starts both the `Build and Test` pipeline's `register-workstream` job and the `Register Workstream` workflow, and a job submitted with `createWorkstreamIfMissing` creates the workstream it needs through the same code. The controller looks for an existing workstream and creates a new one as a single step (`NotifierRegistry.registerExclusively`), so exactly one of those requests creates the workstream and the rest are answered with it. No caller has to coordinate with the others, and none should try to: two workstreams on one branch make a later lookup by branch alone fail as ambiguous.
+
 ### Update Endpoint
 
 ```
