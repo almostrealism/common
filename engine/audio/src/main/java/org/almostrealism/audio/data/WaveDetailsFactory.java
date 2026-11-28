@@ -47,7 +47,10 @@ import java.util.stream.DoubleStream;
  *
  * <h2>Similarity Computation</h2>
  * <p>The factory can compute similarity scores between samples using either
- * FFT-based difference metrics or feature vector products.</p>
+ * FFT-based difference metrics or feature vector products. Feature similarity
+ * is the trimmed mean of per-frame cosine similarities over the frames in which
+ * either sample is sounding, with frames in which only one of them is sounding
+ * counting as zero.</p>
  *
  * @see WaveDetails
  * @see WaveDataFeatureProvider
@@ -320,8 +323,7 @@ public class WaveDetailsFactory implements CodeFeatures {
 	 */
 	public double similarity(WaveDetails a, WaveDetails b) {
 		if (a.getFeatureData() != null && b.getFeatureData() != null) {
-			int limit = Math.max(a.getValidFeatureFrameCount(), b.getValidFeatureFrameCount());
-			return cachedProductSimilarity(a, b, limit);
+			return cachedProductSimilarity(a, b);
 		} else if (enableFreqSimilarity && a.getFreqData() != null && b.getFreqData() != null) {
 			return -WaveDetails.differenceSimilarity(a.getFreqData(0), b.getFreqData(0));
 		} else {
@@ -336,7 +338,7 @@ public class WaveDetailsFactory implements CodeFeatures {
 	 * ~12 Computation objects and calling alignTraversalAxes ~9 times
 	 * per comparison.
 	 */
-	private double cachedProductSimilarity(WaveDetails a, WaveDetails b, int limit) {
+	private double cachedProductSimilarity(WaveDetails a, WaveDetails b) {
 		PackedCollection dataA = a.getFeatureData();
 		PackedCollection dataB = b.getFeatureData();
 
@@ -350,9 +352,10 @@ public class WaveDetailsFactory implements CodeFeatures {
 		PackedCollection inputB = frames < framesB ? dataB.range(rangeShape) : dataB;
 
 		double[] values = cosineSimilarityEvaluable(frames, bins)
-				.evaluate(inputA, inputB).doubleStream().limit(limit).toArray();
+				.evaluate(inputA, inputB).doubleStream().toArray();
 
-		return trimmedMean(values);
+		return soundingSimilarity(values, 0, frames,
+				a.getValidFeatureFrameCount(), b.getValidFeatureFrameCount());
 	}
 
 	/**
@@ -436,19 +439,52 @@ public class WaveDetailsFactory implements CodeFeatures {
 					continue;
 				}
 
-				int limit = Math.max(query.getValidFeatureFrameCount(),
-						target.getValidFeatureFrameCount());
-				limit = Math.min(limit, frames);
-
-				double[] targetValues = new double[limit];
-				System.arraycopy(allValues, b * frames, targetValues, 0, limit);
-				results[batchStart + b] = trimmedMean(targetValues);
+				results[batchStart + b] = soundingSimilarity(allValues, b * frames, frames,
+						query.getValidFeatureFrameCount(), target.getValidFeatureFrameCount());
 			}
 
 			batchStart = batchEnd;
 		}
 
 		return results;
+	}
+
+	/**
+	 * Summarizes the per-frame cosine similarities of two items as the mean over
+	 * the frames in which either item is sounding, where a frame in which only
+	 * one of them is sounding counts as zero similarity. Outliers are removed
+	 * with a {@link #trimmedMean trimmed mean} over the frames in which both are
+	 * sounding; the one-sided frames are never trimmed, so each of them always
+	 * lowers the result.
+	 *
+	 * <p>Features are computed over a fixed-length clip, so the frames after a
+	 * sound ends hold the features of its silent padding rather than of the
+	 * sound. Those padding features are not neutral: they are close to the
+	 * features of any quiet or decaying frame, so comparing them with the frames
+	 * of a longer sound measures nothing about either sound. A short hit and a
+	 * drum loop share only the hit's few frames; counting the loop's remaining
+	 * frames against the hit's padding made a hit score close to a loop (and a
+	 * loop close to every hit). Counting those frames as zero instead makes two
+	 * sounds similar only for as long as both are sounding.</p>
+	 *
+	 * @param cosines per-frame cosine similarities
+	 * @param offset  index of the pair's first frame in {@code cosines}
+	 * @param frames  number of frames compared for the pair
+	 * @param validA  number of sounding frames of the first item
+	 * @param validB  number of sounding frames of the second item
+	 * @return the similarity of the pair
+	 */
+	private static double soundingSimilarity(double[] cosines, int offset, int frames, int validA, int validB) {
+		int sounding = Math.min(Math.max(validA, validB), frames);
+		int shared = Math.min(Math.min(validA, validB), sounding);
+		if (sounding == 0) return -1.0;
+		if (shared == 0) return 0.0;
+
+		// Outlier trimming applies to the shared frames only, so that the
+		// one-sided frames are never trimmed away and each one counts as zero
+		double[] values = new double[shared];
+		System.arraycopy(cosines, offset, values, 0, shared);
+		return trimmedMean(values) * shared / sounding;
 	}
 
 	/**
