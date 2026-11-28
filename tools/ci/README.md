@@ -254,6 +254,37 @@ declares no secret.
 | `plan-ready.yaml` | Plan approval → implementation: on a plan PR being marked **ready for review**, dispatch the implementation workflow (`dispatch-workflow`, default `verify-completion.yaml`) on the PR's head branch, but only for a sender in the `approvers` allowlist and while every changed file is under `docs-directory` (default `docs/`). Inline shell over event metadata and the GitHub API — it checks out nothing, runs no framework script, and holds no controller secret (only `GITHUB_TOKEN`), so it has no framework checkout and no `secrets:` block. This repository's `ready-plan.yaml` is its `pull_request_target` caller |
 | `pr-status-labels-run.yaml` | Give every open pull request of the caller's repository one `ci: ...` stage label, derived fresh from the GitHub API on every run (see `pr-status-labels.py`). Every value specific to one repository's pipeline — CI workflow file name, FlowTree remediation job and artifact names, aggregator check-run names, whether a separate test-run stage exists, the plan-approval directory layout — is an input, defaulting to none of this repository's own FlowTree machinery so a repository with no equivalent gets no label that assumes a job or artifact it does not have. This repository's `pr-status-labels.yaml` is its caller, passing its own pipeline's names explicitly |
 
+## Workstream registration, and the conflicted-PR gap
+
+A branch's workstream is what a coding-agent job is dispatched to. Two paths
+register it with `register-workstream.sh`, and because that script is
+idempotent — the controller returns an existing workstream unchanged — they are
+safe to run together:
+
+- **The normal path** is analysis.yaml's `register-workstream` job, on the
+  `pull_request` event. Because it runs the PR-head copy of the script with the
+  controller credential attached, it first verifies that copy against
+  origin/master (the "Verify registration script integrity" step, pinned by
+  `tools/tests/test_register_workstream_wiring.py`).
+- **The conflicted-PR path** is the standalone `register-workstream.yaml`
+  workflow, on `pull_request_target`. GitHub does not fire the `pull_request`
+  event for a PR that conflicts with its base — there is no trial-merge commit
+  to build — so a PR opened in a conflicted state (a harness rescue branch, for
+  one) never reached the normal path and sat without a workstream until someone
+  registered it by hand. `pull_request_target` runs the base branch's copy of
+  the workflow in the base-repository context and needs no mergeable commit, so
+  it fires regardless. It checks out the base branch (no `ref`), so the
+  register-workstream.sh it runs is origin/master's trusted copy, never the
+  PR's — which is why it needs no script-integrity step of its own. It holds the
+  controller credential but runs no PR code, acts only on a same-repo head
+  branch, and passes every PR-derived value through `env:`, the same trust rules
+  `cancel-merged-pr-runs.yaml`'s `cancel-branch-jobs` job follows. On a mergeable
+  PR both paths fire and the `pull_request_target` one is a no-op. Pinned by
+  `tools/tests/test_register_workstream_conflict.py`.
+
+Like every `pull_request_target` workflow, `register-workstream.yaml` takes
+effect only once it is merged to master (GitHub runs the base branch's copy).
+
 ## Coverage (`coverage/`)
 
 | Script | Purpose |
