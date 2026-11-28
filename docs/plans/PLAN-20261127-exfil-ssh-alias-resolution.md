@@ -42,20 +42,26 @@ design doc. Concretely:
    called with the command's captured `env`), resolve each ssh-family destination
    host through `ssh -G` before the existing `_require_lab` allowlist match,
    considering the resolved `hostname`, `proxyjump` and `proxycommand`, subject to
-   the env-override refusal, the pre-`ssh -G` config scan (no resolution on configs
-   that can execute commands), the pinned `-o`/`-F` forwarding contract, and the
-   bounded ProxyJump depth/cycle policy. Add `KnownHostsCommand` to the refused
-   command-executing `-o` regex. On any resolution failure or unsafe config, fall
-   back to the current literal match.
+   the env-override refusal, the pre-`ssh -G` config scan (which *blocks* a config
+   that can execute commands rather than resolving it), the pinned `-o`/`-F`
+   forwarding contract, and the bounded ProxyJump depth/cycle policy. Fold the `-J`
+   jump hops into this same resolve-then-require pass (removing the immediate per-hop
+   `_require_lab` call) so a jump-host alias is resolved too. Add `KnownHostsCommand`
+   to the refused command-executing `-o` regex. On a resolution failure or an
+   unreadable config chain, fall back to the current literal match; a config found to
+   carry a command-executing directive is blocked outright.
 2. **A new sibling test module** `.claude/hooks/lib/test_exfiltration_guard_ssh_alias.py`,
    built on the shared `GuardFixture` imported from
    `test_exfiltration_guard_check.py`, covering every case in Success criteria:
    alias-to-allowlisted (allowed), alias-to-non-allowlisted (blocked), ProxyJump to
-   a non-allowlisted host (blocked), ProxyCommand alias (blocked), `-o HostName=`
-   override in both attached and separate spellings and `-F`/`-Ffile` (blocked),
-   `HOME=`/`PATH=` environment overrides (blocked), `Match exec` config rejection
-   with a sentinel proving no execution, ProxyJump cycle termination, and literal
-   fallback on resolution failure — each for `ssh`, `scp` and `rsync`-over-ssh.
+   a non-allowlisted host (blocked), ProxyCommand alias (blocked), `-J` jump-host
+   alias resolving to an allowlisted host (allowed) and to a non-allowlisted host
+   (blocked), `-o HostName=` override in both attached and separate spellings and
+   `-F`/`-Ffile` (blocked), `HOME=`/`PATH=` environment overrides (blocked),
+   `Match exec`/`ProxyCommand` config detection blocking the command — for both a
+   cosmetic alias and an allowlisted-literal token — with a sentinel proving no
+   execution, ProxyJump cycle termination, and literal fallback on resolution
+   failure — each for `ssh`, `scp` and `rsync`-over-ssh.
 3. **`docs/internals/exfiltration-guard.md`** — one or two sentences recording
    that ssh-family destinations are resolved through `ssh -G` before the allowlist
    match (the doc currently states only that ssh-family handling lives in
@@ -126,14 +132,28 @@ Behaviour, in order:
    their `Include` directives (follow includes to a bounded depth, expanding
    `~` and globs) — for any command-executing directive: `Match exec`,
    `ProxyCommand` (not `none`), `LocalCommand`, `PermitLocalCommand yes` and
-   `KnownHostsCommand`. If any is present, or if the config chain cannot be
-   fully read/followed, do **not** run `ssh -G`; return `[token]` (literal
-   fallback, which fails closed — a cosmetic alias not in the allowlist is
-   blocked, exactly as today). The scan executes nothing; it only reads text.
-   `ssh -G` is therefore only ever invoked on a config proven free of
-   command-execution directives, so resolution never runs an
-   assistant-controlled command. This is the decisive mitigation the task
-   requires: **no `ssh -G` on configs that can execute commands.**
+   `KnownHostsCommand`. The two outcomes are deliberately different, because
+   returning `[token]` is **not** safe when a directive is actually found:
+   - **A command-executing directive is detected in a readable config → raise a
+     block.** Returning `[token]` here would be a bypass: if the destination
+     token is itself an allowlisted name (`ssh amd-halo` with a `Match exec` or
+     `ProxyCommand` in `~/.ssh/config`), literal fallback makes `_require_lab`
+     succeed and the command is *allowed* while its config still carries the
+     execution/routing directive the real `ssh` would honour. So a detected
+     directive fails closed by blocking outright, independent of whether the
+     token is itself allowlisted.
+   - **The config chain cannot be fully read/followed (any IO or parse
+     uncertainty — an unreadable file, an `Include` that cannot be expanded or
+     globbed) → literal fallback.** Here nothing dangerous has been proven
+     present, only that the scan could not complete; returning `[token]`
+     preserves today's behaviour (a cosmetic alias not in the allowlist is still
+     blocked) and no `ssh -G` is run.
+   The scan executes nothing; it only reads text. `ssh -G` is therefore only
+   ever invoked on a config proven free of command-execution directives, so
+   resolution never runs an assistant-controlled command, and a config that
+   *does* carry one is **blocked**, never silently allowed through literal
+   fallback. This is the decisive mitigation the task requires: **no `ssh -G` on
+   configs that can execute commands, and no allow of a config that can.**
 4. **Run `ssh -G <forwarded-options> <alias-without-user@-or-:port>`** with a
    short timeout and captured output, mirroring the `Git.run` error handling:
    any `OSError`/`SubprocessError`/timeout, or a non-zero exit, returns
@@ -147,8 +167,8 @@ Behaviour, in order:
    not `none`, the session is routed through an arbitrary command whose
    destination cannot be verified — raise a block, exactly as the existing
    command-line `-o ProxyCommand` check does. (In practice step 3 has already
-   taken the literal-fallback path for such a config, but this is a belt-and-
-   braces check on the resolved output.)
+   blocked such a config when it scanned it, but this is a belt-and-braces check
+   on the resolved output.)
 7. **ProxyJump hops, with an explicit depth/cycle policy (thread #4).** If
    `proxyjump` is present and not `none`, each hop must itself be allowlisted.
    Resolve hops iteratively, not by open recursion, bounded by two named
@@ -180,6 +200,24 @@ captured `env` (the leading `VAR=value` assignments) and forwards it to the reso
 for the step-1 override refusal; the dispatcher already has `env` in hand from
 `unwrap_with_env` and simply passes it through (`_check_ssh_family(prog, argv, env,
 ctx)`). The returned audit string should report the hosts actually checked.
+
+**The `-J` jump hops join this same pass (thread #1 follow-up — the `-J`
+contradiction).** Today the option loop calls `_require_lab(hop, …)` on each `-J`
+value **immediately**, before the final host loop. If only the final loop were
+replaced, `ssh -J amd-halo-ci amd-halo` would reject the jump-host alias
+`amd-halo-ci` against the literal allowlist *before* `_resolve_ssh_destination`
+could expand it — contradicting the next sentence here and the success criterion
+that jump-host aliases resolve. So the `-J` hops are **no longer matched in the
+option loop**: that immediate `_require_lab` call is removed, and each `-J` hop
+(split on `,`, in command-line order) is collected into the same destination list
+as the positional host(s) and expanded through `_resolve_ssh_destination` — which
+itself follows that hop's own `ProxyJump` chain under the step-7 depth/cycle bound —
+then matched by `_require_lab`. Every ssh destination the command names — the
+positional host, an `-o HostName=`-resolved host, a `-J` jump hop, and any
+`ProxyJump` hop — therefore reaches `_require_lab` only *after* resolution, through
+one uniform resolve-then-require pass. (The option loop keeps its *rejections*: a
+command-executing `-o` form, `scp -S`, and the rsync transport flags are still
+refused inline before any resolution.)
 
 ### Command-scoped environment (thread #2)
 
@@ -233,9 +271,14 @@ both spellings:**
 - `-o KnownHostsCommand=…` — command execution during host-key lookup (to be
   **added** to the existing refusal regex; it is a command-executing `-o` form the
   current regex misses).
-- `-J <hops>` — handled by the existing per-hop `_require_lab` loop; its hops are
-  also expanded through the resolver so a jump-host *alias* is resolved like any
-  other destination.
+- `-J <hops>` — **not** rejected, and **no longer** matched by the immediate
+  per-hop `_require_lab` loop (that call is removed — see the `_check_ssh_family`
+  change above). Each hop is collected into the destination list and expanded
+  through `_resolve_ssh_destination` (so a jump-host *alias* is resolved like any
+  other destination, and each hop's own `ProxyJump` chain is followed under the
+  step-7 depth/cycle bound) *before* `_require_lab`, so `ssh -J amd-halo-ci
+  amd-halo` resolves the alias rather than rejecting it against the literal
+  allowlist.
 
 Everything else on the command line (positional host, `-p`/`-l`/`-i`/… transport
 flags that do not select the config) is neither forwarded nor rejected — it does not
@@ -266,9 +309,12 @@ an assistant that writes its own `~/.ssh/config` with a `Match exec` directive c
 have the guard execute that command via the resolution call even on a destination
 the guard ultimately blocks, where the real `ssh` would never run it. The resolution
 is the step-3 static config scan: `ssh -G` is invoked **only** on a config proven
-free of command-executing directives, and otherwise the resolver takes the literal
-fallback. So resolution adds **no** new path that executes an assistant-controlled
-command; it only ever *adds* a block (a bad HostName, ProxyJump or ProxyCommand) or
+free of command-executing directives; a config found to carry such a directive is
+**blocked outright** (never resolved, and — crucially — never let through by literal
+fallback even when the token is itself an allowlisted name), and only a config chain
+that cannot be fully read falls back to the literal match. So resolution adds **no**
+new path that executes an assistant-controlled command; it only ever *adds* a block
+(a bad HostName, ProxyJump, ProxyCommand, or a command-executing config directive) or
 defers to the literal match it replaces.
 
 ### Testing seam
@@ -309,12 +355,23 @@ A reviewer confirms the task is done when:
   **blocked**: `HOME=/tmp/evil ssh amd-halo` and `PATH=/tmp ssh amd-halo` are both
   refused, while a harmless assignment (`LANG=C ssh amd-halo`) is unaffected.
 - A config that can execute a command during resolution causes the resolver to
-  **not run `ssh -G`** and fall back to the literal match: a `Match exec` (or
-  `ProxyCommand`/`LocalCommand`/`KnownHostsCommand`) directive anywhere in the
-  reachable config chain means `ssh amd-halo-ci` is treated literally (blocked,
-  since the alias is not itself allowlisted), and — critically — the test confirms
-  the `Match exec` command is **never executed** by resolution (e.g. a `Match exec`
-  that would `touch` a sentinel file leaves no sentinel).
+  **not run `ssh -G`** and to **block** (not merely fall back): a `Match exec` (or
+  `ProxyCommand`/`LocalCommand`/`PermitLocalCommand yes`/`KnownHostsCommand`)
+  directive anywhere in the reachable config chain blocks the command outright —
+  tested both for a cosmetic alias (`ssh amd-halo-ci`, blocked) **and for a token
+  that is itself an allowlisted literal** (`ssh amd-halo` with such a directive in
+  `~/.ssh/config`, which must still be **blocked**, not allowed by literal fallback —
+  this is the allowlisted-literal bypass the static scan must close). Critically, the
+  test confirms the `Match exec` command is **never executed** by resolution (e.g. a
+  `Match exec` that would `touch` a sentinel file leaves no sentinel). A config chain
+  that merely cannot be fully read (an unreadable `Include`, an IO error) is the only
+  command-execution case that falls back to the literal match rather than blocking.
+- A `-J` jump-host **alias** resolves before the allowlist match: `ssh -J amd-halo-ci
+  amd-halo`, where `amd-halo-ci` resolves to the allowlisted `amd-halo`, is
+  **allowed** (on the base branch the immediate per-hop `_require_lab` rejects the
+  alias, so this is the regression test for the `-J` resolve-then-require change),
+  while `ssh -J evil-alias amd-halo`, whose hop resolves to a non-allowlisted host,
+  is **blocked**.
 - A cyclic `ProxyJump` config (`Host a ProxyJump b` / `Host b ProxyJump a`)
   terminates: resolution is bounded by `_MAX_PROXYJUMP_DEPTH`/`_MAX_SSH_RESOLUTIONS`
   and a visited set, makes a bounded number of `ssh -G` calls, and falls back to
@@ -326,8 +383,10 @@ A reviewer confirms the task is done when:
 - The same cases hold for `scp`/`rsync`-over-ssh destinations.
 - The existing ssh/scp/rsync tests in `test_exfiltration_guard_check.py` and
   `test_exfiltration_guard_transport.py` still pass unchanged (no regression to
-  literal allowlisted hosts, jump-host `-J` handling, or the transport-env
-  refusals).
+  literal allowlisted hosts, *literal* jump-host `-J` handling — a literal
+  non-allowlisted `-J` hop is still blocked and a literal allowlisted one still
+  allowed, now via the resolver's literal fallback rather than the removed immediate
+  loop — or the transport-env refusals).
 
 Tests to run:
 
@@ -362,13 +421,18 @@ network tests). CI runs all `test_exfiltration_guard_*.py` modules via
 The review raised five points; all are now settled in the body above (none is left
 to the implementer's discretion):
 
-1. **Which ssh options to forward to `ssh -G`** (thread #1). Settled in "Faithful
-   resolution and its options": forward `-F <file>` and **every** non-rejected
-   `-o <key>=<value>` (so no host/config-selecting key is dropped, closing the
-   `-o HostName=` hole), in both the separate and attached spellings; reject the
-   routing/command-executing `-o` forms (`ProxyCommand`, `ProxyJump`, `LocalCommand`,
-   `PermitLocalCommand`, and the newly-added `KnownHostsCommand`) before resolution;
-   forward/forget everything else. The resolver's docstring records this set.
+1. **Which ssh options to forward to `ssh -G`, and how `-J` is matched** (thread #1
+   and its follow-up). Settled in "Faithful resolution and its options": forward
+   `-F <file>` and **every** non-rejected `-o <key>=<value>` (so no host/config-
+   selecting key is dropped, closing the `-o HostName=` hole), in both the separate
+   and attached spellings; reject the routing/command-executing `-o` forms
+   (`ProxyCommand`, `ProxyJump`, `LocalCommand`, `PermitLocalCommand`, and the
+   newly-added `KnownHostsCommand`) before resolution; forward/forget everything
+   else. The resolver's docstring records this set. `-J` hops are **not** matched by
+   the immediate per-hop `_require_lab` loop any more (that call is removed); they are
+   collected into the destination list and expanded through the resolver — like the
+   positional host — so a jump-host *alias* resolves before the allowlist match, with
+   each hop's own `ProxyJump` chain followed under the step-7 bound.
 2. **Command-scoped environment overrides** (thread #2). Settled in "Command-scoped
    environment": `_check_ssh_family` now receives the captured `env`, and the
    resolver blocks when `HOME` or `PATH` is assigned — fail closed, never resolve
@@ -377,8 +441,12 @@ to the implementer's discretion):
    resolver step 3 and "Why this is not a new exfiltration vector": a static,
    execution-free scan of the reachable config chain precedes `ssh -G`, and `ssh -G`
    runs **only** on a config proven free of `Match exec`/`ProxyCommand`/
-   `LocalCommand`/`KnownHostsCommand`; otherwise the resolver falls back to the
-   literal match. No new command-execution path is introduced.
+   `LocalCommand`/`PermitLocalCommand yes`/`KnownHostsCommand`. A config found to
+   carry such a directive is **blocked outright** — not returned as a literal, which
+   would let an allowlisted-literal token (`ssh amd-halo`) slip through `_require_lab`
+   despite the directive; only a config chain that cannot be fully read falls back to
+   the literal match. No new command-execution path is introduced, and no
+   command-executing config is ever allowed.
 4. **ProxyJump depth and cycle policy** (thread #4). Settled in resolver step 7:
    iterative hop resolution bounded by `_MAX_PROXYJUMP_DEPTH` (10) and
    `_MAX_SSH_RESOLUTIONS` (16) with a visited set, falling back to literal matching
