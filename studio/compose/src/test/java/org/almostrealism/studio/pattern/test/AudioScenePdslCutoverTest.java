@@ -424,13 +424,14 @@ public class AudioScenePdslCutoverTest extends AudioSceneTestBase {
 		File outDir = new File("results/pdsl-cutover");
 		outDir.mkdirs();
 		WaveOutput sink = new WaveOutput(() -> new File(outDir, "automation_probe_sink.wav"), 24, true);
-		MultiChannelAudioOutput output = new MultiChannelAudioOutput(sink);
-		TemporalCellular runner = scene.runnerRealTime(output, null, 8192);
+		TemporalCellular runner = null;
 		try {
+			MultiChannelAudioOutput output = new MultiChannelAudioOutput(sink);
+			runner = scene.runnerRealTime(output, null, 8192);
 			runner.setup().get().run();
 			logAutomationValues(scene, channelCount, seed);
 		} finally {
-			runner.destroy();
+			if (runner != null) runner.destroy();
 			sink.destroy();
 		}
 	}
@@ -1133,13 +1134,14 @@ public class AudioScenePdslCutoverTest extends AudioSceneTestBase {
 	private void renderToWav(AudioScene<?> scene, List<Integer> channels, int frames,
 							 int bufferSize, File outFile) {
 		WaveOutput out = new WaveOutput(() -> outFile, 24, true);
-		MultiChannelAudioOutput output = new MultiChannelAudioOutput(out);
-		TemporalCellular runner = scene.runnerRealTime(output, channels, bufferSize);
-
-		int bufferCount = (frames + bufferSize - 1) / bufferSize;
-		Runnable setup = runner.setup().get();
-		Runnable tick = runner.tick().get();
+		TemporalCellular runner = null;
 		try {
+			MultiChannelAudioOutput output = new MultiChannelAudioOutput(out);
+			runner = scene.runnerRealTime(output, channels, bufferSize);
+
+			int bufferCount = (frames + bufferSize - 1) / bufferSize;
+			Runnable setup = runner.setup().get();
+			Runnable tick = runner.tick().get();
 			setup.run();
 			for (int b = 0; b < bufferCount; b++) {
 				tick.run();
@@ -1147,8 +1149,10 @@ public class AudioScenePdslCutoverTest extends AudioSceneTestBase {
 			out.write().get().run();
 		} finally {
 			out.reset();
-			runner.reset();
-			runner.destroy();
+			if (runner != null) {
+				runner.reset();
+				runner.destroy();
+			}
 			out.destroy();
 		}
 	}
