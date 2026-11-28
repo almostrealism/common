@@ -83,7 +83,7 @@ build_runtime() {
     if [ "${BUILD}" = true ]; then
         echo "Building flowtree module..."
         (
-            cd "${PROJECT_ROOT}"
+            cd "${PROJECT_ROOT}" || exit 1
             mvn install -pl flowtree/runtime -am -DskipTests
             mvn dependency:copy-dependencies -pl flowtree/runtime \
                 -DoutputDirectory="${PROJECT_ROOT}/flowtree/runtime/target/dependency"

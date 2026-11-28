@@ -71,7 +71,6 @@ UNIT_DIR="/etc/systemd/system"
 # distribution. The checks below hold it to that rather than assume it.
 STAGING_ROOT="/root"
 NAME_PREFIX="almostrealism-"
-# TODO(review): Wants=/After= values are unchecked; Wants= lets the account have root start any installed unit.
 ALLOWED_UNIT="Description Documentation Wants After StartLimitIntervalSec"
 ALLOWED_SERVICE="Type User Group Environment WorkingDirectory ExecStart Restart RestartSec NoNewPrivileges"
 ALLOWED_INSTALL="WantedBy"
@@ -238,7 +237,7 @@ GROUP_VALUE=""
 while IFS= read -r line || [ -n "${line}" ]; do
     case "${line}" in
         ''|'#'*|';'*) continue ;;
-        *'\') refuse "line continuations are not accepted: ${line}" ;;
+        *\\) refuse "line continuations are not accepted: ${line}" ;;
         '[Unit]'|'[Service]'|'[Install]') SECTION="${line}"; continue ;;
         '['*) refuse "section ${line} is not accepted" ;;
         *=*) ;;
@@ -275,6 +274,9 @@ while IFS= read -r line || [ -n "${line}" ]; do
             ;;
         WantedBy)
             [ "${value}" = "multi-user.target" ] || refuse "WantedBy=${value} is not accepted; only multi-user.target."
+            ;;
+        Wants|After)
+            [ "${value}" = "network-online.target" ] || refuse "${key}=${value} is not accepted; only network-online.target. Wants= has systemd start the named unit as root."
             ;;
     esac
 done < "${STAGED}"

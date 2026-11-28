@@ -387,6 +387,24 @@ class UnitTemplateTests(unittest.TestCase):
             users += key == "User"
         self.assertEqual(1, users)
 
+    def test_registrar_restricts_wants_and_after_to_the_template_target(self):
+        script = _read(os.path.join(_LINUX_DIR, "register-unit.sh"))
+        self.assertIn('Wants|After)', script,
+                      "register-unit.sh must value-check Wants=/After=; Wants= has systemd start the named unit as root")
+        accepted = set()
+        for line in script.splitlines():
+            stripped = line.strip()
+            if stripped.startswith('[ "${value}" = "') and "network" in stripped:
+                accepted.add(stripped.split('"')[3])
+        template_targets = set()
+        for line in _read(os.path.join(_LINUX_DIR, "flowtree-agent.service")).splitlines():
+            if line.startswith(("Wants=", "After=")):
+                template_targets.add(line.split("=", 1)[1])
+        self.assertTrue(template_targets)
+        self.assertTrue(template_targets.issubset(accepted),
+                        "template Wants/After %s not all accepted by the registrar %s"
+                        % (template_targets, accepted))
+
     def test_template_never_has_systemd_open_files_as_root(self):
         text = _read(os.path.join(_LINUX_DIR, "flowtree-agent.service"))
         for directive in ("EnvironmentFile=", "StandardOutput=", "StandardError=", "ExecStartPre="):
