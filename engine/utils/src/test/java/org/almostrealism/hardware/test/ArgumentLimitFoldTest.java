@@ -42,6 +42,7 @@ import org.almostrealism.collect.IndexMaskTraversalOrdering;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.CollectionProducerComputationBase;
 import org.almostrealism.collect.computations.DefaultTraversableExpressionComputation;
+import org.almostrealism.collect.computations.ReshapeProducer;
 import org.almostrealism.collect.computations.TraversableDeltaComputation;
 import org.almostrealism.hardware.AcceleratedComputationEvaluable;
 import org.almostrealism.hardware.AcceleratedComputationOperation;
@@ -617,6 +618,34 @@ public class ArgumentLimitFoldTest extends TestSuiteBase implements ExpressionFe
 		ProducerWithRankAdapter<?> ranked = new ProducerWithRankAdapter<>((Producer) product, (Producer) sum);
 		Assert.assertEquals(productBound + sumBound, ranked.getScopeArgumentCount(Integer.MAX_VALUE));
 		Assert.assertEquals(0, new ProducerWithRankAdapter<>(cp(a), cp(b)).getScopeArgumentCount(Integer.MAX_VALUE));
+	}
+
+	/**
+	 * A reshape prepares the producer it reshapes. A reshaped computation is a child of the
+	 * reshape, so its arguments are counted at its own position of the tree and the reshape adds
+	 * nothing for it; a reshaped lifecycle that is not a {@link Process} is prepared outside of
+	 * the tree, so the reshape reports what preparing it obtains, and stops once it passes the cap.
+	 */
+	@Test(timeout = 30000)
+	public void reshapeReportsTheArgumentsOfAProducerOutsideTheTree() {
+		PackedCollection a = new PackedCollection(SIZE).fill(1.0);
+		PackedCollection b = new PackedCollection(SIZE).fill(2.0);
+
+		Computation<?> sum = (Computation<?>) cp(a).add(cp(b));
+		Computation<?> product = (Computation<?>) cp(a).multiply(cp(b)).multiply(cp(a));
+		int sumBound = sum.getInputArgumentBound(Integer.MAX_VALUE);
+		int productBound = product.getInputArgumentBound(Integer.MAX_VALUE);
+
+		ReshapeProducer reshapedComputation = new ReshapeProducer(new TraversalPolicy(2, SIZE / 2), (Producer) product);
+		Assert.assertEquals(0, reshapedComputation.getScopeArgumentCount(Integer.MAX_VALUE));
+
+		ProducerWithRankAdapter<?> ranked = new ProducerWithRankAdapter<>((Producer) product, (Producer) sum);
+		ReshapeProducer reshapedLifecycle = new ReshapeProducer(new TraversalPolicy(2, SIZE / 2), (Producer) ranked);
+		Assert.assertEquals(productBound + sumBound, reshapedLifecycle.getScopeArgumentCount(Integer.MAX_VALUE));
+
+		int capped = reshapedLifecycle.getScopeArgumentCount(1);
+		Assert.assertTrue("capped=" + capped, capped > 1);
+		Assert.assertTrue("capped=" + capped, capped <= productBound);
 	}
 
 	/**

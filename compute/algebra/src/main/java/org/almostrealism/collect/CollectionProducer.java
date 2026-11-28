@@ -19,6 +19,7 @@ package org.almostrealism.collect;
 import io.almostrealism.code.MemoryProvider;
 import io.almostrealism.collect.Algebraic;
 import io.almostrealism.collect.CollectionProducerBase;
+import io.almostrealism.collect.TraversalOrdering;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Evaluable;
@@ -27,6 +28,7 @@ import io.almostrealism.scope.ScopeSettings;
 import org.almostrealism.algebra.MatrixFeatures;
 import org.almostrealism.calculus.ReduceAxis;
 
+import java.util.Optional;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
@@ -216,7 +218,14 @@ public interface CollectionProducer extends
 
 	/**
 	 * Returns the transpose of this collection by enumerating along the traversal axis.
-	 * For square diagonal 2D matrices, returns {@code this} directly as they are symmetric.
+	 * For square diagonal 2D matrices, returns {@code this} directly as they are symmetric,
+	 * whatever {@link TraversalOrdering} their shape carries.
+	 *
+	 * <p>Any other 2D collection whose {@link TraversalOrdering} can
+	 * {@link TraversalOrdering#transpose(int, int) describe its transpose} (such as a sparse
+	 * matrix in compressed-sparse-row form) is transposed without moving any element: the result
+	 * reads the same memory through the ordering of the transpose, so it stays sparse and a
+	 * product of it visits only the stored entries.</p>
 	 *
 	 * @return a producer for the transposed collection
 	 */
@@ -229,6 +238,12 @@ public interface CollectionProducer extends
 			// Square, diagonal, 2D matrices are symmetric
 			// and do not require any transformation
 			return this;
+		}
+
+		Optional<TraversalOrdering> transposed = shape.getDimensions() == 2 && shape.getOrder() != null ?
+				shape.getOrder().transpose(shape.length(0), shape.length(1)) : Optional.empty();
+		if (transposed.isPresent()) {
+			return reshape(new TraversalPolicy(transposed.get(), shape.length(1), shape.length(0)));
 		}
 
 		CollectionProducerComputation result = enumerate(shape.getTraversalAxis() + 1, 1);

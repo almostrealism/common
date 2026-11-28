@@ -30,6 +30,7 @@ import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.mem.ByteBufferTransfer;
 import org.almostrealism.hardware.mem.Bytes;
+import org.almostrealism.hardware.mem.BytesView;
 import org.almostrealism.hardware.mem.DirectMemory;
 import org.almostrealism.hardware.mem.Heap;
 import org.almostrealism.hardware.mem.MemoryDataAdapter;
@@ -1049,23 +1050,26 @@ public class PackedCollection extends MemoryDataAdapter
 	/**
 	 * {@inheritDoc}
 	 *
-	 * <p>If the new shape carries the ordering through which this collection reads its delegate,
-	 * the result views the delegate through that ordering; nesting it in this collection would
-	 * apply the ordering twice.</p>
+	 * <p>If both this collection and the new shape carry an ordering, the ordering of the new
+	 * shape addresses what this collection's own ordering addresses (the same ordering, or another
+	 * view of the same entries, such as the transpose of a sparse matrix): the delegate of this
+	 * collection, read as the delegate reads itself, or the memory of a collection that owns its
+	 * memory. The result views that through the new ordering; nesting it in this collection would
+	 * apply both orderings.</p>
 	 */
 	@Override
 	public PackedCollection reshape(TraversalPolicy shape) {
 		if (shape.getTotalSizeLong() != getShape().getTotalInputSizeLong()) {
 			throw new IllegalArgumentException("Shape size (" + shape.getTotalSizeLong() +
 					") does not match collection size (" + getShape().getTotalInputSizeLong() + ")");
-		} else if (getShape().equals(shape)) {
+		} else if (getShape().equals(shape) && shape.getOrder() == getShape().getOrder()) {
 			return this;
 		}
 
-		boolean sameOrderedView = getDelegate() != null && getDelegateOrdering() != null
-				&& shape.getOrder() == getDelegateOrdering();
-		MemoryData target = sameOrderedView ? getDelegate() : this;
-		int offset = sameOrderedView ? getDelegateOffset() : 0;
+		boolean physical = shape.getOrder() != null && getDelegateOrdering() != null;
+		boolean owned = getDelegate() == null;
+		MemoryData target = !physical ? this : owned ? new BytesView(getMem(), getOffset() + getDelegatedLength()) : getDelegate();
+		int offset = !physical ? 0 : owned ? getOffset() : getDelegateOffset();
 		int axis = shape.getTraversalAxis();
 
 		if (axis <= 0) {

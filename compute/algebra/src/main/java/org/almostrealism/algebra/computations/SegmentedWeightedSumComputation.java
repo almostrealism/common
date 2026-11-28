@@ -47,11 +47,13 @@ import java.util.Set;
  * <p>For a matrix of shape {@code (count, n)} and an input of shape {@code (n)} or
  * {@code (n, width)}:</p>
  * <pre>
- * output[i, w] = sum(p = start(i) .. start(i) + length(i) - 1) matrix[p] * input[offset(p), w]
+ * output[i, w] = sum(q = start(i) .. start(i) + length(i) - 1) matrix[position(q)] * input[offset(q), w]
  * </pre>
- * <p>where {@code start}, {@code length} and {@code offset} are the
+ * <p>where {@code start}, {@code length}, {@code offset} and {@code position} are the
  * {@link OrderingSegments enumeration} of the rows of the matrix, and {@code matrix[p]} is the
- * entry at physical position {@code p}. This is the same value as the dense product of the
+ * entry at physical position {@code p}. For a compressed-sparse-row matrix the position of each
+ * member is the member itself; for the transpose of one, whose rows are the columns of the
+ * original matrix, each member is read where the original matrix stores it. This is the same value as the dense product of the
  * matrix read through its ordering, but visits each stored entry once and never forms a logical
  * index of the matrix, so it applies to matrices whose logical size exceeds the range of an
  * {@code int}.</p>
@@ -63,7 +65,7 @@ import java.util.Set;
  * <pre>
  * out[g] = 0.0;
  * for (int k = 0; k &lt; length(i);) {
- *     out[g] = out[g] + matrix[start(i) + k] * input[offset(start(i) + k) * width + w];
+ *     out[g] = out[g] + matrix[position(start(i) + k)] * input[offset(start(i) + k) * width + w];
  *     k = k + 1;
  * }
  * </pre>
@@ -233,23 +235,23 @@ public class SegmentedWeightedSumComputation extends RepeatedProducerComputation
 	}
 
 	/**
-	 * Returns the accumulated value after one more entry of the row handled by the current
-	 * kernel thread. The entry is read from the memory of the matrix at its physical position,
-	 * not through the ordering.
+	 * Returns the accumulated value after one more member of the row handled by the current
+	 * kernel thread. The entry is read from the memory of the matrix at the physical position
+	 * of the member, not through the logical index of the ordering.
 	 *
 	 * @param args        the traversable arguments, where {@code args[0]} is the output
 	 * @param globalIndex the index of the output element
-	 * @param localIndex  the position of the entry within its row
-	 * @return the output element plus {@code matrix[p] * input[offset(p), w]}
+	 * @param localIndex  the position of the member within its row
+	 * @return the output element plus {@code matrix[position(q)] * input[offset(q), w]}
 	 */
 	@Override
 	protected Expression<?> getExpression(TraversableExpression[] args, Expression globalIndex, Expression localIndex) {
 		Expression<?> currentValue = getCurrentOutputValue(getOutputVariable(), globalIndex);
 
-		Expression<?> position = segments.start(rowOf(globalIndex)).add(localIndex);
-		Expression<?> column = segments.offset(position);
+		Expression<?> member = segments.start(rowOf(globalIndex)).add(localIndex);
+		Expression<?> column = segments.offset(member);
 		Expression<?> gathered = args[INPUT].getValueAt(column.multiply(width).add(globalIndex.imod(width)));
-		Expression<?> entry = getArgumentForInput(getInputs().get(MATRIX)).reference(position);
+		Expression<?> entry = getArgumentForInput(getInputs().get(MATRIX)).reference(segments.position(member));
 		return currentValue.add(entry.multiply(gathered));
 	}
 

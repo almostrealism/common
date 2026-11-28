@@ -159,6 +159,26 @@ public interface TraversalOrdering extends IndexSet, Signature {
 	}
 
 	/**
+	 * Returns an ordering that reads the {@code (cols, rows)} transpose of the {@code (rows, cols)}
+	 * matrix this ordering describes from the same physical positions, if this ordering can
+	 * describe the transpose structurally. A collection whose shape carries this ordering is then
+	 * transposed without moving any of its elements: the transpose is its memory read through the
+	 * returned ordering, and a computation that needs only the members of each row of the
+	 * transpose finds them through the {@link #segments(int) segments} of the returned ordering
+	 * rather than by reading every logical element.
+	 *
+	 * <p>The default returns empty, in which case a transpose reads every logical element through
+	 * {@link #indexOf(Expression)}, which remains correct.</p>
+	 *
+	 * @param rows the number of rows of the matrix this ordering describes
+	 * @param cols the number of columns of the matrix this ordering describes
+	 * @return the ordering of the transpose, or empty if this ordering cannot describe it
+	 */
+	default Optional<TraversalOrdering> transpose(int rows, int cols) {
+		return Optional.empty();
+	}
+
+	/**
 	 * Returns a composed ordering that first applies this ordering, then the given ordering.
 	 *
 	 * <p>If {@code other} is {@code null}, returns {@code this} unchanged.</p>
