@@ -217,19 +217,73 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 	 */
 	public TemporalCellular create(MultiChannelAudioOutput output,
 								   List<Integer> channels, int bufferSize) {
+		return create(output, channels, bufferSize, null);
+	}
+
+	/**
+	 * Builds a real-time runner, as {@link #create(MultiChannelAudioOutput, List, int)} does,
+	 * and returns it with its live control handle.
+	 *
+	 * <p>When {@code options} is {@code null} the runner behaves exactly as the three-argument
+	 * form: pattern positions follow the raw render cursor, the clock runs freely, and the
+	 * ring depth is the global {@link #renderAheadSlots}. When options are supplied the render
+	 * position is mapped through a {@link RealtimePositionWindow} (wrapping at the loop length),
+	 * the automation clock is set to the pattern position of each buffer as it is mixed, and
+	 * the ring depth may be overridden for this runner alone.</p>
+	 *
+	 * @param output     the audio output to write to
+	 * @param channels   channel indices to render, or {@code null} for all channels
+	 * @param bufferSize frames per buffer
+	 * @param options    the position window and ring depth, or {@code null} for the defaults
+	 * @return the runner and its control handle
+	 */
+	public RealtimeRunner create(MultiChannelAudioOutput output, List<Integer> channels,
+								 int bufferSize, RealtimeRunnerOptions options) {
 		List<Integer> resolved = channels != null ? channels :
 				IntStream.range(0, scene.getChannelCount()).boxed().collect(Collectors.toList());
 
 		if (MixdownManager.enablePdslMixdown) {
 			if (MixdownManager.supportsPdslMixdown(resolved)) {
-				return createPdsl(output, resolved, bufferSize);
+				return createPdsl(output, resolved, bufferSize, options);
 			}
 
 			log("channels=" + resolved + " is outside the PDSL mixdown's supported"
 					+ " configurations; using the CellList runner for this build");
 		}
 
-		return createCellList(output, resolved, bufferSize);
+		return createCellList(output, resolved, bufferSize, options);
+	}
+
+	/**
+	 * Returns the operation that, at the start of a tick, moves the automation clock to the
+	 * pattern position of the buffer about to be mixed, so automation wraps with the position
+	 * window. Returns a no-op when no options were supplied, which keeps the clock free-running
+	 * as it always has been.
+	 *
+	 * @param window        the runner's position window
+	 * @param options       the runner options, or {@code null}
+	 * @param consumerFrame frames mixed since the last (re)start
+	 * @return the clock synchronization operation
+	 */
+	private Supplier<Runnable> clockFollowsWindow(RealtimePositionWindow window,
+												  RealtimeRunnerOptions options, int[] consumerFrame) {
+		if (options == null) return new OperationList("No Clock Window");
+		return () -> () -> syncClockToWindow(window, consumerFrame[0]);
+	}
+
+	/**
+	 * Moves the automation clock to the pattern position the window maps the given consumer
+	 * frame to. A {@link RealtimeRunner#retarget(long)} calls this directly so the clock is at
+	 * the new position the moment it returns — before the next tick's {@link #clockFollowsWindow}
+	 * synchronization runs — satisfying the retarget contract that the automation clock moves
+	 * with the render position even when no options (and so no per-tick synchronization) are set.
+	 *
+	 * @param window        the runner's position window
+	 * @param consumerFrame frames mixed since the last (re)start
+	 */
+	private void syncClockToWindow(RealtimePositionWindow window, int consumerFrame) {
+		scene.getTimeManager().getClock().setFrame(
+				scene.getTimeManager().positionForFrame(window.position(consumerFrame)));
 	}
 
 	/**
@@ -254,11 +308,15 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 	 * @param output     the audio output to write to
 	 * @param channels   channel indices to render (already resolved, non-null)
 	 * @param bufferSize frames per buffer
-	 * @return a {@link TemporalCellular} for real-time playback
+	 * @param options    the position window and ring depth, or {@code null} for the defaults
+	 * @return a {@link RealtimeRunner} for real-time playback
 	 */
-	private TemporalCellular createCellList(MultiChannelAudioOutput output,
-											List<Integer> channels, int bufferSize) {
+	private RealtimeRunner createCellList(MultiChannelAudioOutput output,
+										  List<Integer> channels, int bufferSize,
+										  RealtimeRunnerOptions options) {
 		final int[] currentFrame = {0};
+		final long[] ticks = {0};
+		RealtimePositionWindow window = options == null ? new RealtimePositionWindow() : options.createWindow();
 
 		// Per-buffer frame index for WaveCell external frame control; tracks position
 		// 0 to bufferSize-1 within each buffer.
@@ -273,8 +331,9 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 		// Pattern position follows the arrangement timeline (wrapped at breaks),
 		// matching the PDSL path's render-ahead position source.
 		Cells cells = scene.getCells(output, channels, bufferSize,
-				() -> (int) scene.getTimeManager().positionForFrame(currentFrame[0]),
+				() -> (int) scene.getTimeManager().positionForFrame(window.position(currentFrame[0])),
 				bufferFrameProducer);
+		Supplier<Runnable> clockSync = clockFollowsWindow(window, options, currentFrame);
 
 		// Per-frame operation (must be compilable)
 		Supplier<Runnable> frameOp = cells.tick();
@@ -285,11 +344,49 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 		// Increment buffer frame index: bufferFrameIndex = bufferFrameIndex + 1
 		loopBody.add(a(1, cp(bufferFrameIndex), c(1.0).add(cp(bufferFrameIndex))));
 
-		return new TemporalCellular() {
+		return new RealtimeRunner() {
 			@Override
 			public Supplier<Runnable> setup() {
 				return cells.setup();
 			}
+
+			/**
+			 * Moves the render position and the automation clock with it. The CellList path
+			 * renders inline in each tick, so there is no ring to empty: the next tick renders
+			 * at the new position.
+			 */
+			@Override
+			public void retarget(long startFrame, Runnable whileStopped) {
+				if (whileStopped != null) whileStopped.run();
+				window.setStartFrame(startFrame);
+				currentFrame[0] = 0;
+				ticks[0] = 0;
+				syncClockToWindow(window, currentFrame[0]);
+			}
+
+			/** Always {@code true}: this path renders inside the tick and never waits on a producer. */
+			@Override
+			public boolean slotReady() { return true; }
+
+			/** One buffer ahead of {@link #buffersConsumed()}, since the next tick renders its own. */
+			@Override
+			public long buffersRendered() { return ticks[0] + 1; }
+
+			@Override
+			public long buffersConsumed() { return ticks[0]; }
+
+			/**
+			 * Always {@code 1}: the CellList path renders inline within each tick and owns no
+			 * render-ahead ring, so a per-runner {@link RealtimeRunnerOptions#renderAheadSlots(int)}
+			 * depth does not apply here and is deliberately ignored (the inline render is
+			 * equivalent to a one-slot ring). The depth takes effect only on the PDSL path; see
+			 * {@link RealtimeRunner#renderAheadSlots()}.
+			 */
+			@Override
+			public int renderAheadSlots() { return 1; }
+
+			@Override
+			public RealtimePositionWindow getWindow() { return window; }
 
 			@Override
 			public Supplier<Runnable> tick() {
@@ -297,6 +394,7 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 
 				// OUTSIDE LOOP: Reset buffer frame index and prepare pattern data
 				tick.add(() -> () -> bufferFrameIndex.setMem(0, 0));
+				tick.add(clockSync);
 				for (PatternAudioBuffer renderCell : scene.getRenderCells()) {
 					tick.add(renderCell.prepareBatch());
 				}
@@ -305,7 +403,10 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 				tick.add(loop(loopBody, bufferSize));
 
 				// AFTER LOOP: Advance global frame position
-				tick.add(() -> () -> currentFrame[0] += bufferSize);
+				tick.add(() -> () -> {
+					currentFrame[0] += bufferSize;
+					ticks[0]++;
+				});
 				return tick;
 			}
 
@@ -320,6 +421,7 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 			@Override
 			public void reset() {
 				currentFrame[0] = 0;
+				ticks[0] = 0;
 				cells.reset();
 				scene.getTimeManager().getClock().setFrame(0);
 			}
@@ -432,11 +534,15 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 	 * @param output     the audio output to write to
 	 * @param channels   channel indices to render (already resolved, non-null)
 	 * @param bufferSize frames per buffer
-	 * @return a {@link TemporalCellular} for real-time playback
+	 * @param options    the position window and ring depth, or {@code null} for the defaults
+	 * @return a {@link RealtimeRunner} for real-time playback
 	 */
-	private TemporalCellular createPdsl(MultiChannelAudioOutput output,
-										List<Integer> channels, int bufferSize) {
+	private RealtimeRunner createPdsl(MultiChannelAudioOutput output,
+									  List<Integer> channels, int bufferSize,
+									  RealtimeRunnerOptions options) {
 		final int[] currentFrame = {0};
+		RealtimePositionWindow window = options == null ? new RealtimePositionWindow() : options.createWindow();
+		int ringDepth = options == null ? renderAheadSlots : options.resolveRenderAheadSlots();
 		final long[] renderFrame = {0};
 		int channelCount = channels.size();
 
@@ -451,7 +557,8 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 		// cursor: the reset schedule wraps it to zero at each break, ahead of playback.
 		Supplier<Runnable> patternSetup = buildTime.measure(BUILD_PREPARE_RENDER_BUFFERS,
 				() -> scene.prepareRenderBuffers(channels, bufferSize,
-						() -> (int) scene.getTimeManager().positionForFrame(renderFrame[0])));
+						() -> (int) scene.getTimeManager().positionForFrame(window.position(renderFrame[0]))));
+		Supplier<Runnable> clockSync = clockFollowsWindow(window, options, currentFrame);
 
 		boolean wetVoicing = MixdownManager.enableEfx;
 		// Rows one side's forward reads (MAIN+WET when efx is on, MAIN only when off); the
@@ -542,10 +649,46 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 		// succeeded, so a failure never leaves an orphaned stream. The runner owns and
 		// destroys it; the scene stops it before releasing the state it renders from.
 		PatternRenderStream renderStream = new PatternRenderStream(
-				renderOp, renderFrame, pdslInput, renderAheadSlots, fullRegionRows, bufferSize);
+				renderOp, renderFrame, pdslInput, ringDepth, fullRegionRows, bufferSize);
 		scene.registerRenderStream(renderStream);
 
-		return new TemporalCellular() {
+		return new RealtimeRunner() {
+			/**
+			 * Stops the producer cooperatively (an in-flight render ends at its next note and
+			 * is never interrupted), moves the window so cursor frame {@code 0} is
+			 * {@code startFrame}, moves the automation clock to that position, and restarts the
+			 * producer with a one-buffer prefill. Both cursors restart at {@code 0}; the mixdown
+			 * sides keep their state. The optional {@code whileStopped} action runs with no
+			 * render in progress.
+			 */
+			@Override
+			public void retarget(long startFrame, Runnable whileStopped) {
+				renderStream.stop();
+				if (whileStopped != null) whileStopped.run();
+				window.setStartFrame(startFrame);
+				renderFrame[0] = 0;
+				currentFrame[0] = 0;
+				syncClockToWindow(window, currentFrame[0]);
+				renderStream.start(1);
+			}
+
+			@Override
+			public boolean slotReady() {
+				return renderStream.buffersRendered() > renderStream.buffersConsumed();
+			}
+
+			@Override
+			public long buffersRendered() { return renderStream.buffersRendered(); }
+
+			@Override
+			public long buffersConsumed() { return renderStream.buffersConsumed(); }
+
+			@Override
+			public int renderAheadSlots() { return ringDepth; }
+
+			@Override
+			public RealtimePositionWindow getWindow() { return window; }
+
 			/**
 			 * One-time preparation: the render-cell setup from
 			 * {@link AudioScene#prepareRenderBuffers} (which also renders the first buffer
@@ -599,6 +742,7 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 			public Supplier<Runnable> tick() {
 				OperationList tick = new OperationList("AudioScene PDSL RealTime Runner Tick");
 				tick.add(() -> () -> bufferFrameIndex.setMem(0, 0));
+				tick.add(clockSync);
 				tick.add(left.automationRefresh());
 				tick.add(right.automationRefresh());
 
