@@ -221,6 +221,15 @@ public class DockerNode extends Node {
 	 * guard, forwards the job's output to its consumer, and maps a non-zero exit onto
 	 * the job's failure path by throwing.
 	 *
+	 * <p>The job's {@link Job#getCompletableFuture() completion future} is completed
+	 * once the container has finished, in a {@code finally} so it is completed whether
+	 * the run succeeded or failed. This matches the native path, where
+	 * {@code GitManagedJob.run()} always completes the future when the run ends and
+	 * reports success or failure separately: here the separate signal is this method
+	 * throwing on a non-zero exit. The container executes the decoded copy of the job,
+	 * so the host-side job's own {@code run()} is never called and this is the only
+	 * place its future is completed.</p>
+	 *
 	 * @param j  the job to run; never {@code null}.
 	 * @throws Exception  if the container fails to run the job to completion.
 	 */
@@ -256,6 +265,7 @@ public class DockerNode extends Node {
 			}
 		} finally {
 			unregister(taskId, container);
+			j.getCompletableFuture().complete(null);
 		}
 	}
 

@@ -275,6 +275,39 @@ public class DockerNodeTest extends TestSuiteBase {
 		Assert.assertEquals("the agent output", output.getOutput());
 	}
 
+	/** A successful container run completes the host-side job's completion future. */
+	@Test(timeout = 10000)
+	public void completesTheJobFutureOnSuccess() throws Exception {
+		StubLauncher launcher = new StubLauncher(StubSession.completing(0, null));
+		DockerNode node = new DockerNode(null, 4, 4, dockerConfig(), launcher);
+
+		StubJob job = new StubJob("task-future-ok");
+		node.launch(job);
+
+		Assert.assertTrue("the host-side job future is completed after a successful run",
+				job.getCompletableFuture().isDone());
+		Assert.assertFalse("the future completes normally, not exceptionally",
+				job.getCompletableFuture().isCompletedExceptionally());
+	}
+
+	/** A failed container run still completes the host-side job's completion future. */
+	@Test(timeout = 10000)
+	public void completesTheJobFutureOnFailure() {
+		StubLauncher launcher = new StubLauncher(StubSession.completing(5, null));
+		DockerNode node = new DockerNode(null, 4, 4, dockerConfig(), launcher);
+
+		StubJob job = new StubJob("task-future-fail");
+		try {
+			node.launch(job);
+			Assert.fail("a non-zero container exit must propagate as a failure");
+		} catch (Exception expected) {
+			// The failure is signalled by the throw; the future is still completed below.
+		}
+
+		Assert.assertTrue("the host-side job future is completed even after a failed run",
+				job.getCompletableFuture().isDone());
+	}
+
 	/** A missing image is reported at construction rather than failing opaquely later. */
 	@Test(timeout = 10000)
 	public void requiresAnImage() {
