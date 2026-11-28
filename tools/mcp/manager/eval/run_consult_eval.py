@@ -359,12 +359,15 @@ class ScriptedModel:
 
     _PLACEHOLDER = re.compile(r'\[([DIN]):([^\]@]+)(?:@(?:"([^"\]]+)"|(\d+)))?\]')
 
-    def __init__(self, text):
+    def __init__(self, text, revisions=None):
         """``text`` is one canned answer, or a list of them — one per turn of a
-        multi-turn case, returned in order as the conversation advances."""
+        multi-turn case, returned in order as the conversation advances.
+        ``revisions`` is the matching list of canned revisions for the citation
+        retry (``None`` for a turn with none: its revision repeats the draft)."""
         self._scripts = [text] if isinstance(text, str) else list(text)
         if not self._scripts:
             self._scripts = ["Not documented.\nBASIS: none\nCONFLICTS: none"]
+        self._revisions = list(revisions or [])
         self._turn = 0
         self.prompts: list[str] = []
 
@@ -373,8 +376,8 @@ class ScriptedModel:
         """The canned answer for the current turn (the last once exhausted)."""
         return self._scripts[min(self._turn, len(self._scripts) - 1)]
 
-    def resolve(self, evidence) -> str:
-        """The script with its placeholders replaced by evidence IDs."""
+    def resolve(self, evidence, text=None) -> str:
+        """The script (or ``text``) with its placeholders replaced by evidence IDs."""
         def _id(match: re.Match) -> str:
             kind, ref, phrase = match.group(1), match.group(2).strip(), match.group(3)
             if match.group(4):
@@ -389,7 +392,7 @@ class ScriptedModel:
                         and (not phrase or phrase in item.text):
                     return f"[{item.id}]"
             return f"[{kind}99]"
-        return self._PLACEHOLDER.sub(_id, self.text)
+        return self._PLACEHOLDER.sub(_id, self.text if text is None else text)
 
     def consult(self, question, evidence="", extra_context=None, history=None):
         from inference import Synthesis, build_consult_prompt
@@ -398,6 +401,19 @@ class ScriptedModel:
         resolved = self.resolve(evidence)
         self._turn += 1
         return Synthesis(resolved, "scripted")
+
+    def revise(self, question, evidence, draft, warnings, extra_context=None,
+               history=None):
+        """The canned revision of the turn just answered, or the draft again
+        when the case scripts none. Does not advance the conversation."""
+        from inference import Synthesis, build_consult_prompt, revision_instructions
+        self.prompts.append(build_consult_prompt(
+            question, evidence, extra_context, history=history,
+            instructions=revision_instructions(draft, warnings)))
+        turn = self._turn - 1
+        revision = self._revisions[turn] if 0 <= turn < len(self._revisions) else None
+        return Synthesis(draft if revision is None else self.resolve(evidence, revision),
+                         "scripted")
 
     def synthesize(self, prompt, system=None, max_tokens=1024, temperature=0.3):
         from inference import Synthesis
@@ -546,25 +562,32 @@ def _scripted_text(rel: str) -> str:
 
 
 def case_turns(case: dict) -> list[dict]:
-    """The turns of a case as ``{question, keywords, scripted}`` dicts.
+    """The turns of a case as ``{question, keywords, scripted, revised}`` dicts.
 
     A case with a ``turns`` list is multi-turn: its turns run in order on one
     conversation, and the last turn's response is what the case is graded on. A
     case without ``turns`` is one turn built from its top-level question,
-    keywords and scripted answer, so every existing case runs unchanged.
+    keywords, scripted answer and scripted revision (the answer the citation
+    retry gets back, when the case scripts one), so every existing case runs
+    unchanged.
     """
     turns = case.get("turns")
     if isinstance(turns, list) and turns:
         return turns
-    return [{"question": case["question"], "keywords": case.get("keywords"),
-             "scripted": case.get("scripted")}]
+    turn = {"question": case["question"], "keywords": case.get("keywords"),
+            "scripted": case.get("scripted")}
+    if case.get("revised"):
+        turn["revised"] = case["revised"]
+    return [turn]
 
 
 def _run_scripted(cases: list[dict]) -> dict:
     """Run every case once through the real pipeline with its canned answers,
     one per turn."""
     return _run_inprocess(cases, 1, lambda case: ScriptedModel(
-        [_scripted_text(turn.get("scripted")) for turn in case_turns(case)]))
+        [_scripted_text(turn.get("scripted")) for turn in case_turns(case)],
+        [_scripted_text(turn["revised"]) if turn.get("revised") else None
+         for turn in case_turns(case)]))
 
 
 def _run_local(cases: list[dict], k: int) -> dict:
