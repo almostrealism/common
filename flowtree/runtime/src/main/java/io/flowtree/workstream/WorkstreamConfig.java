@@ -111,6 +111,12 @@ public class WorkstreamConfig {
     /** Named alert recipients, from the top-level {@code alertRecipients:} key. */
     private List<AlertRecipientEntry> alertRecipients = new ArrayList<>();
     /**
+     * The secret GitHub signs webhook deliveries with, from the top-level
+     * {@code githubWebhookSecret:} key; {@code null} leaves the webhook
+     * endpoint refusing every delivery.
+     */
+    private String githubWebhookSecret;
+    /**
      * Workspace configuration entries (operator-chosen IDs, optional Slack
      * connection). Populated from the {@code workspaces:} top-level YAML key
      * and — for backward compatibility — also from the legacy
@@ -832,6 +838,14 @@ public class WorkstreamConfig {
      */
     @JsonProperty("workspaces")
     public List<WorkspaceEntry> getWorkspaces() { return workspaces; }
+
+    /** Returns the GitHub webhook secret, or {@code null} when none is configured. */
+    public String getGithubWebhookSecret() { return githubWebhookSecret; }
+
+    /** Sets the GitHub webhook secret. */
+    public void setGithubWebhookSecret(String githubWebhookSecret) {
+        this.githubWebhookSecret = githubWebhookSecret;
+    }
 
     /** Returns the named alert recipients; never {@code null}. */
     public List<AlertRecipientEntry> getAlertRecipients() { return alertRecipients; }
