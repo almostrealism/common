@@ -766,6 +766,34 @@ public final class JsonFieldExtractor {
 	}
 
 	/**
+	 * Appends a {@link Map} of {@code String} to {@code Long} as a JSON object
+	 * to the given {@link StringBuilder}, using proper JSON key escaping. The
+	 * long-valued counterpart of {@link #appendDoubleMapJson}, for the count and
+	 * duration breakdowns stats reporting produces alongside cost breakdowns.
+	 *
+	 * <p>Output format: {@code {"key1":1,"key2":2}}</p>
+	 *
+	 * @param sb      the builder to append to (caller adds any surrounding fields)
+	 * @param keyName the JSON key name for this object
+	 * @param map     the map to serialize; {@code null} or empty produces an empty object
+	 */
+	public static void appendLongMapJson(StringBuilder sb, String keyName, Map<String, Long> map) {
+		sb.append(",\"").append(keyName).append("\":{");
+		boolean first = true;
+		if (map != null) {
+			for (Map.Entry<String, Long> e : map.entrySet()) {
+				if (!first) sb.append(",");
+				first = false;
+				sb.append("\"")
+					.append(escapeJson(e.getKey()))
+					.append("\":")
+					.append(e.getValue() != null ? e.getValue() : 0L);
+			}
+		}
+		sb.append("}");
+	}
+
+	/**
 	 * Extracts a numeric string from the beginning of the input.
 	 *
 	 * <p>When {@code allowDecimal} is set the fraction and exponent parts of a

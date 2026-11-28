@@ -70,6 +70,18 @@ public record AgentRunResult(
      */
     public static final String STOP_LOOP_DETECTED = "error_loop_detected";
 
+    /** {@link #runnerMetadata()} key under which a runner reports input tokens. */
+    public static final String META_INPUT_TOKENS = "input_tokens";
+
+    /** {@link #runnerMetadata()} key under which a runner reports output tokens. */
+    public static final String META_OUTPUT_TOKENS = "output_tokens";
+
+    /** {@link #runnerMetadata()} key under which a runner reports cache-read tokens. */
+    public static final String META_CACHE_READ_TOKENS = "cache_read_tokens";
+
+    /** {@link #runnerMetadata()} key under which a runner reports cache-write tokens. */
+    public static final String META_CACHE_WRITE_TOKENS = "cache_write_tokens";
+
     /**
      * How an agent session ended, classified from the exit code, the watchdog
      * flags, and whether the process did measurable work.
@@ -280,6 +292,67 @@ public record AgentRunResult(
                 return "signal kill of unknown origin (tmux launch path)";
             default:
                 return "signal " + (exitCode - 128);
+        }
+    }
+
+    /**
+     * Returns the input tokens the runner reported in {@link #runnerMetadata()},
+     * or {@code 0} when it reported none. Together with {@link #outputTokens()},
+     * {@link #cacheReadTokens()} and {@link #cacheWriteTokens()} this is the
+     * token channel both runners share: a runner that measures tokens writes
+     * them under the {@code META_*_TOKENS} keys, and a runner that does not
+     * leaves them absent, which reads back here as {@code 0}.
+     *
+     * @return the reported input tokens, or {@code 0}
+     */
+    public long inputTokens() {
+        return metadataLong(META_INPUT_TOKENS);
+    }
+
+    /**
+     * Returns the output tokens the runner reported, or {@code 0}; see
+     * {@link #inputTokens()}.
+     *
+     * @return the reported output tokens, or {@code 0}
+     */
+    public long outputTokens() {
+        return metadataLong(META_OUTPUT_TOKENS);
+    }
+
+    /**
+     * Returns the cache-read tokens the runner reported, or {@code 0}; see
+     * {@link #inputTokens()}.
+     *
+     * @return the reported cache-read tokens, or {@code 0}
+     */
+    public long cacheReadTokens() {
+        return metadataLong(META_CACHE_READ_TOKENS);
+    }
+
+    /**
+     * Returns the cache-write tokens the runner reported, or {@code 0}; see
+     * {@link #inputTokens()}.
+     *
+     * @return the reported cache-write tokens, or {@code 0}
+     */
+    public long cacheWriteTokens() {
+        return metadataLong(META_CACHE_WRITE_TOKENS);
+    }
+
+    /**
+     * Parses the {@link #runnerMetadata()} value for {@code key} as a long,
+     * returning {@code 0} when it is absent or not a number.
+     *
+     * @param key the metadata key
+     * @return the parsed value, or {@code 0}
+     */
+    private long metadataLong(String key) {
+        String value = runnerMetadata.get(key);
+        if (value == null || value.isEmpty()) return 0L;
+        try {
+            return Long.parseLong(value.trim());
+        } catch (NumberFormatException e) {
+            return 0L;
         }
     }
 

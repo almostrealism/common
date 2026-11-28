@@ -128,6 +128,7 @@ public class McpConfigBuilder implements ConsoleFeatures {
             "inference_health",
             "memory_store",
             "workstream_context",
+            "throughput_window",
             "workstream_list",
             "workstream_get_status",
             "workstream_get_job",

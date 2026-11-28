@@ -704,6 +704,14 @@ public class JobCompletionEvent {
     public double getCostUsd() { return 0; }
     /** Returns the number of turns, or 0 for non-Claude jobs. */
     public int getNumTurns() { return 0; }
+    /** Returns the input tokens the job consumed, or 0 when not captured. */
+    public long getInputTokens() { return 0; }
+    /** Returns the output tokens the job produced, or 0 when not captured. */
+    public long getOutputTokens() { return 0; }
+    /** Returns the cache-read tokens the job consumed, or 0 when not captured. */
+    public long getCacheReadTokens() { return 0; }
+    /** Returns the cache-write tokens the job produced, or 0 when not captured. */
+    public long getCacheWriteTokens() { return 0; }
     /** Returns the session subtype (stop reason), or null for non-Claude jobs. */
     public String getSubtype() { return null; }
     /** Returns whether the session is an error, always false for non-Claude jobs. */
@@ -974,6 +982,11 @@ public class JobCompletionEvent {
         root.put("durationApiMs", getDurationApiMs());
         root.put("costUsd", getCostUsd());
         root.put("numTurns", getNumTurns());
+
+        root.put("inputTokens", getInputTokens());
+        root.put("outputTokens", getOutputTokens());
+        root.put("cacheReadTokens", getCacheReadTokens());
+        root.put("cacheWriteTokens", getCacheWriteTokens());
 
         root.put("subtype", getSubtype());
         root.put("sessionIsError", isSessionError());

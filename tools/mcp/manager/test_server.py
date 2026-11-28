@@ -1300,6 +1300,7 @@ class TestToolRegistration(unittest.TestCase):
             "consult",
             "inference_health",
             "workstream_context",
+            "throughput_window",
             "memory_store",
             "send_message",
             "await_message",

@@ -52,6 +52,15 @@ public class CodingAgentJobEvent extends JobCompletionEvent {
     /** Number of agentic turns taken during the Claude Code session. */
     private int numTurns;
 
+    /** Input tokens the session consumed, or {@code 0} when the runner did not report them. */
+    private long inputTokens;
+    /** Output tokens the session produced, or {@code 0} when the runner did not report them. */
+    private long outputTokens;
+    /** Cache-read tokens the session consumed, or {@code 0} when the runner did not report them. */
+    private long cacheReadTokens;
+    /** Cache-write tokens the session produced, or {@code 0} when the runner did not report them. */
+    private long cacheWriteTokens;
+
     /** Session subtype / stop reason reported by Claude Code (e.g. "success", "error_max_turns"). */
     private String subtype;
     /** Whether Claude Code flagged the session as an error. */
@@ -238,6 +247,26 @@ public class CodingAgentJobEvent extends JobCompletionEvent {
     }
 
     /**
+     * Sets the token counts extracted from the runner's output. A runner that
+     * does not report tokens leaves these at {@code 0}, which the stats store
+     * records as "no token row" so the retrospective's coverage stays honest.
+     *
+     * @param inputTokens      input tokens consumed
+     * @param outputTokens     output tokens produced
+     * @param cacheReadTokens  cache-read tokens consumed
+     * @param cacheWriteTokens cache-write tokens produced
+     * @return this event for chaining
+     */
+    public CodingAgentJobEvent withTokenInfo(long inputTokens, long outputTokens,
+                                             long cacheReadTokens, long cacheWriteTokens) {
+        this.inputTokens = inputTokens;
+        this.outputTokens = outputTokens;
+        this.cacheReadTokens = cacheReadTokens;
+        this.cacheWriteTokens = cacheWriteTokens;
+        return this;
+    }
+
+    /**
      * Sets session detail fields extracted from Claude Code output.
      *
      * @param subtype           the session subtype / stop reason (e.g. "success", "error_max_turns")
@@ -326,6 +355,26 @@ public class CodingAgentJobEvent extends JobCompletionEvent {
     @Override
     public int getNumTurns() {
         return numTurns;
+    }
+
+    @Override
+    public long getInputTokens() {
+        return inputTokens;
+    }
+
+    @Override
+    public long getOutputTokens() {
+        return outputTokens;
+    }
+
+    @Override
+    public long getCacheReadTokens() {
+        return cacheReadTokens;
+    }
+
+    @Override
+    public long getCacheWriteTokens() {
+        return cacheWriteTokens;
     }
 
     /**
@@ -679,6 +728,11 @@ public class CodingAgentJobEvent extends JobCompletionEvent {
                 JsonFieldExtractor.extractLong(body, "durationApiMs"),
                 JsonFieldExtractor.extractDouble(body, "costUsd"),
                 JsonFieldExtractor.extractInt(body, "numTurns"));
+        withTokenInfo(
+                JsonFieldExtractor.extractLong(body, "inputTokens"),
+                JsonFieldExtractor.extractLong(body, "outputTokens"),
+                JsonFieldExtractor.extractLong(body, "cacheReadTokens"),
+                JsonFieldExtractor.extractLong(body, "cacheWriteTokens"));
         withSessionDetails(
                 JsonFieldExtractor.extractString(body, "subtype"),
                 JsonFieldExtractor.extractBoolean(body, "sessionIsError"),
@@ -833,6 +887,8 @@ public class CodingAgentJobEvent extends JobCompletionEvent {
         JobSessionAccumulator acc = job.sessionAccumulator();
         withClaudeCodeInfo(job.getPrompt(), acc.getSessionId(), acc.getExitCode());
         withTimingInfo(acc.getDurationMs(), acc.getDurationApiMs(), acc.getCostUsd(), acc.getNumTurns());
+        withTokenInfo(acc.getInputTokens(), acc.getOutputTokens(),
+                acc.getCacheReadTokens(), acc.getCacheWriteTokens());
         withSessionDetails(acc.getSubtype(), acc.isError(), acc.getPermissionDenials(), acc.getDeniedToolNames());
         if (job.getCommitMessageSource() != null) {
             withCommitMessageSource(job.getCommitMessageSource());

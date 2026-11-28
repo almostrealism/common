@@ -515,6 +515,7 @@ public class ClaudeCodeRunner implements AgentRunner {
         int numTurns = 0;
         double costUsd = 0.0;
         List<String> deniedToolNames = new ArrayList<>();
+        Map<String, String> runnerMetadata = new LinkedHashMap<>();
 
         if (resultJson != null && !resultJson.isEmpty()) {
             try {
@@ -531,6 +532,18 @@ public class ClaudeCodeRunner implements AgentRunner {
                     sessionCost = root.path("cost_usd").asDouble(0.0);
                 }
                 costUsd = sessionCost;
+
+                // Cumulative usage is in the result's `usage` block; cache
+                // tokens use Anthropic cache_creation/cache_read naming.
+                JsonNode usage = root.path("usage");
+                putToken(runnerMetadata, AgentRunResult.META_INPUT_TOKENS,
+                        usage.path("input_tokens").asLong(0L));
+                putToken(runnerMetadata, AgentRunResult.META_OUTPUT_TOKENS,
+                        usage.path("output_tokens").asLong(0L));
+                putToken(runnerMetadata, AgentRunResult.META_CACHE_READ_TOKENS,
+                        usage.path("cache_read_input_tokens").asLong(0L));
+                putToken(runnerMetadata, AgentRunResult.META_CACHE_WRITE_TOKENS,
+                        usage.path("cache_creation_input_tokens").asLong(0L));
 
                 // Each entry of permission_denials is
                 // {tool_name, tool_use_id, tool_input} — the name of the
@@ -575,8 +588,23 @@ public class ClaudeCodeRunner implements AgentRunner {
                 subtype,
                 sessionIsError,
                 deniedToolNames,
-                Collections.emptyMap(),
+                runnerMetadata,
                 unavailableRequired);
+    }
+
+    /**
+     * Records a token count in {@code metadata} under {@code key}, omitting it
+     * when the count is not positive so an unreported measure stays absent
+     * rather than being stored as a zero.
+     *
+     * @param metadata the runner-metadata map being built
+     * @param key       the canonical token key (see {@link AgentRunResult})
+     * @param value     the token count
+     */
+    private static void putToken(Map<String, String> metadata, String key, long value) {
+        if (value > 0) {
+            metadata.put(key, Long.toString(value));
+        }
     }
 
     /**

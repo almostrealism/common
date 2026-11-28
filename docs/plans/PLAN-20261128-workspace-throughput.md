@@ -1,9 +1,21 @@
 ---
-status: proposed
+status: in-progress
 created: 2026-11-28
 closed:
 tracker: [ed283f13-7709-41fc-b6a3-0c5804ec69e5]
 ---
+
+<!--
+Implementation status (feature/workspace-throughput): the retrospective slice
+is implemented and tested — Stage 0 (job_token table + end-to-end token
+capture), Stage 1 (JobKind, WindowQuery, WindowStats, WindowStatsAggregator,
+ThroughputQueryHandler + GET /api/throughput/window), the throughput_window
+ar-manager tool, and Stage 4's reconciliation test. The forecast (§3 / Stage 2),
+the workstream_list LOST/UNRESPONSIVE fix (§4.3), and the open questions
+(§6.1/§6.3/§6.4/§6.5/§6.7) remain, tracked as follow-up tasks in the project
+backlog. The header stays open until those land.
+-->
+
 
 # Workspace Throughput: Retrospective Windows and Forward Forecast
 
@@ -139,11 +151,12 @@ back to its own `_STALLED_WARNING_SECONDS` for an older controller
 **Token counts are not persisted anywhere, for either runner.** There is no
 token column on `job_timing` and no token field on `JobCompletionEvent` /
 `CodingAgentJobEvent`. `OpencodeOutputParser` *does* parse
-`input_tokens` / `output_tokens` / `cache_read_tokens` / `cache_write_tokens`,
-but only into a free-form `runnerMetadata` map that never reaches
-`AgentRunResult`, the event, or the database. `ClaudeCodeRunner` does not
-extract tokens at all (it reads `total_cost_usd`, `num_turns`, `duration_ms`,
-`duration_api_ms` only). So:
+`input_tokens` / `output_tokens` / `cache_read_tokens` / `cache_write_tokens`
+into the `runnerMetadata` map that `AgentRunResult` carries, but that map
+reaches neither `JobCompletionEvent` nor the database. `ClaudeCodeRunner` does
+not extract tokens at all (it reads `total_cost_usd`, `num_turns`,
+`duration_ms`, `duration_api_ms` only). So — before Stage 0 promotes the
+metadata into the event and persists it:
 
 > **Tokens are unavailable for every job recorded to date, and for new jobs
 > until the capture path in §5 Stage 0 lands.** The retrospective's token
@@ -240,9 +253,11 @@ property threaded through `CodingAgentJobFactory`/`CodingAgentJob`/codec. For
   `getJobIntervals(from, to)` already selects "started before `to`, not
   completed before `from`" — the aggregator reuses it.
 - **Running jobs** (no `completed_at`): contribute time overlap up to
-  `min(now, end)`, but stop accruing at `max(heartbeat_at, started_at) +
-  silentThreshold` when `UNRESPONSIVE` (same cutoff as `DailyAgentTime`). They
-  are counted in "started" and "running", never in a terminal outcome.
+  `min(now, end)`, but once silent past the threshold stop accruing at the last
+  liveness signal — `max(heartbeat_at, started_at)`, not that plus
+  `silentThreshold` — exactly as `JobInterval.end` / `DailyAgentTime` already
+  do, so an `UNRESPONSIVE` job is not overcounted. They are counted in "started"
+  and "running", never in a terminal outcome.
 - **LOST**: a `SUBMITTED` row, null `completed_at`, age past `submitted_at`
   exceeding the lost threshold, with `submitted_at ∈ [start, end)`. Counted as
   a distinct `lost` outcome and **excluded from spend/time** (it never ran).

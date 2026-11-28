@@ -80,6 +80,18 @@ class JobSessionAccumulator {
     /** Total USD cost accumulated across all phase runs. */
     private double costUsd;
 
+    /** Total input tokens accumulated across all phase runs. */
+    private long inputTokens;
+
+    /** Total output tokens accumulated across all phase runs. */
+    private long outputTokens;
+
+    /** Total cache-read tokens accumulated across all phase runs. */
+    private long cacheReadTokens;
+
+    /** Total cache-write tokens accumulated across all phase runs. */
+    private long cacheWriteTokens;
+
     /** Total number of tool-use permission denials accumulated across all phase runs. */
     private int permissionDenials;
 
@@ -127,6 +139,10 @@ class JobSessionAccumulator {
         durationApiMs += result.durationApiMs();
         numTurns += result.numTurns();
         costUsd += result.costUsd();
+        inputTokens += result.inputTokens();
+        outputTokens += result.outputTokens();
+        cacheReadTokens += result.cacheReadTokens();
+        cacheWriteTokens += result.cacheWriteTokens();
         if (!result.deniedToolNames().isEmpty()) {
             if (deniedToolNames == null) {
                 deniedToolNames = new ArrayList<>();
@@ -174,6 +190,18 @@ class JobSessionAccumulator {
 
     /** Returns the cumulative USD cost. */
     double getCostUsd() { return costUsd; }
+
+    /** Returns the cumulative input tokens. */
+    long getInputTokens() { return inputTokens; }
+
+    /** Returns the cumulative output tokens. */
+    long getOutputTokens() { return outputTokens; }
+
+    /** Returns the cumulative cache-read tokens. */
+    long getCacheReadTokens() { return cacheReadTokens; }
+
+    /** Returns the cumulative cache-write tokens. */
+    long getCacheWriteTokens() { return cacheWriteTokens; }
 
     /** Returns the cumulative number of tool-use permission denials. */
     int getPermissionDenials() { return permissionDenials; }
