@@ -29,11 +29,15 @@ import io.almostrealism.expression.Expression;
 import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Producer;
+import org.almostrealism.calculus.ReduceAxis;
 import org.almostrealism.collect.CollectionFeatures;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.RepeatedProducerComputation;
 
 import java.util.List;
+import java.util.Optional;
+import java.util.OptionalInt;
 import java.util.Set;
 
 /**
@@ -47,12 +51,15 @@ import java.util.Set;
  * <p>For a matrix of shape {@code (count, n)} and an input of shape {@code (n)} or
  * {@code (n, width)}:</p>
  * <pre>
- * output[i, w] = sum(p = start(i) .. start(i) + length(i) - 1) matrix[p] * input[offset(p), w]
+ * output[i, w] = sum(q = start(i) .. start(i) + length(i) - 1) matrix[position(q)] * input[offset(q), w]
  * </pre>
- * <p>where {@code start}, {@code length} and {@code offset} are the
+ * <p>where {@code start}, {@code length}, {@code offset} and {@code position} are the
  * {@link OrderingSegments enumeration} of the rows of the matrix, and {@code matrix[p]} is the
- * entry at physical position {@code p}. This is the same value as the dense product of the
- * matrix read through its ordering, but visits each stored entry once and never forms a logical
+ * entry at physical position {@code p}. For a compressed-sparse-row matrix the position of each
+ * member is the member itself; for the transpose of one, whose rows are the columns of the
+ * original matrix, each member is read where the original matrix stores it. This is the same
+ * value as the dense product of the matrix read through its ordering, but visits each stored
+ * entry once and never forms a logical
  * index of the matrix, so it applies to matrices whose logical size exceeds the range of an
  * {@code int}.</p>
  *
@@ -63,7 +70,7 @@ import java.util.Set;
  * <pre>
  * out[g] = 0.0;
  * for (int k = 0; k &lt; length(i);) {
- *     out[g] = out[g] + matrix[start(i) + k] * input[offset(start(i) + k) * width + w];
+ *     out[g] = out[g] + matrix[position(start(i) + k)] * input[offset(start(i) + k) * width + w];
  *     k = k + 1;
  * }
  * </pre>
@@ -94,6 +101,14 @@ public class SegmentedWeightedSumComputation extends RepeatedProducerComputation
 
 	/** The number of columns of the matrix, which is the length of each segment. */
 	private final int segmentLength;
+
+	/**
+	 * The shape through which the matrix is read, carrying its ordering. It is the shape of the
+	 * matrix operand, except for the {@link #deltaDependent Jacobian-vector product} with respect
+	 * to the matrix, whose operand is the tangent of the stored entries alone and is read through
+	 * the shape of the matrix it perturbs.
+	 */
+	private final TraversalPolicy matrixShape;
 
 	/** The ordering of the matrix, which enumerates its rows. */
 	private final TraversalOrdering order;
@@ -134,6 +149,7 @@ public class SegmentedWeightedSumComputation extends RepeatedProducerComputation
 		super(name, outputShape(matrixShape, width), 1, matrix, input);
 		this.width = width;
 		this.segmentLength = matrixShape.length(1);
+		this.matrixShape = matrixShape;
 		this.order = matrixShape.getOrder();
 	}
 
@@ -233,23 +249,32 @@ public class SegmentedWeightedSumComputation extends RepeatedProducerComputation
 	}
 
 	/**
-	 * Returns the accumulated value after one more entry of the row handled by the current
-	 * kernel thread. The entry is read from the memory of the matrix at its physical position,
-	 * not through the ordering.
+	 * Returns the accumulated value after one more member of the row handled by the current
+	 * kernel thread. The entry is read at the physical position of the member, not through the
+	 * logical index of the ordering.
+	 *
+	 * <p>An operand whose shape carries an ordering (the sparse matrix itself) is read from its
+	 * memory at that position. An operand without one (the tangent of the stored entries, with one
+	 * element per entry) is indexed by physical position, so the position is its own logical
+	 * index and it is read as any other argument is: from memory when it is stored, and from its
+	 * expression when it is a computation, such as a constant tangent, whose values are never
+	 * written to memory.</p>
 	 *
 	 * @param args        the traversable arguments, where {@code args[0]} is the output
 	 * @param globalIndex the index of the output element
-	 * @param localIndex  the position of the entry within its row
-	 * @return the output element plus {@code matrix[p] * input[offset(p), w]}
+	 * @param localIndex  the position of the member within its row
+	 * @return the output element plus {@code matrix[position(q)] * input[offset(q), w]}
 	 */
 	@Override
 	protected Expression<?> getExpression(TraversableExpression[] args, Expression globalIndex, Expression localIndex) {
 		Expression<?> currentValue = getCurrentOutputValue(getOutputVariable(), globalIndex);
 
-		Expression<?> position = segments.start(rowOf(globalIndex)).add(localIndex);
-		Expression<?> column = segments.offset(position);
+		Expression<?> member = segments.start(rowOf(globalIndex)).add(localIndex);
+		Expression<?> column = segments.offset(member);
 		Expression<?> gathered = args[INPUT].getValueAt(column.multiply(width).add(globalIndex.imod(width)));
-		Expression<?> entry = getArgumentForInput(getInputs().get(MATRIX)).reference(position);
+		Expression<?> position = segments.position(member);
+		Expression<?> entry = shape(getInputs().get(MATRIX)).getOrder() == null ? args[MATRIX].getValueAt(position)
+				: getArgumentForInput(getInputs().get(MATRIX)).reference(position);
 		return currentValue.add(entry.multiply(gathered));
 	}
 
@@ -266,15 +291,152 @@ public class SegmentedWeightedSumComputation extends RepeatedProducerComputation
 	}
 
 	/**
-	 * Creates the product of new operands with the same width, in the order matrix, input.
+	 * Creates the product of new operands with the same width, in the order matrix, input, reading
+	 * the matrix through the same shape as this product.
 	 *
 	 * @param children the output followed by the two operands
 	 * @return the new computation
 	 */
 	@Override
 	public SegmentedWeightedSumComputation generate(List<Process<?, ?>> children) {
-		return new SegmentedWeightedSumComputation(getName(), width,
+		return new SegmentedWeightedSumComputation(getName(), matrixShape, width,
 				(Producer<PackedCollection>) children.get(MATRIX),
 				(Producer<PackedCollection>) children.get(INPUT));
+	}
+
+	/**
+	 * Differentiates this product, which is bilinear in the matrix and the input, without forming
+	 * its Jacobian: each reduced delta is a computation over the stored entries alone, as the
+	 * product itself is, and so applies to a matrix whose logical size exceeds the range of an
+	 * {@code int}.
+	 * <ul>
+	 *   <li>{@link ReduceAxis#OUT}, input: the gradient {@code Aᵀ·g} of the upstream gradient
+	 *       {@code g}, which is the product of the {@link CollectionProducer#transpose()
+	 *       transpose} of the matrix, read over the same memory, with {@code g}. It has the shape
+	 *       of the input and is passed on to the input's own delta.</li>
+	 *   <li>{@link ReduceAxis#OUT}, matrix: the gradient of each stored entry {@code k},
+	 *       {@code Σ_w g[row(k), w] · input[column(k), w]}, which is the
+	 *       {@link SegmentedOuterProductComputation outer product} of {@code g} and the input
+	 *       restricted to the stored entries. It has one element per stored entry, in their
+	 *       physical order, rather than the logical shape of the matrix: a sparse matrix is
+	 *       parameterised by its entries alone (see {@link ReduceAxis} on targets that store
+	 *       fewer members than their logical size).</li>
+	 *   <li>{@link ReduceAxis#IN}, input: the product of the matrix with the input's own
+	 *       input-reduced delta of the tangent.</li>
+	 *   <li>{@link ReduceAxis#IN}, matrix: the product with the input of a matrix whose stored
+	 *       entries are the tangent, which therefore has one element per stored entry.</li>
+	 * </ul>
+	 * <p>The full Jacobian ({@link ReduceAxis#NONE}) of a sparse product is the one form that
+	 * cannot be represented once its logical size exceeds the range of an {@code int}, and is left
+	 * to the general implementation, as is any case the rules above do not cover: a matrix that
+	 * depends on the target without being it, a target both operands depend on, an ordering that
+	 * cannot form the transpose or the row of each entry, and a tangent of another size.</p>
+	 */
+	@Override
+	protected CollectionProducer deltaDependent(Producer<?> target, ReduceAxis axis, Producer<PackedCollection> weight) {
+		Producer<PackedCollection> matrix = getInputs().get(MATRIX);
+		Producer<PackedCollection> input = getInputs().get(INPUT);
+		if (axis == ReduceAxis.NONE) return super.deltaDependent(target, axis, weight);
+
+		if (matrix.cannotMatch(target)) {
+			CollectionProducer delta = axis == ReduceAxis.OUT ? inputGradient(target, weight) : inputTangent(target, weight);
+			if (delta != null) return delta;
+		} else if (matrix.refersTo(target) && input.cannotMatch(target)) {
+			CollectionProducer delta = axis == ReduceAxis.OUT ? entryGradient(weight) : entryTangent(weight);
+			if (delta != null) return delta;
+		}
+
+		return super.deltaDependent(target, axis, weight);
+	}
+
+	/**
+	 * Returns the gradient with respect to the target of the input, {@code Aᵀ·g} passed on to the
+	 * input's own output-reduced delta. The transpose is the product of the same matrix operand
+	 * read through the ordering that {@link TraversalOrdering#transpose(int, int) the ordering of
+	 * the matrix describes for its transpose}, which is the view
+	 * {@link CollectionProducer#transpose()} forms over the same memory. The gradient is therefore
+	 * itself a product over the stored entries and reflects any later change to their values.
+	 *
+	 * <p>The transpose is formed from {@link #matrixShape}, not from the shape of the operand:
+	 * the operand of the {@link #entryTangent Jacobian-vector product with respect to the matrix}
+	 * is the tangent of the stored entries alone, which has one element per entry and no
+	 * ordering of its own, and is read through the shape of the matrix it perturbs.</p>
+	 *
+	 * @param target the producer with respect to which to differentiate
+	 * @param weight the upstream gradient, in the shape of this product, or null for ones
+	 * @return the gradient, or null if the ordering of the matrix cannot describe a transpose
+	 *         whose rows it enumerates
+	 */
+	private CollectionProducer inputGradient(Producer<?> target, Producer<PackedCollection> weight) {
+		int rows = matrixShape.length(0);
+		Optional<TraversalOrdering> transposeOrder = order.transpose(rows, segmentLength);
+		if (transposeOrder.isEmpty() || transposeOrder.get().segments(rows).isEmpty()) return null;
+
+		TraversalPolicy transposeShape = new TraversalPolicy(transposeOrder.get(), segmentLength, rows);
+		CollectionProducer gradient = new SegmentedWeightedSumComputation(getName() + "Transpose",
+				transposeShape, width, getInputs().get(MATRIX), upstream(weight));
+		return c(getInputs().get(INPUT)).delta(target, ReduceAxis.OUT,
+				gradient.reshape(shape(getInputs().get(INPUT))));
+	}
+
+	/**
+	 * Returns the Jacobian-vector product with respect to the target of the input: the product of
+	 * the matrix with the input's own input-reduced delta of the tangent.
+	 *
+	 * @param target  the producer with respect to which to differentiate
+	 * @param tangent the tangent, in the shape of the target, or null for a tangent of ones, which
+	 *                the input's own delta forms
+	 * @return the product
+	 */
+	private CollectionProducer inputTangent(Producer<?> target, Producer<PackedCollection> tangent) {
+		Producer<PackedCollection> input = getInputs().get(INPUT);
+		return new SegmentedWeightedSumComputation(getName(), matrixShape, width, getInputs().get(MATRIX),
+				c(input).delta(target, ReduceAxis.IN, tangent).reshape(shape(input)));
+	}
+
+	/**
+	 * Returns the gradient of each stored entry of the matrix, the outer product of the upstream
+	 * gradient and the input restricted to the stored entries.
+	 *
+	 * @param weight the upstream gradient, in the shape of this product, or null for ones
+	 * @return the gradient, one element per stored entry, or null if the ordering cannot form the
+	 *         row of each entry
+	 */
+	private CollectionProducer entryGradient(Producer<PackedCollection> weight) {
+		if (order.memberSegments(segmentLength).isEmpty()) return null;
+		return new SegmentedOuterProductComputation(getName() + "EntryGradient", matrixShape, width,
+				upstream(weight), getInputs().get(INPUT));
+	}
+
+	/**
+	 * Returns the Jacobian-vector product with respect to the matrix: the product with the input
+	 * of the matrix whose stored entries are the tangent. A matrix that stores no entries is
+	 * represented by a single unused element, as its entry gradient is, so its tangent has one
+	 * element, which the product never reads.
+	 *
+	 * @param tangent the tangent of each stored entry, in their physical order, or null for a
+	 *                tangent of ones
+	 * @return the product, or null if the number of stored entries is unknown or the tangent does
+	 *         not have one element per stored entry (one element for a matrix storing none)
+	 */
+	private CollectionProducer entryTangent(Producer<PackedCollection> tangent) {
+		OptionalInt entries = order.getLength();
+		if (entries.isEmpty()) return null;
+
+		int size = Math.max(1, entries.getAsInt());
+		Producer<PackedCollection> t = tangent == null ? constant(shape(size), 1.0) : tangent;
+		if (shape(t).getTotalSizeLong() != size) return null;
+
+		return new SegmentedWeightedSumComputation(getName(), matrixShape, width, t, getInputs().get(INPUT));
+	}
+
+	/**
+	 * Returns the upstream gradient in the shape of this product.
+	 *
+	 * @param weight the upstream gradient, or null to weight every output by one
+	 * @return the upstream gradient
+	 */
+	private CollectionProducer upstream(Producer<PackedCollection> weight) {
+		return weight == null ? constant(getShape(), 1.0) : c(weight).reshape(getShape());
 	}
 }

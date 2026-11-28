@@ -38,6 +38,15 @@ import io.almostrealism.collect.TraversalPolicy;
  * shape of the computation followed by that of the target. Without a weight every entry
  * along the reduced axis is weighted by one.</p>
  *
+ * <p>A target whose {@link io.almostrealism.collect.TraversalOrdering} stores fewer members
+ * than its logical size, such as a sparse matrix whose ordering stores only its nonzero
+ * entries, is parameterised by those stored members alone. A computation may then reduce
+ * its delta over the stored members rather than over the logical shape of the target: the
+ * {@link #OUT} delta has one element per stored member, in their physical order, and the
+ * {@link #IN} tangent is accepted in that same form. {@link #resultShape} and
+ * {@link #weightShape} describe the logical case and do not apply to such a delta. A
+ * computation that does this documents it on its own derivative.</p>
+ *
  * @author Michael Murray
  * @see org.almostrealism.collect.CollectionProducer#delta(io.almostrealism.relation.Producer, ReduceAxis, io.almostrealism.relation.Producer)
  */

@@ -159,6 +159,65 @@ public interface TraversalOrdering extends IndexSet, Signature {
 	}
 
 	/**
+	 * Returns an ordering that reads the {@code (cols, rows)} transpose of the {@code (rows, cols)}
+	 * matrix this ordering describes from the same physical positions, if this ordering can
+	 * describe the transpose structurally. A collection whose shape carries this ordering is then
+	 * transposed without moving any of its elements: the transpose is its memory read through the
+	 * returned ordering, and a computation that needs only the members of each row of the
+	 * transpose finds them through the {@link #segments(int) segments} of the returned ordering
+	 * rather than by reading every logical element.
+	 *
+	 * <p>The default returns empty, in which case a transpose reads every logical element through
+	 * {@link #indexOf(Expression)}, which remains correct.</p>
+	 *
+	 * @param rows the number of rows of the matrix this ordering describes
+	 * @param cols the number of columns of the matrix this ordering describes
+	 * @return the ordering of the transpose, or empty if this ordering cannot describe it
+	 */
+	default Optional<TraversalOrdering> transpose(int rows, int cols) {
+		return Optional.empty();
+	}
+
+	/**
+	 * Returns an ordering that maps the physical position of each member of this ordering to the
+	 * {@link #segments(int) segment} it belongs to: its {@link #indexOf(Expression)} of a position
+	 * is the segment of the member stored there. A computation with one result per stored member,
+	 * such as the gradient of a product with respect to the stored entries of a sparse matrix,
+	 * reads the segment (the row) of each member through it. The ordering is bound to the
+	 * arguments of a kernel independently of this one.
+	 *
+	 * <p>The default returns empty.</p>
+	 *
+	 * @param segmentLength the number of consecutive logical indices in each segment
+	 * @return the ordering of the segment of each member, or empty if this ordering cannot form it
+	 */
+	default Optional<TraversalOrdering> memberSegments(int segmentLength) {
+		return Optional.empty();
+	}
+
+	/**
+	 * Returns whether the given ordering, applied to the memory a collection of the given shape
+	 * reads through this ordering, is another view of the same members rather than an ordering
+	 * of the logical elements of that collection. That holds for this ordering itself and for
+	 * the {@link #transpose(int, int) transpose} of the matrix the shape describes. A reshape into
+	 * such an ordering reads the memory directly through it; a reshape into any other ordering
+	 * must compose it with this one.
+	 *
+	 * <p>The relationship is recognised from both sides only when the {@link #transpose(int, int)
+	 * transpose} of the transpose is this ordering itself, so an ordering that describes its
+	 * transpose structurally must return itself as the transpose of that transpose.</p>
+	 *
+	 * @param other the ordering of the new shape
+	 * @param shape the shape of the collection read through this ordering
+	 * @return true if {@code other} reads the members this ordering reads
+	 */
+	default boolean readsSameMembers(TraversalOrdering other, TraversalPolicy shape) {
+		if (other == this) return true;
+		return shape.getDimensions() == 2 && transpose(shape.length(0), shape.length(1))
+				.filter(t -> t == other).isPresent();
+	}
+
+	/**
 	 * Returns a composed ordering that first applies this ordering, then the given ordering.
 	 *
 	 * <p>If {@code other} is {@code null}, returns {@code this} unchanged.</p>

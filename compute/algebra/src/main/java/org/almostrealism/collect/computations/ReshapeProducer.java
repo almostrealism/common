@@ -157,6 +157,13 @@ public class ReshapeProducer
 	private final Producer<PackedCollection> producer;
 
 	/**
+	 * The {@link #getOwnOrder() ordering of the explicit shape},
+	 * {@link TraversalOrdering#bind(ArgumentProvider) bound} to the arguments of the kernel whose
+	 * scope was last prepared, or {@code null} if it has not been bound.
+	 */
+	private TraversalOrdering boundOrder;
+
+	/**
 	 * Creates a ReshapeProducer that modifies the traversal axis of the input producer.
 	 * This constructor is used when you want to change how the collection is traversed
 	 * without changing its overall dimensional structure.
@@ -327,16 +334,39 @@ public class ReshapeProducer
 	}
 
 	/**
+	 * Returns the ordering of the explicit shape of this reshape when it is not the ordering of
+	 * the reshaped producer's shape. Such an ordering maps each logical index of the reshape to
+	 * a physical position of the memory of the reshaped producer, so that the same memory is read
+	 * in a different order (as the transpose of a sparse matrix reads the entries of the matrix);
+	 * it is not composed with the producer's own ordering.
+	 *
+	 * @return the ordering of the explicit shape, or {@code null} if the explicit shape has none,
+	 *         carries the producer's ordering, or this reshape has no explicit shape
+	 */
+	protected TraversalOrdering getOwnOrder() {
+		if (shape == null || shape.getOrder() == null) return null;
+
+		TraversalOrdering inner = producer instanceof Shape ? ((Shape<?>) producer).getShape().getOrder() : null;
+		return shape.getOrder() == inner ? null : shape.getOrder();
+	}
+
+	/**
 	 * Returns the ordering through which generated code reads the elements of this reshape.
 	 * When the {@link #getShape() shape} carries the ordering of the reshaped producer, the
 	 * elements are read through that producer, so the producer's
 	 * {@link Shape#getOrdering() ordering} is returned, including any binding of it to the
-	 * kernel's arguments. An ordering of the explicit shape itself is returned as it is.
+	 * kernel's arguments. An {@link #getOwnOrder() ordering of the explicit shape itself} is
+	 * returned as bound by {@link #prepareScope(ArgumentProvider, KernelStructureContext)}.
 	 *
 	 * @return the ordering applied to reads of this reshape, or {@code null} if it has none
 	 */
 	@Override
 	public TraversalOrdering getOrdering() {
+		TraversalOrdering own = getOwnOrder();
+		if (own != null) {
+			return boundOrder == null ? own : boundOrder;
+		}
+
 		TraversalOrdering order = getShape().getOrder();
 		if (order != null && producer instanceof Shape
 				&& order == ((Shape<?>) producer).getShape().getOrder()) {
@@ -509,11 +539,43 @@ public class ReshapeProducer
 	}
 
 
+	/**
+	 * Prepares the reshaped producer, and binds any {@link #getOwnOrder() ordering of the
+	 * explicit shape} to the arguments supplied by the given manager, so that the collections
+	 * it reads in order to map an index are delivered to the kernel.
+	 *
+	 * @param manager the provider of the kernel's arguments
+	 * @param context the kernel structure context for the compilation
+	 */
 	@Override
 	public void prepareScope(ArgumentProvider manager, KernelStructureContext context) {
 		if (producer instanceof ScopeLifecycle) {
 			((ScopeLifecycle) producer).prepareScope(manager, context);
 		}
+
+		TraversalOrdering own = getOwnOrder();
+		boundOrder = own == null ? null : own.bind(manager);
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Binding an {@link #getOwnOrder() ordering of the explicit shape} obtains the
+	 * {@link TraversalOrdering#getArgumentCount() arguments that ordering reads}. A reshaped
+	 * producer that is a {@link Process} is a {@link #getChildren() child} of this reshape, so
+	 * the arguments preparing it obtains are counted at its own position of the process tree;
+	 * any other reshaped producer is prepared outside of that tree, so what preparing it obtains,
+	 * as {@link ScopeLifecycle#getPreparedArgumentBound(Stream, int)} counts it, is reported
+	 * here.</p>
+	 */
+	@Override
+	public int getScopeArgumentCount(int cap) {
+		TraversalOrdering own = getOwnOrder();
+		int count = own == null ? 0 : own.getArgumentCount();
+		if (producer instanceof Process || count > cap) return count;
+
+		return (int) Math.min(Integer.MAX_VALUE, (long) count +
+				ScopeLifecycle.getPreparedArgumentBound(Stream.of(producer), cap - count));
 	}
 
 	@Override
@@ -521,8 +583,15 @@ public class ReshapeProducer
 		ScopeLifecycle.resetArguments(this);
 	}
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Also discards the ordering bound by
+	 * {@link #prepareScope(ArgumentProvider, KernelStructureContext)}.</p>
+	 */
 	@Override
 	public void resetArguments(Set<ScopeLifecycle> visited) {
+		boundOrder = null;
 		ScopeLifecycle.resetArguments(Stream.of(producer), visited);
 	}
 
@@ -532,10 +601,14 @@ public class ReshapeProducer
 	 * <p>A reshape reads the element at the same flat index of the reshaped producer (see
 	 * {@link #getValueAt(Expression)}), so membership is the producer's, including that of any
 	 * {@link io.almostrealism.collect.TraversalOrdering} the producer's shape carries. A producer
-	 * that cannot answer membership itself is treated as defining every non-negative index.</p>
+	 * that cannot answer membership itself is treated as defining every non-negative index. A
+	 * reshape with an {@link #getOwnOrder() ordering of its own} has the membership of that
+	 * ordering.</p>
 	 */
 	@Override
 	public Expression<Boolean> containsIndex(Expression<Integer> index) {
+		if (getOwnOrder() != null) return getOrdering().containsIndex(index);
+
 		return producer instanceof IndexSet ?
 				((IndexSet) producer).containsIndex(index) :
 				TraversableExpression.super.containsIndex(index);
@@ -546,20 +619,56 @@ public class ReshapeProducer
 		return getValueAt(getShape().index(pos));
 	}
 
+	/**
+	 * Returns the element of the reshaped producer at the same flat index.
+	 *
+	 * <p>A reshape with an {@link #getOwnOrder() ordering of its own} reads the producer's
+	 * memory in a different order, which the logical elements of the producer cannot express.
+	 * It is therefore {@link #isTraversable() not traversable}: a kernel reads it from memory
+	 * through {@link #getOrdering() its ordering}, and asking it for an expression is an
+	 * error.</p>
+	 *
+	 * @param index the flat index
+	 * @return the element of the reshaped producer at the same flat index, or {@code null} only
+	 *         when this reshape has no ordering of its own and the reshaped producer is not a
+	 *         {@link TraversableExpression}
+	 * @throws UnsupportedOperationException if this reshape has an ordering of its own
+	 */
 	@Override
 	public Expression<Double> getValueAt(Expression index) {
+		if (getOwnOrder() != null) {
+			throw new UnsupportedOperationException("A reshape with an ordering of its own " +
+					"is not traversable and must be read from memory through its ordering");
+		}
+
 		return producer instanceof TraversableExpression ? ((TraversableExpression) producer).getValueAt(index) : null;
 	}
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>The offset is the reshaped producer's, since a reshape reads the same flat index. A
+	 * reshape with an {@link #getOwnOrder() ordering of its own} reads a different element of
+	 * the producer at each index, so it reports no offset.</p>
+	 */
 	@Override
 	public Expression uniqueNonZeroOffset(Index globalIndex, Index localIndex, Expression<?> targetIndex) {
+		if (getOwnOrder() != null) return null;
+
 		return producer instanceof TraversableExpression ?
 				((TraversableExpression) producer).uniqueNonZeroOffset(globalIndex, localIndex, targetIndex) :
 				null;
 	}
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>A reshape is traversable when the reshaped producer is, unless it has an
+	 * {@link #getOwnOrder() ordering of its own}, whose elements are read from memory.</p>
+	 */
 	@Override
 	public boolean isTraversable() {
+		if (getOwnOrder() != null) return false;
 		if (producer instanceof TraversableExpression) return ((TraversableExpression) producer).isTraversable();
 		return false;
 	}
