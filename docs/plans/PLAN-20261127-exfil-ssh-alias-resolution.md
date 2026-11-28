@@ -362,6 +362,35 @@ one uniform resolve-then-require pass. (The option loop keeps its *rejections*: 
 command-executing `-o` form, `scp -S`, and the rsync transport flags are still
 refused inline before any resolution.)
 
+### Failure-mode contract at a glance
+
+The resolver has exactly two non-allow outcomes, and the rule distinguishing them
+is a single principle: **block whenever something dangerous is present or might be
+present, and fall back to the literal match only when nothing dangerous can be
+proven present** (so the guard is never more permissive than today's base branch).
+Every condition the steps above define maps to one of the two outcomes; this table
+consolidates them so the contract can be audited in one place rather than
+reconstructed from the prose.
+
+| Condition | Outcome | Where |
+| --- | --- | --- |
+| `HOME`/`PATH` set for the command — leading, earlier on the line, or via `source`/`.` (incl. `env -i`/`-u`) | **Block** | Step 1 |
+| Command-executing `-o` (`ProxyCommand`/`ProxyJump`/`LocalCommand`/`PermitLocalCommand`/`KnownHostsCommand`), `scp -S`, rsync transport flags | **Block** (before resolution) | Faithful resolution |
+| Command-executing directive detected in a readable config | **Block** | Step 3 |
+| Reachable config present but unreadable/unparseable, or an un-followable / token / `${ENV}` / over-depth `Include` | **Block** | Step 3 |
+| Config chain written earlier on the same line (TOCTOU) | **Block** | Config-chain modification |
+| `getpwuid(getuid())` unresolvable, or a relative `-F`/config path with unknown cwd | **Block** | Steps 3-4 (`require_cwd`) |
+| Resolved `hostname` not allowlisted, resolved `proxycommand` ≠ `none`, or a resolved `proxyjump` hop not allowlisted | **Block** | Steps 6-7 |
+| ProxyJump depth cap, invocation cap, or cycle exhausted | **Block** | Step 7 |
+| `argv[0]` path-qualified, or the resolver's `ssh` absent / outside `SYSTEM_PREFIXES` | **Literal fallback** | Step 2 |
+| `ssh -G` fails — `OSError`/`SubprocessError`/timeout/non-zero exit | **Literal fallback** | Step 4 |
+| Config chain genuinely absent (no user/system config, no `-F`, `Include` glob matches nothing) | **Literal fallback** | Step 3 |
+
+"Literal fallback" is not an allow: it hands the original token to `_require_lab`,
+which still blocks a non-allowlisted literal. It is permissive only in the sense
+that it reproduces the base branch's decision for that destination, which is the
+most the guard can do without resolution it could not safely perform.
+
 ### Command-scoped environment (thread #2)
 
 `unwrap_with_env(argv)` strips the leading `VAR=value` assignments off the command
