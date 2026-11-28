@@ -112,37 +112,14 @@ fi
 
 # ── Preconditions ──────────────────────────────────────────────────
 #
-# Checked before the build so a misconfigured host fails immediately. The
-# env file is the operator's, kept outside the checkout because it holds a
-# credential; this script never creates or edits it.
+# The env file checks (require_agent_env), the Maven probe, the build and
+# the stage/swap are shared with the Linux installer; see
+# ../host/install-lib.sh for what each does and why.
 
-if [ ! -f "${ENV_FILE}" ]; then
-    echo "ERROR: agent env file not found at ${ENV_FILE}" >&2
-    echo "  Create it from ${SCRIPT_DIR}/agent.env.example, or point" >&2
-    echo "  FLOWTREE_AGENT_ENV at an existing one." >&2
-    exit 1
-fi
+# shellcheck source=../host/install-lib.sh
+. "${SCRIPT_DIR}/../host/install-lib.sh"
 
-# Read only the keys the checks below need. The file is sourced in a
-# subshell so nothing in it leaks into this script's environment — the
-# service gets it from launchd via FLOWTREE_AGENT_ENV, not from here.
-read_env_key() {
-    ( set +u; set -a; . "${ENV_FILE}"; set +a; printf '%s' "${!1:-}" )
-}
-
-ROOT_HOST="$(read_env_key FLOWTREE_ROOT_HOST)"
-ROOT_PORT="$(read_env_key FLOWTREE_ROOT_PORT)"
-ROOT_PORT="${ROOT_PORT:-7766}"
-
-if [ -z "${ROOT_HOST}" ]; then
-    echo "ERROR: FLOWTREE_ROOT_HOST is not set in ${ENV_FILE}." >&2
-    exit 1
-fi
-if [ -z "$(read_env_key CLAUDE_CODE_OAUTH_TOKEN)" ] && [ -z "$(read_env_key ANTHROPIC_API_KEY)" ]; then
-    echo "ERROR: neither CLAUDE_CODE_OAUTH_TOKEN nor ANTHROPIC_API_KEY is set in ${ENV_FILE}." >&2
-    echo "  Generate a token with: claude setup-token" >&2
-    exit 1
-fi
+require_agent_env
 
 for cmd in java launchctl lsof; do
     if ! command -v "${cmd}" >/dev/null 2>&1; then
@@ -157,10 +134,8 @@ fi
 # Jobs isolate their installed artifacts with Maven's split local repository
 # (MavenInstallSpace), which Maven older than 3.9 silently ignores.
 if command -v mvn >/dev/null 2>&1; then
-    MVN_VERSION="$(mvn --version 2>/dev/null | sed -n 's/^Apache Maven \([0-9]*\)\.\([0-9]*\).*/\1 \2/p')"
-    read -r MVN_MAJOR MVN_MINOR <<< "${MVN_VERSION}"
-    if [ -z "${MVN_VERSION}" ] || [ "${MVN_MAJOR}" -lt 3 ] \
-            || { [ "${MVN_MAJOR}" -eq 3 ] && [ "${MVN_MINOR}" -lt 9 ]; }; then
+    probe_mvn_split_repository
+    if [ "${MVN_SPLIT_SUPPORTED}" = false ]; then
         echo "WARNING: mvn on PATH is older than 3.9 (or unreadable); jobs on this" >&2
         echo "         node will NOT get isolated Maven install spaces." >&2
     fi
@@ -179,81 +154,12 @@ echo "  Service:     ${SERVICE} ($(daemon_registered && echo registered || echo 
 echo ""
 
 # ── Build ──────────────────────────────────────────────────────────
-#
-# Identical to the build rebuild.sh performs for the container images, and
-# for the same reasons: `install` so upstream modules land in ~/.m2 before
-# copy-dependencies reads them, and an absolute outputDirectory because the
-# plugin resolves a relative one against the module, not the reactor.
 
-if [ "${BUILD}" = true ]; then
-    echo "Building flowtree module..."
-    (
-        cd "${PROJECT_ROOT}"
-        mvn install -pl flowtree/runtime -am -DskipTests
-        mvn dependency:copy-dependencies -pl flowtree/runtime \
-            -DoutputDirectory="${PROJECT_ROOT}/flowtree/runtime/target/dependency"
-    )
-fi
-
-RUNTIME_JAR="$(ls "${MODULE_DIR}"/target/ar-flowtree-runtime-*.jar 2>/dev/null | grep -v -E -- '-(sources|javadoc|tests)\.jar$' | head -1 || true)"
-if [ -z "${RUNTIME_JAR}" ] || [ ! -d "${MODULE_DIR}/target/dependency" ]; then
-    echo "ERROR: no built runtime JAR under ${MODULE_DIR}/target — run without --no-build." >&2
-    exit 1
-fi
+build_runtime
 
 # ── Stage and swap ─────────────────────────────────────────────────
-#
-# A new lib directory is assembled in full and moved into place in one
-# step, so the service never sees a half-copied classpath, and the JARs a
-# running JVM has open are moved aside rather than truncated under it.
 
-mkdir -p "${AGENT_HOME}/bin" "${AGENT_HOME}/conf" "${AGENT_HOME}/logs"
-
-STAGING="${AGENT_HOME}/lib.staging"
-rm -rf "${STAGING}"
-mkdir -p "${STAGING}"
-cp "${RUNTIME_JAR}" "${STAGING}/"
-cp "${MODULE_DIR}"/target/dependency/*.jar "${STAGING}/"
-
-# ── Build provenance ───────────────────────────────────────────────
-#
-# Written into the staging directory so it is swapped into place by the
-# same mv as the JARs it describes. Written afterwards, it could survive a
-# failed swap and name a build that is not the one installed.
-#
-# What it proves and what it does not: it records the commit this checkout
-# was on and whether the checkout was clean when the JARs were built. It
-# does NOT prove the JARs were compiled from that commit — only a
-# reproducible build proves that, and this is not one. It is enough to
-# catch the realistic failure, a deploy from a stale or dirty tree, and it
-# must not be read as more than that.
-#
-# `built` records whether this run compiled anything. Under --no-build the
-# JARs may predate the checked-out commit entirely, so a consumer that
-# treats the SHA as describing the binary has to know to distrust it.
-#
-# Living in lib/ alongside the JARs is what buys the atomic swap, and it is
-# inert there: run.sh passes `-cp "${AGENT_HOME}/lib/*"` unquoted to the JVM,
-# whose classpath wildcard expands to .jar files only.
-PROVENANCE_CLEAN=true
-if [ -n "$(git -C "${PROJECT_ROOT}" status --porcelain 2>/dev/null)" ]; then
-    PROVENANCE_CLEAN=false
-fi
-{
-    echo "sha=$(git -C "${PROJECT_ROOT}" rev-parse HEAD 2>/dev/null || echo unknown)"
-    echo "branch=$(git -C "${PROJECT_ROOT}" rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)"
-    echo "clean=${PROVENANCE_CLEAN}"
-    echo "built=${BUILD}"
-    echo "installed_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-    echo "installed_by=$(id -un)"
-    echo "host=$(hostname)"
-} > "${STAGING}/BUILD_PROVENANCE"
-
-rm -rf "${AGENT_HOME}/lib.previous"
-if [ -d "${AGENT_HOME}/lib" ]; then
-    mv "${AGENT_HOME}/lib" "${AGENT_HOME}/lib.previous"
-fi
-mv "${STAGING}" "${AGENT_HOME}/lib"
+stage_runtime
 
 cp "${MODULE_DIR}/conf/agent.properties" "${AGENT_HOME}/conf/agent.properties"
 cp "${SCRIPT_DIR}/run.sh" "${AGENT_HOME}/bin/run.sh"

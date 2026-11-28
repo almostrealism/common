@@ -245,6 +245,36 @@ not there after a reboot and, on a host where the account is only reached via
 `su`, refuses bootstraps outright. `tools/ci/macos/README.md` ("Deploying the
 native macOS agent") covers the runner and the registration.
 
+### Native Linux host Server (systemd)
+
+On a Linux host, one host Server runs every Node of the machine — native
+Nodes that run jobs in-process and, with the Docker Node kind, Nodes that
+launch a container per job — instead of one Server inside each agent
+container. It is installed the same way as the macOS agent, with a systemd
+system unit in place of the LaunchDaemon:
+
+```bash
+# as the account the Server should run as
+cp agent/linux/agent.env.example ~/flowtree-agent/agent.env           # then fill it in
+cp agent/linux/nodes.properties.example ~/flowtree-agent/nodes.properties   # optional typed node list
+./agent/linux/install.sh
+# first time only: it stops and prints the one `sudo` command (register-unit.sh,
+# run from a checkout the administrator owns) that registers the unit;
+# run it as an administrator, then run install.sh again
+```
+
+`install.sh` refuses to start without Maven 3.9 or later (jobs isolate their
+Maven installs with a split local repository) and, when the node list
+configures a Docker Node, without a Docker daemon the account can reach. It
+builds and atomically swaps the JARs under `~/flowtree-agent`, appends the
+node list to the installed `agent.properties`, renders
+`almostrealism-flowtree-agent.service` and fails unless it is byte-for-byte the
+unit systemd loaded, enabled at boot and not awaiting a daemon-reload. It then
+restarts the process (`Restart=always` brings it back) and fails unless the new
+process connects to the controller. `agent/linux/smoke.sh` is the operations
+end-to-end check: it sends one job to the native Node and one to the Docker
+Node through the controller and requires both to succeed.
+
 ---
 
 ## Core Architecture
@@ -344,6 +374,16 @@ flowtree/
       register-daemon.sh    # root-only registration of the LaunchDaemon (agent or runner); run from an admin-owned checkout
       com.almostrealism.flowtree-agent.plist
       agent.env.example
+    linux/                  # Native Linux host Server (systemd system unit)
+      install.sh
+      run.sh
+      register-unit.sh      # root-only registration of the unit; run from an admin-owned checkout
+      flowtree-agent.service
+      agent.env.example
+      nodes.properties.example
+      smoke.sh              # ops end-to-end check: one native and one Docker job
+    host/
+      install-lib.sh        # steps shared by the macOS and Linux installers
   bin/                      # Bare-metal startup scripts
     start-agent.sh
     start-controller.sh
