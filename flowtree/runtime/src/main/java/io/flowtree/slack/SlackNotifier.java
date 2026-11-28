@@ -741,14 +741,16 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
      *
      * @param workstreamId the workstream whose channel receives the notice
      * @param message      the notice text
+     * @return {@code true} when the message was posted; {@code false} for an
+     *         unknown workstream or when the post failed
      */
-    public void postWorkstreamNotice(String workstreamId, String message) {
+    public boolean postWorkstreamNotice(String workstreamId, String message) {
         Workstream workstream = workstreams.get(workstreamId);
         if (workstream == null) {
             warn("Unknown workstream for notice: " + workstreamId);
-            return;
+            return false;
         }
-        postMessage(workstream.getChannelId(), message);
+        return postMessage(workstream.getChannelId(), message) != null;
     }
 
     /**
