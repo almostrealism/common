@@ -2483,6 +2483,11 @@ jobs:
       - name: Build ar-memory image
         run: docker build -f tools/mcp/memory/Dockerfile -t ar-memory:ci tools/mcp
 
+      - name: Verify the memory server imports in the packaged layout
+        # Building is not enough: a module the server imports but the image
+        # lacks only fails when the server starts.
+        run: docker run --rm --entrypoint python ar-memory:ci -c "import store, server"
+
       - name: Build ar-tracker image
         run: docker build -f tools/tracker/Dockerfile -t ar-tracker:ci tools/tracker
 
