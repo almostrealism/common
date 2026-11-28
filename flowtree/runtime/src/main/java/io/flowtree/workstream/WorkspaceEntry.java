@@ -20,8 +20,10 @@ import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import io.flowtree.JsonFieldExtractor;
 import io.flowtree.jobs.agent.PhaseConfig;
 import io.flowtree.jobs.agent.PhaseConfigContainer;
+import io.flowtree.submission.PhaseConfigResolver;
 import io.flowtree.submission.SubmissionRunnerResolver;
 
 import java.util.ArrayList;
@@ -254,5 +256,51 @@ public class WorkspaceEntry implements PhaseConfigContainer {
     @Override
     public void setPhaseConfigs(Map<String, PhaseConfig> phaseConfigs) {
         this.phaseConfigs = phaseConfigs != null ? new LinkedHashMap<>(phaseConfigs) : new LinkedHashMap<>();
+    }
+
+    /**
+     * Appends this entry's non-credential configuration to {@code json} as a
+     * {@code {"ok":true, ...}} object, in the shape returned by both the
+     * workspace config read endpoint ({@code GET /api/workspaces/{id}/config})
+     * and the update endpoint's success response ({@code POST .../config}).
+     *
+     * <p>This is an allowlist serialiser: it emits only the operator-facing
+     * fields — {@link #getId() workspaceId}, and, when present,
+     * {@code slackTeamId}, {@code name}, {@code defaultChannel},
+     * {@code defaultPhaseConfig} and {@code phaseConfigs} (the last two via
+     * {@link PhaseConfigResolver#appendBundleJson}). The credential and ACL
+     * fields ({@code tokensFile}, {@code botToken}, {@code appToken},
+     * {@code githubOrgs}, {@code secrets}, {@code channelOwnerUserId(s)}) are
+     * never written here, so a field added to this class stays out of the
+     * response until it is deliberately added to this allowlist.</p>
+     *
+     * <p>The reported {@code workspaceId} is this entry's own {@link #getId()}.
+     * The update endpoint applies a rename to the entry (its {@code id} is set
+     * to the new value) before serialising, so {@link #getId()} is already the
+     * post-rename id.</p>
+     *
+     * @param json the builder the {@code {...}} object is appended to
+     */
+    public void appendPublicConfigJson(StringBuilder json) {
+        json.append("{\"ok\":true,\"workspaceId\":\"")
+                .append(JsonFieldExtractor.escapeJson(id))
+                .append("\"");
+        if (slackTeamId != null) {
+            json.append(",\"slackTeamId\":\"")
+                    .append(JsonFieldExtractor.escapeJson(slackTeamId))
+                    .append("\"");
+        }
+        if (name != null) {
+            json.append(",\"name\":\"")
+                    .append(JsonFieldExtractor.escapeJson(name))
+                    .append("\"");
+        }
+        if (defaultChannel != null) {
+            json.append(",\"defaultChannel\":\"")
+                    .append(JsonFieldExtractor.escapeJson(defaultChannel))
+                    .append("\"");
+        }
+        PhaseConfigResolver.appendBundleJson(json, toPhaseConfigBundle());
+        json.append("}");
     }
 }

@@ -332,6 +332,13 @@ layer mixdown_hetero_branch(signal_size: int,
 //                  disables the gain stage but
 //                  the saturation stage still bounds runaway peaks; the
 //                  Java path skips both if masterBusGain == 1.0.
+//   wet_pan        Per-channel wet-arm gain, producer([channels]). Carries each
+//                  channel's stereo balance-law pan gain on the effects-off wet
+//                  arm, which has no per-channel volume or send stage to carry it.
+//                  Supplied as a per-buffer PackedCollection slot (unity when not
+//                  panning) so a mid-stream pan change reaches the wet arm live;
+//                  folding pan into wet_filter_coeffs instead would freeze it at
+//                  model-build time. See MixdownManagerPdslAdapter.automationRefresh.
 //
 // Requires mixdown_efx_state populated as in mixdown_efx_bus.
 // ---------------------------------------------------------------------------
@@ -340,6 +347,7 @@ layer mixdown_master(channels: int, signal_size: int, fir_taps: int,
                      lp_cutoff: producer([1]),
                      sample_rate: scalar, filter_order: scalar,
                      wet_filter_coeffs: producer([channels, fir_taps]), wet_level: scalar,
+                     wet_pan: producer([channels]),
                      delay_samples: producer([1]),
                      transmission: producer([channels, channels]),
                      master_gain: producer([1])) -> [1, signal_size] {
@@ -358,6 +366,7 @@ layer mixdown_master(channels: int, signal_size: int, fir_taps: int,
         {
             for each channel {
                 fir(wet_filter_coeffs[channel])
+                scale(wet_pan[channel])
                 scale(wet_level)
                 delay(delay_samples, buffers[channel], heads[channel])
             }

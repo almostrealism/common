@@ -17,6 +17,20 @@ import tool_capabilities
 import workspace_map
 from server import mcp
 
+# Response allowlist for workspace_get_config. Only these non-credential
+# fields of a workspace are ever returned to a caller; anything else the
+# controller might include (Slack credentials, GitHub org tokens, channel
+# ACLs) is dropped here as defence in depth, independent of the controller's
+# own allowlist in WorkspaceEntry.appendPublicConfigJson.
+_WORKSPACE_PUBLIC_CONFIG_FIELDS = (
+    "workspaceId",
+    "slackTeamId",
+    "name",
+    "defaultChannel",
+    "defaultPhaseConfig",
+    "phaseConfigs",
+)
+
 
 @mcp.tool()
 def workspace_update_config(
@@ -35,6 +49,10 @@ def workspace_update_config(
     runners="",
 ) -> dict:
     """Update workspace-level configuration on a workspace entry.
+
+    To read the current configuration without changing anything, use
+    ``workspace_get_config``; it returns the same non-credential fields this
+    tool writes and echoes.
 
     A workspace is the operator's organisational unit. Its ``id`` is
     operator-chosen and independent of any Slack team ID; when a Slack
@@ -200,6 +218,84 @@ def workspace_update_config(
         ])
 
     return result
+
+@mcp.tool()
+def workspace_get_config(
+    workspace_id: str = "",
+) -> dict:
+    """Read a workspace's non-credential configuration.
+
+    The read counterpart of ``workspace_update_config``: it returns the same
+    operator-facing fields that tool writes and echoes — ``workspaceId``,
+    ``name``, ``slackTeamId``, ``defaultChannel``, ``defaultPhaseConfig`` and
+    ``phaseConfigs`` — so an orchestrator can answer "what are this
+    workspace's defaults?" without making a no-op write and reading the
+    response. It never returns credentials (``tokensFile``, ``botToken``,
+    ``appToken``), GitHub org tokens or channel-owner ACLs; those are editable
+    only in the YAML.
+
+    A workspace-scoped token may read only its own workspace; a request for
+    another workspace's config is refused before the controller is contacted.
+    Unscoped (operator) tokens may read any workspace.
+
+    Args:
+        workspace_id: Operator-chosen workspace identifier (e.g.
+            ``"almostrealism"``) of the workspace to read. Required.
+
+    Returns:
+        dict with ``ok=True`` and the non-credential fields
+        (``workspaceId``, and, when set, ``name``, ``slackTeamId``,
+        ``defaultChannel``, ``defaultPhaseConfig``, ``phaseConfigs``), or
+        ``ok=False`` with an error.
+    """
+    server._require_scope("read")
+    if not workspace_id:
+        return {
+            "ok": False,
+            "error": "workspace_id is required",
+            "next_steps": [
+                "Pass workspace_id (the operator-chosen workspace ID)",
+            ],
+        }
+    err = server._check_short_strings(workspace_id=workspace_id)
+    if err:
+        return err
+    # Scope check before any controller round-trip: a scoped token must not be
+    # able to probe for the existence of another workspace by its id.
+    server._require_workspace(workspace_id)
+    server._audit("workspace_get_config", workspace_id=workspace_id)
+
+    result = server._controller_get(
+        f"/api/workspaces/{quote(workspace_id, safe='')}/config")
+
+    # Only an explicit, well-formed success is treated as one. _controller_get
+    # returns {} for an empty body and an error payload otherwise, so a response
+    # whose ok is not True, or that lacks the workspaceId every successful
+    # serialisation carries, is an error — not a success to be reported with no
+    # config (and never the raw response, which could carry fields outside the
+    # allowlist).
+    if result.get("ok") is True and "workspaceId" in result:
+        # Second allowlist: return only the non-credential fields, so a field
+        # added to the controller response does not leak until added here too.
+        filtered = {"ok": True}
+        for key in _WORKSPACE_PUBLIC_CONFIG_FIELDS:
+            if key in result:
+                filtered[key] = result[key]
+        return filtered
+
+    # Error path: return only a safe envelope, keeping the controller's error
+    # string when it supplied one, so an error payload cannot leak a field
+    # outside the allowlist the way returning the raw response would.
+    error = result.get("error")
+    return {
+        "ok": False,
+        "error": error if isinstance(error, str) and error
+        else "Failed to read workspace configuration",
+        "next_steps": [
+            "Re-run workspace_get_config with a valid workspace_id "
+            "(the operator-chosen workspace identifier)",
+        ],
+    }
 
 @mcp.tool()
 def workspace_secret_list_names(

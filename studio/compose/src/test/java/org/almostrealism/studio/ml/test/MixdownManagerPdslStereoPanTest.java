@@ -125,6 +125,40 @@ public class MixdownManagerPdslStereoPanTest extends TestSuiteBase
 	}
 
 	/**
+	 * The effects-off wet arm re-pans live between buffers. One compiled {@code mixdown_master}
+	 * per side renders the panned channel hard LEFT, then — WITHOUT recompiling — the pan is
+	 * moved hard RIGHT and the automation refreshed (as the real-time runner does each buffer);
+	 * the next buffers' energy split must follow the new pan. The wet arm has no per-channel
+	 * volume or send stage, so this exercises the live {@code wet_pan} slot: before the fix the
+	 * wet pan was folded into the FIR coefficients and frozen at model build, so the left side
+	 * kept leaking the wet signal after the re-pan.
+	 */
+	@Test(timeout = 300_000)
+	@TestDepth(2)
+	public void efxOffWetArmRepansLiveBetweenBuffers() {
+		MixdownManager mixdown = buildFixture(false);
+
+		double[] left = repanEnergies(mixdown, ChannelInfo.StereoChannel.LEFT, -1.0, +1.0);
+		double[] right = repanEnergies(mixdown, ChannelInfo.StereoChannel.RIGHT, -1.0, +1.0);
+		double leftAtLeft = left[0];
+		double leftAtRight = left[1];
+		double rightAtLeft = right[0];
+		double rightAtRight = right[1];
+		log(String.format("repan leftAtLeft=%.6g rightAtLeft=%.6g leftAtRight=%.6g rightAtRight=%.6g",
+				leftAtLeft, rightAtLeft, leftAtRight, rightAtRight));
+
+		Assert.assertTrue("hard-left: the left side must carry energy", leftAtLeft > 1e-8);
+		Assert.assertTrue("hard-left: the right side must be silent",
+				rightAtLeft < 1e-6 * leftAtLeft);
+		Assert.assertTrue("after re-panning right: the right side must carry energy",
+				rightAtRight > 1e-8);
+		Assert.assertTrue("after re-panning right the left side must fall silent — a wet pan frozen "
+						+ "at build time would keep it loud (leftAtRight=" + leftAtRight
+						+ ", rightAtRight=" + rightAtRight + ")",
+				leftAtRight < 1e-6 * rightAtRight);
+	}
+
+	/**
 	 * At {@code pan = 0} a LEFT-side adapter and a mono (no-side) adapter produce identical
 	 * output for both layers — the centre-parity property the mono mixdown tests rely on.
 	 */
@@ -185,6 +219,54 @@ public class MixdownManagerPdslStereoPanTest extends TestSuiteBase
 			compiled.forward(input);
 			PackedCollection out = compiled.forward(input);
 			return energy(out.range(shape(SIGNAL_SIZE)), 0);
+		} finally {
+			compiled.destroy();
+		}
+	}
+
+	/**
+	 * Compiles one effects-off side's {@code mixdown_master} once, renders the panned channel at
+	 * {@code panA} and returns that side's energy, then moves the panned channel to {@code panB}
+	 * and refreshes the automation — as the real-time runner does each buffer, WITHOUT
+	 * recompiling — and returns the energy again. Two forwards are run at each pan so the
+	 * sub-frame wet-arm delay ring holds samples of the current pan before the measured buffer.
+	 *
+	 * @param mixdown the fixture whose per-channel pan the forwards read live
+	 * @param side    the stereo side to render
+	 * @param panA    the panned channel's pan for the first measurement (and model build)
+	 * @param panB    the panned channel's pan for the second measurement
+	 * @return {@code {energyAtPanA, energyAtPanB}} for this side
+	 */
+	private double[] repanEnergies(MixdownManager mixdown, ChannelInfo.StereoChannel side,
+								   double panA, double panB) {
+		TraversalPolicy inputShape = new TraversalPolicy(CHANNELS, SIGNAL_SIZE);
+		MixdownManagerPdslAdapter.Config config = new MixdownManagerPdslAdapter.Config(
+				CHANNELS, SIGNAL_SIZE, SAMPLE_RATE, PDSL_FILTER_ORDER, WET_LEVEL, PDSL_DELAY_SAMPLES);
+
+		setPan(mixdown, panA);
+		MixdownManagerPdslAdapter adapter =
+				new MixdownManagerPdslAdapter(mixdown, null, config, side);
+		Map<String, Object> args = adapter.buildArgsMap();
+		PackedCollection input = pannedChannelInput(false);
+
+		PdslLoader loader = new PdslLoader(AudioDspPrimitives::registerWith);
+		PdslNode.Program program = loader.parseResource("/pdsl/audio/mixdown_manager.pdsl");
+		Block block = loader.buildLayer(program, "mixdown_master", inputShape, args);
+		Model model = new Model(inputShape);
+		model.add(block);
+		CompiledModel compiled = model.compile(false);
+		Runnable refresh = adapter.automationRefresh(args).get();
+
+		try {
+			refresh.run();
+			compiled.forward(input);
+			double energyA = energy(compiled.forward(input).range(shape(SIGNAL_SIZE)), 0);
+
+			setPan(mixdown, panB);
+			refresh.run();
+			compiled.forward(input);
+			double energyB = energy(compiled.forward(input).range(shape(SIGNAL_SIZE)), 0);
+			return new double[] { energyA, energyB };
 		} finally {
 			compiled.destroy();
 		}

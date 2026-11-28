@@ -423,6 +423,12 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 	 * {@code MixdownManager.createCells()}. The master low-pass cutoff is a single
 	 * post-sum stage and remains shape-{@code [1]}.</p>
 	 *
+	 * <p>The shape-{@code [channels]} {@code wet_pan} slot is allocated only for the
+	 * efx-off layer ({@link #efx} {@code null}). {@link #wetArgsMap()} also starts from this
+	 * map, but {@code mixdown_master_wet} pans through its volume and reverb-send stages and
+	 * does not declare {@code wet_pan}; omitting the slot there keeps
+	 * {@link #automationRefresh} from evaluating an unused pan producer every buffer.</p>
+	 *
 	 * @return populated argument map for {@code PdslLoader.buildLayer(...)}
 	 */
 	private Map<String, Object> baseArgsMap() {
@@ -449,6 +455,7 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 		// swept filters) into these slots once per buffer.
 		args.put("hp_cutoff", new PackedCollection(config.channels));
 		args.put("volume", new PackedCollection(config.channels));
+		if (efx == null) args.put("wet_pan", new PackedCollection(config.channels));
 		args.put("lp_cutoff", new PackedCollection(1));
 		int taps = config.filterOrder + 1;
 		args.put("hp_coeffs", new PackedCollection(
@@ -512,8 +519,9 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 	/**
 	 * Builds the per-buffer refresh operation that re-evaluates every TIME-VARYING
 	 * automation producer into its argument slot ({@code hp_cutoff}, {@code volume},
-	 * {@code lp_cutoff}, and — when {@code efx} is provided — {@code efx_automation},
-	 * {@code reverb_send}, and {@code wet_in}). The real-time runner runs this once per
+	 * {@code lp_cutoff}, the efx-off wet-arm pan gain {@code wet_pan}, and — when {@code efx}
+	 * is provided — {@code efx_automation}, {@code reverb_send}, and {@code wet_in}). The
+	 * real-time runner runs this once per
 	 * buffer, before the
 	 * model forward pass, so the compiled graph reads the automation values for the
 	 * buffer's clock position. Producer-valued model arguments cannot be used for these:
@@ -577,6 +585,10 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 					hpCutoffProducer(config.channel(ch))));
 			refresh.add(a(1, cp(volume.range(shape(1), ch)),
 					volumeProducer(config.channel(ch))));
+		}
+		PackedCollection wetPan = (PackedCollection) args.get("wet_pan");
+		if (wetPan != null) {
+			refresh.add(a(config.channels, cp(wetPan), wetPanProducer()));
 		}
 		// Master low-pass: a single post-sum filter (lp_cutoff is shape [1]). The Java path
 		// applies it after main.sum() and reads channelIndex(0) — the first selected channel's
@@ -1298,11 +1310,12 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 	 * It also rendered only a low-pass, dropping the cascade's high-pass half.)</p>
 	 *
 	 * <p>For the efx-off layer ({@code mixdown_master}, {@link #efx} {@code null}) the wet
-	 * arm has no per-channel volume or send stage to carry a channel's pan, so this adapter's
-	 * stereo balance-law gain is folded into each channel's coefficient row instead — a
-	 * linear scale of the FIR row scales that channel's wet output. The efx-on layer pans
-	 * through its volume and reverb-send stages, so folding here as well would double-count;
-	 * the fold is therefore guarded on the base layer.</p>
+	 * arm has no per-channel volume or send stage to carry a channel's pan. Its pan is
+	 * applied live by the layer's {@code wet_pan} slot (see {@link #wetPanProducer} and
+	 * {@link #automationRefresh}) rather than folded into these coefficients: this producer
+	 * is evaluated once at model build and frozen into the compiled graph, so a pan folded
+	 * here would never follow a mid-stream {@link MixdownManager#setPan} until the layer was
+	 * rebuilt.</p>
 	 *
 	 * @param high {@code true} for the cascade's high-pass half (gene slot 0);
 	 *             {@code false} for the low-pass half (gene slot 1)
@@ -1315,12 +1328,21 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 						? wetFilter.highPassFrequency(config.channel(ch))
 						: wetFilter.lowPassFrequency(config.channel(ch))),
 				AudioPassFilter.MIN_FREQUENCY, 20000);
-		CollectionProducer rows = tableRows(biquadResponseTable(high), cutoffs, firTaps);
-		// efx-off wet arm has no per-channel volume/send; pan folds here (see javadoc).
-		if (efx != null || stereoSide == null) return rows;
-		CollectionProducer gains = c(perChannelProducer(config.channels,
-				ch -> panGain(config.channel(ch)))).repeat(1, firTaps);
-		return rows.multiply(gains).reshape(new TraversalPolicy(config.channels, firTaps));
+		return tableRows(biquadResponseTable(high), cutoffs, firTaps);
+	}
+
+	/**
+	 * Produces the shape-{@code [channels]} per-channel wet-arm pan gain for the efx-off
+	 * {@code mixdown_master} layer's {@code wet_pan} slot: each channel's stereo balance-law
+	 * gain on this adapter's side ({@link #panGain}), or unity when this adapter is not
+	 * panning ({@link #stereoSide} {@code null}). Read live by {@link #automationRefresh} each
+	 * buffer, so a mid-stream {@link MixdownManager#setPan} reaches the wet arm.
+	 *
+	 * @return the per-channel wet-arm pan gain producer
+	 */
+	private Producer<PackedCollection> wetPanProducer() {
+		return perChannelProducer(config.channels,
+				ch -> applyPan(config.channel(ch), c(1.0)));
 	}
 
 	/**

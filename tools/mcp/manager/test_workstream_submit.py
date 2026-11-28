@@ -1403,7 +1403,7 @@ class TestSubmitTestExecutionLimits(unittest.TestCase):
         )
         self.assertFalse(result["ok"])
         self.assertIn("at most 5 classes and 40 Class#method tests", result["error"])
-        self.assertIn("exactly one explicit node id", result["error"])
+        self.assertIn("at most 5 files and 40 node ids", result["error"])
         self.assertNotIn("one test per invocation", result["error"])
 
     def test_rejects_prompt_instructing_broad_test_run(self):

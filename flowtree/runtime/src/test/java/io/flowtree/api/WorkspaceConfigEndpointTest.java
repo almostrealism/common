@@ -366,9 +366,75 @@ public class WorkspaceConfigEndpointTest extends TestSuiteBase {
                 workspaceEntry.getPhaseConfigs().get("review").runner());
     }
 
+    /** GET /api/workspaces/{id}/config returns the non-credential fields. */
+    @Test(timeout = 10000)
+    public void testGetReturnsNonCredentialConfig() throws Exception {
+        workspaceEntry.getPhaseConfigs().clear();
+        postJson("/api/workspaces/" + WORKSPACE_ID + "/config",
+                "{\"defaultPhaseConfig\":{\"runner\":\"opencode\"},"
+                + "\"phaseConfigs\":{\"review\":{\"runner\":\"claude\"}}}");
+
+        JsonNode response = getJson("/api/workspaces/" + WORKSPACE_ID + "/config");
+        assertTrue(response.get("ok").asBoolean());
+        assertEquals(WORKSPACE_ID, response.get("workspaceId").asText());
+        assertEquals("Initial Name", response.get("name").asText());
+        assertEquals(WORKSPACE_ID, response.get("slackTeamId").asText());
+        assertEquals("C-initial", response.get("defaultChannel").asText());
+        assertEquals("opencode",
+                response.get("defaultPhaseConfig").get("runner").asText());
+        assertEquals("claude",
+                response.get("phaseConfigs").get("review").get("runner").asText());
+    }
+
+    /** GET /api/workspaces/{id}/config never exposes Slack credentials. */
+    @Test(timeout = 10000)
+    public void testGetOmitsCredentials() throws Exception {
+        workspaceEntry.setBotToken("xoxb-secret");
+        workspaceEntry.setTokensFile("/etc/secrets.json");
+        workspaceEntry.setAppToken("xapp-secret");
+
+        JsonNode response = getJson("/api/workspaces/" + WORKSPACE_ID + "/config");
+        assertTrue(response.get("ok").asBoolean());
+        assertNull(response.get("botToken"));
+        assertNull(response.get("tokensFile"));
+        assertNull(response.get("appToken"));
+    }
+
+    /** GET /api/workspaces/{id}/config is read-only: it leaves the entry unchanged. */
+    @Test(timeout = 10000)
+    public void testGetDoesNotMutateEntry() throws Exception {
+        String initialName = workspaceEntry.getName();
+        String initialChannel = workspaceEntry.getDefaultChannel();
+        getJson("/api/workspaces/" + WORKSPACE_ID + "/config");
+        assertEquals(initialName, workspaceEntry.getName());
+        assertEquals(initialChannel, workspaceEntry.getDefaultChannel());
+    }
+
+    /** GET /api/workspaces/{id}/config for an unknown workspace returns HTTP 404. */
+    @Test(timeout = 10000)
+    public void testGetUnknownWorkspaceReturns404() throws Exception {
+        HttpURLConnection conn = (HttpURLConnection) new URL(
+                "http://localhost:" + port + "/api/workspaces/T-unknown/config")
+                .openConnection();
+        conn.setRequestMethod("GET");
+        assertEquals(404, conn.getResponseCode());
+        JsonNode response = MAPPER.readTree(readErrorBody(conn));
+        assertFalse(response.get("ok").asBoolean());
+        assertTrue(response.get("error").asText().contains("Unknown workspace"));
+    }
+
     // ----------------------------------------------------------------
     // Helpers
     // ----------------------------------------------------------------
+
+    /** GETs the endpoint and returns the parsed 200 response. */
+    private JsonNode getJson(String path) throws IOException {
+        HttpURLConnection conn = (HttpURLConnection) new URL(
+                "http://localhost:" + port + path).openConnection();
+        conn.setRequestMethod("GET");
+        assertEquals(200, conn.getResponseCode());
+        return MAPPER.readTree(readBody(conn));
+    }
 
     /** Posts JSON to the endpoint and returns the parsed response. */
     private JsonNode postJson(String path, String body) throws IOException {

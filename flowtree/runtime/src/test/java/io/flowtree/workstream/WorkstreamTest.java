@@ -16,15 +16,19 @@
 
 package io.flowtree.workstream;
 
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import io.flowtree.github.CiTrigger;
 import io.flowtree.github.GitHubProxyHandler;
+import io.flowtree.github.PullRequest;
 import org.almostrealism.io.Console;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Consumer;
 
 import static org.junit.Assert.assertEquals;
@@ -169,5 +173,98 @@ public class WorkstreamTest extends TestSuiteBase {
         }
         assertTrue("the missing-token warning names trigger, repo, branch and org; saw " + messages,
                 reported);
+    }
+
+    /**
+     * When the review loop settles, a dependent repository that carries an open
+     * pull request on the branch has its own test run started, alongside the
+     * primary repository's. This is the downstream-plus-dependency case: a
+     * workstream whose primary repo is a downstream repository lists the
+     * repository it builds on as a dependent, and the settled job must start
+     * the gating test run on both companion pull requests, not only the
+     * primary's.
+     */
+    @Test(timeout = 15000)
+    public void testSettledCiStartsDependentRepoWithOpenPr() {
+        RecordingGitHub github = new RecordingGitHub();
+        github.openPrRepos.add("almostrealism/common");
+        Workstream ws = workstreamOn("https://github.com/almostrealism/ringsdesktop.git");
+        ws.setBaseBranch("master");
+        ws.setSettledCiTrigger(CiTrigger.parse("deployment:test"));
+        ws.setDependentRepos(List.of("https://github.com/almostrealism/common.git"));
+
+        assertEquals(CiTrigger.Outcome.STARTED, ws.startSettledCi(github, "feature/shared"));
+        assertTrue("the primary repo gets its test deployment",
+                github.deployed.contains("almostrealism/ringsdesktop"));
+        assertTrue("the dependent repo with an open PR gets its own test deployment",
+                github.deployed.contains("almostrealism/common"));
+    }
+
+    /**
+     * A dependent repository with no open pull request on the branch is not
+     * triggered: the branch's work did not open a companion pull request there,
+     * so a test run would gate nothing. The primary repository is still started.
+     */
+    @Test(timeout = 15000)
+    public void testSettledCiSkipsDependentRepoWithoutOpenPr() {
+        RecordingGitHub github = new RecordingGitHub();
+        Workstream ws = workstreamOn("https://github.com/almostrealism/ringsdesktop.git");
+        ws.setBaseBranch("master");
+        ws.setSettledCiTrigger(CiTrigger.parse("deployment:test"));
+        ws.setDependentRepos(List.of("https://github.com/almostrealism/common.git"));
+
+        assertEquals(CiTrigger.Outcome.STARTED, ws.startSettledCi(github, "feature/shared"));
+        assertTrue("the primary repo is still deployed",
+                github.deployed.contains("almostrealism/ringsdesktop"));
+        assertFalse("a dependent repo with no open PR on the branch is not deployed",
+                github.deployed.contains("almostrealism/common"));
+    }
+
+    /**
+     * A {@link GitHubProxyHandler} double that answers the reads a settled-CI
+     * trigger makes from in-memory state: every organisation has a token, no
+     * commit has a prior deployment, and the dependent repositories named in
+     * {@link #openPrRepos} report an open pull request. It records the
+     * {@code owner/repo} of each deployment it is asked to create in
+     * {@link #deployed}, so a test can assert which repositories were triggered.
+     */
+    private static final class RecordingGitHub extends GitHubProxyHandler {
+        /** The {@code owner/repo} of every repository a deployment was created for. */
+        private final Set<String> deployed = new HashSet<>();
+        /** The {@code owner/repo} of each repository that reports an open pull request. */
+        private final Set<String> openPrRepos = new HashSet<>();
+
+        /** Creates a double whose org token resolution and GitHub reads are stubbed. */
+        RecordingGitHub() {
+            super(Map.of("almostrealism", "tok"), "http://127.0.0.1:1");
+        }
+
+        @Override
+        public String resolveGithubToken(String org) {
+            return "tok";
+        }
+
+        @Override
+        public String fetchHeadSha(String ownerRepo, String branch, String token) {
+            return "sha-" + ownerRepo;
+        }
+
+        @Override
+        public boolean hasDeployment(String ownerRepo, String sha, String environment, String token) {
+            return false;
+        }
+
+        @Override
+        public boolean createDeployment(String ownerRepo, String ref, String environment,
+                                        String description, String token) {
+            deployed.add(ownerRepo);
+            return true;
+        }
+
+        @Override
+        public PullRequest findOpenPullRequest(String ownerRepo, String branch) {
+            return openPrRepos.contains(ownerRepo)
+                    ? new PullRequest(JsonNodeFactory.instance.objectNode()) : null;
+        }
     }
 }
