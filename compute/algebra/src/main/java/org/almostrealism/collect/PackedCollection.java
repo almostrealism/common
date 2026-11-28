@@ -1051,9 +1051,10 @@ public class PackedCollection extends MemoryDataAdapter
 	 * {@inheritDoc}
 	 *
 	 * <p>If both this collection and the new shape carry an ordering, the ordering of the new
-	 * shape addresses the physical memory this collection reads through its own ordering (the
-	 * same ordering, or another view of the same entries, such as the transpose of a sparse
-	 * matrix), so the result views that memory through it; nesting it in this collection would
+	 * shape addresses what this collection's own ordering addresses (the same ordering, or another
+	 * view of the same entries, such as the transpose of a sparse matrix): the delegate of this
+	 * collection, read as the delegate reads itself, or the memory of a collection that owns its
+	 * memory. The result views that through the new ordering; nesting it in this collection would
 	 * apply both orderings.</p>
 	 */
 	@Override

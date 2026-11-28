@@ -36,6 +36,7 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.RepeatedProducerComputation;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.OptionalInt;
 import java.util.Set;
 
@@ -340,24 +341,30 @@ public class SegmentedWeightedSumComputation extends RepeatedProducerComputation
 
 	/**
 	 * Returns the gradient with respect to the target of the input, {@code Aᵀ·g} passed on to the
-	 * input's own output-reduced delta. The transpose is the ordinary
-	 * {@link CollectionProducer#transpose() transpose} of the matrix, which for an ordering that
-	 * can {@link TraversalOrdering#transpose(int, int) describe its transpose} reads the same memory
-	 * through the ordering of the transpose, so the gradient is itself a product over the stored
-	 * entries and reflects any later change to their values.
+	 * input's own output-reduced delta. The transpose is the product of the same matrix operand
+	 * read through the ordering that {@link TraversalOrdering#transpose(int, int) the ordering of
+	 * the matrix describes for its transpose}, which is the view
+	 * {@link CollectionProducer#transpose()} forms over the same memory. The gradient is therefore
+	 * itself a product over the stored entries and reflects any later change to their values.
+	 *
+	 * <p>The transpose is formed from {@link #matrixShape}, not from the shape of the operand:
+	 * the operand of the {@link #entryTangent Jacobian-vector product with respect to the matrix}
+	 * is the tangent of the stored entries alone, which has one element per entry and no
+	 * ordering of its own, and is read through the shape of the matrix it perturbs.</p>
 	 *
 	 * @param target the producer with respect to which to differentiate
 	 * @param weight the upstream gradient, in the shape of this product, or null for ones
-	 * @return the gradient, or null if the transpose of the matrix does not enumerate its rows
+	 * @return the gradient, or null if the ordering of the matrix cannot describe a transpose
+	 *         whose rows it enumerates
 	 */
 	private CollectionProducer inputGradient(Producer<?> target, Producer<PackedCollection> weight) {
-		// TODO(review): for the entryTangent product the operand is the (m) tangent, not matrixShape; transpose() of a 1-D shape may throw
-		CollectionProducer transpose = c(getInputs().get(MATRIX)).transpose();
-		TraversalOrdering transposeOrder = shape(transpose).getOrder();
-		if (transposeOrder == null || transposeOrder.segments(matrixShape.length(0)).isEmpty()) return null;
+		int rows = matrixShape.length(0);
+		Optional<TraversalOrdering> transposeOrder = order.transpose(rows, segmentLength);
+		if (transposeOrder.isEmpty() || transposeOrder.get().segments(rows).isEmpty()) return null;
 
+		TraversalPolicy transposeShape = new TraversalPolicy(transposeOrder.get(), segmentLength, rows);
 		CollectionProducer gradient = new SegmentedWeightedSumComputation(getName() + "Transpose",
-				width, transpose, upstream(weight));
+				transposeShape, width, getInputs().get(MATRIX), upstream(weight));
 		return c(getInputs().get(INPUT)).delta(target, ReduceAxis.OUT,
 				gradient.reshape(shape(getInputs().get(INPUT))));
 	}

@@ -467,6 +467,35 @@ public class CompressedRowDeltaTests extends TestSuiteBase implements MatrixFeat
 	}
 
 	/**
+	 * The gradient, with respect to the input, of the Jacobian-vector product with respect to the
+	 * entries is the transposed product of the matrix whose entries are the tangent:
+	 * {@code T(t)ᵀ·g}. That product reads the tangent, which has one element per stored entry,
+	 * through the shape of the matrix, so its transpose must be formed from that shape rather
+	 * than from the one-dimensional shape of the tangent. It is reduced, and it is exact on every
+	 * backend.
+	 */
+	@Test(timeout = 120000)
+	public void entryTangentInputGradient() {
+		Sparse sparse = fixed();
+		int count = COLUMNS.length;
+		PackedCollection values = pattern(count, 3, 7);
+		PackedCollection tangent = pattern(count, 5, 8);
+		PackedCollection g = pattern(sparse.rows, 2, 9);
+		CollectionProducer entries = cp(sparse.matrix(values));
+		CollectionProducer input = cp(pattern(sparse.cols, 1, 5));
+
+		CollectionProducer gradient = matmul(entries, input).delta(entries, ReduceAxis.IN, cp(tangent))
+				.delta(input, ReduceAxis.OUT, cp(g));
+		assertReduced(gradient, Math.max(count, sparse.cols), SegmentedWeightedSumComputation.class);
+
+		double[] expected = sparse.transposedProduct(host(tangent), host(g), 1);
+		for (ComputeRequirement backend : backends()) {
+			assertValues("entry tangent input gradient on " + backend, expected,
+					evaluate(gradient, backend).toArray(0, sparse.cols));
+		}
+	}
+
+	/**
 	 * The gradient with respect to a batch of row vectors, as a dense layer passes its input, is
 	 * the transposed product for each vector: {@code grad[b, j] = Σ_i A[i, j] g[b, i]}.
 	 *
