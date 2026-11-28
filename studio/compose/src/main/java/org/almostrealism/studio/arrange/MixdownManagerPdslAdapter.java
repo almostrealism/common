@@ -17,10 +17,12 @@
 package org.almostrealism.studio.arrange;
 
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.audio.CellFeatures;
 import org.almostrealism.audio.CellList;
 import org.almostrealism.audio.filter.AudioPassFilter;
+import org.almostrealism.audio.filter.BiquadResponseTable;
 import org.almostrealism.audio.filter.DelayNetwork;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
@@ -81,16 +83,6 @@ import java.util.stream.IntStream;
  */
 @Deprecated
 public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFeatures {
-
-	/** Number of log-spaced cutoff bins in the filter impulse-response lookup tables. */
-	private static final int FILTER_TABLE_BINS = 1024;
-
-	/**
-	 * Bin-selection scale for the impulse-response tables:
-	 * {@code (FILTER_TABLE_BINS - 1) / ln(20000 / MIN_FREQUENCY)} (see {@link #tableRows}).
-	 */
-	private static final double FILTER_TABLE_BIN_SCALE =
-			(FILTER_TABLE_BINS - 1) / Math.log(20000.0 / AudioPassFilter.MIN_FREQUENCY);
 
 	/**
 	 * Longest reverb tap in seconds — the top of the Java {@link DelayNetwork} per-line
@@ -374,7 +366,7 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 					"this adapter was constructed for structural constants only;"
 							+ " building an argument map requires a MixdownManager");
 		}
-		return efx == null ? baseArgsMap() : wetArgsMap();
+		return efx == null ? baseArgsMap(true) : wetArgsMap();
 	}
 
 	/**
@@ -423,9 +415,12 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 	 * {@code MixdownManager.createCells()}. The master low-pass cutoff is a single
 	 * post-sum stage and remains shape-{@code [1]}.</p>
 	 *
+	 * @param initialise whether to fill the automation slots now; {@link #wetArgsMap()}
+	 *                   passes {@code false} because its own refresh fills a superset of them,
+	 *                   and compiling this narrower refresh as well costs a kernel compile
 	 * @return populated argument map for {@code PdslLoader.buildLayer(...)}
 	 */
-	private Map<String, Object> baseArgsMap() {
+	private Map<String, Object> baseArgsMap(boolean initialise) {
 		Map<String, Object> args = new HashMap<>();
 		args.put("channels", config.channels);
 		args.put("signal_size", config.signalSize);
@@ -504,7 +499,7 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 		// Initialise the automation slots with their current (clock-position) values so
 		// direct consumers of this map (tests, single-shot renders) see live gene values
 		// even if they never run the per-buffer refresh.
-		automationRefresh(args, null).get().run();
+		if (initialise) automationRefresh(args, null).get().run();
 
 		return args;
 	}
@@ -534,7 +529,7 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 
 	/**
 	 * Builds the refresh operation over an explicit effects manager — {@code null} while
-	 * {@link #baseArgsMap()} initialises a map that does not carry the efx-layer slots
+	 * {@link #baseArgsMap(boolean)} initialises a map that does not carry the efx-layer slots
 	 * yet, the constructed {@link #efx} otherwise.
 	 *
 	 * @param args the argument map being initialised or refreshed
@@ -591,12 +586,11 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 		// subtrees — an exponential expression tree), so the responses are tabulated once
 		// at build time over log-spaced cutoff bins and each refresh SELECTS a row with a
 		// device-side gather: bin = round((bins-1) * ln(cutoff/10) / ln(20000/10)).
-		PackedCollection hpTable = biquadResponseTable(true);
-		PackedCollection lpTable = biquadResponseTable(false);
-		refresh.add(a(config.channels * taps, cp(hpCoeffs), tableRows(hpTable,
-				perChannelProducer(config.channels, ch -> hpCutoffProducer(config.channel(ch))), taps)));
-		refresh.add(a(taps, cp(lpCoeffs),
-				tableRows(lpTable, lpCutoffProducer(config.channel(0)), taps)));
+		refresh.add(a(config.channels * taps, cp(hpCoeffs), responseTable(true).rows(
+				biquadResponseTable(true),
+				perChannelProducer(config.channels, ch -> hpCutoffProducer(config.channel(ch))))));
+		refresh.add(a(taps, cp(lpCoeffs), responseTable(false).rows(
+				biquadResponseTable(false), lpCutoffProducer(config.channel(0)))));
 
 		if (efx != null) {
 			PackedCollection efxAutomation = (PackedCollection) args.get("efx_automation");
@@ -653,130 +647,34 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 	}
 
 	/**
-	 * Builds the {@code [FILTER_TABLE_BINS, taps]} table of truncated biquad impulse
-	 * responses over log-spaced cutoffs in {@code [MIN_FREQUENCY, 20000]} Hz, entirely as a
-	 * {@link CollectionProducer} graph evaluated once at argument-build time; per-buffer
-	 * refresh selects a row with a device-side gather.
-	 *
-	 * <p>The table is the FIR realisation of
-	 * {@link org.almostrealism.audio.filter.AudioPassFilter}'s biquad. With
-	 * {@code c = tan(PI*f/sr)} (high-pass) or its reciprocal (low-pass) and
-	 * {@code a1 = 1/(1 + r*c + c*c)}, the impulse response follows the recurrence
-	 * {@code y[n] = a1*x[n] + a2*x[n-1] + a3*x[n-2] - b1*y[n-1] - b2*y[n-2]} driven by a unit
-	 * impulse. Rather than unroll that recurrence (whose naive expression tree grows
-	 * exponentially), the response is generated in closed form: for the project resonance
-	 * the discriminant {@code b1*b1 - 4*b2} reduces to {@code -c*c*(4 - r*r) < 0}, so the
-	 * poles are <em>always</em> a complex-conjugate pair {@code rho*exp(+/- i*theta)} with
-	 * {@code rho = sqrt(b2)} and {@code theta = acos(-b1 / (2*rho))}. The homogeneous IR is
-	 * therefore {@code y[n] = rho^n * (A*cos(n*theta) + B*sin(n*theta))} for {@code n >= 1}
-	 * (with {@code A}, {@code B} fit to {@code y[1]}, {@code y[2]}), and {@code y[0] = a1}.
-	 * Every coefficient is a per-bin scalar producer; the {@code [bins, taps]} table is the
-	 * outer combination of those with the tap index. This matches Java's exact 12 dB/oct
-	 * biquad (a windowed-sinc FIR of the same order is far steeper and audibly diverged from
-	 * the CellList render during the cutoff sweep).</p>
+	 * Tabulates this adapter's {@link BiquadResponseTable} for one filter design: the
+	 * truncated impulse responses of {@link AudioPassFilter}'s biquad over log-spaced
+	 * cutoffs, evaluated once at argument-build time so each per-buffer refresh only selects
+	 * a row with a device-side gather.
 	 *
 	 * @param high true for the high-pass design; false for low-pass
-	 * @return the response table
+	 * @return the response table, owned by the caller
 	 */
 	public PackedCollection biquadResponseTable(boolean high) {
-		int sampleRate = config.sampleRate;
-		int taps = config.filterOrder + 1;
-		int bins = FILTER_TABLE_BINS;
-		int tail = taps - 1;
-		double r = FixedFilterChromosome.defaultResonance;
-		double span = Math.log(20000.0 / AudioPassFilter.MIN_FREQUENCY);
-		double piOverSr = Math.PI / sampleRate;
-
-		// Per-bin scalar coefficients (shape [bins]).
-		CollectionProducer cutoff = exp(
-				integers(0, bins).multiply(span / (bins - 1.0)))
-				.multiply(AudioPassFilter.MIN_FREQUENCY);
-		CollectionProducer t = tan(cutoff.multiply(piOverSr));
-		CollectionProducer c = high ? t : t.pow(-1.0);
-		CollectionProducer csq = c.multiply(c);
-		CollectionProducer rc = c.multiply(r);
-		CollectionProducer a1 = add(rc, csq).add(1.0).pow(-1.0);
-		CollectionProducer a2 = high ? a1.multiply(-2.0) : a1.multiply(2.0);
-		CollectionProducer a3 = a1;
-		CollectionProducer b1 = high
-				? csq.subtract(1.0).multiply(2.0).multiply(a1)
-				: csq.multiply(-1.0).add(1.0).multiply(2.0).multiply(a1);
-		CollectionProducer b2 = add(rc.multiply(-1.0), csq).add(1.0).multiply(a1);
-
-		CollectionProducer rho = sqrt(b2);
-		CollectionProducer theta = acos(
-				divide(b1.multiply(-1.0), rho.multiply(2.0)));
-
-		// Impulse-response seeds y[0], y[1], y[2].
-		CollectionProducer y0 = a1;
-		CollectionProducer y1 = subtract(a2, multiply(b1, y0));
-		CollectionProducer y2 = subtract(
-				subtract(a3, multiply(b1, y1)), multiply(b2, y0));
-
-		// Closed-form amplitudes: det = cos(t)sin(2t) - cos(2t)sin(t) = sin(t).
-		CollectionProducer c1 = cos(theta);
-		CollectionProducer s1 = sin(theta);
-		CollectionProducer c2 = cos(theta.multiply(2.0));
-		CollectionProducer s2 = sin(theta.multiply(2.0));
-		CollectionProducer y1n = divide(y1, rho);
-		CollectionProducer y2n = divide(y2, b2);
-		CollectionProducer aCoef = divide(
-				subtract(multiply(y1n, s2), multiply(y2n, s1)), s1);
-		CollectionProducer bCoef = divide(
-				subtract(multiply(y2n, c1), multiply(y1n, c2)), s1);
-
-		// Tap-indexed response for n >= 1. repeat(axis, n) inserts a new dimension, so a
-		// [bins] column repeated on axis 1 and a [tail] row repeated on axis 0 both broadcast
-		// to [bins, tail]; their product is the n*theta / n*ln(rho) outer combination.
-		CollectionProducer nRow = integers(0, tail).add(1.0).repeat(0, bins);
-		CollectionProducer nTheta = multiply(theta.repeat(1, tail), nRow);
-		CollectionProducer rhoPow = exp(
-				multiply(log(rho).repeat(1, tail), nRow));
-		CollectionProducer aTile = aCoef.repeat(1, tail);
-		CollectionProducer bTile = bCoef.repeat(1, tail);
-		CollectionProducer general = multiply(rhoPow,
-				add(multiply(aTile, cos(nTheta)),
-						multiply(bTile, sin(nTheta))));
-
-		// Prepend y[0] = a1 as the first tap, materialising the table at the build boundary.
-		CollectionProducer response = concat(1, a1.reshape(bins, 1), general);
-		PackedCollection table = new PackedCollection(new TraversalPolicy(bins, taps));
-		a(bins * taps, cp(table), response).get().run();
-		return table;
+		return responseTable(high).tabulate();
 	}
 
 	/**
-	 * Builds a {@code [rows, taps]} producer selecting, for each of the {@code [rows]} cutoffs,
-	 * the response-table row for the bin nearest that cutoff:
-	 * {@code bin = floor(FILTER_TABLE_BIN_SCALE * ln(cutoff / MIN_FREQUENCY) + 0.5)}.
-	 * Entirely device-side (log, scale, floor, indexed gather). The bins of every cutoff are
-	 * computed and gathered together, so a bank of per-channel cutoffs compiles to one kernel
-	 * rather than one per channel, each reading its genes at a different offset.
+	 * Describes the response table of one filter design at this adapter's sample rate, tap
+	 * count and the project resonance.
 	 *
-	 * @param table   the {@code [FILTER_TABLE_BINS, taps]} response table
-	 * @param cutoffs shape-{@code [rows]} cutoff producer in Hz (bounded to the table's range)
-	 * @param taps    FIR taps per response
-	 * @return a {@code [rows, taps]} coefficient producer
+	 * @param high true for the high-pass design; false for low-pass
+	 * @return the table description
 	 */
-	private CollectionProducer tableRows(PackedCollection table,
-			Producer<PackedCollection> cutoffs, int taps) {
-		int rows = shape(cutoffs).getTotalSize();
-		CollectionProducer bin = floor(add(
-				multiply(
-						log(divide(cutoffs,
-								c(AudioPassFilter.MIN_FREQUENCY))),
-						c(FILTER_TABLE_BIN_SCALE)),
-				c(0.5)));
-		Producer<PackedCollection> positions = add(
-				bin.multiply((double) taps).repeat(1, taps),
-				integers(0, taps).repeat(0, rows));
-		return c(shape(rows, taps), cp(table), positions);
+	private BiquadResponseTable responseTable(boolean high) {
+		return new BiquadResponseTable(config.sampleRate, config.filterOrder + 1,
+				FixedFilterChromosome.defaultResonance, high);
 	}
 
 	/**
 	 * Builds the argument map for the {@code mixdown_master_wet} layer, adding the
 	 * per-channel {@link EfxManager} parameters and the bus-line network on top of the
-	 * mixdown parameters from {@link #baseArgsMap()}.
+	 * mixdown parameters from {@link #baseArgsMap(boolean)}.
 	 *
 	 * <p>The added arguments render the two distinct legacy regeneration structures:
 	 * {@link EfxManager#apply}'s per-channel echo (gene-chosen filter, wet level,
@@ -786,10 +684,19 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 	 * send into the first line, {@code delay}-chromosome line lengths with per-line
 	 * drift, unscaled genome transmission recirculation, {@code wetOut} output taps).</p>
 	 *
+	 * <p>The values fixed at build time (the reverb taps and feedback matrix, the bus send
+	 * routing, and the bus base delays that size the bus rings) are assigned through one
+	 * operation list, so they compile as one kernel rather than one each. The base map's own
+	 * automation refresh is skipped, since the refresh here fills a superset of its slots;
+	 * its one lasting effect, a {@code volume} ramp that starts from the current volume
+	 * rather than from zero, is kept by copying {@code volume} into {@code volume_prev} after
+	 * the refresh.</p>
+	 *
 	 * @return populated argument map for {@code PdslLoader.buildLayer(..., "mixdown_master_wet", ...)}
 	 */
 	private Map<String, Object> wetArgsMap() {
-		Map<String, Object> args = baseArgsMap();
+		Map<String, Object> args = baseArgsMap(false);
+		OperationList constants = new OperationList("PDSL Argument Constants");
 
 		// mixdown_master_wet renders the legacy mixdown-bus delay layer as the SHARED
 		// bus-line network below (bus_* arguments), not as the base map's per-channel
@@ -891,20 +798,11 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 		args.put("bus_delay_samples", busDelays);
 		// The _prev slot lets the network ramp each line's delay across the frame.
 		args.put("bus_delay_samples_prev", new PackedCollection(layers));
-		args.put("bus_send", busSendMatrix(layers));
+		args.put("bus_send", constant(constants, shape(config.channels, layers), busSend(layers)));
 		args.put("bus_transmission", busTransmissionMatrix(layers));
 		args.put("bus_wet_out", busWetOutMatrix(layers));
-
-		// Bus ring state, sized from the current genome's largest evaluated BASE delay
-		// plus headroom for slow-down excursions (a cursor rate below 1 lengthens the
-		// effective delay past the gene); the kernel's ring-band clamp bounds anything
-		// beyond it (e.g. a deeper slow-down or a live-swapped genome with longer genes).
-		int busFrames = (maxEvaluated(perChannelProducer(layers,
-				this::busLineBaseDelay), layers) * 5 / 4
-				+ 3 * config.signalSize - 1) / config.signalSize;
-		args.put("bus_buffers", new PackedCollection(
-				layers * busFrames * config.signalSize));
-		args.put("bus_heads", new PackedCollection(layers));
+		PackedCollection baseDelays = constant(constants, shape(layers),
+				perChannelProducer(layers, this::busLineBaseDelay));
 
 		// Reverb bus — the PDSL analogue of MixdownManager.createEfx's
 		// reverb.sum().map(DelayNetwork): a mono send through a multi-tap closed-loop
@@ -937,7 +835,7 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 		// legacy DelayNetwork's 0.15-1.5 s range (seconds-denominated, so the room no
 		// longer changes size with the buffer), quasi-randomly but deterministically
 		// spaced (uniform taps give a metallic comb).
-		args.put("reverb_delays", reverbTapDelays());
+		args.put("reverb_delays", constant(constants, shape(reverbTaps), reverbTapDelayValues()));
 
 		// reverb_feedback: producer([reverb_taps, reverb_taps]) — a scaled Householder
 		// reflection, the same feedback structure the Java DelayNetwork builds with
@@ -945,7 +843,8 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 		// i.e. spectral radius 1/size. The previous 0.7 radius held ~2x the steady-state
 		// energy and a much longer tail than Java, audibly inflating the reverb arm once
 		// the automation drove the send past unity.
-		args.put("reverb_feedback", householderMatrix(reverbTaps, 1.0 / reverbTaps));
+		args.put("reverb_feedback", constant(constants, shape(reverbTaps, reverbTaps),
+				householder(reverbTaps, 1.0 / reverbTaps)));
 
 		// Reverb ring state: the delay_network stage is read-first, so a ring holds
 		// samples of age D for signal_size <= D <= ring; sizing the ring to the tail's
@@ -969,10 +868,50 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 		args.put("stem_efx", new PackedCollection(shape(1, config.signalSize)));
 		args.put("stem_reverb", new PackedCollection(shape(1, config.signalSize)));
 
-		// Initialise the efx-layer automation slots (see the matching call in the base map).
 		automationRefresh(args, efx).get().run();
+		constants.add(a(config.channels, cp((PackedCollection) args.get("volume_prev")),
+				cp((PackedCollection) args.get("volume"))));
+		Destroyable.runOnce(constants.get());
+
+		int busFrames = (ceilMax(baseDelays) * 5 / 4
+				+ 3 * config.signalSize - 1) / config.signalSize;
+		baseDelays.destroy();
+		args.put("bus_buffers", new PackedCollection(
+				layers * busFrames * config.signalSize));
+		args.put("bus_heads", new PackedCollection(layers));
 
 		return args;
+	}
+
+	/**
+	 * Allocates an argument slot of the given shape and appends to {@code constants} the
+	 * assignment that fills it from {@code value}. The slot holds its value only once the
+	 * list has run; batching the build-time constants this way compiles them as one kernel.
+	 *
+	 * @param constants the list the assignment is appended to
+	 * @param shape     the slot shape
+	 * @param value     the value to assign
+	 * @return the slot, filled when {@code constants} runs
+	 */
+	private PackedCollection constant(OperationList constants, TraversalPolicy shape,
+									  Producer<PackedCollection> value) {
+		PackedCollection slot = new PackedCollection(shape);
+		constants.add(a(shape.getTotalSize(), cp(slot), value));
+		return slot;
+	}
+
+	/**
+	 * Evaluates {@code value} into a new collection of the given shape, on its own.
+	 *
+	 * @param shape the result shape
+	 * @param value the value to evaluate
+	 * @return the evaluated collection
+	 */
+	private PackedCollection evaluated(TraversalPolicy shape, Producer<PackedCollection> value) {
+		OperationList list = new OperationList();
+		PackedCollection result = constant(list, shape, value);
+		Destroyable.runOnce(list.get());
+		return result;
 	}
 
 	/**
@@ -1009,15 +948,21 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 	 * @return a {@code [reverbTaps]} {@link PackedCollection} of per-tap delay sample counts
 	 */
 	public PackedCollection reverbTapDelays() {
+		return evaluated(shape(reverbTaps), reverbTapDelayValues());
+	}
+
+	/**
+	 * Produces the {@code [reverbTaps]} per-tap delay lengths {@link #reverbTapDelays()} holds.
+	 *
+	 * @return the per-tap delay producer, in samples
+	 */
+	private CollectionProducer reverbTapDelayValues() {
 		double lo = Math.max(REVERB_MIN_TAP_SECONDS * config.sampleRate, config.signalSize);
 		double hi = REVERB_TAIL_SECONDS * config.sampleRate;
 		double phiInverse = 2.0 / (1.0 + Math.sqrt(5.0));
 		CollectionProducer fraction = mod(
 				integers(1, reverbTaps + 1).multiply(phiInverse), c(1.0));
-		PackedCollection delays = new PackedCollection(reverbTaps);
-		a(reverbTaps, cp(delays),
-				floor(fraction.multiply(hi - lo).add(lo))).get().run();
-		return delays;
+		return floor(fraction.multiply(hi - lo).add(lo));
 	}
 
 	/**
@@ -1043,13 +988,20 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 	 * @return an {@code [n, n]} {@link PackedCollection} feedback matrix
 	 */
 	public PackedCollection householderMatrix(int n, double gain) {
-		// gain * (I - off), with off = 2/n applied to every element:
-		// diagonal = gain*(1 - off), off-diagonal = -gain*off.
-		double off = 2.0 / n;
-		PackedCollection matrix = new PackedCollection(new TraversalPolicy(n, n));
-		a(n * n, cp(matrix),
-				identity(n).multiply(gain).subtract(gain * off)).get().run();
-		return matrix;
+		return evaluated(shape(n, n), householder(n, gain));
+	}
+
+	/**
+	 * Produces the {@code [n, n]} matrix {@link #householderMatrix(int, double)} holds:
+	 * {@code gain * (I - 2/n)}, so the diagonal is {@code gain * (1 - 2/n)} and every other
+	 * element is {@code -gain * 2/n}.
+	 *
+	 * @param n    matrix dimension
+	 * @param gain scale factor
+	 * @return the matrix producer
+	 */
+	private CollectionProducer householder(int n, double gain) {
+		return identity(n).multiply(gain).subtract(gain * 2.0 / n);
 	}
 
 	/**
@@ -1315,7 +1267,7 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 						? wetFilter.highPassFrequency(config.channel(ch))
 						: wetFilter.lowPassFrequency(config.channel(ch))),
 				AudioPassFilter.MIN_FREQUENCY, 20000);
-		CollectionProducer rows = tableRows(biquadResponseTable(high), cutoffs, firTaps);
+		CollectionProducer rows = responseTable(high).rows(biquadResponseTable(high), cutoffs);
 		// efx-off wet arm has no per-channel volume/send; pan folds here (see javadoc).
 		if (efx != null || stereoSide == null) return rows;
 		CollectionProducer gains = c(perChannelProducer(config.channels,
@@ -1465,17 +1417,12 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 	 * matrix builders here, never staged in a host array.
 	 *
 	 * @param layers bus line count
-	 * @return the {@code [channels, layers]} routing matrix
+	 * @return the flat {@code [channels * layers]} routing producer, row-major
 	 */
-	private PackedCollection busSendMatrix(int layers) {
-		int channels = config.channels;
-		PackedCollection send = new PackedCollection(new TraversalPolicy(channels, layers));
+	private CollectionProducer busSend(int layers) {
 		CollectionProducer column = mod(
-				integers(0, channels * layers), c((double) layers));
-		a(channels * layers, cp(send),
-				max(c(1.0).subtract(column.multiply(column)),
-						c(0.0))).get().run();
-		return send;
+				integers(0, config.channels * layers), c((double) layers));
+		return max(c(1.0).subtract(column.multiply(column)), c(0.0));
 	}
 
 	/**
@@ -1527,30 +1474,24 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 	}
 
 	/**
-	 * Evaluates a shape-{@code [count]} producer once at argument-build time and returns
-	 * the ceiling of its largest element. Used to size ring state from the current
-	 * genome's gene-driven delays; the kernels' ring-band clamp bounds any later
-	 * live-swap value that exceeds the built ring.
+	 * Returns the ceiling of the largest element of values evaluated at argument-build time.
+	 * Used to size ring state from the current genome's gene-driven delays; the kernels'
+	 * ring-band clamp bounds any later live-swap value that exceeds the built ring.
 	 *
-	 * <p>The largest element is found by reading the evaluated values rather than by a
-	 * reduction on the device. The answer has to become an {@code int} to size a buffer,
-	 * so some read is unavoidable; taking it as a reduction would mean an
-	 * {@code evaluate().toDouble()} pair inside production code, which is the shape the
-	 * policy prohibits and would not save the read anyway. The count here is the layer
-	 * count, and this runs once per argument build.</p>
+	 * <p>The largest element is found by reading the values rather than by a reduction on
+	 * the device. The answer has to become an {@code int} to size a buffer, so some read is
+	 * unavoidable; taking it as a reduction would mean an {@code evaluate().toDouble()} pair
+	 * inside production code, which is the shape the policy prohibits and would not save the
+	 * read anyway. The count here is the layer count, and this runs once per argument build.</p>
 	 *
-	 * @param values the producer to evaluate
-	 * @param count  the element count
+	 * @param values the evaluated values
 	 * @return the ceiling of the maximum element
 	 */
-	private int maxEvaluated(Producer<PackedCollection> values, int count) {
-		PackedCollection evaluated = new PackedCollection(count);
-		a(count, cp(evaluated), values).get().run();
+	private int ceilMax(PackedCollection values) {
 		double max = 0.0;
-		for (double v : evaluated.toArray(0, count)) {
+		for (double v : values.toArray(0, values.getMemLength())) {
 			max = Math.max(max, v);
 		}
-		evaluated.destroy();
 		return (int) Math.ceil(max);
 	}
 
