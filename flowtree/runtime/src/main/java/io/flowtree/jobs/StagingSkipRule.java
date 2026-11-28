@@ -95,6 +95,54 @@ class StagingSkipRule implements EnforcementRule {
     }
 
     /**
+     * Classifies the skip as environment-determined when every reportable skip
+     * was rejected by a staging guardrail this job cannot bypass from where it
+     * runs — an excluded pattern, CI/workflow protection, a binary file, or a
+     * file over the size limit. In those cases the rule's own prompt already
+     * tells the agent the content "cannot be committed by this job at all", so
+     * re-running it only spends sessions re-discovering the same wall.
+     *
+     * <p>Any other skip is left {@linkplain ViolationClassification#agentFixable
+     * agent-fixable}: a protected test file has a documented workaround (edit a
+     * method the branch introduced, or add a new one), and an unrecognised
+     * reason is retried rather than silently abandoned. The violation is
+     * therefore environment-determined only when there is no reportable skip the
+     * agent could act on.</p>
+     *
+     * @param job the job whose staging preview produced the skips
+     * @return an environment-determined classification when no skip is
+     *         actionable, otherwise agent-fixable
+     */
+    @Override
+    public ViolationClassification classifyViolation(CodingAgentJob job) {
+        List<String> skipped = reportableSkips(job);
+        if (skipped.isEmpty()) return ViolationClassification.agentFixable();
+        for (String entry : skipped) {
+            if (!isUnbypassableGuardrail(entry)) {
+                return ViolationClassification.agentFixable();
+            }
+        }
+        return ViolationClassification.environmentDetermined(
+                "every changed file was rejected by a staging guardrail this job cannot"
+                        + " bypass: " + String.join("; ", skipped));
+    }
+
+    /**
+     * Returns whether a {@code "path (reason)"} skip entry names a guardrail
+     * the agent cannot work around within this job. The markers mirror the
+     * reasons {@link FileStager} records when it rejects a file outright.
+     *
+     * @param skipEntry a reportable skip entry in {@code "path (reason)"} form
+     * @return {@code true} when the agent has no way to get this file committed
+     */
+    private boolean isUnbypassableGuardrail(String skipEntry) {
+        return skipEntry.contains("(excluded pattern)")
+                || skipEntry.contains("(protected - CI/workflow file)")
+                || skipEntry.contains("(binary file)")
+                || skipEntry.contains("(exceeds ");
+    }
+
+    /**
      * Returns the staging skips worth surfacing to the agent: every skip
      * from {@link GitManagedJob#previewStaging()} except the expected
      * exclusion of {@link #COMMIT_MESSAGE_FILE}.
