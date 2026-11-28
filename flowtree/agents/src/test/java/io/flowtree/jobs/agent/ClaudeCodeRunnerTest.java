@@ -75,6 +75,7 @@ public class ClaudeCodeRunnerTest extends TestSuiteBase {
         assertTrue(cap.supportsMcpHttpTransport());
         assertTrue(cap.supportsMcpStdioTransport());
         assertTrue(cap.supportsPermissionDenialReporting());
+        assertTrue("Claude keeps stdin open for stream-json user turns", cap.supportsStreamingInput());
         assertTrue(cap.supportedModels().contains("claude-opus-4-7"));
     }
 
@@ -245,6 +246,43 @@ public class ClaudeCodeRunnerTest extends TestSuiteBase {
         assertFlagFollows(cmd, "--effort", "high");
         // Budget cap off → flag must be omitted.
         assertFalse(cmd.contains("--max-budget-usd"));
+    }
+
+    /**
+     * When the request asks for mid-session mailbox delivery, the command line
+     * gains {@code --input-format stream-json} so the CLI reads further user
+     * turns from stdin while the session runs. The initial prompt is still
+     * passed with {@code -p}, and {@code --output-format stream-json} is
+     * unchanged.
+     */
+    @Test(timeout = 5000)
+    public void buildCommandLineAddsInputFormatWhenDeliverMailboxSet() {
+        ClaudeCodeRunner runner = new ClaudeCodeRunner();
+        AgentRunRequest req = AgentRunRequest.builder()
+                .prompt("do the thing")
+                .workingDirectory(Path.of("/tmp"))
+                .allowedTools("Read,Edit")
+                .mcpConfigJson("{\"mcpServers\":{}}")
+                .maxTurns(7)
+                .deliverMailboxToSession(true)
+                .build();
+
+        List<String> cmd = runner.buildCommandLine(req);
+        assertFlagFollows(cmd, "--input-format", "stream-json");
+        assertFlagFollows(cmd, "--output-format", "stream-json");
+        assertFlagFollows(cmd, "-p", "do the thing");
+    }
+
+    /**
+     * Default-off guarantee: a request that does not ask for mailbox delivery
+     * produces a command line with no {@code --input-format} flag, byte-identical
+     * to how every session launches today.
+     */
+    @Test(timeout = 5000)
+    public void buildCommandLineOmitsInputFormatByDefault() {
+        List<String> cmd = new ClaudeCodeRunner().buildCommandLine(minimalRequest());
+        assertFalse("an unflagged session must not request streaming stdin: " + cmd,
+                cmd.contains("--input-format"));
     }
 
     /**

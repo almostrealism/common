@@ -202,6 +202,7 @@ public class OpencodeRunner implements AgentRunner {
                 true,   // supportsMcpHttpTransport
                 true,   // supportsMcpStdioTransport
                 false,  // supportsPermissionDenialReporting (until proven)
+                false,
                 Set.of(),
                 Set.copyOf(PROVIDER_MAP.keySet()));
     }
