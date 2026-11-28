@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: in-progress
 created: 2026-11-27
 closed:
 tracker: [748c1c4a-1b70-45f5-85d3-eb8e8e4911f4]
@@ -8,7 +8,35 @@ tracker: [748c1c4a-1b70-45f5-85d3-eb8e8e4911f4]
 # A pipeline-profile rate-model test on a committed MaleCNS cell-type sub-matrix
 
 **Tracker task:** `748c1c4a-1b70-45f5-85d3-eb8e8e4911f4`, "Give the cell-type rate model a
-scaled-down CI test on a real MaleCNS cell-type sub-matrix". **Release:** Common 0.78.
+scaled-down CI test on a real MaleCNS cell-type sub-matrix". **Release:** the one under development
+(its version is the root `pom.xml`'s).
+
+## Implementation status
+
+Implemented on this branch. What the measurements decided:
+
+- **Active set (open question 1).** The full-matrix run activates 9,471 types (GRN run) and 9,779
+  (control run) of 11,751, so the exact cut is impossible within the size budget.
+- **Fallback selection.** The top-K-by-peak fallback below does not preserve MN9's response: at
+  250 types MN9 reaches 49.36 (GRN) against 49.41 (control), losing the margin (full matrix 84.25
+  against 47.68). It was replaced by an influence ranking that stays within the budget and leaves
+  the constants and the 1,000 steps unchanged: the driven types and MN9 are kept, and the other
+  places go to the active types with the largest product of their rate and their normalized
+  coupling reach to MN9 over two upstream hops. At 250 types MN9 reaches 78.74 (GRN) against 52.75
+  (control), a margin of 25.99 against 36.57 on the full matrix. The whole-vector deviation from
+  the full run is large (up to about 96 for some kept types), so the pipeline test's expectations
+  are the cut's own FP64 rates, and the deviation is recorded in `rate-reference.json` and the
+  fixture README.
+- **Control set (open question 2).** The script ports `java.util.Random` and the candidate order,
+  so the reference and the fixture use exactly the set `CellTypeRateModelTest.matchedControl`
+  draws (`GNG642`, `JO-B1_a`, `SAxx01`, `BM_Vt_PoOc`).
+- **Precision.** On the fixture the largest difference from the FP64 expectations is 1.1e-13 on
+  native FP64 and 1.24e-4 in FP32 (native and Metal).
+- **Reference location.** The shared derived-data tree is not writable by the job account, so the
+  reference was written elsewhere and passed to `matchesRateReference` through
+  `AR_MALE_CNS_CELL_TYPE_RATES`; it still needs copying to the default directory.
+- **Fixture README.** It is generated (and checksummed) by the script, so the platform's measured
+  full-matrix agreement is recorded in the module README and the test javadoc instead.
 
 ## Motivation
 
@@ -139,8 +167,10 @@ the row scale `1 / type_size` must be the same as in the full run. The fixture R
 
 The output directory receives:
 
-- `cell-type-weights.safetensors`, `cell-types.txt` and `cell-type-annotations.tsv` (the layout
-  `CellTypeConnectome.load` reads);
+- `cell-type-weights.tsv`, `cell-type-counts.tsv`, `cell-types.txt` and
+  `cell-type-annotations.tsv` (the text layout `CellTypeConnectome.load` reads when there is no
+  `cell-type-weights.safetensors`; the job harness does not stage binary files, so the committed
+  fixture cannot hold a safetensors file);
 - `spot-checks.json`, `README.md` and `SHA256SUMS`;
 - `rate-reference.json`: the constants, the driven and control names, the expected final rate of
   every kept type in each run, and the full-run MN9 values with the cut's deviation.

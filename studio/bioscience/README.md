@@ -44,6 +44,8 @@ This module exists to:
   Java loaders read. `male_cns.py` reads and filters the MaleCNS tables and holds the shared
   safetensors and checksum helpers; `flywire.py` reads the FlyWire tables distributed with the
   Shiu et al. (2024) model; `male_cns_cell_types.py` writes the cell-type matrix;
+  `male_cns_cell_types.py rates` runs the rate model's sugar experiment on that matrix in FP64 and
+  `male_cns_cell_types.py circuit` cuts the committed cell-type sugar circuit out of it (below);
   `connectome_csr.py` writes the neuron-level compressed rows of MaleCNS, either FlyWire
   snapshot, or a small synthetic connectome (the committed test fixture under
   `src/test/resources/connectome/synthetic` is its output); `brian2_reference.py` writes the Brian2
@@ -56,25 +58,24 @@ This module exists to:
   named by body id or cell type (optionally only those on one side), and writes the same outputs. A kick-schedule
   reference stores the kicks and the spikes as `(step, neuron)` events. Brian2 is needed only for
   these runs. Their dependencies are listed in `scripts/requirements.txt`. They are tested by
-  `scripts/test_male_cns.py` (standard library only) and `scripts/test_connectome_csr.py` (needs
-  numpy):
+  `scripts/test_male_cns.py` (standard library only), `scripts/test_connectome_csr.py` and
+  `scripts/test_male_cns_cell_types.py` (both need numpy):
 
   ```bash
   python3 -m unittest discover -s studio/bioscience/scripts -p "test_*.py"
   ```
 
-  CI's `python-tests` job runs both through `tools/tests/test_bioscience_scripts.py`, which imports
+  CI's `python-tests` job runs them through `tools/tests/test_bioscience_scripts.py`, which imports
   their test cases so that discovery under `tools/tests` collects them.
 
 ### What CI runs, and the full experiments
 
 The full datasets are too large for the repository and for the runners, so the committed fixtures
 are cut to a size every runner can afford and the same simulation code is exercised against them
-under the pipeline test profile; the full experiments run only when asked for. Of this, CI runs
-the Python conversion-script tests (the `python-tests` job, above) and the sparse-matrix ordering
-that backs the loader (`CompressedRowOrderedComputationTests` in `engine/utils`); the
-`studio/bioscience` Java tests below are not yet in the CI test matrix, as adding the module to it
-is a change to the locked CI configuration made on a `ci/` branch (tracked as a follow-up):
+under the pipeline test profile; the full experiments run only when asked for. CI runs the Python
+conversion-script tests (the `python-tests` job, above), the sparse-matrix ordering that backs the
+loader (`CompressedRowOrderedComputationTests` in `engine/utils`), and this module's Java tests
+under the pipeline profile in the `Run Bioscience Tests` step of every media lane:
 
 - `src/test/resources/connectome/sugar-circuit` is the FlyWire 630 sugar circuit: the 451
   neurons that fire in the Brian2 sugar experiment at 200 Hz (including the 21 sugar GRNs and
@@ -88,6 +89,25 @@ is a change to the locked CI configuration made on a `ci/` branch (tracked as a 
   for FP32 backends only: a NumPy run of the same step in FP64 reproduces all 7917 spikes, and in
   FP32 it shifts one spike by one step, which is what the network does on Metal. The synthetic
   reference, with fewer than a thousand spikes, must match exactly.
+- `src/test/resources/connectome/cell-type-sugar-circuit` is a 250-type sub-matrix of the MaleCNS
+  cell-type matrix (about 200 KB) for the rate model's sugar experiment, written by
+  `male_cns_cell_types.py circuit` with spot checks recomputed from the MaleCNS edge table. It holds
+  the sugar GRNs `LB3a`–`LB3d`, the control types `CellTypeRateModelTest` draws (the script ports
+  its `java.util.Random` draw), MN9, and the active types whose activity reaches MN9 most strongly
+  within two synapses; `type_sizes` keep their full-matrix values. Its tensors are text
+  (`cell-type-weights.tsv`, the non-zero entries, and `cell-type-counts.tsv`), which
+  `CellTypeConnectome.load` reads when a directory has no safetensors file. The full run activates about
+  9,500 types, so the cut is not exact: MN9 reaches 78.7 (GRN) and 52.8 (control) on it against
+  84.2 and 47.7 on the full matrix, a margin of 26.0 against 36.6. Its `rate-reference.json` holds
+  every kept type's FP64 rate in both driven runs, and its README the cut's deviation.
+  `CellTypeSugarCircuitTest` checks the spot checks and requires `RatePopulation`, stepped by
+  `SimulationRunner`, to reach every recorded rate within 1e-2 and to keep at least 90% of the
+  margin; the baseline must stay exactly zero.
+  `CellTypeRateModelTest.matchesRateReference` closes the trace on the full matrix: it requires
+  the platform's full-matrix runs to reach the rates the `rates` mode recorded, within the same
+  allowance. Measured on a Mac Studio, the largest difference from the FP64 rates over every type
+  is 1.2e-4 on the circuit in FP32 (native and Metal) and 1.1e-13 on native FP64, and on the full
+  matrix 1.2e-3 on Metal and 1.1e-12 on native FP64.
 - The tests on the full datasets (`NeuronConnectomeDatasetTest`, `ConnectomeNetworkDatasetTest`,
   `CellTypeConnectomeTest`, `CellTypeRateModelTest`) are declared
   `@TestProperties(longRunning = true, excludeProfiles = TestUtils.PIPELINE)`: excluded from
@@ -109,6 +129,7 @@ directory named by the property in parentheses):
 | FlyWire 630 | `connectome_csr.py --dataset flywire-630 --source <flywire-783 directory>` | `flywire/csr-630` (`AR_FLYWIRE_630_CSR`) |
 | FlyWire 783 | `connectome_csr.py --dataset flywire-783 --source <flywire-783 directory>` | `flywire/csr-783` (`AR_FLYWIRE_783_CSR`) |
 | Cell types | `male_cns_cell_types.py --source <male-cns release>` | `male-cns/cell-type-matrix` (`AR_MALE_CNS_CELL_TYPES`) |
+| Cell-type rate reference | `male_cns_cell_types.py rates --matrix <models-derived>/male-cns/cell-type-matrix --output <models-derived>/male-cns/cell-type-rate-reference` | `male-cns/cell-type-rate-reference` (`AR_MALE_CNS_CELL_TYPE_RATES`) |
 | Brian2 sugar references | `brian2_reference.py sugar --repo <model repo> --rate <100, 150 or 200> --processes <n> --output <models-derived>/flywire/brian2-reference/sugarR_630_<rate>Hz` | `flywire/brian2-reference/sugarR_630_<rate>Hz` (`AR_FLYWIRE_BRIAN2_REFERENCE`, the parent directory) |
 | MaleCNS Brian2 references | `brian2_reference.py experiment --repo <model repo> --connectome <male-cns/csr> --name male-cns_<rate>Hz --stimulate-types LB3a,LB3b,LB3c,LB3d --rate <100, 150 or 200> --trials 30 --processes <n> --output <models-derived>/male-cns/brian2-reference/male-cns_<rate>Hz` | `male-cns/brian2-reference/male-cns_<rate>Hz` (`AR_MALE_CNS_BRIAN2_REFERENCE`, the parent directory) |
 
@@ -123,6 +144,14 @@ reference with:
         --rates <models-derived>/flywire/brian2-reference/sugarR_630_200Hz \
         --connectome-output src/test/resources/connectome/sugar-circuit \
         --output src/test/resources/connectome/sugar-circuit-brian2
+
+The committed cell-type sugar circuit is regenerated from the source tables, the full matrix and
+its rate reference with:
+
+    male_cns_cell_types.py circuit --source <male-cns release> \
+        --matrix <models-derived>/male-cns/cell-type-matrix \
+        --rates <models-derived>/male-cns/cell-type-rate-reference \
+        --output src/test/resources/connectome/cell-type-sugar-circuit
 
 `ConnectomeNetworkDatasetTest` runs the experiment each Brian2 reference's manifest describes
 (stimulated neurons, rate, trials, trial length and synapse weight; all trials as replicas in one
@@ -151,6 +180,8 @@ Unlike the `domain/` modules, this module has test sources of its own, in
 
 - `CellTypeConnectomeLoadTest` loads a small synthetic directory written in the script's layout.
   It needs no external data.
+- `CellTypeSugarCircuitTest` runs the rate model's sugar experiment on the committed cell-type
+  sugar circuit, the scaled-down counterpart of `CellTypeRateModelTest`. It runs in CI.
 - `NeuronConnectomeTest`, `ConnectomeNetworkTest` and `NeuronLevelConnectomeSimulationExamplesTest`
   run on the committed fixtures described above, and `ExponentialSynapseNeuronsTest` (in
   `org.almostrealism.biology.neuron.test`) checks the neuron model on its own. These run in CI.

@@ -16,18 +16,19 @@
 
 package org.almostrealism.bioscience.connectome.test;
 
+import com.google.gson.JsonObject;
 import io.almostrealism.compute.ComputeRequirement;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.graph.RatePopulation;
-import org.almostrealism.hardware.Hardware;
 import org.almostrealism.bioscience.connectome.CellTypeConnectome;
+import org.almostrealism.ml.StateDictionary;
 import org.almostrealism.time.SimulationRunner;
 import org.almostrealism.util.TestDepth;
 import org.almostrealism.util.TestProperties;
-import org.almostrealism.util.TestSuiteBase;
 import org.almostrealism.util.TestUtils;
 import org.junit.Test;
 
+import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -46,6 +47,11 @@ import java.util.stream.IntStream;
  * excluded from the pipeline profile, and are meant to run on both the Metal and the native
  * backend when asked for. A missing directory then fails them on every host.</p>
  *
+ * <p>Its scaled-down counterpart, which every CI lane runs, is {@link CellTypeSugarCircuitTest}:
+ * the same experiment on a committed 250-type sub-matrix cut out of this one.
+ * {@link #matchesRateReference()} ties the two together through the full-matrix reference that
+ * sub-matrix was cut from.</p>
+ *
  * <h2>Measured time per step</h2>
  * <p>Measured on a Mac Studio (Apple silicon, macOS, aarch64) for the 11,751-type matrix,
  * 1,000 timed steps after a 100-step warm-up (see {@link #timePerStep()}); native ran in FP64 and
@@ -55,21 +61,15 @@ import java.util.stream.IntStream;
  *   <li>mtl: 11,380 microseconds per step.</li>
  * </ul>
  */
-public class CellTypeRateModelTest extends TestSuiteBase {
-	/** The time step, in seconds. */
-	private static final double DT = 1e-3;
+public class CellTypeRateModelTest extends CellTypeRateChecks {
+	/** The property or environment variable naming the full-matrix rate reference directory. */
+	public static final String RATES_PROPERTY = "AR_MALE_CNS_CELL_TYPE_RATES";
 
-	/** The rate time constant, in seconds. */
-	private static final double TAU = 0.02;
+	/** The rate reference directory used when the property is not set. */
+	public static final String DEFAULT_RATES_DIRECTORY = "/Users/Shared/models-derived/male-cns/cell-type-rate-reference";
 
-	/** The maximum rate. */
-	private static final double R_MAX = 100.0;
-
-	/** The global gain on the mean input per neuron. */
-	private static final double GAIN = 0.003;
-
-	/** The drive written into the input of each driven type. */
-	private static final double DRIVE = 50.0;
+	/** The manifest of the rate reference. */
+	private static final String RATES_MANIFEST = "manifest.json";
 
 	/**
 	 * The MaleCNS types taken as the sugar-sensing gustatory receptor neurons: the labellar
@@ -78,9 +78,6 @@ public class CellTypeRateModelTest extends TestSuiteBase {
 	 * expected of sugar GRNs, whose activation drives proboscis extension.
 	 */
 	private static final List<String> SUGAR_GRNS = List.of("LB3a", "LB3b", "LB3c", "LB3d");
-
-	/** The proboscis motor neuron type whose response is compared. */
-	private static final String MN9 = "MN9";
 
 	/** The seed used to choose the control types. */
 	private static final long CONTROL_SEED = 20261026L;
@@ -96,22 +93,6 @@ public class CellTypeRateModelTest extends TestSuiteBase {
 		return CellTypeConnectome.load(requireResourceIn(CellTypeConnectomeTest.DIRECTORY_PROPERTY,
 				CellTypeConnectomeTest.DEFAULT_DIRECTORY, CellTypeConnectome.WEIGHTS_FILE,
 				ComputeRequirement.GPU, ComputeRequirement.CPU));
-	}
-
-	/**
-	 * Builds a population on the connectome with the row scale {@code 1 / type_size}.
-	 *
-	 * @param connectome the loaded connectome
-	 * @return the population, to be destroyed by the caller
-	 */
-	private RatePopulation population(CellTypeConnectome connectome) {
-		return new RatePopulation(connectome.getWeights(), connectome.inverseTypeSizes(), GAIN, DT, TAU, R_MAX);
-	}
-
-	/** Returns the name of the current backend and precision, for the log. */
-	private String backend() {
-		return Hardware.getLocalHardware().getComputeContext().getClass().getSimpleName()
-				+ "/" + Hardware.getLocalHardware().getPrecision();
 	}
 
 	/**
@@ -224,26 +205,49 @@ public class CellTypeRateModelTest extends TestSuiteBase {
 	}
 
 	/**
-	 * Resets the population to zero rates, drives the given types, runs, and returns the rate of
-	 * the target type.
+	 * The platform reproduces the full-matrix rate reference written by
+	 * {@code male_cns_cell_types.py rates}: the no-drive, sugar GRN and control runs its manifest
+	 * names, each 1,000 steps from zero rates, reach every type's final rate in
+	 * {@code rates.safetensors} within {@link #RATE_ALLOWANCE}, MN9's included. The reference is
+	 * the full-matrix result the committed sugar circuit ({@link CellTypeSugarCircuitTest}) is
+	 * traced to, so this closes the chain from the full matrix to that pipeline test.
 	 *
-	 * @param runner     the runner stepping the population
-	 * @param population the population
-	 * @param target     the type whose rate is returned
-	 * @param driven     the driven types
-	 * @param steps      the number of steps
-	 * @return the target's rate after the run
+	 * <p>The reference lives outside the repository, in the directory named by
+	 * {@value #RATES_PROPERTY} (by default {@value #DEFAULT_RATES_DIRECTORY}); a missing reference
+	 * fails the test on every host.</p>
+	 *
+	 * <p>Measured on a Mac Studio (Apple silicon), the largest difference over every type and run
+	 * was 1.1e-12 on native FP64 and 1.2e-3 on Metal (FP32), where MN9 reached 84.2473 (GRN) and
+	 * 47.6821 (control) against the reference's 84.2472 and 47.6821.</p>
 	 */
-	private double response(SimulationRunner runner, RatePopulation population,
-							int target, int[] driven, int steps) {
-		population.getRates().clear();
-		population.getInput().clear();
-		for (int i : driven) population.getInput().setMem(i, 1.0);
-		a(cp(population.getInput()), cp(population.getInput()).multiply(DRIVE)).get().run();
+	@Test(timeout = 2400000)
+	@TestDepth(2)
+	@TestProperties(longRunning = true, excludeProfiles = TestUtils.PIPELINE)
+	public void matchesRateReference() throws IOException {
+		int steps = 1000;
+		File directory = requireResourceIn(RATES_PROPERTY, DEFAULT_RATES_DIRECTORY, RATES_MANIFEST,
+				ComputeRequirement.GPU, ComputeRequirement.CPU);
+		JsonObject driven = NeuronConnectomeChecks.json(directory, RATES_MANIFEST)
+				.getAsJsonObject().getAsJsonObject("driven");
 
-		runner.reset();
-		runner.run(steps);
-		return population.getRates().toDouble(target);
+		try (CellTypeConnectome connectome = loadConnectome();
+			 RatePopulation population = population(connectome);
+			 StateDictionary reference = new StateDictionary(directory.getPath())) {
+			int mn9 = connectome.indexOf(MN9);
+			// TODO(review): assert the manifest's control names equal matchedControl(connectome, grns) so the port cannot drift silently
+			SimulationRunner runner = new SimulationRunner(population, DT);
+			for (String run : List.of("baseline", "grn", "control")) {
+				double[] expected = reference.require(run + "_final").toArray();
+				double[] actual = responseRates(runner, population, indices(connectome, driven.getAsJsonArray(run)), steps);
+				double difference = maxDifference(expected, actual);
+				log("backend=" + backend() + " run=" + run + " mn9Expected=" + expected[mn9]
+						+ " mn9Actual=" + actual[mn9] + " maxDifference=" + difference);
+				assertEquals(run, expected[mn9], actual[mn9], RATE_ALLOWANCE);
+				assertTrue(run + " differs by " + difference, difference <= RATE_ALLOWANCE);
+			}
+
+			runner.destroy();
+		}
 	}
 
 	/**
