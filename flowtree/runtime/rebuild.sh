@@ -624,8 +624,14 @@ preflight_controller_stack() {
   printf 'workstreams: []\n' > "${dir}/controller/workstreams.yaml"
   # A rehearsal runs on a machine with no stack state; the shared read-only
   # mounts below must still exist. The deploy host already has them.
+  # ar-manager refuses to start without a token file, so a rehearsal makes a
+  # throwaway one; the preflight publishes no ports, so it reaches nothing.
   if [ "${REHEARSE}" = true ]; then
     mkdir -p "${HOST_FLOWTREE_DIR}/manager" "${HOST_FLOWTREE_DIR}/memory-data/model-cache" "${SECRETS_DIR}"
+    if [ ! -s "${HOST_FLOWTREE_DIR}/manager/manager-tokens.json" ]; then
+      AR_MANAGER_TOKEN_FILE="${HOST_FLOWTREE_DIR}/manager/manager-tokens.json" \
+        tools/mcp/manager/generate-token.sh rehearsal read >/dev/null
+    fi
   fi
 
   # Each service runs the image just built for the real project, never

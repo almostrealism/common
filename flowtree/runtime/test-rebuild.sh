@@ -469,6 +469,22 @@ check_docker_log "a rehearsal starts the rehearsal project's own images" \
 check_docker_log "a rehearsal never swaps a stack" absent "--force-recreate"
 check_docker_log "a rehearsal never prunes" absent "prune"
 
+# ar-manager exits at startup without a token file, and a rehearsal host has
+# none, so the rehearsal must supply one before the preflight starts it.
+REHEARSAL_HOST_DIR="$(mktemp -d)"
+run_case "a rehearsal supplies the ar-manager token file the preflight needs" 0 \
+    "Rehearsal passed" "" \
+    --rehearse -- \
+    FLEET_BIND_ADDR=127.0.0.1 FLOWTREE_HOST_DIR="${REHEARSAL_HOST_DIR}"
+if grep -q '"value": "armt_' "${REHEARSAL_HOST_DIR}/manager/manager-tokens.json" 2>/dev/null; then
+  PASS=$((PASS + 1))
+  echo "  PASS: the rehearsal wrote a manager token file"
+else
+  FAIL=$((FAIL + 1))
+  FAILED_TESTS+=("the rehearsal wrote a manager token file")
+  echo "  FAIL: the rehearsal wrote a manager token file"
+fi
+
 run_case "a rehearsal needs no agent credentials" 0 \
     "Rehearsal passed" "is required to rebuild the agent pool" \
     --rehearse --agents -- \
