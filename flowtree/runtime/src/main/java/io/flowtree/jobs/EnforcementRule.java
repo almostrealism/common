@@ -102,6 +102,32 @@ public interface EnforcementRule extends Named {
     }
 
     /**
+     * Classifies the violation this rule is currently reporting: is it one the
+     * agent can resolve by running again, or one the environment has already
+     * decided?
+     *
+     * <p>Called by {@link EnforcementRunner} only when {@link #isViolated} is
+     * {@code true}, immediately before it would spend a correction session. An
+     * {@linkplain ViolationClassification#environmentDetermined environment-determined}
+     * violation — a missing resource, a locked file the job may not touch,
+     * content a guardrail rejects outright — is given zero retries and the rule
+     * is retired, with the classification's reason recorded on the completion
+     * event; see {@link EnforcementRunner#run()}. The default is
+     * {@linkplain ViolationClassification#agentFixable agent-fixable}, so a rule
+     * that does not override this keeps its existing retry behaviour.</p>
+     *
+     * <p>The classification is a property of the violation, decided by the rule
+     * from the job's state, so the runner never inspects a rule's concrete type
+     * to know how to treat it.</p>
+     *
+     * @param job the job whose current state produced the violation
+     * @return the classification of the current violation; never {@code null}
+     */
+    default ViolationClassification classifyViolation(CodingAgentJob job) {
+        return ViolationClassification.agentFixable();
+    }
+
+    /**
      * Returns the maximum number of correction attempts before the rule gives up.
      *
      * <p>When the attempt limit is reached and the violation is still present,

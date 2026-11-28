@@ -38,9 +38,11 @@ import server
 from branch_state import DEGRADED_REASON as BRANCH_STATE_REASON
 from branch_state import BranchStateResolver
 from citation_verifier import REASON_TIER, salient_tokens, verify
+from concept_map import ConceptMap
 from consult_evidence import (
-    HISTORY_ONLY_TIERS, KIND_DOC, KIND_INDEX, KIND_NOTE, NOTE_FACT_TIERS,
-    TIER_CURRENT, TIER_ORDER, TIER_STALE, EvidenceList, marker_ids,
+    HISTORY_ONLY_TIERS, KIND_CONCEPT, KIND_DOC, KIND_INDEX, KIND_NOTE,
+    NOTE_FACT_TIERS, TIER_CURRENT, TIER_ORDER, TIER_STALE, EvidenceList,
+    marker_ids,
 )
 from consult_tiers import (
     Caller, classify_mentions, extract_mentions, parse_time, tier,
@@ -58,6 +60,12 @@ MAX_NAMESPACES = 6
 
 # Index facts presented at most.
 MAX_INDEX_FACTS = 4
+
+# Concept-map entries presented at most. The map is seeded with the core
+# abstractions; a question rarely touches more than a couple at once, and the
+# tier leads the evidence, so a small cap keeps it from crowding out
+# documentation.
+MAX_CONCEPT_ENTRIES = 2
 
 # The sentence that opens an answer resting on notes. Generated here, never
 # by the model, so a caller can rely on its wording.
@@ -91,6 +99,25 @@ _PRESENT_TENSE = re.compile(
 
 _branch_states = BranchStateResolver()
 _index_cache: dict = {}
+_concept_map_cache: dict = {}
+
+
+def concept_map() -> Optional[ConceptMap]:
+    """The curated concept map, parsed once per path; ``None`` when the map
+    document does not ship with this server."""
+    from concept_map import default_path
+
+    path = str(default_path())
+    if path not in _concept_map_cache:
+        _concept_map_cache[path] = ConceptMap.load(path)
+    return _concept_map_cache[path]
+
+
+def concept_map_rel() -> str:
+    """The concept map's repository-relative path, for citation."""
+    from concept_map import CONCEPT_MAP_RELATIVE
+
+    return CONCEPT_MAP_RELATIVE
 
 
 def _now() -> datetime:
@@ -301,7 +328,7 @@ def compute_basis(ids: list, evidence: EvidenceList) -> str:
         item = evidence.get(item_id)
         if item is None:
             continue
-        if item.kind in (KIND_DOC, KIND_INDEX):
+        if item.kind in (KIND_DOC, KIND_INDEX, KIND_CONCEPT):
             docs = True
         elif item.tier in NOTE_FACT_TIERS:
             notes = True
@@ -316,7 +343,7 @@ def reported_conflicts(lines: list, evidence: EvidenceList) -> list[dict]:
     """``CONFLICTS:`` entries whose IDs were all presented."""
     out = []
     for line in lines:
-        ids = re.findall(r"\b[DNI]\d+\b", line)
+        ids = re.findall(r"\b[DNIM]\d+\b", line)
         if len(ids) >= 2 and all(evidence.get(i) is not None for i in ids):
             summary = re.sub(r"^[^—\-:]*[—\-:]\s*", "", line).strip() or line
             out.append({"items": ids, "kind": "reported", "summary": summary})
@@ -493,6 +520,7 @@ class ConsultTurn:
         if self.conversation is not None:
             for item in self.conversation.carried():
                 self.evidence.add(item)
+        self._concepts()
         for r in doc_results:
             self.evidence.add_doc(r)
         if self.index is not None:
@@ -676,6 +704,24 @@ class ConsultTurn:
                 "abstained": abstained,
                 "report": verify(body, self.evidence, contradicted),
                 "value_conflicts": found_value_conflicts}
+
+    def _concepts(self) -> list:
+        """Match the curated concept map against the question, keywords and
+        context, and add the matching entries to the evidence as the top tier.
+
+        The context carries the code and file names the question is about, so a
+        file being touched (``IndexSequence.java``) matches the concept whose
+        canonical type it declares. A map that does not ship with this server
+        adds nothing.
+        """
+        cmap = concept_map()
+        if cmap is None:
+            return []
+        query = " ".join([self.question] + self.retrieval_keywords
+                         + ([self.context] if self.context else []))
+        entries = cmap.match(query, MAX_CONCEPT_ENTRIES)
+        rel = concept_map_rel()
+        return [self.evidence.add_concept(entry, rel) for entry in entries]
 
     def _notes(self, client) -> list:
         """Search, tier and select the notes; add them to the evidence."""

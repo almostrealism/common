@@ -1512,6 +1512,7 @@ from memory_tools import (  # noqa: E402
 )
 from workspace_tools import (  # noqa: E402
     workspace_update_config,
+    workspace_get_config,
     workspace_secret_list_names,
     workspace_secret_render_file,
     workstream_introspect,

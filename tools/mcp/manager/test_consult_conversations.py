@@ -9,7 +9,7 @@ from manager_test_support import server  # noqa: F401 - sets up sys.path
 from consult_conversations import (
     ConversationError, ConversationStore, caller_identity,
 )
-from consult_evidence import KIND_DOC, KIND_NOTE, EvidenceItem
+from consult_evidence import KIND_CONCEPT, KIND_DOC, KIND_NOTE, EvidenceItem
 
 
 def _item(kind, n):
@@ -133,6 +133,29 @@ class TestConversationStore(unittest.TestCase):
         # Subjects only of the previous (last) turn's cited evidence.
         self.assertIn("Foo.java", terms)
         self.assertNotIn("a.md", terms)
+
+    def test_cited_concepts_are_carried_first_and_capped(self):
+        concepts = [EvidenceItem(id=f"M{n}", kind=KIND_CONCEPT, text="t",
+                                 file="map.md", start=n, end=n,
+                                 section=f"Concept{n}", label=f"concept {n}")
+                    for n in range(1, 4)]
+        with self.store.turn("", "ws/job", "r", "") as conv:
+            conv.record("q", [], "a", [_item(KIND_DOC, 1)] + concepts, {})
+            carried = conv.carried()
+        self.assertEqual([it.id for it in carried], ["M1", "M2", "D1"])
+
+    def test_carried_terms_name_a_cited_concept_and_its_types(self):
+        concept = EvidenceItem(
+            id="M1", kind=KIND_CONCEPT, text="t", file="docs/map.md",
+            start=1, end=9, section="IndexSequence",
+            named_symbols={"present": ["IndexSequence", "ArrayIndexSequence"],
+                           "absent": []})
+        with self.store.turn("", "ws/job", "r", "") as conv:
+            conv.record("q", [], "a", [concept], {})
+            terms = conv.carried_terms()
+        self.assertEqual(terms, ["IndexSequence", "ArrayIndexSequence"])
+        # The map's file name is not a useful subject; the concept is.
+        self.assertNotIn("map.md", terms)
 
     def test_carried_terms_are_empty_before_any_turn(self):
         with self.store.turn("", "ws/job", "r", "") as conv:
