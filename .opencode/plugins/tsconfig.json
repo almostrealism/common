@@ -18,6 +18,7 @@
     "require-own-upstream.ts",
     "memory-reminder.ts",
     "block-private-url.ts",
+    "block-vendor-promotion.ts",
     "_lib/command_pattern.ts"
   ]
 }

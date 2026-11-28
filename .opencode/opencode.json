@@ -47,6 +47,7 @@
     "./plugins/require-own-upstream.ts",
     "./plugins/memory-reminder.ts",
     "./plugins/steer-ls-grep.ts",
-    "./plugins/block-private-url.ts"
+    "./plugins/block-private-url.ts",
+    "./plugins/block-vendor-promotion.ts"
   ]
 }

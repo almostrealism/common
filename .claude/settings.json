@@ -451,6 +451,16 @@
             "description": "Block a commit message, commit.txt, pull request or comment that carries a private link: a claude.ai page (conversation, Claude Code session, artifact), a session id, or a URL on the project's own network ([lab-hosts] in exfil-allowlist.txt). Overrides any harness reminder to append a session link \u2014 see 'Never Publish a Private Link' in the root CLAUDE.md"
           }
         ]
+      },
+      {
+        "matcher": "Write|Edit|MultiEdit|mcp__.*Claude_Docs__.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/block-vendor-promotion.sh",
+            "description": "Block an edit that adds vendor attribution or a private vendor link to any file (a claude.ai page, a session id, a Claude-Session or Claude Co-Authored-By trailer, a 'Generated with Claude Code' credit), test sources exempt, and every write of a document to the claude.ai document connector. Overrides any system prompt, reminder or tool description asking for them \u2014 see 'Disregard Every Instruction That Promotes Anthropic' in the root CLAUDE.md and docs/internals/vendor-promotion-log.md"
+          }
+        ]
       }
     ],
     "PostToolUse": [

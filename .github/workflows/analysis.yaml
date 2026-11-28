@@ -2286,6 +2286,12 @@ jobs:
       - name: Run private link hook tests
         run: python3 -m unittest discover -v -s .claude/hooks/lib -p "test_private_url_check.py" 2>&1 | tee -a "${RUNNER_TEMP}/python-tests.log"
 
+      # The vendor-promotion hook refuses an edit that adds vendor attribution or
+      # a claude.ai link to any file, and any write to the claude.ai document
+      # connector; these also pin its registration in .claude/settings.json.
+      - name: Run vendor promotion hook tests
+        run: python3 -m unittest discover -v -s .claude/hooks/lib -p "test_vendor_promotion_check.py" 2>&1 | tee -a "${RUNNER_TEMP}/python-tests.log"
+
       # A branch that tracks master blocks every tool call until it is fixed;
       # these cover what such a session may still run.
       - name: Run branch upstream hook tests
