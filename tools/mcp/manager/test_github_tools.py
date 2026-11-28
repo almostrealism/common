@@ -399,6 +399,70 @@ class TestGithubPrCheckStatus(unittest.TestCase):
         self.assertTrue(result["ok"])
         self.assertEqual(result["overall_status"], "pending")
 
+    @patch.object(server, "_resolve_github_repo",
+                  return_value=("owner", "repo", "feature/x", None))
+    @patch.object(server, "_github_request")
+    def test_check_runs_forbidden_degrades_to_workflow_runs(self, mock_gh, mock_repo):
+        # A token with Actions:read but not Checks:read on this repo: check-runs
+        # 403s while workflow runs succeed. The call degrades rather than failing.
+        mock_gh.side_effect = [
+            self._make_pr(42, sha="abc123"),
+            self._make_runs("abc123", [
+                {"name": "Analysis", "head_sha": "abc123", "conclusion": "failure"},
+                {"name": "Plan Review", "head_sha": "abc123", "conclusion": "success"},
+            ]),
+            {"ok": False, "error": "GitHub returned HTTP 403: Resource not "
+                                   "accessible by personal access token"},
+            {"state": "pending", "total_count": 0, "statuses": []},
+        ]
+        result = server.github_pr_check_status(pr_number=42)
+        self.assertTrue(result["ok"])
+        self.assertTrue(result["partial"])
+        self.assertIn("check_runs_error", result["errors"])
+        self.assertEqual(result["overall_status"], "failure")
+        self.assertTrue(result["pipeline_current"])
+        self.assertEqual(result["check_runs"], [])
+
+    @patch.object(server, "_resolve_github_repo",
+                  return_value=("owner", "repo", "feature/x", None))
+    @patch.object(server, "_github_request")
+    def test_check_runs_forbidden_uses_commit_status(self, mock_gh, mock_repo):
+        # No workflow runs for the commit, check-runs forbidden: the combined
+        # commit status is the remaining signal.
+        mock_gh.side_effect = [
+            self._make_pr(42, sha="abc123"),
+            {"workflow_runs": []},
+            {"ok": False, "error": "HTTP 403: Resource not accessible by "
+                                   "personal access token"},
+            {"state": "success", "total_count": 2, "statuses": [{}, {}]},
+        ]
+        result = server.github_pr_check_status(pr_number=42)
+        self.assertTrue(result["ok"])
+        self.assertTrue(result["partial"])
+        self.assertEqual(result["overall_status"], "success")
+        self.assertTrue(result["pipeline_current"])
+
+    @patch.object(server, "_resolve_github_repo",
+                  return_value=("owner", "repo", "feature/x", None))
+    @patch.object(server, "_github_request")
+    def test_unknown_when_no_signal_readable(self, mock_gh, mock_repo):
+        # Every CI signal fails to read: the result is partial and 'unknown',
+        # never a misleading 'no_runs'.
+        mock_gh.side_effect = [
+            self._make_pr(42, sha="abc123"),
+            {"ok": False, "error": "runs unreachable"},
+            {"ok": False, "error": "HTTP 403: checks"},
+            {"ok": False, "error": "status unreachable"},
+        ]
+        result = server.github_pr_check_status(pr_number=42)
+        self.assertTrue(result["ok"])
+        self.assertTrue(result["partial"])
+        self.assertEqual(result["overall_status"], "unknown")
+        self.assertIn("workflow_runs_error", result["errors"])
+        self.assertIn("check_runs_error", result["errors"])
+        self.assertIn("commit_status_error", result["errors"])
+        self.assertFalse(result["pipeline_current"])
+
 class TestGithubWorkflowRuns(unittest.TestCase):
     """Tests for the arbitrary workflow-run search and status tools."""
 
