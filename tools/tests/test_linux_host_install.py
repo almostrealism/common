@@ -328,6 +328,44 @@ class PreconditionTests(_InstallFixture):
         self.assertNotIn("older than 3.9", result.stderr)
         self.assertIn("is not registered", result.stderr)
 
+    def _move_mvn_to_tool_dir(self):
+        """Moves mvn out of PATH into a directory only FLOWTREE_AGENT_PATH names."""
+        tools = os.path.join(self.tmp, "opt", "maven", "bin")
+        os.makedirs(tools)
+        shutil.move(os.path.join(self.bin, "mvn"), os.path.join(tools, "mvn"))
+        return tools
+
+    def test_maven_reached_only_through_agent_path_is_found(self):
+        tools = self._move_mvn_to_tool_dir()
+        with open(self.env_file, "a") as f:
+            f.write("FLOWTREE_AGENT_PATH=%s\n" % tools)
+        result = self.run_install()
+        self.assertEqual(1, result.returncode)
+        self.assertNotIn("mvn is not on PATH", result.stderr)
+        self.assertIn("is not registered", result.stderr)
+
+    # TODO(review): relies on no real mvn in /usr/bin (which run_install's PATH keeps); assert precedence with a 3.8 fake instead.
+    def test_agent_path_replaces_the_default_tool_path(self):
+        default_tools = os.path.join(self.home, ".local", "bin")
+        os.makedirs(default_tools)
+        shutil.move(os.path.join(self.bin, "mvn"), os.path.join(default_tools, "mvn"))
+        self.assertIn("is not registered", self.run_install().stderr)
+        shutil.rmtree(os.path.join(self.agent_home, "lib"))
+        with open(self.env_file, "a") as f:
+            f.write("FLOWTREE_AGENT_PATH=%s\n" % os.path.join(self.tmp, "nowhere"))
+        result = self.run_install()
+        self.assertEqual(1, result.returncode)
+        self.assertIn("mvn is not on PATH", result.stderr)
+        self.assertFalse(os.path.exists(os.path.join(self.agent_home, "lib")))
+
+    def test_installer_and_launcher_share_the_default_tool_path(self):
+        def default_tool_path(name):
+            for line in _read(os.path.join(_LINUX_DIR, name)).splitlines():
+                if line.startswith("DEFAULT_TOOL_PATH="):
+                    return line
+            raise AssertionError("DEFAULT_TOOL_PATH not found in %s" % name)
+        self.assertEqual(default_tool_path("run.sh"), default_tool_path("install.sh"))
+
     def test_docker_node_requires_a_reachable_daemon(self):
         _write(os.path.join(self.agent_home, "nodes.properties"),
                "nodes.0.kind=native\nnodes.1.kind=docker\n")
@@ -411,6 +449,22 @@ class UnitTemplateTests(unittest.TestCase):
         self.assertTrue(template_targets.issubset(accepted),
                         "template Wants/After %s not all accepted by the registrar %s"
                         % (template_targets, accepted))
+
+    def test_registrar_pins_the_template_values_of_sensitive_directives(self):
+        script = _read(os.path.join(_LINUX_DIR, "register-unit.sh"))
+        template = {}
+        for line in _read(os.path.join(_LINUX_DIR, "flowtree-agent.service")).splitlines():
+            if "=" in line and not line.startswith("#"):
+                key, value = line.split("=", 1)
+                template[key] = value
+        for key in ("NoNewPrivileges", "Restart", "RestartSec", "StartLimitIntervalSec"):
+            self.assertIn(key, template, "template no longer sets %s" % key)
+            self.assertIn("only %s=%s." % (key, template[key]), script,
+                          "register-unit.sh must accept only the template's %s=%s"
+                          % (key, template[key]))
+        for required in ("NoNewPrivileges=true", "Restart=always"):
+            self.assertIn("exactly one %s line is required" % required, script,
+                          "register-unit.sh must refuse a unit that omits %s" % required)
 
     def test_template_never_has_systemd_open_files_as_root(self):
         text = _read(os.path.join(_LINUX_DIR, "flowtree-agent.service"))

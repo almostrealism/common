@@ -152,6 +152,13 @@ done
 
 require_agent_env
 
+# Probe the tools the service will find: run.sh puts FLOWTREE_AGENT_PATH (or
+# its per-user default, kept identical to the one here) ahead of PATH, so a
+# Maven or Docker that only that setting reaches must pass these checks too.
+DEFAULT_TOOL_PATH="/usr/local/bin:${HOME}/.local/bin:${HOME}/.npm-global/bin"
+AGENT_TOOL_PATH="$(read_env_key FLOWTREE_AGENT_PATH)"
+export PATH="${AGENT_TOOL_PATH:-${DEFAULT_TOOL_PATH}}:${PATH}"
+
 for cmd in java systemctl ss mvn; do
     if ! command -v "${cmd}" >/dev/null 2>&1; then
         echo "ERROR: ${cmd} is not on PATH for $(id -un)." >&2

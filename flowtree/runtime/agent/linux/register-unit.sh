@@ -39,6 +39,10 @@
 #     ExecStart= prefixes such as `+` and `!` that skip the User= switch,
 #     capabilities, and every other directive. Line continuations are
 #     refused so that what is checked is what systemd parses.
+#   - Directives whose value decides safety or availability are pinned to
+#     the template's value: NoNewPrivileges=true and Restart=always must
+#     each appear exactly once, and RestartSec= and StartLimitIntervalSec=,
+#     if present, must keep the template's values.
 #
 # What it does, in order:
 #   1. Checks its own provenance, copies the unit somewhere only root can
@@ -233,6 +237,8 @@ refuse() {
 
 SECTION=""
 USER_COUNT=0
+NO_NEW_PRIVILEGES_COUNT=0
+RESTART_COUNT=0
 GROUP_VALUE=""
 while IFS= read -r line || [ -n "${line}" ]; do
     case "${line}" in
@@ -278,11 +284,31 @@ while IFS= read -r line || [ -n "${line}" ]; do
         Wants|After)
             [ "${value}" = "network-online.target" ] || refuse "${key}=${value} is not accepted; only network-online.target. Wants= has systemd start the named unit as root."
             ;;
+        NoNewPrivileges)
+            [ "${value}" = "true" ] || refuse "NoNewPrivileges=${value} is not accepted; only NoNewPrivileges=true."
+            NO_NEW_PRIVILEGES_COUNT=$(( NO_NEW_PRIVILEGES_COUNT + 1 ))
+            ;;
+        Restart)
+            [ "${value}" = "always" ] || refuse "Restart=${value} is not accepted; only Restart=always."
+            RESTART_COUNT=$(( RESTART_COUNT + 1 ))
+            ;;
+        RestartSec)
+            [ "${value}" = "30" ] || refuse "RestartSec=${value} is not accepted; only RestartSec=30."
+            ;;
+        StartLimitIntervalSec)
+            [ "${value}" = "0" ] || refuse "StartLimitIntervalSec=${value} is not accepted; only StartLimitIntervalSec=0."
+            ;;
     esac
 done < "${STAGED}"
 
 if [ "${USER_COUNT}" -ne 1 ]; then
     refuse "exactly one User= line is required (found ${USER_COUNT})."
+fi
+if [ "${NO_NEW_PRIVILEGES_COUNT}" -ne 1 ]; then
+    refuse "exactly one NoNewPrivileges=true line is required (found ${NO_NEW_PRIVILEGES_COUNT})."
+fi
+if [ "${RESTART_COUNT}" -ne 1 ]; then
+    refuse "exactly one Restart=always line is required (found ${RESTART_COUNT})."
 fi
 if [ -n "${GROUP_VALUE}" ] && [ "${GROUP_VALUE}" != "${OWNER_GROUP}" ]; then
     refuse "Group=${GROUP_VALUE}; ${OWNER_NAME}'s primary group is ${OWNER_GROUP}."
