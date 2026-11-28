@@ -2,12 +2,20 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
+# The build context is tools/mcp (see the ar-memory service in
+# flowtree/runtime/controller/docker-compose.yml), so the image can carry the
+# shared library in tools/mcp/common that the server imports. The whole
+# directory is copied, not a chosen file: the memory server has already broken
+# a deploy by importing a common module the image did not contain.
+
 # Install dependencies first (cached layer)
-COPY requirements.txt .
+COPY memory/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy application code
-COPY embedder.py store.py http_api.py server.py ./
+# Copy application code and the shared library it imports.
+COPY memory/*.py ./
+COPY common/ /app/common/
+ENV PYTHONPATH=/app/common
 
 # Data volume mount point
 RUN mkdir -p /data
