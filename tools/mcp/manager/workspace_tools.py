@@ -267,20 +267,35 @@ def workspace_get_config(
 
     result = server._controller_get(
         f"/api/workspaces/{quote(workspace_id, safe='')}/config")
-    if result.get("ok") is False:
-        result.setdefault("next_steps", [
+
+    # Only an explicit, well-formed success is treated as one. _controller_get
+    # returns {} for an empty body and an error payload otherwise, so a response
+    # whose ok is not True, or that lacks the workspaceId every successful
+    # serialisation carries, is an error — not a success to be reported with no
+    # config (and never the raw response, which could carry fields outside the
+    # allowlist).
+    if result.get("ok") is True and "workspaceId" in result:
+        # Second allowlist: return only the non-credential fields, so a field
+        # added to the controller response does not leak until added here too.
+        filtered = {"ok": True}
+        for key in _WORKSPACE_PUBLIC_CONFIG_FIELDS:
+            if key in result:
+                filtered[key] = result[key]
+        return filtered
+
+    # Error path: return only a safe envelope, keeping the controller's error
+    # string when it supplied one, so an error payload cannot leak a field
+    # outside the allowlist the way returning the raw response would.
+    error = result.get("error")
+    return {
+        "ok": False,
+        "error": error if isinstance(error, str) and error
+        else "Failed to read workspace configuration",
+        "next_steps": [
             "Re-run workspace_get_config with a valid workspace_id "
             "(the operator-chosen workspace identifier)",
-        ])
-        return result
-
-    # Second allowlist: return only the non-credential fields, so a field
-    # added to the controller response does not leak until added here too.
-    filtered = {"ok": True}
-    for key in _WORKSPACE_PUBLIC_CONFIG_FIELDS:
-        if key in result:
-            filtered[key] = result[key]
-    return filtered
+        ],
+    }
 
 @mcp.tool()
 def workspace_secret_list_names(

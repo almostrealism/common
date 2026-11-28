@@ -337,6 +337,46 @@ class TestWorkspaceGetConfig(unittest.TestCase):
         self.assertFalse(result["ok"])
         self.assertIn("Unknown workspace", result["error"])
 
+    @patch.object(server, "_controller_get")
+    def test_empty_body_is_not_reported_as_success(self, mock_get):
+        """_controller_get returns {} for an empty response body; that must be
+        an error, not a success with no config. ok is absent (not False), so
+        the old ok-is-False check let it through as a bare {"ok": True}."""
+        _grant_all_scopes()
+        mock_get.return_value = {}
+        result = server.workspace_get_config(workspace_id="almostrealism")
+        self.assertFalse(result["ok"])
+        self.assertNotIn("workspaceId", result)
+
+    @patch.object(server, "_controller_get")
+    def test_success_without_workspace_id_is_an_error(self, mock_get):
+        """A response claiming ok=True but carrying no workspaceId is malformed
+        — every real success serialises workspaceId — so it is reported as an
+        error rather than a successful read of nothing."""
+        _grant_all_scopes()
+        mock_get.return_value = {"ok": True}
+        result = server.workspace_get_config(workspace_id="almostrealism")
+        self.assertFalse(result["ok"])
+
+    @patch.object(server, "_controller_get")
+    def test_error_response_does_not_leak_unexpected_fields(self, mock_get):
+        """The error path filters to a safe envelope: a credential or any other
+        field on an error payload must never reach the caller, matching the
+        tool's never-returns-credentials contract on the success path."""
+        _grant_all_scopes()
+        mock_get.return_value = {
+            "ok": False,
+            "error": "boom",
+            "botToken": "xoxb-should-not-appear",
+            "tokensFile": "/etc/secrets.json",
+        }
+        result = server.workspace_get_config(workspace_id="almostrealism")
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["error"], "boom")
+        self.assertNotIn("botToken", result)
+        self.assertNotIn("tokensFile", result)
+        self.assertEqual(set(result), {"ok", "error", "next_steps"})
+
 class TestWorkspaceScopeHelpers(unittest.TestCase):
 
     def setUp(self):
