@@ -808,6 +808,40 @@ class TestConceptMap(_Pipeline):
             question="quarterly revenue forecast rollup")
         self.assertTrue(all(e["kind"] != "concept" for e in result["evidence"]))
 
+    def test_a_follow_up_keeps_a_cited_concept_under_its_id(self):
+        # Turn 1 cites [M1]; turn 2 names neither the concept nor its keywords.
+        # The cited entry must be carried forward under the same ID, and its
+        # concept name and canonical type must seed turn 2's retrieval.
+        store = memory_tools.ConversationStore()
+        for p in (patch.object(memory_tools, "_conversations", store),
+                  patch.object(server, "_get_token_workstream_id", return_value="ws"),
+                  patch.object(server, "_get_token_job_id", return_value="job")):
+            p.start()
+            self.addCleanup(p.stop)
+        docs = _docs([_doc("a.md")])
+        llm = MagicMock()
+        llm.consult.return_value = Synthesis(
+            "The values form an `IndexSequence` [M1].\n"
+            "BASIS: documentation\nCONFLICTS: none", "fake")
+        with patch.object(server, "_get_docs", return_value=docs), \
+                patch.object(server, "_get_llm", return_value=llm), \
+                patch.object(server, "_get_memory_client", return_value=None):
+            first = server.consult(question="integer membership for index options",
+                                   keywords=["integer membership"],
+                                   repo_url="git@github.com:org/repo.git")
+            docs.get_context_for_keywords.reset_mock()
+            second = server.consult(question="quarterly revenue forecast rollup",
+                                    repo_url="git@github.com:org/repo.git",
+                                    conversation_id=first["conversation_id"])
+        self.assertEqual(first["evidence"][0]["id"], "M1")
+        concepts = [e for e in second["evidence"] if e["kind"] == "concept"]
+        self.assertEqual([(e["id"], e["section"]) for e in concepts],
+                         [("M1", "IndexSequence")])
+        self.assertIn("[M1: docs/internals/consult-concept-map.md:",
+                      second["answer"])
+        seeded = docs.get_context_for_keywords.call_args[0][0]
+        self.assertIn("IndexSequence", seeded)
+
 
 if __name__ == "__main__":
     unittest.main()

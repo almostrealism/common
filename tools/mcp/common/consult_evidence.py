@@ -78,7 +78,9 @@ class EvidenceItem:
     ``start``/``end`` are the 1-based inclusive lines a doc chunk covers (or
     the single line an index fact was extracted from). ``named_symbols`` is
     filled by mention extraction for notes: the checkable names a note uses,
-    split by whether the snapshot still contains them.
+    split by whether the snapshot still contains them. A concept-map item
+    lists its canonical types as ``present``: the map's checker verifies each
+    one exists in the source tree.
     """
 
     id: str
@@ -176,10 +178,15 @@ class EvidenceItem:
 
         A documentation or index item contributes its file's name (with its
         extension, so it re-reaches a snapshot script or doc); a note
-        contributes the symbols it uses that the snapshot still contains.
+        contributes the symbols it uses that the snapshot still contains; a
+        concept-map item contributes its concept name and canonical types, so
+        a follow-up re-matches the same entry and retrieves on its types.
         """
         if self.kind == KIND_NOTE:
             return list(self.named_symbols.get("present", []))
+        if self.kind == KIND_CONCEPT:
+            return ([self.section] if self.section else []) + list(
+                self.named_symbols.get("present", []))
         if self.file:
             return [self.file.rsplit("/", 1)[-1]]
         return []
@@ -302,6 +309,8 @@ class EvidenceList:
             id="", kind=KIND_CONCEPT, text=entry.render(), tier=TIER_CONCEPT,
             file=file, start=entry.start, end=entry.end, section=entry.name,
             label=entry.label(),
+            named_symbols={"present": list(entry.canonical_types),
+                           "absent": []},
         ))
 
     def get(self, item_id: str) -> Optional[EvidenceItem]:

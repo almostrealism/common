@@ -1,9 +1,20 @@
 """Tests for the curated concept map: parsing, retrieval, and the upkeep
 check that flags entries naming a type the source tree no longer declares."""
 
+import os
+import sys
 import unittest
+from pathlib import Path
 
-from concept_map import ConceptMap
+_DIR = os.path.dirname(os.path.abspath(__file__))
+if _DIR not in sys.path:
+    sys.path.insert(0, _DIR)
+
+from concept_map import ConceptMap  # noqa: E402
+
+# The repository root, resolved from this file so it is correct whatever
+# sys.path entry (including an unresolved ``..`` one) imported the modules.
+_REPO_ROOT = Path(__file__).resolve().parents[3]
 
 # A small map in the real document's format, including a "## Format" section
 # whose bold labels describe the fields rather than populate them, and a
@@ -148,10 +159,9 @@ class TestRealMap(unittest.TestCase):
                             for n in names))
 
     def test_every_canonical_type_is_declared_in_the_source_tree(self):
-        from docs_retriever import COMMON_DIR
         from snapshot_index import SnapshotIndex, build
 
-        index = SnapshotIndex(build(str(COMMON_DIR)))
+        index = SnapshotIndex(build(str(_REPO_ROOT)))
         flagged = self.map.undeclared_types(index.has_type)
         self.assertEqual(
             flagged, [],
