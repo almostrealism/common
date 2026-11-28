@@ -249,19 +249,50 @@ public class AutoPullRequestPublisherTest extends TestSuiteBase {
     }
 
     /**
-     * Pushes with no {@code autoCreatePr} context make no {@code POST} requests
-     * and leave the unreviewed commits recorded on the event.
+     * A dependent-repo push with no {@code autoCreatePr} context still gets a
+     * companion PR: the review and verification jobs that do most dependent-repo
+     * pushing are not submitted with a primary-PR request, yet their pushes break
+     * the dependent repo on merge just the same. Without a registered context the
+     * companion is opened as a non-draft PR from a neutral fallback description.
      */
     @Test(timeout = 30000)
-    public void withoutAutoCreatePrNothingIsOpened() {
-        // No register(...) call: the job did not request a pull request.
+    public void companionOpenedWithoutAutoCreatePrContext() {
+        // No register(...) call: the job did not request a primary pull request.
         JobCompletionEvent event = eventWithPush("abc", "dep123");
         publisher.publish(event);
 
-        assertTrue("no POST request may be made",
-                github.requests.stream().noneMatch(r -> r.startsWith("POST ")));
-        assertTrue(event.getCompanionPullRequestUrls().isEmpty());
-        assertEquals("the unreviewed push is still recorded", 1, event.getDependentRepoPushes().size());
+        List<FakePr> companions = github.prsFor("widgets/lib");
+        assertEquals("a companion PR must be opened without an auto-PR context",
+                1, companions.size());
+        FakePr companion = companions.get(0);
+        assertEquals("master", companion.base);
+        assertFalse("the companion must not be a draft", companion.draft);
+        assertEquals(List.of(companion.htmlUrl), event.getCompanionPullRequestUrls());
+    }
+
+    /**
+     * The exact missed case: a CI review/verification job (no {@code autoCreatePr}
+     * context) pushes to a dependent repo and detects an already-open primary PR.
+     * The companion PR must still be opened and cross-linked to the detected
+     * primary. Previously nothing was opened, so once the primary merged the
+     * dependent repo's default branch lost the change and stopped compiling.
+     */
+    @Test(timeout = 30000)
+    public void companionOpenedWithoutContextAndLinkedToDetectedPrimary() {
+        github.messageByRef.put("dep123", "Move the helper into lib\n\nShared by both repos.");
+        // No register(...) call: the primary PR already existed and was detected.
+        JobCompletionEvent event = eventWithPush("abc", "dep123")
+                .withPullRequestUrl("https://github.com/acme/app/pull/9");
+        publisher.publish(event);
+
+        List<FakePr> companions = github.prsFor("widgets/lib");
+        assertEquals("a companion PR must be opened for the detected-primary case",
+                1, companions.size());
+        FakePr companion = companions.get(0);
+        assertEquals("Move the helper into lib", companion.title);
+        assertTrue("the companion body must link the detected primary PR: " + companion.body,
+                companion.body.contains("https://github.com/acme/app/pull/9"));
+        assertEquals(List.of(companion.htmlUrl), event.getCompanionPullRequestUrls());
     }
 
     /**
@@ -320,6 +351,8 @@ public class AutoPullRequestPublisherTest extends TestSuiteBase {
         private String body;
         /** Whether the PR is open. */
         private final boolean open;
+        /** Whether the PR was opened as a draft. */
+        private final boolean draft;
         /** The PR's HTML URL. */
         private final String htmlUrl;
 
@@ -333,10 +366,11 @@ public class AutoPullRequestPublisherTest extends TestSuiteBase {
          * @param title     the PR title
          * @param body      the PR body
          * @param open      whether the PR is open
+         * @param draft     whether the PR was opened as a draft
          * @param htmlUrl   the PR's HTML URL
          */
         private FakePr(String ownerRepo, int number, String head, String base,
-                String title, String body, boolean open, String htmlUrl) {
+                String title, String body, boolean open, boolean draft, String htmlUrl) {
             this.ownerRepo = ownerRepo;
             this.number = number;
             this.head = head;
@@ -344,6 +378,7 @@ public class AutoPullRequestPublisherTest extends TestSuiteBase {
             this.title = title;
             this.body = body;
             this.open = open;
+            this.draft = draft;
             this.htmlUrl = htmlUrl;
         }
     }
@@ -432,7 +467,7 @@ public class AutoPullRequestPublisherTest extends TestSuiteBase {
         private FakePr seedOpenPr(String ownerRepo, String head, String title, String body) {
             int n = nextNumber.getAndIncrement();
             FakePr pr = new FakePr(ownerRepo, n, head, defaultBranch, title, body,
-                    true, root() + "/" + ownerRepo + "/pull/" + n);
+                    true, false, root() + "/" + ownerRepo + "/pull/" + n);
             prs.add(pr);
             return pr;
         }
@@ -590,7 +625,7 @@ public class AutoPullRequestPublisherTest extends TestSuiteBase {
             String url = root() + "/" + ownerRepo + "/pull/" + n;
             prs.add(new FakePr(ownerRepo, n, node.path("head").asText(""),
                     node.path("base").asText(""), node.path("title").asText(""),
-                    node.path("body").asText(""), true, url));
+                    node.path("body").asText(""), true, node.path("draft").asBoolean(false), url));
             return "{\"number\":" + n + ",\"html_url\":" + quote(url) + "}";
         }
 
