@@ -202,7 +202,8 @@ Behaviour, in order:
    predicate. So before invoking `ssh -G`, statically scan the effective config
    text — the per-user `~/.ssh/config`, the system `/etc/ssh/ssh_config`,
    any `-F <file>` named on the command line, and every file reachable through
-   their `Include` directives (follow includes to a bounded depth, expanding
+   their `Include` directives (follow includes — absolute paths and ones
+   relative to `~/.ssh` or `/etc/ssh` alike — to a bounded depth, expanding
    `~` and globs) — for any command-executing directive. **The per-user config
    must be located exactly as OpenSSH locates it: from the passwd-database home
    directory (`pwd.getpwuid(os.getuid()).pw_dir`), not from `$HOME`, and `~`
@@ -224,7 +225,16 @@ Behaviour, in order:
    unknown, `ctx.require_cwd` blocks, as it does for every other cwd-dependent
    check), while a relative `Include` path is relative to `~/.ssh` when it appears
    in a user config (including a `-F` file) and to `/etc/ssh` when it appears in
-   the system config — per `ssh_config(5)`, *not* relative to the cwd. The
+   the system config — per `ssh_config(5)`, *not* relative to the cwd.
+   OpenSSH additionally expands `%`-tokens (for example `%d` for the home
+   directory) and `${ENV}` environment references in `Include` and `-F` paths —
+   both keywords are in `ssh_config(5)`'s token and environment-variable lists —
+   which the static scanner does **not** reproduce. An `Include`/`-F` path
+   carrying a `%`-token or a `${…}` reference is therefore treated as content
+   uncertainty and **blocks** (the second scan outcome below); it must not be
+   mistaken for a glob that matched nothing and fall through to literal
+   fallback, which would let an allowlisted-literal token slip past a config
+   file the scanner could not locate. The
    directives are: `Match exec`,
    `ProxyCommand` (not `none`), `LocalCommand`, `PermitLocalCommand yes` and
    `KnownHostsCommand`. The scan has three outcomes — a detected directive
@@ -244,7 +254,10 @@ Behaviour, in order:
      draft, which lumped all scan-incompleteness into literal fallback. A file
      that is present but unreadable, or readable but whose grammar the scanner
      cannot classify, or an `Include` that resolves to an existing file the
-     scanner cannot follow, *may* carry a `Match exec`/`ProxyCommand` the scan
+     scanner cannot follow (including an `Include` chain deeper than the
+     scanner's bounded follow depth, or an `Include`/`-F` path the scanner
+     cannot expand because it carries a `%`-token or `${ENV}` reference),
+     *may* carry a `Match exec`/`ProxyCommand` the scan
      did not see; returning `[token]` would then allow an allowlisted-literal
      token (`ssh amd-halo`) to slip through `_require_lab` while the real ssh
      honours the hidden directive. So any uncertainty about the **content** of a
@@ -636,7 +649,11 @@ A reviewer confirms the task is done when:
   `Include` match) falls back to the literal match; a config file that is present but
   cannot be fully read or confidently parsed **blocks** — tested with a config the
   scanner cannot parse (`ssh amd-halo` with an unparseable `~/.ssh/config`, blocked,
-  no `ssh -G` run).
+  no `ssh -G` run). An `Include` whose path carries a `%`-token or a `${ENV}`
+  reference the scanner does not expand is likewise content uncertainty and
+  **blocks** (`ssh amd-halo` with `Include %d/.ssh/extra` in `~/.ssh/config`,
+  blocked, no `ssh -G` run) — it must not be read as an absent-glob literal
+  fallback.
 - A write to the reachable config chain earlier on the same line **blocks** the
   ssh-family command: `printf 'ProxyCommand touch /tmp/pwned\n' > ~/.ssh/config;
   ssh amd-halo` is refused and no sentinel is created, because the pre-execution
@@ -914,7 +931,26 @@ should decide deliberately.
    handled by the catch-all "cannot determine ⇒ block", but the approver should
    confirm the conservative blocking is acceptable and that the recognised-write
    list is broad enough for the real threat.
-4. **The tracker task's description is behind the plan.** Task
+4. **How completely must the config scan reproduce OpenSSH's `Include`
+   resolution?** The scan has to locate every file `ssh -G` would read, but
+   OpenSSH expands `Include` (and `-F`) paths through `%`-tokens, `${ENV}`
+   references, `~`, globs, and a potentially deep include tree, and it will
+   follow an `Include` to an absolute path anywhere on the filesystem, not only
+   under `~/.ssh` or `/etc/ssh`. The plan's answer is conservative — expand `~`
+   and globs, follow absolute and relative includes to a bounded depth, and
+   treat anything the scanner cannot reproduce (a `%`-token or `${ENV}` path, an
+   include tree past the depth bound, an unreadable or unparseable included
+   file) as content uncertainty that **blocks** rather than falling through to
+   literal fallback. That is fail-closed and no new vector, but it means a real
+   config that legitimately uses a tokenized or env-driven `Include` would block
+   every ssh-family command on the node, the same usability trade-off as
+   question 1. The approver should confirm the conservative blocking is
+   acceptable, decide the bounded follow depth (a named constant, like
+   `_MAX_PROXYJUMP_DEPTH`), and weigh whether the scanner should instead
+   reproduce `%`-token/`${ENV}` expansion for the common tokens so such configs
+   resolve rather than block. (This is the "tokenized and external includes"
+   edge case the Copilot review flagged for human assessment.)
+5. **The tracker task's description is behind the plan.** Task
    `7f7b02cb-0001-460e-82d0-35e6cdba4486` still describes a detected `Match exec`
    as a literal fallback, while the plan (after review) blocks it, and it does not
    mention the passwd-home config scan, the parse-uncertainty/TOCTOU blocks, the
