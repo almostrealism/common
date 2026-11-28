@@ -24,8 +24,6 @@ import io.almostrealism.lang.ScopeEncoder;
 import io.almostrealism.scope.Scope;
 import org.almostrealism.c.CJNILanguageOperations;
 import org.almostrealism.hardware.ctx.AbstractComputeContext;
-import org.almostrealism.hardware.metal.MetalJNIMemoryAccessor;
-import org.almostrealism.hardware.metal.MetalMemoryProvider;
 
 /**
  * {@link AbstractComputeContext} implementation that compiles computations to native C code and executes
@@ -69,12 +67,10 @@ import org.almostrealism.hardware.metal.MetalMemoryProvider;
  *
  * <h2>Memory Accessor Selection</h2>
  *
- * <p>The context automatically selects the appropriate {@link JNIMemoryAccessor} based on
- * the data context's memory provider:</p>
- * <ul>
- *   <li><strong>MetalMemoryProvider:</strong> Uses {@link MetalJNIMemoryAccessor} for unified memory access</li>
- *   <li><strong>Standard RAM:</strong> Uses {@link DefaultJNIMemoryAccessor} for heap memory access</li>
- * </ul>
+ * <p>Every scope is encoded with a {@link DefaultJNIMemoryAccessor}, whatever the data
+ * context's memory provider: the native code receives each argument as a pointer in
+ * {@code argArr}, which addresses host memory and memory shared with Metal alike. The
+ * context therefore never tests for a concrete memory provider.</p>
  *
  * <h2>Language Operations</h2>
  *
@@ -152,13 +148,7 @@ public class NativeComputeContext extends AbstractComputeContext<NativeDataConte
 		target.setMetadata(scope.getMetadata().withContextName(getDataContext().getName()));
 		target.setParallelism(KernelPreferences.getCpuParallelism());
 
-		JNIMemoryAccessor accessor;
-
-		if (getDataContext().getMemoryProvider() instanceof MetalMemoryProvider) {
-			accessor = new MetalJNIMemoryAccessor();
-		} else {
-			accessor = new DefaultJNIMemoryAccessor();
-		}
+		JNIMemoryAccessor accessor = new DefaultJNIMemoryAccessor();
 
 		long start = System.nanoTime();
 		StringBuilder buf = new StringBuilder();

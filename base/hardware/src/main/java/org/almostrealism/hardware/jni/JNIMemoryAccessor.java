@@ -66,11 +66,8 @@ import io.almostrealism.scope.ArrayVariable;
  * // Direct pointer access to heap memory
  * </pre>
  *
- * <h3>MetalJNIMemoryAccessor (Unified Memory)</h3>
- * <pre>
- * // Generated code similar but memory is in Metal unified address space
- * // Accessible by both CPU and GPU
- * </pre>
+ * <p>The same code serves memory shared with Metal: the pointers in {@code argArr} address
+ * the shared buffers directly, so no separate accessor is needed for them.</p>
  *
  * <h2>Usage in Code Generation</h2>
  *
