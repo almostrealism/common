@@ -17,6 +17,7 @@
 package io.flowtree.github;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import io.flowtree.git.RepositoryUrl;
 
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -50,6 +51,33 @@ public record PullRequest(JsonNode json) {
         }
         Matcher matcher = URL_NUMBER.matcher(url);
         return matcher.matches() ? Integer.parseInt(matcher.group(1)) : -1;
+    }
+
+    /**
+     * Extracts the {@code owner/repo} slug of the repository a GitHub
+     * pull-request URL belongs to, such as {@code acme/app} from
+     * {@code https://github.com/acme/app/pull/123}. This is the repository the
+     * {@link #numberFromUrl(String) number} identifies a pull request within,
+     * so when only a primary pull request's URL is known its owner/repo (and,
+     * through that, the org whose token addresses it) can be recovered without
+     * the auto-PR context that would otherwise carry them.
+     *
+     * <p>The trailing {@code /pull/{n}} (or {@code /pulls/{n}}) is stripped and
+     * the remainder is parsed by {@link RepositoryUrl}, so a URL hosted
+     * anywhere but {@code github.com} — or on a look-alike host — yields
+     * {@code null} rather than a slug that would address an unrelated
+     * repository.</p>
+     *
+     * @param url the pull-request URL, or {@code null}
+     * @return the {@code owner/repo} slug, or {@code null} when the URL carries
+     *         no pull-request number or is not a GitHub repository URL
+     */
+    public static String ownerRepoFromUrl(String url) {
+        if (numberFromUrl(url) < 0) {
+            return null;
+        }
+        String repoUrl = url.substring(0, url.lastIndexOf("/pull"));
+        return new RepositoryUrl(repoUrl).getGitHubSlug();
     }
 
     /**

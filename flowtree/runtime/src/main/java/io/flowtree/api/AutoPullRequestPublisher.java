@@ -148,6 +148,15 @@ final class AutoPullRequestPublisher implements ConsoleFeatures {
                     ? prCtx.githubOrg : GitHubProxyHandler.extractOrgFromRepoUrl(prCtx.repoUrl);
             primaryToken = github.resolveGithubToken(org);
             primaryOwnerRepo = GitHubProxyHandler.extractOwnerRepo(prCtx.repoUrl);
+        } else if (event.getPullRequestUrl() != null) {
+            // No context, but the completion detected an existing primary PR:
+            // recover its owner/repo and token from the URL so the cross-link
+            // is reciprocal rather than one-way from the companion body.
+            primaryOwnerRepo = PullRequest.ownerRepoFromUrl(event.getPullRequestUrl());
+            if (primaryOwnerRepo != null) {
+                primaryToken = github.resolveGithubToken(
+                        GitHubProxyHandler.extractOrgFromRepoUrl("https://github.com/" + primaryOwnerRepo));
+            }
         }
 
         // Primary pull request: only when requested and none already exists.
@@ -264,7 +273,6 @@ final class AutoPullRequestPublisher implements ConsoleFeatures {
         if (companionUrl == null) {
             return null;
         }
-        // TODO(review): no-context detected-primary case gets no reciprocal comment; owner/repo+org are derivable from primaryUrl.
         if (primaryUrl != null && primaryOwnerRepo != null && primaryToken != null) {
             int number = PullRequest.numberFromUrl(primaryUrl);
             if (number > 0) {

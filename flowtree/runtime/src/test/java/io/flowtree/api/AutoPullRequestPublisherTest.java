@@ -276,6 +276,9 @@ public class AutoPullRequestPublisherTest extends TestSuiteBase {
      * The companion PR must still be opened and cross-linked to the detected
      * primary. Previously nothing was opened, so once the primary merged the
      * dependent repo's default branch lost the change and stopped compiling.
+     * The cross-link must be reciprocal: although no context carries the
+     * primary's owner/repo and token, both are recovered from the detected
+     * primary PR URL, so the primary PR receives the back-comment too.
      */
     @Test(timeout = 30000)
     public void companionOpenedWithoutContextAndLinkedToDetectedPrimary() {
@@ -293,6 +296,14 @@ public class AutoPullRequestPublisherTest extends TestSuiteBase {
         assertTrue("the companion body must link the detected primary PR: " + companion.body,
                 companion.body.contains("https://github.com/acme/app/pull/9"));
         assertEquals(List.of(companion.htmlUrl), event.getCompanionPullRequestUrls());
+
+        List<FakeComment> comments = github.commentsFor("acme/app");
+        assertEquals("the detected primary PR gets one reciprocal comment, "
+                + "its owner/repo and token recovered from the PR URL", 1, comments.size());
+        assertEquals("the comment lands on the detected primary PR number",
+                9, comments.get(0).number);
+        assertTrue("the reciprocal comment must name the companion: " + comments.get(0).body,
+                comments.get(0).body.contains(companion.htmlUrl));
     }
 
     /**
