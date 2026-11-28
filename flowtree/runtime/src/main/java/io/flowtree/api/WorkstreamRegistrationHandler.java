@@ -388,6 +388,7 @@ final class WorkstreamRegistrationHandler {
         Registration created = register(
                 registrationRequest(targetBranch, repoUrl,
                         JsonFieldExtractor.extractString(body, "baseBranch"),
+                        JsonFieldExtractor.hasField(body, "settledCiTrigger"),
                         JsonFieldExtractor.extractString(body, "settledCiTrigger")),
                 targetBranch);
         if (created.failure() == null) {
@@ -418,14 +419,26 @@ final class WorkstreamRegistrationHandler {
      * first job creates its workstream would never have its merge-gating
      * test run started.</p>
      *
-     * @param targetBranch     the branch the workstream tracks
-     * @param repoUrl          the repository the workstream tracks
-     * @param baseBranch       the base branch, or {@code null} for the default
-     * @param settledCiTrigger the settled-CI trigger spec, or {@code null} for none
+     * <p>The field's <em>presence</em> is preserved, not merely its value: a
+     * submission that supplies an explicit empty {@code settledCiTrigger}
+     * emits the field with an empty value so {@link #register} reads it as a
+     * deliberate clear, exactly as the direct registration endpoint does. An
+     * absent field is omitted so the create path's field-absent default
+     * applies. Collapsing the two would turn an explicit clear into the
+     * default and make the submit path inconsistent with direct registration.</p>
+     *
+     * @param targetBranch        the branch the workstream tracks
+     * @param repoUrl             the repository the workstream tracks
+     * @param baseBranch          the base branch, or {@code null} for the default
+     * @param hasSettledCiTrigger whether the submission named {@code settledCiTrigger}
+     *                            at all; when {@code false} the field is omitted
+     * @param settledCiTrigger    the settled-CI trigger spec the submission named,
+     *                            or {@code null}
      * @return the registration request JSON
      */
     private static String registrationRequest(String targetBranch, String repoUrl,
-                                              String baseBranch, String settledCiTrigger) {
+                                              String baseBranch, boolean hasSettledCiTrigger,
+                                              String settledCiTrigger) {
         StringBuilder json = new StringBuilder();
         json.append("{\"defaultBranch\":\"")
             .append(JsonFieldExtractor.escapeJson(targetBranch)).append("\"");
@@ -435,9 +448,10 @@ final class WorkstreamRegistrationHandler {
             json.append(",\"baseBranch\":\"")
                 .append(JsonFieldExtractor.escapeJson(baseBranch)).append("\"");
         }
-        if (settledCiTrigger != null && !settledCiTrigger.isEmpty()) {
+        if (hasSettledCiTrigger) {
             json.append(",\"settledCiTrigger\":\"")
-                .append(JsonFieldExtractor.escapeJson(settledCiTrigger)).append("\"");
+                .append(JsonFieldExtractor.escapeJson(settledCiTrigger == null ? "" : settledCiTrigger))
+                .append("\"");
         }
         json.append("}");
         return json.toString();
@@ -503,7 +517,7 @@ final class WorkstreamRegistrationHandler {
      * ({@code baseBranch}, {@code repoUrl}, {@code channelName}, …); the
      * branch is a separate parameter because a submission names it
      * {@code targetBranch}. The submission path supplies a request built by
-     * {@link #registrationRequest(String, String, String, String)} rather than its own
+     * {@link #registrationRequest(String, String, String, boolean, String)} rather than its own
      * body, so job-level fields never become workstream defaults.</p>
      *
      * <p>Deduplication runs in two steps. An exact {@code (branch, repo)}
