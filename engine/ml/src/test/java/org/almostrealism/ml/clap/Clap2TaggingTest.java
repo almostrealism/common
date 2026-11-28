@@ -52,6 +52,11 @@ import java.util.List;
  * captions written by {@code engine/ml/scripts/export_clap2_tokenizer.py} with the reference
  * tokenizer, and {@code /clap2/r50k_probe.tiktoken}, the part of the {@code r50k_base} rank file
  * that encodes those captions exactly as the whole file does.</p>
+ *
+ * <p>The whole rank file is some 835 KB and is not committed. Where a host has it, located through
+ * the {@code AR_CLAP2_TOKENIZER} system property (or environment variable of the same name),
+ * {@link #fullRankFileFramesCaptionsAsTheReference()} repeats the parity over the full vocabulary;
+ * elsewhere that one test is reported as skipped by {@link #requireLocalResource}.</p>
  */
 public class Clap2TaggingTest extends TestSuiteBase {
 
@@ -60,6 +65,12 @@ public class Clap2TaggingTest extends TestSuiteBase {
 
 	/** The fixed window of the audio tower: half a second, 51 frames, 4 time patches. */
 	private static final int WINDOW = Clap2Config.SAMPLE_RATE / 2;
+
+	/** The exported full {@code r50k_base} rank file, a local resource. */
+	private static final String TOKENIZER = System.getProperty("AR_CLAP2_TOKENIZER", System.getenv("AR_CLAP2_TOKENIZER"));
+
+	/** The number of captions of the probe vocabulary of the reference dump script. */
+	private static final int PROBE_CAPTIONS = 20;
 
 	/**
 	 * The path of a test resource.
@@ -199,6 +210,165 @@ public class Clap2TaggingTest extends TestSuiteBase {
 			int[] actual = tokenizer.encode(text, true);
 			Assert.assertArrayEquals("ids of \"" + text + "\"", expected, actual);
 			Assert.assertEquals("decoded \"" + text + "\"", text, tokenizer.decode(actual));
+		}
+	}
+
+	/**
+	 * The reference ids of one probe caption.
+	 *
+	 * @param caption an element of {@link #referenceCaptions()}
+	 * @return its {@code ids}
+	 */
+	private static int[] referenceIds(JsonObject caption) {
+		JsonArray ids = caption.getAsJsonArray("ids");
+		int[] expected = new int[ids.size()];
+		for (int i = 0; i < expected.length; i++) expected[i] = ids.get(i).getAsInt();
+		return expected;
+	}
+
+	/**
+	 * Asserts that a tokenizer frames every probe caption for the text tower exactly as the
+	 * reference tokenizer does: {@link Clap2Tokenizer#encodeCaption} gives the reference ids, which
+	 * open with BOS, close with EOS, fit the context and hold only ids of the encoding between
+	 * the two, and the special-token-free view of the caption is the same ids without the frame.
+	 * The probe must hold the probe vocabulary and captions with digits, punctuation and
+	 * characters outside ASCII, or the parity proves less than it claims.
+	 *
+	 * @param tokenizer the tokenizer
+	 * @throws IOException if the reference ids cannot be read
+	 */
+	private void assertCaptionFraming(Clap2Tokenizer tokenizer) throws IOException {
+		JsonArray captions = referenceCaptions();
+		assertTrue("the probe must hold the probe vocabulary and edge cases", captions.size() > PROBE_CAPTIONS);
+
+		boolean digits = false;
+		boolean punctuation = false;
+		boolean nonAscii = false;
+		for (JsonElement element : captions) {
+			JsonObject caption = element.getAsJsonObject();
+			String text = caption.get("text").getAsString();
+			digits |= text.chars().anyMatch(Character::isDigit);
+			punctuation |= text.chars().anyMatch(c -> "!?&()".indexOf(c) >= 0);
+			nonAscii |= text.chars().anyMatch(c -> c > 127);
+
+			int[] framed = tokenizer.encodeCaption(text);
+			Assert.assertArrayEquals("framed ids of \"" + text + "\"", referenceIds(caption), framed);
+			Assert.assertEquals("BOS of \"" + text + "\"", Clap2Config.BOS_TOKEN, framed[0]);
+			Assert.assertEquals("EOS of \"" + text + "\"", Clap2Config.EOS_TOKEN, framed[framed.length - 1]);
+			assertTrue("\"" + text + "\" must fit the context", framed.length <= Clap2Config.CONTEXT_LENGTH);
+
+			long[] plain = tokenizer.encodeAsLong(text);
+			Assert.assertEquals("unframed length of \"" + text + "\"", framed.length - 2, plain.length);
+			for (int i = 0; i < plain.length; i++) {
+				Assert.assertEquals("id " + i + " of \"" + text + "\"", framed[i + 1], plain[i]);
+				assertTrue("id " + plain[i] + " of \"" + text + "\" must be a token of the encoding",
+						plain[i] >= 0 && plain[i] < Clap2Config.EOS_TOKEN);
+			}
+		}
+
+		assertTrue("the probe must hold a caption with digits", digits);
+		assertTrue("the probe must hold a caption with punctuation", punctuation);
+		assertTrue("the probe must hold a caption outside ASCII", nonAscii);
+	}
+
+	/**
+	 * The tokenizer frames every probe caption, the twenty of the probe vocabulary and the edge
+	 * cases, as the reference tokenizer does: BOS, the caption's ids, EOS, no padding.
+	 *
+	 * @throws IOException if a resource cannot be read
+	 */
+	@Test(timeout = 60000)
+	public void captionsAreFramedAsTheReference() throws IOException {
+		assertCaptionFraming(probeTokenizer());
+	}
+
+	/**
+	 * The tokenizer over the whole {@code r50k_base} rank file frames every probe caption as the
+	 * reference does, so the committed part of the file stands for the whole. The rank file is a
+	 * local resource; where it is absent this test is reported as skipped.
+	 *
+	 * @throws IOException if a resource cannot be read
+	 */
+	@Test(timeout = 300000)
+	public void fullRankFileFramesCaptionsAsTheReference() throws IOException {
+		requireLocalResource("CLAP2 rank file", "AR_CLAP2_TOKENIZER", TOKENIZER != null && new File(TOKENIZER).isFile());
+		Clap2Tokenizer tokenizer = new Clap2Tokenizer(Path.of(TOKENIZER));
+		Assert.assertEquals(Clap2Config.EOS_TOKEN - 1, tokenizer.getVocabSize());
+		assertCaptionFraming(tokenizer);
+	}
+
+	/**
+	 * A caption is framed up to the context the text tower was trained with, BOS and EOS
+	 * included, and one token more is rejected rather than cut.
+	 *
+	 * @throws IOException if the tokenizer resource cannot be read
+	 */
+	@Test(timeout = 60000)
+	public void captionBeyondTheContextIsRejected() throws IOException {
+		Clap2Tokenizer tokenizer = probeTokenizer();
+		String longest = "a" + " a".repeat(Clap2Config.CONTEXT_LENGTH - 3);
+		Assert.assertEquals(Clap2Config.CONTEXT_LENGTH, tokenizer.encodeCaption(longest).length);
+
+		try {
+			tokenizer.encodeCaption(longest + " a");
+			Assert.fail("A caption longer than the context must be rejected");
+		} catch (IllegalArgumentException e) {
+			assertTrue(e.getMessage(), e.getMessage().contains("exceeds the context"));
+		}
+	}
+
+	/**
+	 * The text tower encodes a caption given as text: it tokenizes the caption itself and embeds
+	 * it exactly as it embeds the caption's reference ids, for a plain caption and for one with
+	 * characters outside ASCII. A caption too long for the compiled length is rejected, and so is
+	 * text given to an encoder that has no tokenizer.
+	 *
+	 * @throws IOException if the tokenizer resource cannot be read
+	 */
+	@Test(timeout = 600000)
+	public void textEncoderEncodesCaptionStrings() throws IOException {
+		StateDictionary weights = new Clap2WeightFixture().weights(47);
+		Clap2Tokenizer tokenizer = probeTokenizer();
+		Clap2Config config = Clap2Config.of(weights, TEXT_LENGTH);
+		Clap2TextEncoder text = new Clap2TextEncoder(config, weights, tokenizer);
+		Clap2TextEncoder idsOnly = new Clap2TextEncoder(config, weights);
+		try {
+			String plain = "A deep kick drum hits.";
+			String accented = "caf\u00e9 na\u00efve \u00dcn\u00efc\u00f6d\u00e9";
+			int[] plainIds = {50259, 32, 2769, 4829, 13026, 7127, 13, 50257};
+			int[] accentedIds = {50259, 66, 1878, 2634, 41492, 49363, 77, 26884, 66, 9101, 67, 2634, 50257};
+			assertTrue("the encoder must hold the tokenizer it was given", text.getTokenizer() == tokenizer);
+			Assert.assertArrayEquals(plainIds, text.tokenize(plain));
+			Assert.assertArrayEquals(accentedIds, text.tokenize(accented));
+
+			PackedCollection plainFromIds = text.encode(plainIds).clone();
+			PackedCollection accentedFromIds = text.encode(accentedIds).clone();
+			PackedCollection plainFromText = text.encode(plain).clone();
+			PackedCollection accentedFromText = text.encode(accented).clone();
+
+			assertVector("plain caption", plainFromIds.toArray(0, Clap2WeightFixture.EMBED), plainFromText, 0);
+			assertVector("accented caption", accentedFromIds.toArray(0, Clap2WeightFixture.EMBED), accentedFromText, 0);
+			assertTrue("Different captions must embed differently",
+					Clap2WeightFixture.cosine(plainFromText, accentedFromText) < 0.9999);
+
+			try {
+				text.encode("a b c d e f g h i j k l m n o p q r s t");
+				Assert.fail("A caption longer than the compiled text length must be rejected");
+			} catch (IllegalArgumentException e) {
+				assertTrue(e.getMessage(), e.getMessage().contains("compiled for"));
+			}
+
+			assertTrue("an encoder created without a tokenizer must have none", idsOnly.getTokenizer() == null);
+			try {
+				idsOnly.encode(plain);
+				Assert.fail("Encoding text without a tokenizer must fail");
+			} catch (IllegalStateException e) {
+				assertTrue(e.getMessage(), e.getMessage().contains("tokenizer"));
+			}
+		} finally {
+			text.destroy();
+			idsOnly.destroy();
+			weights.destroy();
 		}
 	}
 

@@ -32,10 +32,13 @@ cosine, and that the patch layout and axial angles follow the reference. `Clap2T
 is the real-weight run; it locates its inputs through `AR_CLAP2_WEIGHTS`, `AR_CLAP2_REFERENCES`
 and `AR_SAME_WEIGHTS` and is reported as skipped where they are absent.
 
-The text tower takes token ids. The GPT-2 (`r50k_base`) byte-level BPE tokenizer was not ported:
-tag embeddings depend only on the vocabulary, so the reference script produced the probe tags'
-ids. `ByteLevelBPETokenizer` already implements the algorithm, so the native tokenizer is a
-vocabulary-loading subclass plus GPT-2's pre-tokenization pattern.
+The text tower takes token ids. For the measurements on this page the GPT-2 (`r50k_base`)
+byte-level BPE tokenizer was not ported: tag embeddings depend only on the vocabulary, so the
+reference script produced the probe tags' ids. The tokenizer has since been ported:
+`Clap2Tokenizer` reads the checkpoint's own tiktoken rank file through `TiktokenBPETokenizer`, a
+`ByteLevelBPETokenizer`, with the `r50k_base` split pattern (`RegexPreTokenizer.r50k()`), and
+`Clap2TextEncoder.encode(String)` embeds a caption given as text. See
+[Text Tokenization](../../../docs/internals/text-tokenization.md).
 
 ## Checkpoint identity and the architecture question
 

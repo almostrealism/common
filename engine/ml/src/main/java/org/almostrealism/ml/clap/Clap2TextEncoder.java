@@ -35,10 +35,12 @@ import java.util.Map;
  * {@link Clap2AudioEncoder audio tower} maps clips into.
  *
  * <p>A caption is the token ids {@code [BOS, ..., EOS]} of its GPT-2 (r50k) byte-level BPE
- * encoding; the positions beyond it are filled with {@link Clap2Config#PAD_TOKEN} and masked out
- * of every attention and of the pool, so the compiled length does not change the embedding. The
- * tower is the {@code clap2_text_tower} layer of {@code /pdsl/clap2.pdsl}; this class fills the
- * prompt mask, binds the checkpoint and the rotary frequencies, and compiles it once.</p>
+ * encoding, which an encoder created with a {@link Clap2Tokenizer} produces itself from the
+ * caption's text ({@link #encode(String)}); the positions beyond it are filled with
+ * {@link Clap2Config#PAD_TOKEN} and masked out of every attention and of the pool, so the
+ * compiled length does not change the embedding. The tower is the {@code clap2_text_tower} layer
+ * of {@code /pdsl/clap2.pdsl}; this class fills the prompt mask, binds the checkpoint and the
+ * rotary frequencies, and compiles it once.</p>
  *
  * <p>Tag embeddings depend only on the vocabulary, so an application encodes its tag captions
  * once per vocabulary version and compares every clip against the stored embeddings.</p>
@@ -58,6 +60,9 @@ public class Clap2TextEncoder implements AttentionFeatures, Destroyable {
 
 	/** The weights, keyed as the extraction script writes them. */
 	private final StateDictionary weights;
+
+	/** The caption tokenizer, or null for an encoder that is only given token ids. */
+	private final Clap2Tokenizer tokenizer;
 
 	/** Token ids of the current caption, shape {@code [batch, maxTextLength]}; a leaf of the graph. */
 	private final PackedCollection tokenIds;
@@ -87,14 +92,27 @@ public class Clap2TextEncoder implements AttentionFeatures, Destroyable {
 	private CompiledModel compiled;
 
 	/**
-	 * Creates a text encoder over the given weights.
+	 * Creates a text encoder over the given weights, without a tokenizer: it embeds token ids,
+	 * but cannot {@link #encode(String) encode} a caption given as text.
 	 *
 	 * @param config  the architecture
 	 * @param weights the weights
 	 */
 	public Clap2TextEncoder(Clap2Config config, StateDictionary weights) {
+		this(config, weights, null);
+	}
+
+	/**
+	 * Creates a text encoder over the given weights and tokenizer.
+	 *
+	 * @param config    the architecture
+	 * @param weights   the weights
+	 * @param tokenizer the caption tokenizer, or null for an encoder that is only given token ids
+	 */
+	public Clap2TextEncoder(Clap2Config config, StateDictionary weights, Clap2Tokenizer tokenizer) {
 		this.config = config;
 		this.weights = weights;
+		this.tokenizer = tokenizer;
 		this.tokenIds = new PackedCollection(shape(BATCH, config.getMaxTextLength()));
 		this.promptMask = new PackedCollection(shape(BATCH, config.getMaxTextLength()));
 		this.promptLength = new PackedCollection(shape(1));
@@ -117,6 +135,50 @@ public class Clap2TextEncoder implements AttentionFeatures, Destroyable {
 
 	/** The architecture of this encoder. */
 	public Clap2Config getConfig() { return config; }
+
+	/** The caption tokenizer, or null for an encoder created without one. */
+	public Clap2Tokenizer getTokenizer() { return tokenizer; }
+
+	/**
+	 * The token ids this encoder reads for a caption: the caption framed by its tokenizer as
+	 * {@code [BOS, ..., EOS]} ({@link Clap2Tokenizer#encodeCaption}). Tokenizing is host work and
+	 * touches no device memory, so a caller embedding many captions can tokenize, and so validate,
+	 * all of them before it allocates anything.
+	 *
+	 * @param caption the caption
+	 * @return the ids, which {@link #encode(int[])} embeds
+	 * @throws IllegalStateException    if this encoder has no tokenizer
+	 * @throws IllegalArgumentException if the caption is longer than the compiled text length
+	 */
+	public int[] tokenize(String caption) {
+		if (tokenizer == null) {
+			throw new IllegalStateException("A caption given as text requires a tokenizer; load the "
+					+ "model with the exported rank file, or encode the caption's token ids");
+		}
+
+		int[] ids = tokenizer.encodeCaption(caption);
+		if (ids.length > config.getMaxTextLength()) {
+			throw new IllegalArgumentException("Caption \"" + caption + "\" is " + ids.length
+					+ " tokens, more than the " + config.getMaxTextLength()
+					+ " the text tower is compiled for; load the model with a longer text length");
+		}
+		return ids;
+	}
+
+	/**
+	 * Embeds a caption given as text: the caption is {@link #tokenize(String) tokenized} by this
+	 * encoder's tokenizer and its ids embedded as {@link #encode(int[])} embeds them. The result
+	 * is the compiled encoder's output and is overwritten by the next caption.
+	 *
+	 * @param caption the caption
+	 * @return the embedding, shape {@code [1, embedDim]}
+	 * @throws IllegalStateException    if this encoder has no tokenizer
+	 * @throws IllegalArgumentException if the caption is longer than the compiled text length
+	 */
+	public PackedCollection encode(String caption) {
+		return encode(tokenize(caption));
+	}
+
 	/**
 	 * Embeds a tokenized caption. The embedding is not normalized. The result is the compiled
 	 * encoder's output and is overwritten by the next caption, so a caller that keeps several

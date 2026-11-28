@@ -46,6 +46,9 @@ Which classes implement the interface, and which do not, is deliberate and worth
   `decodeAsLong` (which add no special tokens) or request BOS/EOS explicitly. Its special tokens are
   the public constants `BOS_TOKEN` (151643) and `EOS_TOKEN` (151645); the `getBOSToken()` /
   `getEOSToken()` it inherits are `protected`.
+- `Clap2Tokenizer` **implements** `Tokenizer`, inherited the same way through
+  `TiktokenBPETokenizer`. `encodeAsLong` gives the plain `r50k_base` ids; the framing the CLAP2
+  text tower reads is `encodeCaption(String)`.
 - `Llama2` tokenizes through the static `BPE.encode(...)` utility, not through an instance of any
   tokenizer class at all (see the family tree).
 
@@ -59,6 +62,7 @@ unknown character, and which models use it:
 | `ByteTokenizer` (`org.almostrealism.ml.tokenization`) | `engine/ml` | none — fixed 256 byte values | none (every byte is a token) | impossible — every byte is in the vocabulary | none | self-hosted LM (`CausalLanguageModel`) |
 | `SentencePieceBPETokenizer` (`org.almostrealism.ml.tokenization`) | `engine/ml` | `ARTK` binary from `export_tokenizer.py` | `U+2581` marks a word boundary | one `<0xNN>` token per UTF-8 byte | carried in the binary; `encodeAsLong` adds none | Gemma / T5Gemma, so Stable Audio 3 |
 | `Qwen3Tokenizer` (`org.almostrealism.ml.qwen3`) | `engine/ml` | `tokenizer.bin` + `merges.txt` | GPT-2 byte-to-Unicode remapping (`ByteLevelEncoder`) | byte-level remap (no character is out of vocabulary) | public `BOS_TOKEN` / `EOS_TOKEN` constants; `encode` adds on request | Qwen3 |
+| `Clap2Tokenizer` over `TiktokenBPETokenizer` (`org.almostrealism.ml.clap`, `org.almostrealism.ml.tokenization`) | `engine/ml` | a tiktoken rank file (base64 token bytes and a rank per line), as a CLAP2 checkpoint ships it | the same byte-to-Unicode remapping; pieces split by the `r50k_base` pattern (`RegexPreTokenizer.r50k()`) | none for an exported rank file — the export script checks that every byte is a token | `Clap2Config.BOS_TOKEN` / `EOS_TOKEN` / `PAD_TOKEN`, above the encoding's ranks; `encodeCaption` frames a caption | CLAP2 text tower (`Clap2TextEncoder`) |
 | `BPE.encode(...)` + `Llama2` (`org.almostrealism.ml`, `org.almostrealism.ml.llama2`) | `engine/ml` | llama2.c `tokenizer.bin` (score + token per entry), loaded by `Llama2` | highest-score greedy merge; a leading space is stripped from the first generated token on decode | none — a character missing from the vocabulary throws | `Llama2` prepends BOS (id 1) itself before the encoded ids | Llama2 |
 | `SentencePieceTokenizer` (`org.almostrealism.ml`) | `extern/ml-djl` | a SentencePiece `.model` file, via DJL `SpTokenizer` | `U+2581`, replaced with a space on decode | delegated to DJL | delegated to DJL | DJL-backed paths |
 
@@ -109,9 +113,9 @@ describe its own input layer without reference to a vocabulary file it does not 
 
 ## The BPE pipeline in `ByteLevelBPETokenizer`
 
-`ByteLevelBPETokenizer` is the abstract base for the two learned-vocabulary tokenizers in
-`engine/ml` (`Qwen3Tokenizer` and `SentencePieceBPETokenizer`). Its `encode(String, boolean)`
-drives the full pipeline, in this order:
+`ByteLevelBPETokenizer` is the abstract base for the learned-vocabulary tokenizers in
+`engine/ml` (`Qwen3Tokenizer`, `SentencePieceBPETokenizer`, and `TiktokenBPETokenizer` with its
+subclass `Clap2Tokenizer`). Its `encode(String, boolean)` drives the full pipeline, in this order:
 
 1. **Added-token splitting first.** `splitAddedTokens` scans the raw text left to right and carves
    out any *added token* (a control token or other entry of the source tokenizer's added
@@ -188,6 +192,44 @@ Assert.assertEquals(Qwen3Tokenizer.BOS_TOKEN, bracketed[0]);
 Assert.assertEquals(Qwen3Tokenizer.EOS_TOKEN, bracketed[bracketed.length - 1]);
 Assert.assertEquals(tokenizer.decode(plain), tokenizer.decode(bracketed));
 ```
+
+## Tiktoken encodings: `TiktokenBPETokenizer` and `Clap2Tokenizer`
+
+A tiktoken encoding, such as GPT-2's `r50k_base`, is the same byte-level BPE with one difference
+in what it stores: there is no merge list. The vocabulary is a *rank file* — one line per token,
+the base64 of the token's bytes, a space, and its rank — and a rank is both the token's id and its
+merge order. `TiktokenBPETokenizer` reads that file as it is and plugs into the shared pipeline at
+two hooks:
+
+- **`getMergePriority(left, right)`.** Two adjacent tokens merge when their concatenation is a
+  token, and the priority is that token's rank, so no merge list is materialized.
+- **`toSymbols`.** A pre-tokenized piece that is itself a token is emitted whole, before any
+  merging, as tiktoken looks a piece up first; otherwise the piece starts as one symbol per byte.
+
+The split pattern is the encoding's own, passed as the `PreTokenizer`: `RegexPreTokenizer.r50k()`
+for `r50k_base`. It is not the default `RegexPreTokenizer` pattern (the Qwen/`cl100k` one), and the
+difference changes ids: contractions are case-sensitive, digits are grouped into runs, and a letter
+or digit run takes at most one leading space.
+
+`Clap2Tokenizer` is the encoding a CLAP2 checkpoint ships beside its weights
+(`open_clip_tiktoken/r50k_base.tiktoken`, validated and copied by
+`engine/ml/scripts/export_clap2_tokenizer.py`), with the text tower's control tokens reserved above
+the encoding's ranks: `Clap2Config.EOS_TOKEN` (50257), `PAD_TOKEN` (50258) and `BOS_TOKEN` (50259).
+Tiktoken encodes text as ordinary bytes, so text that spells a control token is plain text; no
+added token is matched in the input.
+
+`encodeCaption(String)` gives a caption the framing the text tower was trained with:
+`[BOS, ..., EOS]`, at most `Clap2Config.CONTEXT_LENGTH` (256) ids, and it rejects a longer caption
+rather than cutting it. The framed ids carry no padding. `Clap2TextEncoder` fills the positions up
+to the length it is compiled for with `PAD_TOKEN` and masks them out of every attention and of the
+pool, which is why a tower compiled for far fewer than 256 positions embeds a caption identically.
+A `Clap2TextEncoder` created with a tokenizer embeds a caption given as text through
+`encode(String)`; `tokenize(String)` returns the ids it would read.
+
+The parity with the reference tokenizer is checked in CI by `Clap2TaggingTest` against
+`engine/ml/src/test/resources/clap2/`: the reference ids of the probe captions and of edge cases
+(contractions, digit runs, punctuation runs, whitespace, accented and four-byte characters), and
+the part of the rank file that encodes them exactly as the whole file does.
 
 ## The exporter and the `ARTK` format
 
@@ -287,6 +329,9 @@ and [training-a-language-model.md](training-a-language-model.md) for how `ByteTo
 | `engine/ml/src/main/java/org/almostrealism/ml/tokenization/RegexPreTokenizer.java` | The GPT-2/Qwen pre-tokenization regex |
 | `engine/ml/src/main/java/org/almostrealism/ml/tokenization/SentencePieceBPETokenizer.java` | The `ARTK` reader and the `U+2581` / byte-fallback scheme |
 | `engine/ml/src/main/java/org/almostrealism/ml/qwen3/Qwen3Tokenizer.java` | The Qwen3 byte-level tokenizer and its own encode/decode API |
+| `engine/ml/src/main/java/org/almostrealism/ml/tokenization/TiktokenBPETokenizer.java` | The tiktoken rank-file reader and rank-ordered merging |
+| `engine/ml/src/main/java/org/almostrealism/ml/clap/Clap2Tokenizer.java` | The CLAP2 caption tokenizer: `r50k_base` with the text tower's control tokens and framing |
+| `engine/ml/scripts/export_clap2_tokenizer.py` | Validates and copies a CLAP2 checkpoint's rank file; writes the parity resources |
 | `engine/ml/src/main/java/org/almostrealism/ml/BPE.java` | The static greedy-merge encoder Llama2 uses |
 | `engine/ml/src/main/java/org/almostrealism/ml/llama2/Llama2.java` | Loads the llama2.c tokenizer and prepends BOS |
 | `extern/ml-djl/src/main/java/org/almostrealism/ml/SentencePieceTokenizer.java` | The DJL-backed SentencePiece tokenizer (a different class) |

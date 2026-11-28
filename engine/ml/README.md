@@ -195,12 +195,14 @@ int eos = Qwen3Tokenizer.EOS_TOKEN;  // 151645
 ```
 
 `Qwen3Tokenizer` extends `ByteLevelBPETokenizer` and exposes the `encode(String, boolean, boolean)`
-/ `decode(int[])` methods shown above; it does not implement the `org.almostrealism.ml.Tokenizer`
-interface. Two tokenizers that do implement that interface — and so offer
-`encodeAsLong`/`decodeAsLong` — are `ByteTokenizer` (a fixed 256-symbol byte vocabulary, used by the
-self-hosted language model) and `SentencePieceBPETokenizer` (the Gemma/T5Gemma scheme used by Stable
-Audio 3). See [Text Tokenization](../../docs/internals/text-tokenization.md) for the full family tree
-and the `ARTK` export format.
+/ `decode(int[])` methods shown above. `ByteLevelBPETokenizer` implements the
+`org.almostrealism.ml.Tokenizer` interface, so every subclass also offers
+`encodeAsLong`/`decodeAsLong`: `Qwen3Tokenizer`, `SentencePieceBPETokenizer` (the Gemma/T5Gemma
+scheme used by Stable Audio 3) and `Clap2Tokenizer` (GPT-2's `r50k_base` tiktoken encoding, which
+frames a caption for the CLAP2 text tower with `encodeCaption`). `ByteTokenizer` (a fixed
+256-symbol byte vocabulary, used by the self-hosted language model) implements the interface
+directly. See [Text Tokenization](../../docs/internals/text-tokenization.md) for the full family
+tree, the tiktoken rank file and the `ARTK` export format.
 
 ### 6. Rotary Position Embeddings (RoPE)
 

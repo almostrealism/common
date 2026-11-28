@@ -30,9 +30,13 @@ import java.nio.file.Path;
  * <p>The vocabulary is the rank file a CLAP2 checkpoint ships beside its weights
  * ({@code open_clip_tiktoken/r50k_base.tiktoken}), which
  * {@code engine/ml/scripts/export_clap2_tokenizer.py} validates and exports. Captions are encoded
- * verbatim, with no lowercasing or punctuation cleanup, as the reference tokenizer encodes them;
- * {@link #encode(String, boolean)} with {@code true} yields {@code [BOS, ..., EOS]}, the form
- * {@link Clap2TextEncoder#encode(int[])} reads.</p>
+ * verbatim, with no lowercasing or punctuation cleanup, as the reference tokenizer encodes them.</p>
+ *
+ * <p>{@link #encodeCaption(String)} gives a caption the framing the text tower was trained with:
+ * {@code [BOS, ..., EOS]}, at most {@link Clap2Config#CONTEXT_LENGTH} ids. That is the form
+ * {@link Clap2TextEncoder#encode(int[])} reads; the positions beyond the caption are filled with
+ * {@link Clap2Config#PAD_TOKEN} and masked by the tower itself, which knows the length it is
+ * compiled for, so the framed ids carry no padding.</p>
  *
  * @see Clap2TextEncoder
  */
@@ -51,6 +55,25 @@ public class Clap2Tokenizer extends TiktokenBPETokenizer {
 			throw new IOException("The rank file assigns rank " + (getVocabSize() - 1) + ", but the "
 					+ "tower's control tokens begin at " + Clap2Config.EOS_TOKEN);
 		}
+	}
+
+	/**
+	 * Frames a caption as the text tower reads it: {@link Clap2Config#BOS_TOKEN}, the ids of the
+	 * caption's {@code r50k_base} encoding, {@link Clap2Config#EOS_TOKEN}. A caption that does not
+	 * fit the context is rejected rather than cut, since a cut caption describes something else.
+	 *
+	 * @param caption the caption, encoded verbatim
+	 * @return the ids, {@code [BOS, ..., EOS]}, without padding
+	 * @throws IllegalArgumentException if the framed caption is longer than
+	 *                                  {@link Clap2Config#CONTEXT_LENGTH}
+	 */
+	public int[] encodeCaption(String caption) {
+		int[] ids = encode(caption, true);
+		if (ids.length > Clap2Config.CONTEXT_LENGTH) {
+			throw new IllegalArgumentException("Caption of " + ids.length + " tokens, BOS and EOS "
+					+ "included, exceeds the context of " + Clap2Config.CONTEXT_LENGTH);
+		}
+		return ids;
 	}
 
 	@Override

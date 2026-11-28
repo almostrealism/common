@@ -70,9 +70,6 @@ public class Clap2 implements MatrixFeatures, VectorFeatures, Destroyable {
 	/** The text tower. */
 	private final Clap2TextEncoder text;
 
-	/** The caption tokenizer, or null for a model that only compares embeddings. */
-	private final Clap2Tokenizer tokenizer;
-
 	/**
 	 * The tag embeddings of the {@link #TAG_EMBEDDING_CACHE_SIZE} vocabularies
 	 * {@link #embed(TagVocabulary)} has used most recently, least recently used first.
@@ -159,7 +156,7 @@ public class Clap2 implements MatrixFeatures, VectorFeatures, Destroyable {
 		try {
 			this.config = Clap2Config.of(weights, maxTextLength, windowSamples);
 			audioTower = new Clap2AudioEncoder(config, weights);
-			this.text = new Clap2TextEncoder(config, weights);
+			this.text = new Clap2TextEncoder(config, weights, tokenizer);
 		} catch (RuntimeException e) {
 			if (audioTower != null) audioTower.destroy();
 			if (releaseWeightsOnFailure) weights.destroy();
@@ -168,7 +165,6 @@ public class Clap2 implements MatrixFeatures, VectorFeatures, Destroyable {
 
 		this.weights = weights;
 		this.audio = audioTower;
-		this.tokenizer = tokenizer;
 		this.tagEmbeddings = new LinkedHashMap<>(16, 0.75f, true);
 	}
 
@@ -182,7 +178,7 @@ public class Clap2 implements MatrixFeatures, VectorFeatures, Destroyable {
 	public Clap2TextEncoder getTextEncoder() { return text; }
 
 	/** The caption tokenizer, or null for a model loaded without one. */
-	public Clap2Tokenizer getTokenizer() { return tokenizer; }
+	public Clap2Tokenizer getTokenizer() { return text.getTokenizer(); }
 
 	/**
 	 * The cosine similarity of one clip embedding with each of a set of caption embeddings.
@@ -226,7 +222,8 @@ public class Clap2 implements MatrixFeatures, VectorFeatures, Destroyable {
 	 * The text embeddings of the tags of a vocabulary, computed on first use and kept while the
 	 * vocabulary is among the {@link #TAG_EMBEDDING_CACHE_SIZE} this model has embedded most
 	 * recently: the embedding of a tag is the normalized mean of the normalized embeddings of its
-	 * captions, each tokenized by this model's tokenizer as {@code [BOS, ..., EOS]}.
+	 * captions, each {@link Clap2TextEncoder#tokenize tokenized} by the text tower as
+	 * {@code [BOS, ..., EOS]}.
 	 *
 	 * <p>The text tower's output buffer is overwritten by every caption, so each caption is added
 	 * to its tag's {@link MeanDirection} on the device before the next caption is encoded, and the
@@ -244,18 +241,13 @@ public class Clap2 implements MatrixFeatures, VectorFeatures, Destroyable {
 		PackedCollection embeddings = tagEmbeddings.get(vocabulary);
 		if (embeddings != null) return embeddings;
 
-		if (tokenizer == null) {
-			throw new IllegalStateException("Tags given as text require a tokenizer; load the model with "
-					+ "the exported rank file, or compare precomputed embeddings with similarity");
-		}
-
 		int tags = vocabulary.size();
 		int[][][] captionIds = new int[tags][][];
 		for (int t = 0; t < tags; t++) {
 			List<String> captions = vocabulary.getTags().get(t).getCaptions();
 			captionIds[t] = new int[captions.size()][];
 			for (int c = 0; c < captions.size(); c++) {
-				captionIds[t][c] = tokenize(captions.get(c));
+				captionIds[t][c] = text.tokenize(captions.get(c));
 			}
 		}
 
@@ -292,23 +284,6 @@ public class Clap2 implements MatrixFeatures, VectorFeatures, Destroyable {
 			tagEmbeddings.remove(eldest.getKey());
 			eldest.getValue().destroy();
 		}
-	}
-
-	/**
-	 * The token ids of a caption, {@code [BOS, ..., EOS]}.
-	 *
-	 * @param caption the caption
-	 * @return the ids
-	 * @throws IllegalArgumentException if the caption is longer than the compiled text length
-	 */
-	private int[] tokenize(String caption) {
-		int[] ids = tokenizer.encode(caption, true);
-		if (ids.length > config.getMaxTextLength()) {
-			throw new IllegalArgumentException("Caption \"" + caption + "\" is " + ids.length
-					+ " tokens, more than the " + config.getMaxTextLength()
-					+ " the text tower is compiled for; load the model with a longer text length");
-		}
-		return ids;
 	}
 
 	/**

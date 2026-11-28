@@ -103,6 +103,14 @@ public final class Clap2Config {
 	/** Token id that fills the positions beyond a caption. */
 	public static final int PAD_TOKEN = 50258;
 
+	/**
+	 * The number of token positions the released text towers were trained with, {@link #BOS_TOKEN}
+	 * and {@link #EOS_TOKEN} included: the longest caption {@link Clap2Tokenizer#encodeCaption}
+	 * frames. A text tower is usually compiled for far fewer positions, since captions are short
+	 * and padding is masked.
+	 */
+	public static final int CONTEXT_LENGTH = 256;
+
 	/** Width of the audio trunk. */
 	private final int audioWidth;
 
@@ -245,8 +253,9 @@ public final class Clap2Config {
 
 	/**
 	 * Reads the configuration of a checkpoint from its weights, compiling the text tower for
-	 * {@code maxTextLength} token positions (captions are short, so far fewer than the 256 the
-	 * model was trained with; padding is masked, so the length does not change any embedding), and
+	 * {@code maxTextLength} token positions (captions are short, so far fewer than the
+	 * {@link #CONTEXT_LENGTH} the model was trained with; padding is masked, so the length does
+	 * not change any embedding), and
 	 * the audio tower's fixed window for {@link #DEFAULT_WINDOW_SECONDS}.
 	 *
 	 * @param weights       the weights, as the CLAP2 extraction script writes them
