@@ -2,12 +2,12 @@
 # ─── CI/workflow file lock ───────────────────────────────────────────
 #
 # A branch may not change the pipeline unless the pipeline is the declared
-# subject of the branch. Files under .github/workflows/ and tools/ci/ may be
-# changed only on a branch named ci/..., or by a commit carrying a
-# controller-signed Sensitive-File-Bypass trailer. Agents have previously
-# excluded failing tests from CI steps, removed quality gates and rewired
-# job dependencies so that tests never ran; a change to the pipeline riding
-# along with unrelated work is how that happens.
+# subject of the branch. Files under .github/workflows/, .github/actions/ and
+# tools/ci/ may be changed only on a branch named ci/..., or by a commit
+# carrying a controller-signed Sensitive-File-Bypass trailer. Agents have
+# previously excluded failing tests from CI steps, removed quality gates and
+# rewired job dependencies so that tests never ran; a change to the pipeline
+# riding along with unrelated work is how that happens.
 #
 # The ci/ branch name is chosen before the work starts and is visible in the
 # pull request, so it is a declaration that the change IS the pipeline,

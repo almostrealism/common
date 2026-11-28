@@ -2450,9 +2450,18 @@ jobs:
             | awk '{print "- repo working tree: " $1}' >> "$GITHUB_STEP_SUMMARY"
 
       - name: Build ar-manager image
-        run: docker build -f tools/mcp/manager/Dockerfile -t ar-manager:ci .
+        env:
+          # The commit the checkout above fetched. The build context has no
+          # .git, so the image learns it from this build argument, as in
+          # rebuild.sh; without it consult reports the corpus commit "unknown".
+          CORPUS_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          docker build --build-arg "CORPUS_COMMIT=${CORPUS_COMMIT}" \
+            -f tools/mcp/manager/Dockerfile -t ar-manager:ci .
 
       - name: Verify the documentation corpus reached the image
+        env:
+          CORPUS_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           # Assert the corpus is present and non-trivial. An empty or missing
           # corpus would leave memory_recall's documentation grounding silently
@@ -2470,6 +2479,14 @@ jobs:
             'find /app/docs-root -name "*.java" | wc -l')
           if [ "$LEAKED" -ne 0 ]; then
             echo "::error::${LEAKED} Java sources leaked into the image docs corpus."
+            exit 1
+          fi
+          # The snapshot index must record the commit passed as CORPUS_COMMIT.
+          RECORDED=$(docker run --rm --entrypoint python ar-manager:ci -c \
+            'import json, os; print(json.load(open(os.environ["AR_SNAPSHOT_INDEX"]))["corpus"]["commit"])')
+          echo "- corpus commit: $RECORDED" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$RECORDED" != "$CORPUS_COMMIT" ]; then
+            echo "::error::The image's snapshot index records corpus commit '${RECORDED}', expected '${CORPUS_COMMIT}'."
             exit 1
           fi
 
