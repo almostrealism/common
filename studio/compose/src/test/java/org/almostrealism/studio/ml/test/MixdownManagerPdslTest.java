@@ -1091,6 +1091,8 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 		args.put("wet_level", WET_LEVEL);
 		args.put("delay_samples", DELAY_SAMPLES);
 		args.put("wet_filter_coeffs", perChannelWetCoeffs());
+		// Centre (unity) wet-arm pan gain: these fixed-parameter tests do not pan.
+		args.put("wet_pan", new PackedCollection(CHANNELS).fill(1.0));
 		args.put("transmission", rectangularTransmission(CHANNELS, CHANNELS, 0.55));
 		PackedCollection buffers = new PackedCollection(CHANNELS * SIGNAL_SIZE);
 		PackedCollection heads = new PackedCollection(CHANNELS);

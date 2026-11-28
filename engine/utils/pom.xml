@@ -12,6 +12,32 @@
 
 	<artifactId>ar-utils</artifactId>
 
+	<build>
+		<plugins>
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-surefire-plugin</artifactId>
+				<!--
+				Register a JUnit RunListener that logs a flushed breadcrumb as each test
+				starts and finishes, so an intermittent forked-JVM crash in this module
+				still names the running test in the console log even when surefire's own
+				"Crashed tests" summary is empty (the fault occurs in a detached worker
+				after the test thread reported finished). Merges with the inherited
+				surefire configuration from the root pom; argLine and the other settings
+				there are kept.
+				-->
+				<configuration>
+					<properties>
+						<property>
+							<name>listener</name>
+							<value>org.almostrealism.util.CrashAttributionRunListener</value>
+						</property>
+					</properties>
+				</configuration>
+			</plugin>
+		</plugins>
+	</build>
+
 	<dependencies>
 		<dependency>
 			<groupId>org.almostrealism</groupId>

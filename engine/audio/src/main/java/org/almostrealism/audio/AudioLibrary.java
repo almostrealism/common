@@ -1435,10 +1435,15 @@ public class AudioLibrary implements ConsoleFeatures {
 	 * any whose features belong only to another model) and submits background jobs
 	 * to compute their WaveDetails.
 	 *
-	 * <p>Store-backed items with no file in the tree (persistent entries, or
-	 * drawings carrying only frequency data) are not visited by that scan; when
-	 * revalidation finds one stale for the current model it is recomputed from
-	 * its stored data instead, rather than being dropped from {@link #allDetails()}.</p>
+	 * <p>A store-backed item with no file in the tree is handled by whether it was
+	 * meant to live without one. A persistent entry — a drawing or generated source
+	 * carrying only frequency data — is recomputed from its stored data when
+	 * revalidation finds it stale, rather than being dropped from {@link #allDetails()}.
+	 * A non-persistent record whose file is gone is an orphaned file sample (deleted,
+	 * moved, or edited since it was analysed, which changes its content identifier);
+	 * it is left out of the recomputation, so it is neither re-encoded from an FFT
+	 * reconstruction of a sample no longer in the library nor added to
+	 * {@link #allDetails()}.</p>
 	 *
 	 * <p>Returns a CompletableFuture that completes when all queued analysis jobs
 	 * have finished. Callers should use {@link #awaitRefresh()} to wait for the
@@ -1451,7 +1456,7 @@ public class AudioLibrary implements ConsoleFeatures {
 			String modelId = currentModelId();
 			if (store != null) store.setEmbeddingModel(modelId);
 			List<String> stale = completeIdentifiers.revalidate(modelId, id -> isComplete(resolveDetails(id)));
-			if (!stale.isEmpty()) log(stale.size() + " item(s) have no " + modelId + " features and will be recomputed");
+			if (!stale.isEmpty()) log(stale.size() + " item(s) have no " + modelId + " features; recomputing those still backed by a file or marked persistent");
 
 			CompletableFuture<Void> future = new CompletableFuture<>();
 
@@ -1473,10 +1478,14 @@ public class AudioLibrary implements ConsoleFeatures {
 
 			fileIndex.replace(index);
 
-			// Stale items with no file in the tree are recomputed from stored data.
+			// A stale record with no file is recomputed from stored data only when it
+			// is a persistent item that never needed a file (a drawing or generated
+			// source); an orphaned non-persistent file record is skipped, not resynthesised.
 			stale.stream()
 					.filter(id -> !index.containsKey(id))
-					.map(this::resolveProvider)
+					.map(this::resolveDetails)
+					.filter(d -> d != null && d.isPersistent())
+					.map(d -> resolveProvider(d.getIdentifier()))
 					.filter(Objects::nonNull)
 					.forEach(recompute::add);
 
