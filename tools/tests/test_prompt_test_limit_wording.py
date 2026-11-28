@@ -24,16 +24,32 @@ import unittest
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 _PROMPT_DIR = os.path.join(_REPO_ROOT, "tools", "ci", "prompts")
 
+# Word separator: whitespace (including a line wrap), a hyphen, or the "#"
+# comment leader a shell builder repeats on each wrapped comment line.
+_SEP = r"(?:[\s#-])+"
+
 # Each phrasing asserts the superseded single-test-per-invocation limit, or the
 # behaviour that followed from it (a bare class selector being rejected rather
-# than accepted). The patterns are case-insensitive so a capitalised or
-# reflowed restatement is caught too.
+# than accepted). The patterns are matched against the whole file text and are
+# case-insensitive, so a capitalised or reflowed restatement is caught too.
 _STALE_PATTERNS = [
-    re.compile(r"one[\s-]+test[\s-]+per[\s-]+invocation", re.IGNORECASE),
-    re.compile(r"\bentry per invocation\b", re.IGNORECASE),
-    re.compile(r"exactly one (?:node id|test) per invocation", re.IGNORECASE),
-    re.compile(r"bare class selector is rejected", re.IGNORECASE),
+    re.compile(_SEP.join(["one", "test", "per", "invocation"]), re.IGNORECASE),
+    re.compile(r"\b" + _SEP.join(["entry", "per", "invocation"]) + r"\b", re.IGNORECASE),
+    re.compile(_SEP.join(["exactly", "one", "(?:node" + _SEP + "id|test)", "per", "invocation"]),
+               re.IGNORECASE),
+    re.compile(_SEP.join(["bare", "class", "selector", "is", "rejected"]), re.IGNORECASE),
 ]
+
+
+def _stale_wording(text):
+    """Every stale phrasing in ``text``, as (line number, matched phrase) for
+    the line the match starts on, with a wrapped match collapsed to one line."""
+    found = []
+    for pattern in _STALE_PATTERNS:
+        for match in pattern.finditer(text):
+            lineno = text.count("\n", 0, match.start()) + 1
+            found.append((lineno, " ".join(match.group(0).split())))
+    return sorted(found)
 
 
 def _prompt_files():
@@ -60,17 +76,33 @@ class TestPromptTestLimitWording(unittest.TestCase):
         offenders = []
         for relative, absolute in _prompt_files():
             with open(absolute, "r", encoding="utf-8", errors="replace") as handle:
-                for lineno, line in enumerate(handle, start=1):
-                    for pattern in _STALE_PATTERNS:
-                        if pattern.search(line):
-                            offenders.append(
-                                "{}:{}: {}".format(relative, lineno, line.strip()))
+                text = handle.read()
+            for lineno, phrase in _stale_wording(text):
+                offenders.append("{}:{}: {}".format(relative, lineno, phrase))
         self.assertEqual(
             [], offenders,
             "Stale 'one test per invocation' wording found in CI prompts. The "
             "current limit is at most 5 test classes and 40 named methods (or "
             "5 files and 40 pytest node ids) per invocation:\n"
             + "\n".join(offenders))
+
+    def test_wrapped_phrase_is_detected(self):
+        # A phrase split across a line wrap, including a wrapped shell
+        # comment, is still stale wording and must be reported on the line
+        # it starts on.
+        text = "intro\n# the one test per\n# invocation rule\n"
+        self.assertEqual([(2, "one test per # invocation")], _stale_wording(text))
+        self.assertEqual(
+            [(1, "bare class selector is rejected")],
+            _stale_wording("a bare class\nselector is rejected here"))
+
+    def test_current_wording_is_not_flagged(self):
+        # The current limit's wording, and a diagnostic "one at a time", are
+        # not stale.
+        text = ("Run at most 5 test classes and 40 named methods per\n"
+                "invocation; reproduce the failure one at a time.\n"
+                "A bare class selector is accepted.\n")
+        self.assertEqual([], _stale_wording(text))
 
 
 if __name__ == "__main__":

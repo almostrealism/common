@@ -120,6 +120,27 @@ public class PostCompletionCommandValidatorTest extends TestSuiteBase {
 		assertTrue(violationsFor(command.toString()).isEmpty());
 	}
 
+	/** The value of a pytest option such as {@code -k} or {@code -p} is not a test path, so a
+	 * bounded file selection carrying one is accepted, as the pytest hook accepts it. */
+	@Test(timeout = 10000)
+	public void pytestOptionValueIsNotAPositional() {
+		assertTrue(violationsFor("pytest -k test_bar test_foo.py").isEmpty());
+		assertTrue(violationsFor(
+				"python3 -m pytest -p no:cacheprovider --maxfail 1 a/test_one.py::test_x").isEmpty());
+		assertTrue(violationsFor("pytest --maxfail=1 test_foo.py").isEmpty());
+	}
+
+	/** Skipping an option's value must not let the option stand in for a selection, and a flag
+	 * that takes no value does not swallow the directory after it. */
+	@Test(timeout = 10000)
+	public void pytestOptionValueAloneRejected() {
+		assertFalse(violationsFor("pytest -k test_bar").isEmpty());
+		List<String> violations = violationsFor("pytest -k test_bar tests/");
+		assertEquals(1, violations.size());
+		assertTrue(violations.get(0).contains("non-file positional"));
+		assertFalse(violationsFor("pytest -x tests/").isEmpty());
+	}
+
 	/** A non-Maven, non-pytest command is accepted. */
 	@Test(timeout = 10000)
 	public void customScriptAccepted() {

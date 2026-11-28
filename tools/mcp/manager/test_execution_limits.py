@@ -85,6 +85,17 @@ class TestValidatePostCompletionCommandAccepted(unittest.TestCase):
         selection = " ".join("test_foo.py::test_m{}".format(i) for i in range(40))
         self.assertEqual([], validate_post_completion_command("pytest " + selection))
 
+    def test_pytest_option_value_is_not_a_positional(self):
+        # The value of an option such as -k or -p is not a test path, so a
+        # bounded file selection with one is accepted, as the hook accepts it.
+        self.assertEqual([], validate_post_completion_command(
+            "pytest -k test_bar test_foo.py"))
+        self.assertEqual([], validate_post_completion_command(
+            "python3 -m pytest -p no:cacheprovider --maxfail 1 "
+            "a/test_one.py::test_x"))
+        self.assertEqual([], validate_post_completion_command(
+            "pytest --maxfail=1 test_foo.py"))
+
     def test_custom_script(self):
         self.assertEqual([], validate_post_completion_command("bash scripts/verify-foo.sh"))
 
@@ -174,6 +185,16 @@ class TestValidatePostCompletionCommandRejected(unittest.TestCase):
             "tools/mcp/manager/test_mod{}.py".format(i) for i in range(6))
         violations = validate_post_completion_command("pytest " + over_cap)
         self.assertTrue(violations, "more than the file cap of whole files must be rejected")
+
+    def test_pytest_option_value_alone_rejected(self):
+        # Skipping an option's value must not let the option stand in for a
+        # selection: "-k test_bar" with no path still collects everything,
+        # and a directory after a valued option is still a directory.
+        self.assertTrue(validate_post_completion_command("pytest -k test_bar"))
+        violations = validate_post_completion_command("pytest -k test_bar tests/")
+        self.assertIn("non-file positional", " ".join(violations))
+        # A flag that takes no value does not swallow the path after it.
+        self.assertTrue(validate_post_completion_command("pytest -x tests/"))
 
     def test_pytest_with_no_args_rejected(self):
         violations = validate_post_completion_command("pytest")

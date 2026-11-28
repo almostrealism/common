@@ -278,6 +278,16 @@ public class PostCompletionCommandValidator {
 	 * bare. */
 	private static final List<String> PYTHON_ARG_FLAGS = Arrays.asList("-W", "-X");
 
+	/** pytest options whose value is the next token, so that value is not mistaken for a test
+	 * path ({@code -k test_bar}, {@code -p no:cacheprovider}). The {@code --opt=value} form needs
+	 * no entry since it is one token starting with {@code -}. Mirrors {@code _PYTEST_VALUE_OPTIONS}
+	 * in {@code tools/mcp/manager/execution_limits.py}. */
+	private static final Set<String> PYTEST_VALUE_OPTIONS = new HashSet<>(Arrays.asList(
+			"-k", "-m", "-p", "-c", "-o", "-W", "-n", "--rootdir", "--confcutdir",
+			"--basetemp", "--deselect", "--ignore", "--ignore-glob", "--junitxml",
+			"--junit-xml", "--maxfail", "--tb", "--durations", "--log-level",
+			"--override-ini", "--import-mode", "--capture", "--cov", "--timeout"));
+
 	/** The shell command being validated. */
 	private final String command;
 
@@ -1023,6 +1033,27 @@ public class PostCompletionCommandValidator {
 	}
 
 	/**
+	 * Returns the test-path arguments of a pytest invocation, skipping its options and the value
+	 * token of each option in {@link #PYTEST_VALUE_OPTIONS}, so {@code pytest -k test_bar
+	 * test_foo.py} yields only {@code test_foo.py}. Mirrors {@code _pytest_positionals} in
+	 * {@code tools/mcp/manager/execution_limits.py}.
+	 */
+	private static List<String> pytestPositionals(List<String> args) {
+		List<String> result = new ArrayList<>();
+		boolean skipNext = false;
+		for (String arg : args) {
+			if (skipNext) {
+				skipNext = false;
+			} else if (arg.startsWith("-")) {
+				skipNext = PYTEST_VALUE_OPTIONS.contains(arg);
+			} else {
+				result.add(arg);
+			}
+		}
+		return result;
+	}
+
+	/**
 	 * Returns a violation reason for a pytest segment, or null when it names a bounded selection
 	 * of explicit test files or node ids. Mirrors {@code _pytest_segment_violation} in
 	 * {@code tools/mcp/manager/execution_limits.py} and {@code .claude/hooks/lib/pytest_broad_run_check.py}:
@@ -1052,12 +1083,7 @@ public class PostCompletionCommandValidator {
 		if (substitutionReason != null) {
 			return substitutionReason;
 		}
-		List<String> positionals = new ArrayList<>();
-		for (String arg : rest) {
-			if (!arg.startsWith("-")) {
-				positionals.add(arg);
-			}
-		}
+		List<String> positionals = pytestPositionals(rest);
 		if (positionals.isEmpty()) {
 			return "pytest command names no explicit test file or node id (file.py or "
 					+ "file.py::test_name): \"" + String.join(" ", tokens) + "\". This runs an "

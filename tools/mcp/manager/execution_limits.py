@@ -191,6 +191,17 @@ _PYTHON_NOARG_FLAGS = {
 # their own operand, mirroring _PYTHON_NOARG_FLAGS for flags that are not bare.
 _PYTHON_ARG_FLAGS = {"-W", "-X"}
 
+# pytest options whose value is the next token, so that value is not mistaken
+# for a test path ("-k test_bar", "-p no:cacheprovider"). The "--opt=value"
+# form needs no entry: it is one token starting with "-". Mirrors
+# PYTEST_VALUE_OPTIONS in .claude/hooks/lib/pytest_broad_run_check.py.
+_PYTEST_VALUE_OPTIONS = {
+    "-k", "-m", "-p", "-c", "-o", "-W", "-n", "--rootdir", "--confcutdir",
+    "--basetemp", "--deselect", "--ignore", "--ignore-glob", "--junitxml",
+    "--junit-xml", "--maxfail", "--tb", "--durations", "--log-level",
+    "--override-ini", "--import-mode", "--capture", "--cov", "--timeout",
+}
+
 # Matches a Python interpreter executable base name, including versioned forms
 # such as "python", "python3", "python3.11" or "python2.7". A versioned
 # launcher must be recognized wherever the bare "python"/"python3" names are,
@@ -1079,6 +1090,22 @@ def _index_of_module_flag(tokens: list):
     return None
 
 
+def _pytest_positionals(args: list) -> list:
+    """Return the test-path arguments of a pytest invocation, skipping its
+    options and the value token of each option in ``_PYTEST_VALUE_OPTIONS``,
+    so ``pytest -k test_bar test_foo.py`` yields only ``test_foo.py``."""
+    result = []
+    skip_next = False
+    for arg in args:
+        if skip_next:
+            skip_next = False
+        elif arg.startswith("-"):
+            skip_next = arg in _PYTEST_VALUE_OPTIONS
+        else:
+            result.append(arg)
+    return result
+
+
 def _pytest_segment_violation(tokens: list) -> str:
     """Return a violation reason for a single ``pytest``/``python -m pytest``
     command segment, or ``""`` when it already names a bounded selection of
@@ -1111,7 +1138,7 @@ def _pytest_segment_violation(tokens: list) -> str:
     substitution_reason = _substitution_argument_violation(tokens, rest)
     if substitution_reason:
         return substitution_reason
-    positionals = [a for a in rest if not a.startswith("-")]
+    positionals = _pytest_positionals(rest)
     if not positionals:
         return (
             "pytest command names no explicit test file or node id "
