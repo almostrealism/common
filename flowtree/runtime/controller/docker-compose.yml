@@ -51,8 +51,10 @@
 services:
   ar-memory:
     build:
-      context: ../../../tools/mcp/memory
-      dockerfile: Dockerfile
+      # tools/mcp, not tools/mcp/memory: the server imports the shared library
+      # in tools/mcp/common, which the image must carry.
+      context: ../../../tools/mcp
+      dockerfile: memory/Dockerfile
     ports:
       - "${AR_MEMORY_PORT:-8020}:8020"
     volumes:
