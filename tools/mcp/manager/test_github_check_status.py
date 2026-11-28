@@ -52,6 +52,14 @@ class TestOverallStatus(unittest.TestCase):
             [], "", True, True)
         self.assertEqual(overall, "failure")
 
+    def test_workflow_runs_derive_status_without_check_runs_or_errors(self):
+        # Even on the no-error path, present-and-current workflow runs decide
+        # the status when there are no check runs to read; empty check runs no
+        # longer force "pending" past completed workflow runs.
+        overall = gcs.overall_status(
+            [_run(conclusion="success")], [], "", True, False)
+        self.assertEqual(overall, "success")
+
     def test_falls_back_to_commit_status(self):
         overall = gcs.overall_status([], [], "success", True, True)
         self.assertEqual(overall, "success")
