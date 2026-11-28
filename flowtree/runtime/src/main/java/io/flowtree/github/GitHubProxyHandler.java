@@ -23,6 +23,8 @@ import fi.iki.elonen.NanoHTTPD.Response;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.flowtree.JsonFieldExtractor;
+import io.flowtree.PrivateLinkDetector;
+import io.flowtree.PrivateLinkIncident;
 import io.flowtree.git.RepositoryUrl;
 import org.almostrealism.io.ConsoleFeatures;
 
@@ -41,6 +43,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -209,6 +212,21 @@ public class GitHubProxyHandler implements ConsoleFeatures {
             } catch (BodyReader.InvalidRequestBodyException e) {
                 warn("Rejecting GitHub proxy " + githubMethod + ": " + e.getMessage());
                 return error.respond("Invalid request body: " + e.getMessage());
+            }
+        }
+
+        // Refuse a write whose body carries a private Claude session link, even
+        // if the ar-manager tool layer was bypassed. This is the single choke
+        // point every write body passes through before reaching GitHub.
+        if (payload != null && !payload.isEmpty()) {
+            List<String> matched = PrivateLinkDetector.scan(payload);
+            if (!matched.isEmpty()) {
+                String redactedPath = PrivateLinkDetector.redact(urlOrPath);
+                warn("Refusing GitHub proxy " + githubMethod + " " + redactedPath
+                        + ": body carries a private link (" + String.join(",", matched) + ")");
+                new PrivateLinkIncident("controller_github_proxy",
+                        githubMethod + " " + redactedPath, matched).record();
+                return error.respond(PrivateLinkDetector.blockMessage());
             }
         }
 
@@ -1151,6 +1169,33 @@ public class GitHubProxyHandler implements ConsoleFeatures {
     }
 
     /**
+     * Refuses a typed-client write whose JSON body carries a private Claude
+     * session link, recording the incident and logging a redacted summary. This
+     * guards the auto-create-PR egress (PR title, body, and cross-link comments),
+     * which build their own requests rather than passing through {@link #handle}.
+     *
+     * @param verb    the HTTP verb being sent, for the log and incident route
+     * @param url     the request URL, redacted before it is logged
+     * @param payload the JSON request body to scan
+     * @return {@code true} when the body carries a private link and must not be sent
+     */
+    private boolean carriesPrivateLink(String verb, String url, String payload) {
+        if (payload == null || payload.isEmpty()) {
+            return false;
+        }
+        List<String> matched = PrivateLinkDetector.scan(payload);
+        if (matched.isEmpty()) {
+            return false;
+        }
+        String redactedUrl = PrivateLinkDetector.redact(url);
+        warn("Refusing GitHub " + verb + " " + redactedUrl
+                + ": body carries a private link (" + String.join(",", matched) + ")");
+        new PrivateLinkIncident("controller_github_" + verb.toLowerCase(Locale.ROOT),
+                verb + " " + redactedUrl, matched).record();
+        return true;
+    }
+
+    /**
      * Sends a JSON {@code POST} to the GitHub REST API. Shared by the typed
      * write operations so each reads as what it changes rather than repeating
      * the connection boilerplate.
@@ -1162,6 +1207,9 @@ public class GitHubProxyHandler implements ConsoleFeatures {
      *         failure, which is logged
      */
     private ApiResponse apiPost(String url, String payload, String token) {
+        if (carriesPrivateLink("POST", url, payload)) {
+            return null;
+        }
         try {
             HttpURLConnection conn = (HttpURLConnection) URI.create(url).toURL().openConnection();
             conn.setRequestMethod("POST");
@@ -1206,6 +1254,9 @@ public class GitHubProxyHandler implements ConsoleFeatures {
      *         failure, which is logged
      */
     private ApiResponse apiPatch(String url, String payload, String token) {
+        if (carriesPrivateLink("PATCH", url, payload)) {
+            return null;
+        }
         try {
             HttpResponse<String> response = sendPatch(url, payload, token);
             return new ApiResponse(response.statusCode(), response.body() == null ? "" : response.body());

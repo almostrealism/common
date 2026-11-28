@@ -16,6 +16,8 @@
 
 package io.flowtree.jobs;
 
+import io.flowtree.PrivateLinkDetector;
+import io.flowtree.PrivateLinkIncident;
 import org.almostrealism.io.ConsoleFeatures;
 
 import java.io.File;
@@ -415,6 +417,18 @@ public class FileStager implements ConsoleFeatures {
                 continue;
             }
 
+            // Guardrail 5: a private Claude session link in the file's content
+            // would reach the public repository on push (see scanContentForPrivateLink).
+            if (!isDeleted) {
+                List<String> matched = scanContentForPrivateLink(f);
+                if (!matched.isEmpty()) {
+                    log("Blocked (private link in content): " + file);
+                    new PrivateLinkIncident("harness_staged_file", file, matched).record();
+                    skippedFiles.add(file + " (private link in content)");
+                    continue;
+                }
+            }
+
             // File passed all guardrails
             stagedFiles.add(file);
         }
@@ -556,6 +570,25 @@ public class FileStager implements ConsoleFeatures {
             || Pattern.matches(".*/" + r, path)
             || path.endsWith("/" + pattern)
             || path.equals(pattern);
+    }
+
+    /**
+     * Returns the private-link content patterns that match {@code f}'s content,
+     * or an empty list when it is clean. Reads the file as UTF-8; a file that is
+     * not readable or not UTF-8 is treated as clean rather than blocking a commit
+     * on an I/O error (the size and binary guardrails have already passed). The
+     * scan uses {@link PrivateLinkDetector#scanFileContent(String)}, so quoting
+     * an attribution word in source or docs is not a match.
+     *
+     * @param f the staged file to scan
+     * @return the matched content pattern names; empty, never {@code null}
+     */
+    private List<String> scanContentForPrivateLink(File f) {
+        try {
+            return PrivateLinkDetector.scanFileContent(Files.readString(f.toPath()));
+        } catch (IOException | RuntimeException e) {
+            return List.of();
+        }
     }
 
     /**

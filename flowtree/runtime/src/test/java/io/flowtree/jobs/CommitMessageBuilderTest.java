@@ -137,6 +137,40 @@ public class CommitMessageBuilderTest extends TestSuiteBase {
     }
 
     /**
+     * A {@code commit.txt} carrying a private Claude session link fails the job
+     * with the owner's block message rather than being committed to the public
+     * history. The link literal is assembled from fragments so this test source
+     * carries no intact link.
+     */
+    @Test(timeout = 30000)
+    public void resolveRefusesCommitTxtWithPrivateLink() throws IOException {
+        Path incidentLog = Files.createTempFile("commit-msg-incident", ".jsonl");
+        Files.deleteIfExists(incidentLog);
+        String previous = System.getProperty("ar.privateLinkIncidentLog");
+        System.setProperty("ar.privateLinkIncidentLog", incidentLog.toString());
+        try {
+            String link = "https://" + "claude" + ".ai/code/session_" + "fakefakefake1234";
+            writeCommitTxt("Fix bug X\n\nClaude" + "-Session: " + link);
+            CodingAgentJob job = job("do the work");
+            try {
+                job.commitMessageBuilder().resolve(job);
+                fail("a commit.txt with a private session link must be refused");
+            } catch (IllegalStateException expected) {
+                assertTrue(expected.getMessage().toLowerCase().contains("malice"));
+                assertFalse("the failure must not echo the link",
+                        expected.getMessage().contains("fakefakefake1234"));
+            }
+        } finally {
+            if (previous == null) {
+                System.clearProperty("ar.privateLinkIncidentLog");
+            } else {
+                System.setProperty("ar.privateLinkIncidentLog", previous);
+            }
+            Files.deleteIfExists(incidentLog);
+        }
+    }
+
+    /**
      * {@link CommitMessageBuilder#summarizeChangedFiles} names one changed file as
      * {@code "Update <name>"}, and two as {@code "Update <a> and <b>"}, using class/file base
      * names rather than full paths.

@@ -66,6 +66,38 @@ public class FileStagerTest extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * A staged file whose content carries a private Claude session link is not
+	 * staged — it would reach the public repository on push — while a sibling
+	 * file that only mentions an attribution word is staged normally.
+	 */
+	@Test(timeout = 30000)
+	public void skipsFileWhoseContentCarriesPrivateLink() throws IOException {
+		Path tempDir = Files.createTempDirectory("stager-test");
+		try {
+			String link = "https://" + "claude" + ".ai/code/session_" + "fakefakefake1234";
+			Files.writeString(tempDir.resolve("notes.md"), "Done, see " + link);
+			Files.writeString(tempDir.resolve("Doc.java"),
+				"// documents the Co-Authored" + "-By Claude policy\npublic class Doc {}");
+
+			FileStagingConfig config = FileStagingConfig.builder().build();
+			FileStager stager = new FileStager();
+			StagingResult result = stager.evaluateFiles(
+				Arrays.asList("notes.md", "Doc.java"),
+				config,
+				tempDir.toFile(),
+				(String... args) -> 0
+			);
+
+			assertFalse(result.getStagedFiles().contains("notes.md"));
+			assertTrue(result.getStagedFiles().contains("Doc.java"));
+			assertTrue(result.getSkippedFiles().stream()
+				.anyMatch(s -> s.startsWith("notes.md") && s.contains("private link")));
+		} finally {
+			deleteRecursively(tempDir);
+		}
+	}
+
 	/** Verifies that files matching exclusion patterns are skipped and not staged. */
 	@Test(timeout = 30000)
 	public void skipsExcludedPatterns() throws IOException {

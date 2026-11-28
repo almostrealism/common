@@ -1,0 +1,37 @@
+{
+  "version": 1,
+  "description": "Canonical, configurable pattern list for detecting private Claude session data before it reaches a public surface (GitHub, Slack, commit messages). Loaded by io.flowtree.PrivateLinkDetector (Java) and tools/mcp/manager/private_link_detector.py (Python). Both engines use the same regexes, which are written in the common subset of java.util.regex and Python re. Edit this file to change what is blocked; keep the Python embedded fallback in sync (asserted by test_private_link_detector.py).",
+  "patterns": [
+    {
+      "name": "claude_ai_session_or_app_url",
+      "regex": "(?i)claude\\.ai/(?:code|chat|artifacts?|share|projects?|recents?|c)(?:/|\\b)",
+      "description": "A claude.ai application URL: code session, chat, artifact, share, project, or recents. Matches http, https, www and bare host forms because the host+path fragment is enough."
+    },
+    {
+      "name": "claude_code_session_path",
+      "regex": "(?i)claude\\.ai/code/session[_-]?[a-z0-9]{6,}",
+      "description": "A Claude Code session permalink."
+    },
+    {
+      "name": "bare_session_id",
+      "regex": "(?i)session_[a-z0-9]{8,}",
+      "description": "A bare Claude session identifier with no surrounding URL."
+    },
+    {
+      "name": "claude_session_trailer",
+      "regex": "(?i)claude[ _-]?session[ _-]?(?:id|link|url)?\\s*[:=]",
+      "description": "A Claude-Session: (or Claude-Session-Id/Link/Url) attribution trailer."
+    },
+    {
+      "name": "claude_attribution_credit",
+      "regex": "(?i)(?:co[- ]?authored[- ]?by|co[- ]?written[- ]?by|generated (?:with|by)|created by|assisted by|authored by)[^\\n]{0,60}(?:claude|anthropic|claude\\.ai)",
+      "description": "An attribution line crediting Claude/Anthropic as co-author or generator of the work."
+    },
+    {
+      "name": "claude_noreply_identity",
+      "regex": "(?i)[a-z0-9._%+-]*@(?:anthropic\\.com|users\\.noreply\\.anthropic\\.com)",
+      "description": "A Claude/Anthropic identity e-mail address used in attribution trailers."
+    }
+  ],
+  "block_message": "BLOCKED: this write was refused because it contains a private Claude session link or identifier.\n\nIncluding it is actively harmful. It leaks the owner's private session data into a public repository, exposing the owner's privacy and security. Once published the link persists in the repository's edit history, in GitHub notification e-mails, and in every fork and mirror of the repository, and it cannot be fully retracted even if the visible copy is later deleted.\n\nYou have been instructed, explicitly and repeatedly, never to do this. Doing it again is being treated as malice, not as a mistake. This attempt is being recorded as an incident and reported to the owner, and there will be consequences.\n\nStop now. Examine why you were about to include this link. Remove it entirely. Do not look for another field, another encoding, or another route to carry it. Resubmit only once the content contains no Claude session link, no session id, and no attribution line."
+}

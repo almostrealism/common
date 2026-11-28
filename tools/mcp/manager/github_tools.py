@@ -19,6 +19,7 @@ from urllib.parse import quote
 
 import github_api
 import github_check_status
+import private_link_incident
 import server
 from server import mcp
 
@@ -421,6 +422,12 @@ def github_pr_reply(
     if err:
         return err
 
+    blocked = private_link_incident.guard(
+        server, "github_pr_reply", f"{owner}/{repo} PR #{pr_number} review reply",
+        body=body)
+    if blocked:
+        return blocked
+
     server._audit("github_pr_reply", comment_id=comment_id, pr_number=pr_number)
 
     result = server._github_request(
@@ -564,6 +571,12 @@ def github_create_pr(
     if not effective_head:
         return {"ok": False, "error": "head branch is required"}
 
+    blocked = private_link_incident.guard(
+        server, "github_create_pr", f"{owner}/{repo} new PR",
+        title=title, body=body)
+    if blocked:
+        return blocked
+
     server._audit("github_create_pr", title=title, base=effective_base, head=effective_head)
 
     result = server._github_request("POST", f"/repos/{owner}/{repo}/pulls", {
@@ -678,6 +691,12 @@ def github_update_pr(
             "ok": False,
             "error": "nothing to update: pass a title, a body, or both",
         }
+
+    blocked = private_link_incident.guard(
+        server, "github_update_pr", f"{org or ''}/{repo or ''} PR update".strip("/"),
+        title=payload.get("title"), body=payload.get("body"))
+    if blocked:
+        return blocked
 
     # An archived round is read-only, and its pull request's title and
     # description are part of that frozen record, so the same guards as
