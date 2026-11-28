@@ -348,4 +348,81 @@ public class WorkstreamRegistrationHandlerTest extends TestSuiteBase {
         assertEquals(SECOND_DOWNSTREAM_REPO, result.workstream().getRepoUrl());
         assertEquals(2, notifier.getWorkstreams().size());
     }
+
+    /**
+     * The submit path defaults a workstream it creates without a
+     * {@code settledCiTrigger}, the same as the direct registration endpoint:
+     * {@code resolveOrRegister} rebuilds the request through
+     * {@code registrationRequest}, which omits an absent field so the create
+     * path's field-absent default ({@code deployment:test}) applies.
+     */
+    @Test(timeout = 10000)
+    public void resolveOrRegisterDefaultsAbsentSettledCiTrigger() {
+        SlackNotifier notifier = new SlackNotifier(null);
+        WorkstreamRegistrationHandler handler = handler(notifier,
+                (ownerRepo, branch) -> Collections.emptyList());
+        String body = "{\"defaultBranch\":\"feature/submit-absent\",\"baseBranch\":\"master\","
+                + "\"repoUrl\":\"" + COMMON_REPO + "\"}";
+
+        WorkstreamRegistrationHandler.Registration result = handler.resolveOrRegister(
+                body, "feature/submit-absent", COMMON_REPO, null, true);
+
+        assertNull(result.failure());
+        Workstream created = notifier.findWorkstreamByBranchAndRepo("feature/submit-absent", COMMON_REPO);
+        assertNotNull("a workstream must be created on submit", created);
+        assertNotNull("an absent settledCiTrigger on the submit path gets the default",
+                created.getSettledCiTrigger());
+        assertEquals("deployment:test", created.getSettledCiTrigger().spec());
+    }
+
+    /**
+     * The submit path preserves an <em>explicit empty</em> {@code settledCiTrigger}
+     * as a deliberate clear rather than collapsing it into the default. The
+     * rebuilt registration request keeps the field's presence, so {@code register}
+     * reads the empty value as a clear exactly as the direct endpoint does; the
+     * previous request builder dropped an empty value, turning an explicit clear
+     * into {@code deployment:test} and diverging from direct registration.
+     */
+    @Test(timeout = 10000)
+    public void resolveOrRegisterExplicitEmptySettledCiTriggerIsNotDefaulted() {
+        SlackNotifier notifier = new SlackNotifier(null);
+        WorkstreamRegistrationHandler handler = handler(notifier,
+                (ownerRepo, branch) -> Collections.emptyList());
+        String body = "{\"defaultBranch\":\"feature/submit-empty\",\"baseBranch\":\"master\","
+                + "\"repoUrl\":\"" + COMMON_REPO + "\",\"settledCiTrigger\":\"\"}";
+
+        WorkstreamRegistrationHandler.Registration result = handler.resolveOrRegister(
+                body, "feature/submit-empty", COMMON_REPO, null, true);
+
+        assertNull(result.failure());
+        Workstream created = notifier.findWorkstreamByBranchAndRepo("feature/submit-empty", COMMON_REPO);
+        assertNotNull("a workstream must be created on submit", created);
+        assertNull("an explicit empty settledCiTrigger on the submit path is honoured as a clear",
+                created.getSettledCiTrigger());
+    }
+
+    /**
+     * The submit path carries an explicit non-empty {@code settledCiTrigger}
+     * through unchanged: the rebuilt registration request names it, so the
+     * created workstream uses exactly the trigger the submission asked for
+     * rather than the default.
+     */
+    @Test(timeout = 10000)
+    public void resolveOrRegisterPreservesExplicitSettledCiTrigger() {
+        SlackNotifier notifier = new SlackNotifier(null);
+        WorkstreamRegistrationHandler handler = handler(notifier,
+                (ownerRepo, branch) -> Collections.emptyList());
+        String body = "{\"defaultBranch\":\"feature/submit-explicit\",\"baseBranch\":\"master\","
+                + "\"repoUrl\":\"" + COMMON_REPO + "\",\"settledCiTrigger\":\"workflow:build.yaml\"}";
+
+        WorkstreamRegistrationHandler.Registration result = handler.resolveOrRegister(
+                body, "feature/submit-explicit", COMMON_REPO, null, true);
+
+        assertNull(result.failure());
+        Workstream created = notifier.findWorkstreamByBranchAndRepo("feature/submit-explicit", COMMON_REPO);
+        assertNotNull("a workstream must be created on submit", created);
+        assertNotNull("an explicit settledCiTrigger on the submit path is preserved",
+                created.getSettledCiTrigger());
+        assertEquals("workflow:build.yaml", created.getSettledCiTrigger().spec());
+    }
 }
