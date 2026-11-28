@@ -44,17 +44,14 @@ minimally, and §4.4 keeps the one unavoidable touch small.
 
 ## 1. Inventory — what is recorded per job today
 
-<!-- TODO(review): §1 cites source line numbers (e.g. JobStatsStore.java:54-86, updateJobSlackTs:1365); docs/CLAUDE.md forbids :NNN anchors — reference by stable class/method/table/column name instead (the "1596" counts already drifted). -->
-
 All storage is `JobStatsStore`
-(`flowtree/runtime/src/main/java/io/flowtree/controller/JobStatsStore.java`,
-1524 lines), an HSQLDB file database extending `ControllerDatabase`. Three
-tables:
+(`flowtree/runtime/src/main/java/io/flowtree/controller/JobStatsStore.java`),
+an HSQLDB file database extending `ControllerDatabase`. Three tables:
 
 ### 1.1 `job_timing` (one row per job, PK `job_id`)
 
-Columns, from the `CREATE_TABLE` DDL (`JobStatsStore.java:54-86`) plus the
-`SCHEMA_MIGRATIONS` ALTERs (`JobStatsStore.java:124-143`):
+Columns, from the `CREATE_TABLE` DDL plus the `SCHEMA_MIGRATIONS` ALTERs (both
+in `JobStatsStore`):
 
 | Column | Meaning | Written by |
 |---|---|---|
@@ -62,31 +59,30 @@ Columns, from the `CREATE_TABLE` DDL (`JobStatsStore.java:54-86`) plus the
 | `status` | lifecycle status (enum below) | all transitions |
 | `started_at` | real start; **seeded to `submitted_at` as a NOT-NULL placeholder** until a real start overwrites it | `recordJobStarted` / `promoteToStarted` |
 | `completed_at` | terminal time, null while live | `recordJobCompleted` / `cancelIfInFlight` |
-| `wall_clock_ms` | `completed_at − started_at`, computed in Java | `recordJobCompleted:445-460` |
+| `wall_clock_ms` | `completed_at − started_at`, computed in Java | `recordJobCompleted` |
 | `duration_ms`, `duration_api_ms` | runner-reported durations | completion |
 | `cost_usd` | total job cost (USD) | completion |
 | `num_turns` | agentic turns | completion |
 | `session_id`, `exit_code`, `subtype`, `session_error`, `permission_denials` | session diagnostics | completion |
 | `target_branch`, `commit_hash`, `pull_request_url` | git outcome | completion |
 | `error_message`, `blocked_category`, `blocked_detail`, `blocked_verified` | failure / block detail | completion |
-| `trigger_reason` DEFAULT `'manual'` | `manual` / `auto_resolve` / `completion_listener` | `setTriggerReason:381`, fan-out |
-| `heartbeat_at` | last liveness beat | `recordHeartbeat:756` |
-| `phase` | last lifecycle phase the harness reported | `recordPhase:819` |
-| `submitted_at`, `submitted_by` | controller-accept time and submitter | `recordJobSubmitted:242` |
+| `trigger_reason` DEFAULT `'manual'` | `manual` / `auto_resolve` / `completion_listener` | `setTriggerReason`, fan-out |
+| `heartbeat_at` | last liveness beat | `recordHeartbeat` |
+| `phase` | last lifecycle phase the harness reported | `recordPhase` |
+| `submitted_at`, `submitted_by` | controller-accept time and submitter | `recordJobSubmitted` |
 | `required_labels` | node-routing labels, serialized `k=v;k=v` | `recordJobSubmitted` |
 | `node` | worker identity, learned from a heartbeat or a start event | heartbeat / start |
-| `slack_message_ts` | Slack thread ts | `updateJobSlackTs:1365` |
+| `slack_message_ts` | Slack thread ts | `updateJobSlackTs` |
 
-Index: `idx_timing_ws_started (workstream_id, started_at)`
-(`JobStatsStore.java:89`).
+Index: `idx_timing_ws_started (workstream_id, started_at)`.
 
 ### 1.2 `job_runner_cost` and `job_model_cost`
 
-`CREATE_RUNNER_COST_TABLE` (`:98-104`) and `CREATE_MODEL_COST_TABLE`
-(`:111-117`): `(job_id, runner|model, cost_usd)`, one row per key, replaced
-idempotently on each completion (`recordCostsInTable:665`). Populated from
-`JobCompletionEvent.getCostByRunner()` / `getCostByModel()`
-(`recordJobCompleted(workstreamId, event):567-568`), which snapshot the job's
+`CREATE_RUNNER_COST_TABLE` and `CREATE_MODEL_COST_TABLE`:
+`(job_id, runner|model, cost_usd)`, one row per key, replaced idempotently on
+each completion (`recordCostsInTable`). Populated from
+`JobCompletionEvent.getCostByRunner()` / `getCostByModel()` (in
+`recordJobCompleted(workstreamId, event)`), which snapshot the job's
 `JobCostTracker`.
 
 ### 1.3 The derived / completion event
@@ -95,7 +91,7 @@ idempotently on each completion (`recordCostsInTable:665`). Populated from
 subclass `CodingAgentJobEvent` carry: `totalCostUsd`, `costByRunner`,
 `costByModel`, `costIncomplete`, `durationMs`, `durationApiMs`, `costUsd`,
 `numTurns`. `getActiveJobs`/`getPendingJobs`/`getJobIntervals`/`getRecentJobs`
-read these rows back (`JobStatsStore.java:870,916,956,1061`).
+read these rows back.
 
 ### 1.4 Derived states (SUBMITTED, LOST, RUNNING, UNRESPONSIVE)
 
@@ -160,7 +156,7 @@ Other known gaps: **no persisted job kind** (submission `job_type` is only
 
 ### 1.7 Existing query surface
 
-- `WeeklyStatsAggregator` (324 lines): counts by SUCCESS/FAILED/CANCELLED, sums
+- `WeeklyStatsAggregator`: counts by SUCCESS/FAILED/CANCELLED, sums
   of `wall_clock_ms`/`duration_ms`/`cost_usd`/`num_turns`, filtered
   `status NOT IN ('STARTED','SUBMITTED')`, `GROUP BY workstream_id`; joins the
   two cost tables for by-runner / by-model breakdowns.
