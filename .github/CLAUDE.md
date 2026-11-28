@@ -94,7 +94,7 @@ event that started it. The `changes` job publishes the mode as `run_tests`.
 | | Validate run | Test run |
 |-|--------------|----------|
 | Started by | `pull_request` (every push to a PR branch) | `deployment` of the branch to the `test` environment; `push` to master; `workflow_dispatch` |
-| Runs | `changes`, `build`, `maven-cache`, every static and integrity check, `checkstyle`, `python-tests`, `python-evals`, `agent-e2e-faults`, `agent-volume-isolation`, `docker-build`, `register-workstream` | all of that, plus `test-mac`, `test-media-mac`, `test-flowtree` and `analysis`; and, when `full_matrix` is `true` (master, `workflow_dispatch`), also `test`, `test-media`, `test-cl`, `test-media-cl`, `test-cuda` and `test-media-cuda` (see below) |
+| Runs | `changes`, `build`, `maven-cache`, every static and integrity check, `checkstyle`, `python-tests`, `python-evals`, `agent-e2e-faults`, `agent-volume-isolation`, `docker-build`, `deploy-rehearsal`, `register-workstream` | all of that (except `deploy-rehearsal` in a `deployment` run, whose head its validate run already rehearsed), plus `test-mac`, `test-media-mac`, `test-flowtree` and `analysis`; and, when `full_matrix` is `true` (master, `workflow_dispatch`), also `test`, `test-media`, `test-cl`, `test-media-cl`, `test-cuda` and `test-media-cuda` (see below) |
 | Remediation | `auto-review`, `auto-resolve-python` | `auto-resolve-python`, and `auto-resolve` after the flaky-test retries |
 | Gate check | **All Checks** | **Test Checks** |
 | `run_tests` | `false` | `true` |
@@ -1277,10 +1277,10 @@ The job asserts more than "the build exits 0": it counts the markdown/HTML
 files inside the built ar-manager image and fails if the corpus is missing or
 truncated, and fails if any `.java` file survived the pruning stage.
 
-**It does not build `flowtree-controller` or the agent image.** Those need the
-Maven artifacts (`flowtree/runtime/target`) first, which would put a full
-reactor build on this job. The gap is real and has already cost one failed
-deploy: a root `.dockerignore` rule added for ar-manager excluded
+**It does not build `flowtree-controller` or the agent image, and it starts
+nothing.** `deploy-rehearsal` (below) is what proves the stack deploys; this
+job remains as a fast, path-gated check of the corpus and the build context.
+Before the rehearsal existed the gap cost several failed deploys, among them: a root `.dockerignore` rule added for ar-manager excluded
 `**/target/`, which both of those images COPY from, and nothing caught it until
 the deploy ran. `tools/tests/test_dockerignore_consistency.py` now covers that
 specific class of break statically — it cross-references every Dockerfile's
@@ -1290,6 +1290,39 @@ only at deploy. This
 matters because `_get_docs()` in `server.py` degrades **silently** when the
 corpus is absent — a broken image would start cleanly and simply answer without
 documentation grounding, which no startup check would catch.
+
+### What the `deploy-rehearsal` job covers
+
+It performs the deploy on every change, short of replacing the running stack:
+`./flowtree/runtime/rebuild.sh --rehearse --agents`, the same script the
+deploy runs. That is the deploy's own Maven build, every image the deploy
+builds (controller stack and agent pool, `--no-cache --pull`), and the deploy's
+own preflight, which starts `ar-memory`, `ar-tracker`, `flowtree-controller`
+and `ar-manager` from the new images in an isolated project and requires every
+healthcheck to pass and ar-manager's documentation corpus to be present. It
+then exits: nothing is swapped or pruned. The images are built under the
+compose project `flowtree-rehearsal`, so a rehearsal run by hand on the deploy
+host never retags the live stack's images, and every host path the stack uses
+derives from `FLOWTREE_HOST_DIR`, which the job points at a scratch directory.
+
+There is deliberately no second description of the deploy: whatever the deploy
+builds or starts, the rehearsal builds or starts, because it is the deploy.
+And it carries **no path gate** — a path list is a guess at what the images
+depend on, and that guess (plus building without starting) is how
+`ModuleNotFoundError: memory_text` and an agent image that did not build both
+reached the deploy with a green pipeline. It runs in validate runs (`All
+Checks`) and in master's push run (`Test Checks`), on `ubuntu-24.04-arm`
+because the deploy host builds `linux/arm64` images. It is skipped only in a
+`deployment`-started test run. Uploads no coverage, so it is **not** in
+`analysis.needs`; it **is** in `all-checks`.
+`tools/tests/test_deploy_rehearsal.py` and `test-rebuild.sh` pin it.
+
+**What it cannot prove.** It runs against an empty workstream list and empty
+data, so a failure that needs the deploy host's real configuration, data or
+secrets, or the host itself (a full disk, a drain that times out because jobs
+are running, the post-deploy canary waiting on the live fleet), is still found
+only by the deploy. Those failures never reach a running stack that was
+healthy: the deploy's preflight and rollback still apply.
 
 ### What the `Deploy Controller Stack` workflow does
 
@@ -1327,6 +1360,13 @@ step so a failed deploy cannot leave the controller permanently quiesced.
 
 `concurrency` does **not** cancel in progress: interrupting a half-finished
 container rebuild is worse than queueing behind it.
+
+**It deploys only a rehearsed commit.** Its first step after checkout,
+`tools/ci/require_rehearsed_commit.py`, looks up the `Build and Test` push runs
+of the master commit it checked out and fails unless the latest attempt of one
+of them has a successful `Deploy rehearsal` job. It runs before intake is
+closed, has no override, and needs `actions: read`. A commit that has not
+passed the rehearsal — still running, failed, or never run — is not deployed.
 
 **A deploy never takes the stack down on a guess.** `rebuild.sh` builds every
 image — controller stack and agent pool — before it stops any container, so a
