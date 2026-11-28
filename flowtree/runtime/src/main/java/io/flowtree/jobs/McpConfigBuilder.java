@@ -206,6 +206,8 @@ public class McpConfigBuilder implements ConsoleFeatures {
             "workstream_register",
             "workstream_update_config",
             "workspace_update_config",
+            // Read-only, but an operator/orchestrator concern like its writer.
+            "workspace_get_config",
             "workstream_archive",
             "workstream_unarchive",
             // Batch variants of the two above: strictly more reach, same

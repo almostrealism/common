@@ -96,7 +96,9 @@ def workstream_submit_task(
     (``AR_TEST_GROUP``/``AR_TEST_GROUPS``). A Maven command must select a
     bounded set of tests via ``-Dtest`` (at most 5 classes and 40
     ``Class#method`` tests, no wildcard or other unbounded selector); a
-    pytest command must select one explicit node id. This is checked
+    pytest command must select explicit ``.py`` test files or
+    ``file.py::test_name`` node ids (at most 5 files and 40 node ids, never
+    a directory or no path at all). This is checked
     mechanically on every submission --
     see ``tools/mcp/manager/execution_limits.py`` for the full rule
     and the incident that made it a hard requirement. There is no operator
@@ -347,8 +349,10 @@ def workstream_submit_task(
             explicit ``-Dtest=Class#method`` selector (a bare
             ``-Dtest=Class`` also counts as too broad), when it references
             ``AR_TEST_GROUP``/``AR_TEST_GROUPS`` in any form, or when it runs
-            pytest against a directory or whole file instead of an explicit
-            node id (``file.py::test_name``). ``mvn install -DskipTests`` is
+            pytest with no path, against a directory, or above the caps
+            instead of a bounded selection of explicit ``.py`` files or node
+            ids (``file.py::test_name``; at most 5 files and 40 node ids).
+            ``mvn install -DskipTests`` is
             a build, not a test run, and remains allowed. This mirrors the
             same-named rule on ``command`` for a shell-command job. See
             ``tools/mcp/manager/execution_limits.py``.
@@ -574,15 +578,17 @@ def workstream_submit_task(
                 remediation = (
                     "Rewrite the command to name explicit Class#method tests "
                     "(Maven: at most 5 classes' worth, 40 Class#method tests "
-                    "total, via -Dtest) or exactly one explicit node id "
-                    "(pytest). A bare class is not accepted for a "
+                    "total, via -Dtest) or explicit .py files or node ids "
+                    "(pytest: at most 5 files and 40 node ids). A bare class "
+                    "is not accepted for a "
                     "post_completion_command."
                 )
             else:
                 remediation = (
                     "Rewrite the command to select a bounded set of tests "
                     "(Maven: at most 5 classes and 40 Class#method tests via "
-                    "-Dtest) or exactly one explicit node id (pytest)."
+                    "-Dtest) or explicit .py files or node ids (pytest: at "
+                    "most 5 files and 40 node ids)."
                 )
             return {
                 "ok": False,

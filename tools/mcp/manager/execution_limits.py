@@ -191,6 +191,17 @@ _PYTHON_NOARG_FLAGS = {
 # their own operand, mirroring _PYTHON_NOARG_FLAGS for flags that are not bare.
 _PYTHON_ARG_FLAGS = {"-W", "-X"}
 
+# pytest options whose value is the next token, so that value is not mistaken
+# for a test path ("-k test_bar", "-p no:cacheprovider"). The "--opt=value"
+# form needs no entry: it is one token starting with "-". Mirrors
+# PYTEST_VALUE_OPTIONS in .claude/hooks/lib/pytest_broad_run_check.py.
+_PYTEST_VALUE_OPTIONS = {
+    "-k", "-m", "-p", "-c", "-o", "-W", "-n", "--rootdir", "--confcutdir",
+    "--basetemp", "--deselect", "--ignore", "--ignore-glob", "--junitxml",
+    "--junit-xml", "--maxfail", "--tb", "--durations", "--log-level",
+    "--override-ini", "--import-mode", "--capture", "--cov", "--timeout",
+}
+
 # Matches a Python interpreter executable base name, including versioned forms
 # such as "python", "python3", "python3.11" or "python2.7". A versioned
 # launcher must be recognized wherever the bare "python"/"python3" names are,
@@ -888,6 +899,16 @@ _DTEST_METHOD_NAME = re.compile(r"[A-Za-z_$][A-Za-z0-9_$]*")
 _MAX_TEST_CLASSES = 5
 _MAX_TEST_METHODS = 40
 
+# Shell glob and brace-expansion metacharacters. An unquoted "tests/*.py" reaches
+# this validator as the literal token "tests/*.py", ends in ".py", and would be
+# counted as one file, yet the shell expands it to an unbounded number of files.
+# A file path carrying any of these is therefore not an explicit single file.
+# Mirrors GLOB_METACHARACTERS in PostCompletionCommandValidator.java. The
+# pre-execution hook .claude/hooks/lib/pytest_broad_run_check.py does not yet
+# reject these, so this submission validator is intentionally stricter than
+# the hook (fail-safe); aligning the hook is tracked as a follow-up.
+_GLOB_METACHARACTERS = "*?[]{}"
+
 
 def _dtest_is_narrow(value: str) -> bool:
     """True if ``value`` names a bounded set of tests: at most
@@ -1079,9 +1100,38 @@ def _index_of_module_flag(tokens: list):
     return None
 
 
+def _pytest_positionals(args: list) -> list:
+    """Return the test-path arguments of a pytest invocation, skipping its
+    options and the value token of each option in ``_PYTEST_VALUE_OPTIONS``,
+    so ``pytest -k test_bar test_foo.py`` yields only ``test_foo.py``."""
+    result = []
+    skip_next = False
+    for arg in args:
+        if skip_next:
+            skip_next = False
+        elif arg.startswith("-"):
+            skip_next = arg in _PYTEST_VALUE_OPTIONS
+        else:
+            result.append(arg)
+    return result
+
+
 def _pytest_segment_violation(tokens: list) -> str:
     """Return a violation reason for a single ``pytest``/``python -m pytest``
-    command segment, or ``""`` when it already names explicit node ids."""
+    command segment, or ``""`` when it already names a bounded selection of
+    explicit test files or node ids.
+
+    A bounded selection mirrors ``.claude/hooks/lib/pytest_broad_run_check.py``
+    and the root ``CLAUDE.md`` "Test Execution Limits" rule: every positional
+    is an explicit ``.py`` test file (``file.py``) or node id
+    (``file.py::test_name``), naming at most ``_MAX_TEST_CLASSES`` distinct
+    files and at most ``_MAX_TEST_METHODS`` node ids. A test file counts as one
+    class against the cap the way naming a class to Surefire does -- it bounds
+    which tests can run without bounding how many cases the file holds. What is
+    refused, as an unbounded run, is no positional at all (pytest then collects
+    from the current directory), a directory or any other non-``.py``
+    positional, or a selection above either cap.
+    """
     if not tokens:
         return ""
     base = tokens[0].rsplit("/", 1)[-1]
@@ -1098,20 +1148,42 @@ def _pytest_segment_violation(tokens: list) -> str:
     substitution_reason = _substitution_argument_violation(tokens, rest)
     if substitution_reason:
         return substitution_reason
-    positionals = [a for a in rest if not a.startswith("-")]
-    if len(positionals) == 1 and "::" in positionals[0]:
-        return ""
-    if len(positionals) > 1:
+    positionals = _pytest_positionals(rest)
+    if not positionals:
         return (
-            "pytest command names {} positional arguments in \"{}\". Even "
-            "when each one is an explicit node id, pytest runs them "
-            "together in a single invocation, which agents and job "
-            "submitters may never do. Pass exactly one node id per "
-            "invocation.".format(len(positionals), " ".join(tokens)))
-    return (
-        "pytest command has no explicit node id (file.py::test_name): "
-        "\"{}\". This runs an entire file or directory. Pass explicit "
-        "node ids, one test per invocation.".format(" ".join(tokens)))
+            "pytest command names no explicit test file or node id "
+            "(file.py or file.py::test_name): \"{}\". This runs an entire "
+            "file or directory. Pass explicit test files or node ids, at most "
+            "{} files and {} node ids per invocation.".format(
+                " ".join(tokens), _MAX_TEST_CLASSES, _MAX_TEST_METHODS))
+    files = set()
+    node_ids = 0
+    for positional in positionals:
+        file_part = positional.split("::", 1)[0]
+        if any(ch in file_part for ch in _GLOB_METACHARACTERS):
+            return (
+                "pytest command positional \"{}\" in \"{}\" uses a shell glob "
+                "or brace-expansion metacharacter in its file path. The shell "
+                "expands it to an unbounded number of files; pass each explicit "
+                ".py test file or file.py::test_name node id "
+                "literally.".format(positional, " ".join(tokens)))
+        if not file_part.endswith(".py"):
+            return (
+                "pytest command names a non-file positional \"{}\" in \"{}\". "
+                "A directory or other non-.py path runs every test it holds; "
+                "pass explicit .py test files or file.py::test_name node "
+                "ids.".format(positional, " ".join(tokens)))
+        files.add(file_part)
+        if "::" in positional:
+            node_ids += 1
+    if len(files) > _MAX_TEST_CLASSES or node_ids > _MAX_TEST_METHODS:
+        return (
+            "pytest command selects {} test files and {} node ids in \"{}\", "
+            "more than the {} files and {} node ids allowed per invocation. "
+            "Split it into bounded runs.".format(
+                len(files), node_ids, " ".join(tokens),
+                _MAX_TEST_CLASSES, _MAX_TEST_METHODS))
+    return ""
 
 
 def _unittest_segment_violation(tokens: list) -> str:
