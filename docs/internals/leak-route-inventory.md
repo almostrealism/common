@@ -31,12 +31,17 @@ a bare `session_<id>`, or a URL whose host is a lab machine.
 
 Two facts about it shape every row below:
 
-1. **It is hook-only and in-session.** No server-side or CI egress path
-   imports `private_url_check` or applies an equivalent filter. Verified: no
-   file under `flowtree/` or `tools/mcp/` references the detector. So every G2,
-   G3 (server side), G5, G6, G7, G8, G9 route is *uncovered in code today* —
-   they are the guard work still to be built, not routes that are already
-   filtered.
+1. **It is in-session only.** Two in-session surfaces apply `private_url_check`:
+   the `PreToolUse` hook above, and the ar-commit MCP server
+   (`tools/mcp/commit/commit_check.py`), which calls `private_links` on the
+   commit message before it will commit. Both run inside the agent session. No
+   *server-side or CI* egress path imports the detector or applies an equivalent
+   filter — verified: no file under `flowtree/` references it, and the only
+   `tools/mcp/` reference is that in-session commit check. So every G2, G3
+   (server side), G5, G6, G7, G8, G9 route is *uncovered in code today* — they
+   are the guard work still to be built, not routes that are already filtered.
+   The in-session commit check does not cover staged file *contents*, only the
+   message text.
 2. **It performs no normalisation.** `CLAUDE_AI_LINK` requires the literal
    host; `SESSION_ID` is `\bsession_[A-Za-z0-9]{16,}\b` and is **not**
    case-insensitive. Every URL-encoded, HTML-entity, NFKC/fullwidth,

@@ -158,23 +158,30 @@ def _inject_zero_width(text):
 # ---------------------------------------------------------------------------
 
 def _url_forms():
-    """Plain URL spellings a guard must catch without any decoding."""
+    """Plain URL spellings a guard must catch without any decoding.
+
+    Each form carries its own canonical token — the plain URL the payload
+    reduces to. For every form but ``trailing_punct`` the payload is already
+    that bare URL; ``trailing_punct`` wraps the URL in prose and parentheses, so
+    its canonical is kept as the bare URL rather than the displayed string.
+    """
     host = _host()
     sid = _session_token()
+    code_url = "https://" + host + "/code/" + sid
     forms = [
-        ("https_code", "https://" + host + "/code/" + sid),
-        ("http_code", "http://" + host + "/code/" + sid),
-        ("www_prefix", "https://www." + host + "/code/" + sid),
-        ("scheme_relative", "//" + host + "/code/" + sid),
-        ("no_scheme", host + "/code/" + sid),
-        ("chat_path", "https://" + host + "/chat/" + sid),
-        ("artifact_path", "https://" + host + "/artifact/" + "abc123"),
-        ("project_path", "https://" + host + "/project/" + "xyz789"),
-        ("share_path", "https://" + host + "/share/" + sid),
-        ("trailing_punct", "see (" + "https://" + host + "/code/" + sid + ")."),
+        ("https_code", code_url, code_url),
+        ("http_code", "http://" + host + "/code/" + sid, "http://" + host + "/code/" + sid),
+        ("www_prefix", "https://www." + host + "/code/" + sid, "https://www." + host + "/code/" + sid),
+        ("scheme_relative", "//" + host + "/code/" + sid, "//" + host + "/code/" + sid),
+        ("no_scheme", host + "/code/" + sid, host + "/code/" + sid),
+        ("chat_path", "https://" + host + "/chat/" + sid, "https://" + host + "/chat/" + sid),
+        ("artifact_path", "https://" + host + "/artifact/" + "abc123", "https://" + host + "/artifact/" + "abc123"),
+        ("project_path", "https://" + host + "/project/" + "xyz789", "https://" + host + "/project/" + "xyz789"),
+        ("share_path", "https://" + host + "/share/" + sid, "https://" + host + "/share/" + sid),
+        ("trailing_punct", "see (" + code_url + ").", code_url),
     ]
-    for name, payload in forms:
-        yield Case("url_form", _SURFACES_TEXT, payload, payload, [])
+    for name, payload, canonical in forms:
+        yield Case("url_form", _SURFACES_TEXT, payload, canonical, [])
 
 
 def _bare_session_ids():
@@ -361,6 +368,17 @@ _FAMILIES = [
     _stacked_obfuscation,
     _credential_leaks,
 ]
+
+
+def families():
+    """The family generators, in corpus order.
+
+    Each is a zero-argument callable yielding :class:`Case` tuples. Exposed so a
+    test can assert every family still contributes at least one case, which a
+    bare count of :func:`kinds` cannot prove (one family can supply several
+    kinds, so a dropped family may leave the kind count unchanged).
+    """
+    return tuple(_FAMILIES)
 
 
 def all_cases():

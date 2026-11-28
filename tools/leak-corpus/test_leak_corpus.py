@@ -63,6 +63,11 @@ def cases_of_kind(kind):
 class CorpusIntegrityTests(unittest.TestCase):
 
     def test_every_family_contributes_cases(self):
+        families = leak_corpus.families()
+        self.assertTrue(families)
+        for family in families:
+            self.assertTrue(list(family()),
+                            "family %s contributed no cases" % family.__name__)
         self.assertTrue(leak_corpus.all_cases())
         self.assertGreaterEqual(len(leak_corpus.kinds()), 15)
 
@@ -76,6 +81,8 @@ class CorpusIntegrityTests(unittest.TestCase):
         """Each canonical token is ASCII, NFKC-stable and free of zero-width."""
         for case in leak_corpus.all_cases():
             canonical = case.canonical
+            self.assertTrue(canonical.isascii(),
+                            "canonical token is not ASCII: %r" % (case,))
             self.assertEqual(canonical, unicodedata.normalize("NFKC", canonical), case)
             for zero_width in leak_corpus.ZERO_WIDTH:
                 self.assertNotIn(zero_width, canonical, case)
