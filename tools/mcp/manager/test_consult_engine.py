@@ -242,12 +242,24 @@ class TestNoteRetrieval(_Pipeline):
 class TestPureHelpers(unittest.TestCase):
 
     def test_parse_trailer(self):
-        body, basis, conflicts, present = consult_engine.parse_trailer(
-            "Answer [D1].\nBASIS: documentation+notes\nCONFLICTS: N1 vs D2 — x; none")
+        body, basis, conflicts, basis_present, conflicts_present = \
+            consult_engine.parse_trailer(
+                "Answer [D1].\nBASIS: documentation+notes\nCONFLICTS: N1 vs D2 — x; none")
         self.assertEqual(body, "Answer [D1].")
         self.assertEqual(basis, "documentation+notes")
         self.assertEqual(conflicts, ["N1 vs D2 — x"])
-        self.assertTrue(present)
+        self.assertTrue(basis_present)
+        self.assertTrue(conflicts_present)
+
+    def test_parse_trailer_tracks_each_line_separately(self):
+        _, _, _, basis_present, conflicts_present = consult_engine.parse_trailer(
+            "Answer [D1].\nBASIS: documentation")
+        self.assertTrue(basis_present)
+        self.assertFalse(conflicts_present)
+        _, _, _, basis_present, conflicts_present = consult_engine.parse_trailer(
+            "Answer [D1].\nCONFLICTS: none")
+        self.assertFalse(basis_present)
+        self.assertTrue(conflicts_present)
 
     def test_compute_basis_counts_only_fact_tiers(self):
         ev = EvidenceList()
@@ -475,6 +487,269 @@ class TestHedgeWhenSupportIsGone(_Pipeline):
         self.assertEqual(result["answer_basis"], "notes")
         self.assertIn(consult_engine.NOTES_BASIS_SENTENCE, result["answer"])
         self.assertNotIn(consult_engine.HEDGE_SENTENCE, result["answer"])
+
+
+class TestCitationRetry(_Pipeline):
+    """One revision when the verifier flags sentences: kept only when it has
+    fewer warnings and does not abstain where the draft answered."""
+
+    BAD = ("It rejects edits to base-branch tests [D1]. It exits 3 [D1].\n"
+           "BASIS: documentation\nCONFLICTS: none")
+    GOOD = ("It rejects edits to base-branch tests [D1]. It exits 3 [I1].\n"
+            "BASIS: documentation\nCONFLICTS: none")
+
+    def run_with(self, draft, revision=None, has_revise=True, memories=()):
+        llm = MagicMock(spec=["consult", "revise"] if has_revise else ["consult"])
+        llm.consult.return_value = Synthesis(draft, "fake")
+        if has_revise:
+            llm.revise.return_value = revision
+        with patch.object(server, "_get_docs", return_value=_docs(
+                [_doc(text="rejects edits to base-branch tests")])), \
+                patch.object(server, "_get_llm", return_value=llm), \
+                patch.object(server, "_get_memory_client",
+                             return_value=_Memory(list(memories))):
+            result = server.consult(question="What does validate-agent-commit.sh do?",
+                                    keywords=["validate-agent-commit.sh"],
+                                    repo_url="git@github.com:org/repo.git")
+        return result, llm
+
+    def test_a_better_revision_is_kept(self):
+        result, llm = self.run_with(self.BAD, Synthesis(self.GOOD, "fake"))
+        self.assertEqual(result["citation_retry"]["kept"], "revision")
+        self.assertEqual(result["citation_retry"]["warnings_before"], 1)
+        self.assertEqual(result["citation_retry"]["warnings_after"], 0)
+        self.assertEqual(result["citation_warnings"], [])
+        kwargs = llm.revise.call_args.kwargs
+        self.assertEqual(kwargs["draft"], self.BAD)
+        self.assertEqual([w["reason"] for w in kwargs["warnings"]], ["value"])
+
+    def test_a_draft_without_warnings_is_not_revised(self):
+        result, llm = self.run_with(self.GOOD)
+        llm.revise.assert_not_called()
+        self.assertNotIn("citation_retry", result)
+
+    def test_a_revision_that_abstains_is_not_kept(self):
+        result, _ = self.run_with(self.BAD, Synthesis(
+            "Not documented.\nBASIS: none\nCONFLICTS: none", "fake"))
+        self.assertEqual(result["citation_retry"]["kept"], "draft")
+        self.assertTrue(result["citation_retry"]["revision_abstained"])
+        self.assertFalse(result["abstained"])
+        self.assertEqual(len(result["citation_warnings"]), 1)
+
+    def test_a_revision_that_is_no_better_is_not_kept(self):
+        result, _ = self.run_with(self.BAD, Synthesis(self.BAD, "fake"))
+        self.assertEqual(result["citation_retry"]["kept"], "draft")
+        self.assertEqual(result["citation_retry"]["warnings_after"], 1)
+
+    def test_a_failed_revision_keeps_the_draft(self):
+        result, _ = self.run_with(self.BAD, Synthesis(None, "fake", "backend down"))
+        self.assertEqual(result["citation_retry"]["kept"], "draft")
+        self.assertEqual(result["citation_retry"]["degraded"], "backend down")
+        self.assertEqual(len(result["citation_warnings"]), 1)
+
+    def test_a_backend_without_revise_keeps_the_draft(self):
+        result, _ = self.run_with(self.BAD, has_revise=False)
+        self.assertNotIn("citation_retry", result)
+        self.assertEqual(len(result["citation_warnings"]), 1)
+
+    def test_a_revision_that_drops_the_trailer_is_not_kept(self):
+        fixed_body = "It rejects edits to base-branch tests [D1]. It exits 3 [I1]."
+        result, _ = self.run_with(self.BAD, Synthesis(fixed_body, "fake"))
+        self.assertEqual(result["citation_retry"]["kept"], "draft")
+        self.assertEqual(result["citation_retry"]["warnings_after"], 0)
+        self.assertTrue(result["citation_retry"]["revision_trailer_missing"])
+        self.assertNotIn("trailer missing", result.get("format_warnings", []))
+        self.assertEqual(len(result["citation_warnings"]), 1)
+
+    def test_a_kept_revision_records_no_trailer_loss(self):
+        result, _ = self.run_with(self.BAD, Synthesis(self.GOOD, "fake"))
+        self.assertNotIn("revision_trailer_missing", result["citation_retry"])
+
+    def test_a_revision_that_empties_the_body_is_not_kept(self):
+        # A revision that keeps only the trailer has no warnings, but
+        # _post_process would abstain on its empty body, so the retry must
+        # not replace the answered draft with it.
+        result, _ = self.run_with(self.BAD, Synthesis(
+            "BASIS: documentation\nCONFLICTS: none", "fake"))
+        self.assertEqual(result["citation_retry"]["kept"], "draft")
+        self.assertTrue(result["citation_retry"]["revision_empty"])
+        self.assertFalse(result["abstained"])
+        self.assertEqual(len(result["citation_warnings"]), 1)
+
+    def test_a_revision_that_is_all_history_is_not_kept(self):
+        # The revision fixes the citation but rests entirely on a stale note
+        # and is framed historically, so the verifier flags nothing while
+        # _post_process strips every sentence into history and would abstain.
+        # Its body is non-empty, so only the post-history check catches it;
+        # the answered draft must be kept.
+        memories = [{"id": "m1", "branch": "feature/gone",
+                     "created_at": "2026-05-01T00:00:00Z",
+                     "content": "validate-agent-commit.sh was renamed from "
+                                "validate-commit.sh."}]
+        revision = ("Historically, validate-agent-commit.sh was renamed from "
+                    "validate-commit.sh [N1].\nBASIS: notes\nCONFLICTS: none")
+        result, _ = self.run_with(self.BAD, Synthesis(revision, "fake"),
+                                  memories=memories)
+        self.assertEqual(result["citation_retry"]["kept"], "draft")
+        self.assertTrue(result["citation_retry"]["revision_empty"])
+        self.assertFalse(result["abstained"])
+        self.assertEqual(len(result["citation_warnings"]), 1)
+
+    def test_a_revision_that_drops_one_trailer_line_is_not_kept(self):
+        # The revision fixes the citation but keeps only BASIS:, dropping the
+        # CONFLICTS: line the draft had. A partial trailer is malformed, so
+        # the draft is kept.
+        partial = "It rejects edits to base-branch tests [D1]. It exits 3 [I1].\nBASIS: documentation"
+        result, _ = self.run_with(self.BAD, Synthesis(partial, "fake"))
+        self.assertEqual(result["citation_retry"]["kept"], "draft")
+        self.assertEqual(result["citation_retry"]["warnings_after"], 0)
+        self.assertTrue(result["citation_retry"]["revision_trailer_missing"])
+        self.assertEqual(len(result["citation_warnings"]), 1)
+
+    def test_a_revision_that_invents_a_conflict_is_not_kept(self):
+        # The revision fixes the citation but rewrites the draft's
+        # "CONFLICTS: none" into a conflict it invented. The retry repairs
+        # citations only, so the draft is kept and its (empty) conflict
+        # metadata is published unchanged rather than the invented one.
+        invented = ("It rejects edits to base-branch tests [D1]. It exits 3 [I1].\n"
+                    "BASIS: documentation\nCONFLICTS: D1 vs I1 — exit code 3 vs other")
+        result, _ = self.run_with(self.BAD, Synthesis(invented, "fake"))
+        self.assertEqual(result["citation_retry"]["kept"], "draft")
+        self.assertEqual(result["citation_retry"]["warnings_after"], 0)
+        self.assertTrue(result["citation_retry"]["revision_conflicts_changed"])
+        self.assertEqual(result["conflicts"], [])
+        self.assertEqual(len(result["citation_warnings"]), 1)
+
+    def test_a_revision_that_drops_a_conflict_is_not_kept(self):
+        # The draft reports a real conflict; the revision fixes the citation
+        # but rewrites "CONFLICTS: D1 vs I1 ..." to "none". Dropping the
+        # conflict is outside the citation retry's mandate, so the draft and
+        # its conflict are kept.
+        draft = ("It rejects edits to base-branch tests [D1]. It exits 3 [D1].\n"
+                 "BASIS: documentation\nCONFLICTS: D1 vs I1 — exit code 3 vs other")
+        revision = ("It rejects edits to base-branch tests [D1]. It exits 3 [I1].\n"
+                    "BASIS: documentation\nCONFLICTS: none")
+        result, _ = self.run_with(draft, Synthesis(revision, "fake"))
+        self.assertEqual(result["citation_retry"]["kept"], "draft")
+        self.assertEqual(result["citation_retry"]["warnings_after"], 0)
+        self.assertTrue(result["citation_retry"]["revision_conflicts_changed"])
+        self.assertEqual([c["items"] for c in result["conflicts"]], [["D1", "I1"]])
+        self.assertEqual(len(result["citation_warnings"]), 1)
+
+    def test_a_kept_revision_records_no_conflict_change(self):
+        result, _ = self.run_with(self.BAD, Synthesis(self.GOOD, "fake"))
+        self.assertEqual(result["citation_retry"]["kept"], "revision")
+        self.assertNotIn("revision_conflicts_changed", result["citation_retry"])
+
+    def test_a_revision_that_adds_an_uncited_claim_is_not_kept(self):
+        # The revision "fixes" the flagged sentence by dropping its marker
+        # instead of citing I1, leaving a grounded-but-uncited claim. That
+        # lowers the warning count (uncited-grounded sentences are not warnings)
+        # while raising uncited_claims, so the retry would publish an uncited
+        # claim. The guard keeps the draft instead.
+        revision = ("It rejects edits to base-branch tests [D1]. It exits 3.\n"
+                    "BASIS: documentation\nCONFLICTS: none")
+        result, _ = self.run_with(self.BAD, Synthesis(revision, "fake"))
+        self.assertEqual(result["citation_retry"]["kept"], "draft")
+        self.assertEqual(result["citation_retry"]["warnings_after"], 0)
+        self.assertTrue(result["citation_retry"]["revision_uncited_increased"])
+        self.assertEqual(result["uncited_claims"], 0)
+        self.assertEqual(len(result["citation_warnings"]), 1)
+
+    def test_a_kept_revision_records_no_uncited_increase(self):
+        result, _ = self.run_with(self.BAD, Synthesis(self.GOOD, "fake"))
+        self.assertEqual(result["citation_retry"]["kept"], "revision")
+        self.assertNotIn("revision_uncited_increased", result["citation_retry"])
+
+    def test_a_revision_that_rewrites_an_unflagged_sentence_is_not_kept(self):
+        # The revision repairs the flagged "It exits 3" sentence but also
+        # replaces the unflagged, correctly cited first sentence with an
+        # unrelated supported one. That is beyond the citation retry's mandate
+        # (the prompt tells the model to keep every other sentence as it is),
+        # and the replacement carries no warning, so only the unflagged guard
+        # catches it; the draft is kept.
+        revision = ("It blocks commits to protected files [D1]. It exits 3 [I1].\n"
+                    "BASIS: documentation\nCONFLICTS: none")
+        result, _ = self.run_with(self.BAD, Synthesis(revision, "fake"))
+        self.assertEqual(result["citation_retry"]["kept"], "draft")
+        self.assertEqual(result["citation_retry"]["warnings_after"], 0)
+        self.assertTrue(result["citation_retry"]["revision_altered_unflagged"])
+        self.assertEqual(len(result["citation_warnings"]), 1)
+
+    def test_a_kept_revision_records_no_unflagged_change(self):
+        result, _ = self.run_with(self.BAD, Synthesis(self.GOOD, "fake"))
+        self.assertEqual(result["citation_retry"]["kept"], "revision")
+        self.assertNotIn("revision_altered_unflagged", result["citation_retry"])
+
+    def test_a_revision_that_reorders_unflagged_sentences_is_not_kept(self):
+        # Two correctly cited, unflagged sentences and one flagged one. The
+        # revision repairs the flagged sentence but swaps the order of the two
+        # unflagged ones. Both still appear, so a set-membership check would
+        # pass them; "keep every other sentence as it is" constrains order too,
+        # so the ordered-subsequence guard catches the swap and keeps the draft.
+        draft = ("It rejects edits to base-branch tests [D1]. "
+                 "It blocks commits to protected files [D1]. It exits 3 [D1].\n"
+                 "BASIS: documentation\nCONFLICTS: none")
+        revision = ("It blocks commits to protected files [D1]. "
+                    "It rejects edits to base-branch tests [D1]. It exits 3 [I1].\n"
+                    "BASIS: documentation\nCONFLICTS: none")
+        result, _ = self.run_with(draft, Synthesis(revision, "fake"))
+        self.assertEqual(result["citation_retry"]["kept"], "draft")
+        self.assertEqual(result["citation_retry"]["warnings_after"], 0)
+        self.assertTrue(result["citation_retry"]["revision_altered_unflagged"])
+        self.assertEqual(len(result["citation_warnings"]), 1)
+
+    def test_a_revision_that_appends_a_new_claim_is_not_kept(self):
+        # The revision repairs the flagged sentence and keeps the unflagged one,
+        # but also appends a supported claim the draft never made. The prompt
+        # says not to add claims, so the extra sentence keeps the draft.
+        revision = ("It rejects edits to base-branch tests [D1]. It exits 3 [I1]. "
+                    "It blocks commits to protected files [D1].\n"
+                    "BASIS: documentation\nCONFLICTS: none")
+        result, _ = self.run_with(self.BAD, Synthesis(revision, "fake"))
+        self.assertEqual(result["citation_retry"]["kept"], "draft")
+        self.assertEqual(result["citation_retry"]["warnings_after"], 0)
+        self.assertTrue(result["citation_retry"]["revision_altered_unflagged"])
+        self.assertEqual(len(result["citation_warnings"]), 1)
+
+    def test_a_revision_that_inserts_a_claim_before_an_unflagged_one_is_not_kept(self):
+        # The new sentence sits ahead of the unflagged first sentence, in a gap
+        # where the draft had no flagged sentence to stand in for, so it counts
+        # as an addition even though the flagged sentence is repaired in place.
+        revision = ("It blocks commits to protected files [D1]. "
+                    "It rejects edits to base-branch tests [D1]. It exits 3 [I1].\n"
+                    "BASIS: documentation\nCONFLICTS: none")
+        result, _ = self.run_with(self.BAD, Synthesis(revision, "fake"))
+        self.assertEqual(result["citation_retry"]["kept"], "draft")
+        self.assertEqual(result["citation_retry"]["warnings_after"], 0)
+        self.assertTrue(result["citation_retry"]["revision_altered_unflagged"])
+
+    def test_a_revision_that_removes_the_flagged_sentence_is_kept(self):
+        # Removing a flagged sentence is one of the repairs the prompt allows,
+        # so a revision that keeps only the unflagged sentence is published.
+        revision = ("It rejects edits to base-branch tests [D1].\n"
+                    "BASIS: documentation\nCONFLICTS: none")
+        result, _ = self.run_with(self.BAD, Synthesis(revision, "fake"))
+        self.assertEqual(result["citation_retry"]["kept"], "revision")
+        self.assertEqual(result["citation_retry"]["warnings_after"], 0)
+        self.assertNotIn("revision_altered_unflagged", result["citation_retry"])
+        self.assertEqual(result["citation_warnings"], [])
+
+    def verify_calls(self, draft, revision=None):
+        """Run a consult and return how many times the verifier ran."""
+        with patch.object(consult_engine, "verify",
+                          wraps=consult_engine.verify) as spy:
+            self.run_with(draft, revision)
+        return spy.call_count
+
+    def test_a_clean_draft_is_verified_once(self):
+        self.assertEqual(self.verify_calls(self.GOOD), 1)
+
+    def test_a_kept_revision_is_not_verified_again(self):
+        self.assertEqual(self.verify_calls(self.BAD, Synthesis(self.GOOD, "fake")), 2)
+
+    def test_a_kept_draft_is_not_verified_again(self):
+        self.assertEqual(self.verify_calls(self.BAD, Synthesis(self.BAD, "fake")), 2)
 
 
 if __name__ == "__main__":

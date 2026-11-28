@@ -218,7 +218,7 @@ def memory_recall(
                 degraded_cause = synthesis.cause
                 degraded_instruction = synthesis.agent_instruction
             else:
-                body, _, _, _ = consult_engine.parse_trailer(synthesis.text)
+                body, _, _, _, _ = consult_engine.parse_trailer(synthesis.text)
                 summary = evidence.expand(body) or None
         except Exception as e:
             # Backend failures arrive as a degraded Synthesis, so this is an
