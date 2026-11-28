@@ -375,26 +375,32 @@ within the existing derive-at-read design — no new persisted status.
 ### 4.4 Respecting the 1600-line cap
 
 `server.py` and `FlowTreeController.java` sit within a handful of lines of the
-1600-line cap; `FlowTreeApiEndpoint.java` has more headroom but is still close
-enough that it is worth watching. (Verify the current counts against the files
-before acting — they move with every merge into this branch.) New behaviour goes
+1600-line cap; `FlowTreeApiEndpoint.java` has a little more room than those two
+but is itself close to the cap and well over the ~1500-line recommendation —
+`flowtree/CLAUDE.md` lists it by name among the files that "run close to the
+1600-line Checkstyle `FileLength` limit." (Verify the current counts against the
+files before acting — they move with every merge into this branch.) New behaviour goes
 in the new classes/files above. The one unavoidable touch is route registration
 in `FlowTreeApiEndpoint.serve()`, which is a few lines.
 
 Two ways to make the room, for the owner to choose between (§6.7):
 
 - **Minimal touch.** Add the three route branches directly to
-  `FlowTreeApiEndpoint.serve()` while it has headroom. Smallest diff, no
-  cross-cutting change, but leaves the file closer to the cap.
+  `FlowTreeApiEndpoint.serve()` in the room that remains. Smallest diff, no
+  cross-cutting change, but leaves the file nearly at the cap.
 - **Extract-first.** **Stage 1 extracts the route dispatch into an `ApiRouter`**
   (a mechanical move of the existing `handleXxx` wiring) before adding the new
   routes, giving a clean home for them and pulling `FlowTreeApiEndpoint` well
   under the recommended 1500. `flowtree/CLAUDE.md` ("the refactoring is part of
   the scope of whatever change needed the room") permits folding such a refactor
-  into the change that needs the room — but with the current headroom the
-  extraction is no longer *forced* by the cap, so it couples a cross-cutting
-  refactor to a feature branch as a matter of preference, not necessity. That is
-  the trade the owner should weigh (§6.7).
+  into the change that needs the room, and names `FlowTreeApiEndpoint` among the
+  files running close to the limit. The minimal-touch route can still fit the
+  three new route branches, but it does so by consuming nearly all the remaining
+  room and leaves the file over the ~1500-line recommendation — so the extraction
+  is closer to the room-making refactor `flowtree/CLAUDE.md` anticipates than to
+  an optional cleanup. Against that, it is behaviour-preserving and cross-cutting
+  rather than part of the throughput feature itself, which is the cost of
+  coupling it to this branch. That is the trade the owner should weigh (§6.7).
 
 ---
 
@@ -476,11 +482,14 @@ harness commits the whole branch once; the stages describe logical phases.
 7. **`ApiRouter` extraction on this branch?** §4.4 offers two ways to make room
    for the three new routes. The extract-first option couples a behaviour-
    preserving but cross-cutting refactor of `FlowTreeApiEndpoint` to this
-   feature branch. With `FlowTreeApiEndpoint` no longer within a few lines of the
-   cap, the extraction is a cleanliness choice, not a necessity. Fold it into
-   this branch, do it first as a standalone refactor change, or skip it and take
-   the minimal-touch route? This is the one place the plan steps beyond purely
-   additive new classes.
+   feature branch. `FlowTreeApiEndpoint` still runs close to the cap and over the
+   ~1500-line recommendation — `flowtree/CLAUDE.md` lists it among the files near
+   the limit — so the minimal-touch route fits the three new branches only by
+   consuming nearly all the remaining room; the extraction is the room-making
+   refactor that guidance anticipates rather than a pure cleanliness choice. Fold
+   it into this branch, do it first as a standalone refactor change, or skip it
+   and take the minimal-touch route? This is the one place the plan steps beyond
+   purely additive new classes.
 
 ---
 
