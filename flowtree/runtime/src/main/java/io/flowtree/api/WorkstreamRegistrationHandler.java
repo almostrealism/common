@@ -524,11 +524,35 @@ final class WorkstreamRegistrationHandler {
      * exact match always wins, so a workstream that genuinely tracks
      * {@code (branch, repo)} is never returned as a dependent-repo match.</p>
      *
+     * <p>Registration is idempotent under concurrency as well as in sequence:
+     * the lookup and the creation run as one step
+     * ({@link NotifierRegistry#registerExclusively}), so of two requests for
+     * the same branch and repository that arrive together, one creates the
+     * workstream and the other is answered with it as
+     * {@link Registration#alreadyRegistered}. Several callers register the
+     * same branch at the same moment by design — a pull request's opening
+     * starts more than one CI workflow that does — and none of them has to
+     * coordinate with the others.</p>
+     *
      * @param body          the raw request body JSON
      * @param defaultBranch the branch the workstream tracks; must be non-empty
      * @return the resulting {@link Registration}
      */
     Registration register(String body, String defaultBranch) {
+        return notifiers.registerExclusively(() -> findOrCreate(body, defaultBranch));
+    }
+
+    /**
+     * The lookup-then-create behind {@link #register(String, String)}, which
+     * documents its outcomes. Must run only through that method: nothing here
+     * keeps a second caller from creating the same workstream between this
+     * call's lookup and its store.
+     *
+     * @param body          the raw request body JSON
+     * @param defaultBranch the branch the workstream tracks; must be non-empty
+     * @return the resulting {@link Registration}
+     */
+    private Registration findOrCreate(String body, String defaultBranch) {
         String baseBranch = JsonFieldExtractor.extractString(body, "baseBranch");
         String repoUrl = JsonFieldExtractor.extractString(body, "repoUrl");
         String planningDocument = JsonFieldExtractor.extractString(body, "planningDocument");

@@ -2211,6 +2211,67 @@ event metadata, the controller cancels only a workstream that names the event's
 head repository (`REPO_URL`, the head repo's clone URL). A branch name alone,
 or a workstream that names no repository, is never enough.
 
+### What the `Register Workstream` workflow does
+
+Lives in `.github/workflows/register-workstream.yaml`. It registers a pull
+request's head branch as a FlowTree workstream on `pull_request_target`
+(`opened`, `reopened`, `synchronize`, base `master`), by running
+`tools/ci/register-workstream.sh`.
+
+It exists because `analysis.yaml`'s `register-workstream` job cannot cover every
+pull request. GitHub starts no `pull_request` run for a pull request that
+conflicts with its base, since there is no merge commit to build, so a pull
+request opened in a conflicted state had no validate run, no `register-workstream`
+job and therefore no workstream — and without a workstream nothing can be
+dispatched to resolve the conflict. A pull request opened from a harness
+`rescue/<jobId>` branch has been one such case. `pull_request_target` runs the
+base branch's copy of the workflow and needs no merge commit, so it fires
+whatever the merge state.
+
+**It must stay in its own file**, for the reason `Cancel Merged PR Runs` does.
+It holds `FLOWTREE_CF_ACCESS_CLIENT_SECRET` under a trigger that runs in the
+base repository's context, which is safe only because the file runs nothing
+from the pull request:
+
+- its `actions/checkout` has no `ref`, so it takes the base branch and the
+  script it runs is master's copy. That is why it has no "Verify registration
+  script integrity" step: `analysis.yaml`'s job needs one because a
+  `pull_request` checkout is the pull request's own tree. Never add a `ref:`;
+- it runs only for a head branch in this repository
+  (`github.event.pull_request.head.repo.full_name == github.repository`). A
+  fork's branch could not be cloned from this repository's URL, so a workstream
+  for it would be unusable;
+- the head and base branch names reach the script through `env`, never
+  interpolated into `run:`. A branch name is chosen by the pull request's
+  author and git refs permit shell metacharacters;
+- its only permission is `contents: read`.
+
+Registration is best-effort and does not fail the run: a missing service token
+is a notice, and a failed registration is a warning.
+
+**It overlaps the `analysis.yaml` job on purpose, and neither needs to know
+about the other.** For a mergeable pull request both fire within seconds of each
+other, and for a docs-only one — which `analysis.yaml`'s job skips — this
+workflow registers while `auto-review-submit` creates the workstream on
+submission. What makes that safe is the controller, not the workflows:
+`POST /api/workstreams` returns the workstream that already exists for a branch
+and repository, and it looks for one and creates one as a single step
+(`NotifierRegistry.registerExclusively`), so requests that arrive together
+still produce one workstream. Do not add a workflow-level guard against the
+overlap (a shared concurrency group, a "was it registered already" query). A
+group keeps one pending job and drops the rest, and it would not cover the
+submissions that create a workstream themselves; a query followed by a
+registration is the same race moved into the pipeline.
+`register-workstream.sh` then applies `SETTLED_CI_TRIGGER` to the existing
+workstream with an update, so whichever path loses the race still leaves the
+trigger set.
+
+Like every `pull_request_target` workflow it runs the copy on the base branch,
+so a change to it takes effect only once merged, and cannot be exercised from
+the pull request that makes it. `tools/tests/test_register_workstream_conflict.py`
+pins the trigger, the checkout, the fork guard, the permissions and the `env`
+rule; `WorkstreamRegistrationHandlerTest` pins the controller half.
+
 ### What the `PR Status Labels` workflow does
 
 Lives in `.github/workflows/pr-status-labels.yaml`, a thin caller of the

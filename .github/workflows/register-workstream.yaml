@@ -1,0 +1,110 @@
+name: "Register Workstream"
+
+# Registers a pull request's branch as a FlowTree workstream even when the PR
+# conflicts with its base.
+#
+# analysis.yaml's own `register-workstream` job is the normal path: it runs on
+# the `pull_request` event, which GitHub does not fire for a PR that conflicts
+# with its base (there is no trial-merge commit to build). So a PR opened in a
+# conflicted state — a harness rescue branch, for one — never got a workstream,
+# and nothing could be dispatched to resolve its conflicts until someone
+# registered it by hand.
+#
+# `pull_request_target` has no such gap: it runs the base branch's copy of the
+# workflow in the base-repository context and never needs a mergeable commit,
+# so it fires for a conflicted PR too. This workflow uses that to register the
+# workstream regardless of mergeability. It calls the same
+# tools/ci/register-workstream.sh the analysis.yaml job calls, and that script
+# is duplicate-safe — the controller answers a branch it already has a
+# workstream for with that workstream (atomically, via
+# NotifierRegistry.registerExclusively), so no second workstream is created —
+# so the two paths are safe to run together. On a mergeable PR both fire; the
+# one that loses the race does not create a workstream but still refreshes
+# SETTLED_CI_TRIGGER on the existing one with an update, so it is a
+# duplicate-safe refresh, not a no-op.
+#
+# Why pull_request_target rather than pull_request:
+# `pull_request` is exactly the trigger that does not fire on a conflicted PR,
+# which is the whole problem. `pull_request_target` runs in the base
+# repository's context with a writable token and the repository's secrets
+# (including the controller credential this job needs), and fires whatever the
+# merge state. That is safe here only because this workflow never checks out or
+# executes the pull request's code: `actions/checkout` with no `ref` takes the
+# base branch, so the register-workstream.sh that runs is origin/master's
+# trusted copy, never the PR's — which is also why this file needs none of the
+# script-integrity verification analysis.yaml's `pull_request` job performs on
+# the PR-head copy it is forced to run. Every PR-derived value reaches the
+# script through `env:`, never interpolated into a `run:` body where a crafted
+# branch name could execute. Permissions are the minimum (`contents: read`, for
+# the checkout). This mirrors `cancel-merged-pr-runs.yaml`'s
+# `cancel-branch-jobs` job, which holds the same controller credential under
+# `pull_request_target` on the same reasoning. Never add a `ref:` to the
+# checkout, and never move this job into a file beside jobs that build PR code.
+
+on:
+  pull_request_target:
+    types: [opened, reopened, synchronize]
+    branches: [master]
+
+# Serialise per head branch so two events for the same branch cannot register
+# it concurrently; registration is idempotent, so there is nothing to cancel.
+concurrency:
+  group: register-workstream-${{ github.event.pull_request.head.ref }}
+  cancel-in-progress: false
+
+jobs:
+  register:
+    # A fork's head branch is not in this repository, so the controller could
+    # not clone it from REPO_URL and a workstream for it would be meaningless;
+    # a fork PR also receives none of this repository's secrets. Act only on a
+    # same-repo head branch, exactly as the Plan Ready workflow does.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      # No `ref`: this takes the base branch, so the register-workstream.sh
+      # that runs below is origin/master's trusted copy, never the PR's.
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Register workstream
+        env:
+          BRANCH: ${{ github.event.pull_request.head.ref }}
+          BASE_BRANCH: ${{ github.event.pull_request.base.ref }}
+          REPO_URL: git@github.com:${{ github.repository }}.git
+          # The test run gates the merge but never starts on its own: the
+          # controller starts it when a job on this workstream ends with
+          # nothing to commit. Set on every registration, existing workstream
+          # included, so no branch's workstream is left without it.
+          SETTLED_CI_TRIGGER: ${{ vars.SETTLED_CI_TRIGGER || 'deployment:test' }}
+          CONTROLLER_URL: ${{ vars.FLOWTREE_CONTROLLER_URL || 'https://flowtree.almostrealism.ai' }}
+          CF_ACCESS_CLIENT_ID: ${{ vars.FLOWTREE_CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
+        run: |
+          # The service token may be scoped to an environment this job
+          # deliberately does not declare. Without it the controller is
+          # unreachable through the tunnel, and saying so is better than a curl
+          # that fails with an opaque 401.
+          if [ -z "${CF_ACCESS_CLIENT_ID:-}" ] || [ -z "${CF_ACCESS_CLIENT_SECRET:-}" ]; then
+            echo "::notice::No Cloudflare Access service token available — skipping workstream registration"
+            exit 0
+          fi
+
+          chmod +x ./tools/ci/register-workstream.sh
+
+          # The script annotates its own failures with ::error::, which would
+          # paint an error on an otherwise-healthy PR. Downgrade the marker
+          # while keeping the text: registration is best-effort here, and the
+          # same script still annotates normally for callers that treat a
+          # failure as fatal.
+          set +e
+          ./tools/ci/register-workstream.sh 2>&1 | sed 's/^::error:://'
+          STATUS=${PIPESTATUS[0]}
+          set -e
+
+          if [ "$STATUS" -eq 0 ]; then
+            echo "::notice::Workstream registered for branch ${BRANCH}"
+          else
+            echo "::warning::Workstream registration failed — a mergeable PR's analysis.yaml run, or a later push, will retry it"
+          fi

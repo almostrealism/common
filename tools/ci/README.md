@@ -220,7 +220,7 @@ it was not adopted.
 | `tracker-claimable.sh` | Ask the controller whether a tracker release has a claimable task; fails closed |
 | `tracker-claim.sh` | Claim the next task of a tracker release for a workstream through the controller (`POST /api/tracker/claim`); writes the task to a file and emits `claimed`, `task_id` and `task_file`; fails closed |
 | `automated-intake.sh` | Ask the controller whether it accepts automated jobs, before a dispatch round creates anything; fails closed |
-| `register-workstream.sh` | Register a workstream with the FlowTree controller (emits `workstream_id`, also to `$GITHUB_OUTPUT`), optionally granting tracker roles (`TRACKER_CAPABILITIES`) and checking out other repositories beside it (`DEPENDENT_REPOS`) |
+| `register-workstream.sh` | Register a workstream with the FlowTree controller (emits `workstream_id`, also to `$GITHUB_OUTPUT`), optionally granting tracker roles (`TRACKER_CAPABILITIES`) and checking out other repositories beside it (`DEPENDENT_REPOS`). Safe to run more than once for a branch, and from several workflows at the same moment: the controller answers a branch and repository it already has a workstream for with that workstream (`existing: true`) instead of creating another, including when the requests arrive together, and the script then applies its settings to it with an update |
 | `resolve-release-scope.sh` | Goal decomposition: read the next version from a repository (`pom.xml` or a plain version file), the framework version it pins, and whether `<plans dir>/<version>/PLAN.md` exists (`in_scope`) |
 | `remediation-required-labels.sh` | Pin an auto-resolve submission to a macOS Node (`REQUIRED_LABELS`) when a Metal lane (`test-mac`, `test-media-mac`) failed in the attempt |
 | `classify-job-failures.py` | Classify a failed test job by *where* it failed, from the run's jobs-API payload: a job whose failed steps all precede its first Maven/test step is environmental (a setup-step failure — checkout, `setup-java`, cache restore, artifact download), reported but not assigned; a failure at or after the test step is a genuine crash routed to the VM-crash prompt. Used by the `Check for incomplete test execution` step so a setup-java network timeout is no longer sent to the crash agent |
@@ -253,6 +253,42 @@ declares no secret.
 | `qa-round.yaml` | One recurring QA round: ask the controller about intake, gate on the shared cadence (`qa-cadence.sh`), archive the rounds that are over, create a `<branch-prefix><timestamp>` branch, build a prompt (`build-qa-round-prompt.sh`, from a built-in selector — `defect-hunt`, `doc-qa`, `consolidation`, `flaky-hunt`, `retrospective` — or the caller's own template path), register its workstream directly before submitting a coding-agent job that opens a PR, and archive that workstream again if the submission fails, so no round leaves a jobless workstream. The branch prefix, interval, prompt, template vars and submission settings are inputs. A consuming repository adopts the `retrospective` selector with a caller job of its own (see the header of `.github/workflows/qa-round.yaml`): the survey stays scoped to the caller's `REPO_URL`, its report and ledger live under its `REPORT_DIR`, and the `VISIBILITY_FRAGMENT`/`FINDINGS_FRAGMENT`/`FRAMEWORK_TRACKER_PROJECT` template-vars make a private repository's report describe its own work while harness findings are filed to the framework's tracker project. A round may set the `leads-script` input to a framework script run before the prompt build whose stdout fills the prompt's `${LEADS}` section (the flaky round passes `collect-observed-flakes.py`; its caller grants the `actions: read` the script needs, which flows through because the job declares no narrowing permissions block of its own). This repository's `master-agent-dispatch.yaml` calls it for every QA round except `coverage-qa` (which stays inline) |
 | `plan-ready.yaml` | Plan approval → implementation: on a plan PR being marked **ready for review**, dispatch the implementation workflow (`dispatch-workflow`, default `verify-completion.yaml`) on the PR's head branch, but only for a sender in the `approvers` allowlist and while every changed file is under `docs-directory` (default `docs/`). Inline shell over event metadata and the GitHub API — it checks out nothing, runs no framework script, and holds no controller secret (only `GITHUB_TOKEN`), so it has no framework checkout and no `secrets:` block. This repository's `ready-plan.yaml` is its `pull_request_target` caller |
 | `pr-status-labels-run.yaml` | Give every open pull request of the caller's repository one `ci: ...` stage label, derived fresh from the GitHub API on every run (see `pr-status-labels.py`). Every value specific to one repository's pipeline — CI workflow file name, FlowTree remediation job and artifact names, aggregator check-run names, whether a separate test-run stage exists, the plan-approval directory layout — is an input, defaulting to none of this repository's own FlowTree machinery so a repository with no equivalent gets no label that assumes a job or artifact it does not have. This repository's `pr-status-labels.yaml` is its caller, passing its own pipeline's names explicitly |
+
+## Workstream registration, and the conflicted-PR gap
+
+A branch's workstream is what a coding-agent job is dispatched to. Two paths
+register it with `register-workstream.sh`, and because that script is
+duplicate-safe — the controller answers a branch it already has a workstream
+for with that workstream (atomically, via `NotifierRegistry.registerExclusively`),
+so neither path creates a second — they are safe to run together:
+
+- **The normal path** is analysis.yaml's `register-workstream` job, on the
+  `pull_request` event. Because it runs the PR-head copy of the script with the
+  controller credential attached, it first verifies that copy against
+  origin/master (the "Verify registration script integrity" step, pinned by
+  `tools/tests/test_register_workstream_wiring.py`).
+- **The conflicted-PR path** is the standalone `register-workstream.yaml`
+  workflow, on `pull_request_target`. GitHub does not fire the `pull_request`
+  event for a PR that conflicts with its base — there is no trial-merge commit
+  to build — so a PR opened in a conflicted state (a harness rescue branch, for
+  one) never reached the normal path and sat without a workstream until someone
+  registered it by hand. `pull_request_target` runs the base branch's copy of
+  the workflow in the base-repository context and needs no mergeable commit, so
+  it fires regardless. It checks out the base branch (no `ref`), so the
+  register-workstream.sh it runs is origin/master's trusted copy, never the
+  PR's — which is why it needs no script-integrity step of its own. It holds the
+  controller credential but runs no PR code, acts only on a same-repo head
+  branch, and passes every PR-derived value through `env:`, the same trust rules
+  `cancel-merged-pr-runs.yaml`'s `cancel-branch-jobs` job follows. On a mergeable
+  PR that changes code both paths fire (the normal path is gated on
+  `code_changed`, so a docs-only PR runs this workflow alone); whichever loses
+  the controller's atomic lookup creates no workstream but still refreshes
+  `SETTLED_CI_TRIGGER` on the existing one with an update, so it is a
+  duplicate-safe refresh rather than a no-op. Pinned by
+  `tools/tests/test_register_workstream_conflict.py`.
+
+Like every `pull_request_target` workflow, `register-workstream.yaml` takes
+effect only once it is merged to master (GitHub runs the base branch's copy).
 
 ## Coverage (`coverage/`)
 
