@@ -189,6 +189,54 @@ public class ProtobufDiskStoreTest extends TestSuiteBase {
 	}
 
 	/**
+	 * Looking up records spread over more batches than the memory budget holds
+	 * loads at most as many whole batches as the cache can hold; every other
+	 * record is read on its own, and each lookup still returns the right record.
+	 */
+	@Test(timeout = 30000)
+	public void getBeyondCacheReadsSingleRecords() {
+		int batchSize = 1024;
+		long maxMemory = 4096;
+		int maxBatches = (int) (maxMemory / batchSize);
+		int totalRecords = 60;
+		String payload = makePayload('W', 200);
+
+		try (ProtobufDiskStore<TestRecordProto.TestRecord> store = new ProtobufDiskStore<>(
+				tempDir, TestRecordProto.TestRecord.parser(), maxMemory, batchSize)) {
+			for (int i = 0; i < totalRecords; i++) {
+				store.put("rec-" + i, makeRecord("rec-" + i, payload + "-" + i, i));
+			}
+		}
+
+		try (ProtobufDiskStore<TestRecordProto.TestRecord> store = new ProtobufDiskStore<>(
+				tempDir, TestRecordProto.TestRecord.parser(), maxMemory, batchSize)) {
+			File[] batchFiles = tempDir.listFiles((dir, name) -> name.startsWith("batch_"));
+			Assert.assertNotNull(batchFiles);
+			Assert.assertTrue("records span more batches than the cache holds: " + batchFiles.length,
+					batchFiles.length > 2 * maxBatches);
+
+			AtomicInteger loadCount = new AtomicInteger(0);
+			store.setLoadListener(batchId -> loadCount.incrementAndGet());
+
+			for (int pass = 0; pass < 2; pass++) {
+				for (int k = 0; k < totalRecords; k++) {
+					int i = (k * 7) % totalRecords;
+					TestRecordProto.TestRecord value = store.get("rec-" + i);
+					Assert.assertNotNull("Record rec-" + i + " should exist", value);
+					Assert.assertEquals("rec-" + i, value.getId());
+					Assert.assertEquals(payload + "-" + i, value.getContent());
+					Assert.assertEquals(i, value.getValue());
+				}
+			}
+
+			Assert.assertTrue("Batch loads (" + loadCount.get() + ") should not exceed the cache capacity "
+					+ maxBatches, loadCount.get() <= maxBatches);
+			Assert.assertTrue("Cached batch count " + store.getCachedBatchCount()
+					+ " should not exceed capacity " + maxBatches, store.getCachedBatchCount() <= maxBatches);
+		}
+	}
+
+	/**
 	 * Insert N records, pairwise scan, verify exactly N*(N-1)/2
 	 * pairs visited.
 	 */

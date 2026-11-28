@@ -461,6 +461,18 @@ public class ProtobufDiskStore<T extends Message> implements DiskStore<T> {
 		return stored;
 	}
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>A record whose batch is cached, or whose batch the cache has room
+	 * for, is read through the cached batch, loading it if necessary. When the
+	 * cache is full and the record's batch is not in it, only the record itself
+	 * is read from its offset in the batch file and the cache is left as it is:
+	 * loading the whole batch would parse every record in it to return one, and
+	 * would evict a batch to make room. Without this, looking up records spread
+	 * over more batches than the memory budget holds parses a whole batch file
+	 * for almost every record.</p>
+	 */
 	@Override
 	public synchronized T get(String id) {
 		RecordPointer pointer = index.get(id);
@@ -475,6 +487,11 @@ public class ProtobufDiskStore<T extends Message> implements DiskStore<T> {
 				}
 			}
 			return null;
+		}
+
+		// TODO(review): once full, reads never admit a new batch, so the cache stops adapting to a shifted hot set; consider admitting on repeated misses.
+		if (batchCache.isFull() && !batchCache.containsKey(pointer.batchId)) {
+			return readRecord(pointer);
 		}
 
 		ParsedBatch<T> batch = loadBatch(pointer.batchId);
@@ -821,6 +838,29 @@ public class ProtobufDiskStore<T extends Message> implements DiskStore<T> {
 		ParsedBatch<T> parsed = new ParsedBatch<>(batchId, records);
 		batchCache.put(batchId, parsed);
 		return parsed;
+	}
+
+	/**
+	 * Read the single record the given pointer locates, from its byte offset
+	 * in its batch file, without loading or caching the rest of the batch.
+	 * Returns {@code null} if the batch file does not exist.
+	 *
+	 * @param pointer the location of a flushed record
+	 * @return the record, or {@code null} if its batch file is missing
+	 */
+	private T readRecord(RecordPointer pointer) {
+		File file = batchFile(pointer.batchId);
+		if (!file.exists()) {
+			return null;
+		}
+
+		try (FileInputStream fis = new FileInputStream(file)) {
+			fis.getChannel().position(pointer.byteOffset);
+			return parser.parseDelimitedFrom(new BufferedInputStream(fis));
+		} catch (IOException e) {
+			throw new UncheckedIOException(
+					"Failed to read a record of batch " + pointer.batchId, e);
+		}
 	}
 
 	/**
