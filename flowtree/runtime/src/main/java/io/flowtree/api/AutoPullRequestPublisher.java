@@ -72,9 +72,13 @@ final class AutoPullRequestPublisher implements ConsoleFeatures {
 
     /**
      * Fallback title/body for a companion pull request opened without a
-     * registered {@link AutoPrContext}. It is used only when the dependent
-     * commit's own message cannot be read; the job description is never used
-     * here because it may carry the agent's prompt.
+     * registered {@link AutoPrContext}. It stands in wherever the dependent
+     * commit's own message yields nothing to use: when the message cannot be
+     * read at all, when it is blank, and — for the body specifically — when the
+     * message is a subject line with no explanation after it (see
+     * {@link GitHubProxyHandler#pullRequestTitle} and
+     * {@link GitHubProxyHandler#pullRequestBody}). The job description is never
+     * used here because it may carry the agent's prompt.
      */
     private static final String DEFAULT_COMPANION_DESCRIPTION = "Dependent-repo companion change";
 
