@@ -467,6 +467,49 @@ public class CompressedRowDeltaTests extends TestSuiteBase implements MatrixFeat
 	}
 
 	/**
+	 * An input-reduced delta without a tangent weights every element of the target by one, as
+	 * {@link CollectionProducer#delta(io.almostrealism.relation.Producer, ReduceAxis) delta}
+	 * specifies. Both Jacobian-vector products keep the reduced
+	 * segmented product for it: with respect to the input it is {@code A·1}, the sum of each row,
+	 * and with respect to the entries it is {@code T(1)·x}, the sum of the input at the columns of
+	 * each row's entries. A matrix storing no entries gives zero in every row.
+	 */
+	@Test(timeout = 120000)
+	public void tangentsOfOnes() {
+		Sparse sparse = fixed();
+		int count = COLUMNS.length;
+		PackedCollection values = pattern(count, 3, 7);
+		PackedCollection x = pattern(sparse.cols, 1, 5);
+		CollectionProducer entries = cp(sparse.matrix(values));
+		CollectionProducer input = cp(x);
+
+		CollectionProducer inputJvp = matmul(cp(sparse.matrix(values)), input).delta(input, ReduceAxis.IN);
+		CollectionProducer entryJvp = matmul(entries, cp(x)).delta(entries, ReduceAxis.IN);
+		long bound = Math.max(count, Math.max(sparse.rows, sparse.cols));
+		assertReduced(inputJvp, bound, SegmentedWeightedSumComputation.class);
+		assertReduced(entryJvp, bound, SegmentedWeightedSumComputation.class);
+
+		double[] ones = new double[Math.max(count, sparse.cols)];
+		Arrays.fill(ones, 1.0);
+		double[] expectedInput = sparse.product(host(values), Arrays.copyOf(ones, sparse.cols), 1);
+		double[] expectedEntries = sparse.product(Arrays.copyOf(ones, count), host(x), 1);
+
+		CompressedRowTraversalOrdering order = CompressedRowTraversalOrdering.of(2, new int[] { 0, 0, 0, 0 }, new int[0]);
+		CollectionProducer empty = cp(new PackedCollection(shape(3, 2), 0, pack(0.0), 0, order));
+		CollectionProducer emptyJvp = matmul(empty, cp(pack(3.0, 5.0))).delta(empty, ReduceAxis.IN);
+		assertReduced(emptyJvp, 3, SegmentedWeightedSumComputation.class);
+
+		for (ComputeRequirement backend : backends()) {
+			assertValues("input tangent of ones on " + backend, expectedInput,
+					evaluate(inputJvp, backend).toArray(0, sparse.rows));
+			assertValues("entry tangent of ones on " + backend, expectedEntries,
+					evaluate(entryJvp, backend).toArray(0, sparse.rows));
+			assertValues("empty entry tangent of ones on " + backend, new double[] { 0.0, 0.0, 0.0 },
+					evaluate(emptyJvp, backend).toArray(0, 3));
+		}
+	}
+
+	/**
 	 * The gradient, with respect to the input, of the Jacobian-vector product with respect to the
 	 * entries is the transposed product of the matrix whose entries are the tangent:
 	 * {@code T(t)ᵀ·g}. That product reads the tangent, which has one element per stored entry,

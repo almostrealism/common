@@ -250,8 +250,15 @@ public class SegmentedWeightedSumComputation extends RepeatedProducerComputation
 
 	/**
 	 * Returns the accumulated value after one more member of the row handled by the current
-	 * kernel thread. The entry is read from the memory of the matrix at the physical position
-	 * of the member, not through the logical index of the ordering.
+	 * kernel thread. The entry is read at the physical position of the member, not through the
+	 * logical index of the ordering.
+	 *
+	 * <p>An operand whose shape carries an ordering (the sparse matrix itself) is read from its
+	 * memory at that position. An operand without one (the tangent of the stored entries, with one
+	 * element per entry) is indexed by physical position, so the position is its own logical
+	 * index and it is read as any other argument is: from memory when it is stored, and from its
+	 * expression when it is a computation, such as a constant tangent, whose values are never
+	 * written to memory.</p>
 	 *
 	 * @param args        the traversable arguments, where {@code args[0]} is the output
 	 * @param globalIndex the index of the output element
@@ -265,7 +272,9 @@ public class SegmentedWeightedSumComputation extends RepeatedProducerComputation
 		Expression<?> member = segments.start(rowOf(globalIndex)).add(localIndex);
 		Expression<?> column = segments.offset(member);
 		Expression<?> gathered = args[INPUT].getValueAt(column.multiply(width).add(globalIndex.imod(width)));
-		Expression<?> entry = getArgumentForInput(getInputs().get(MATRIX)).reference(segments.position(member));
+		Expression<?> position = segments.position(member);
+		Expression<?> entry = shape(getInputs().get(MATRIX)).getOrder() == null ? args[MATRIX].getValueAt(position)
+				: getArgumentForInput(getInputs().get(MATRIX)).reference(position);
 		return currentValue.add(entry.multiply(gathered));
 	}
 
@@ -375,12 +384,11 @@ public class SegmentedWeightedSumComputation extends RepeatedProducerComputation
 	 * the matrix with the input's own input-reduced delta of the tangent.
 	 *
 	 * @param target  the producer with respect to which to differentiate
-	 * @param tangent the tangent, in the shape of the target
-	 * @return the product, or null without a tangent
+	 * @param tangent the tangent, in the shape of the target, or null for a tangent of ones, which
+	 *                the input's own delta forms
+	 * @return the product
 	 */
 	private CollectionProducer inputTangent(Producer<?> target, Producer<PackedCollection> tangent) {
-		if (tangent == null) return null;
-
 		Producer<PackedCollection> input = getInputs().get(INPUT);
 		return new SegmentedWeightedSumComputation(getName(), matrixShape, width, getInputs().get(MATRIX),
 				c(input).delta(target, ReduceAxis.IN, tangent).reshape(shape(input)));
@@ -406,18 +414,20 @@ public class SegmentedWeightedSumComputation extends RepeatedProducerComputation
 	 * represented by a single unused element, as its entry gradient is, so its tangent has one
 	 * element, which the product never reads.
 	 *
-	 * @param tangent the tangent of each stored entry, in their physical order
-	 * @return the product, or null if the tangent does not have one element per stored entry (one
-	 *         element for a matrix storing none)
+	 * @param tangent the tangent of each stored entry, in their physical order, or null for a
+	 *                tangent of ones
+	 * @return the product, or null if the number of stored entries is unknown or the tangent does
+	 *         not have one element per stored entry (one element for a matrix storing none)
 	 */
 	private CollectionProducer entryTangent(Producer<PackedCollection> tangent) {
 		OptionalInt entries = order.getLength();
-		if (tangent == null || entries.isEmpty()
-				|| shape(tangent).getTotalSizeLong() != Math.max(1, entries.getAsInt())) {
-			return null;
-		}
+		if (entries.isEmpty()) return null;
 
-		return new SegmentedWeightedSumComputation(getName(), matrixShape, width, tangent, getInputs().get(INPUT));
+		int size = Math.max(1, entries.getAsInt());
+		Producer<PackedCollection> t = tangent == null ? constant(shape(size), 1.0) : tangent;
+		if (shape(t).getTotalSizeLong() != size) return null;
+
+		return new SegmentedWeightedSumComputation(getName(), matrixShape, width, t, getInputs().get(INPUT));
 	}
 
 	/**

@@ -378,11 +378,19 @@ public class CompressedRowTraversalOrdering implements TraversalOrdering, Orderi
 	 * integer-exact split layout, and kept for later requests. The values of a collection read
 	 * through this ordering are never read.</p>
 	 *
+	 * <p>The derived ordering keeps this ordering as its own transpose, so the transpose of the
+	 * transpose is this ordering itself rather than a second ordering over the same members.
+	 * {@link #readsSameMembers(TraversalOrdering, TraversalPolicy)} therefore recognises the
+	 * relationship from either side: a transposed collection reshaped into this ordering reads the
+	 * same members, as this collection reshaped into its transpose does.</p>
+	 *
 	 * @return the ordering of the transpose
 	 */
 	public synchronized CompressedRowTraversalOrdering transpose() {
 		if (transpose == null) {
-			transpose = computeTranspose();
+			CompressedRowTraversalOrdering derived = computeTranspose();
+			derived.transpose = this;
+			transpose = derived;
 		}
 
 		return transpose;

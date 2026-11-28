@@ -361,6 +361,54 @@ public class CompressedRowTransposeTests extends TestSuiteBase implements Matrix
 	}
 
 	/**
+	 * The transpose of the transpose of an ordering is the ordering itself, so the relationship
+	 * between an ordering and its transpose is recognised from either side: the ordering of the
+	 * transpose, for the {@code (6, 4)} shape of the transpose, reads the members the original
+	 * ordering reads.
+	 */
+	@Test(timeout = 60000)
+	public void readsSameMembersIsSymmetric() {
+		CompressedRowTraversalOrdering order = CompressedRowTraversalOrdering.of(6, OFFSETS, COLUMNS);
+		CompressedRowTraversalOrdering transposed = order.transpose();
+		assertTrue("the transpose of the transpose should be the ordering", transposed.transpose() == order);
+		assertTrue(transposed.transpose(6, 4).orElse(null) == order);
+		assertTrue(transposed.readsSameMembers(order, shape(6, 4)));
+		assertTrue(transposed.readsSameMembers(transposed, shape(6, 4)));
+		assertFalse(transposed.readsSameMembers(order, shape(4, 6)));
+		assertFalse(transposed.readsSameMembers(SplitIndexTraversalOrdering.of(7, 6, 5, 4, 3, 2, 1, 0), shape(6, 4)));
+	}
+
+	/**
+	 * Reshaping an evaluated transpose back into the shape and ordering of the original matrix
+	 * reads the memory of the entries through that ordering directly, so the result is the
+	 * original matrix, on the host and in a kernel on every available backend, rather than the
+	 * original ordering composed over the logical elements of the transpose.
+	 */
+	@Test(timeout = 60000)
+	public void reshapeTransposeIntoOriginalOrderingReadsTheMatrix() {
+		PackedCollection matrix = sparse();
+		TraversalOrdering order = matrix.getShape().getOrder();
+		PackedCollection transposed = cp(matrix).transpose().evaluate();
+		PackedCollection restored = transposed.reshape(new TraversalPolicy(order, 4, 6));
+		double[] expected = {
+				-1.0, 0.0, 0.0, 2.0, 0.0, 0.0,
+				0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+				3.0, -4.0, 5.0, 6.0, -7.0, 0.0,
+				0.0, 0.0, 8.0, 0.0, 0.0, 0.0 };
+
+		for (int i = 0; i < expected.length; i++) {
+			assertEquals("host element " + i, expected[i], restored.toDouble(i));
+		}
+
+		for (ComputeRequirement backend : backends()) {
+			PackedCollection result = evaluate(cp(restored).multiply(c(1.0)), backend);
+			for (int i = 0; i < expected.length; i++) {
+				assertEquals("element " + i + " on " + backend, expected[i], result.toDouble(i));
+			}
+		}
+	}
+
+	/**
 	 * Reshaping a collection read through one permutation into a shape carrying an unrelated
 	 * permutation composes the two: each element of the result is the element of the collection
 	 * at the position the second permutation names, not the element of the underlying memory at

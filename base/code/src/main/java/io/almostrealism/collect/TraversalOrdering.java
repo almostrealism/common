@@ -203,13 +203,16 @@ public interface TraversalOrdering extends IndexSet, Signature {
 	 * such an ordering reads the memory directly through it; a reshape into any other ordering
 	 * must compose it with this one.
 	 *
+	 * <p>The relationship is recognised from both sides only when the {@link #transpose(int, int)
+	 * transpose} of the transpose is this ordering itself, so an ordering that describes its
+	 * transpose structurally must return itself as the transpose of that transpose.</p>
+	 *
 	 * @param other the ordering of the new shape
 	 * @param shape the shape of the collection read through this ordering
 	 * @return true if {@code other} reads the members this ordering reads
 	 */
 	default boolean readsSameMembers(TraversalOrdering other, TraversalPolicy shape) {
 		if (other == this) return true;
-		// TODO(review): asymmetric; a transposed collection reshaped into the original ordering (other.transpose == this) composes
 		return shape.getDimensions() == 2 && transpose(shape.length(0), shape.length(1))
 				.filter(t -> t == other).isPresent();
 	}
