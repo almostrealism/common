@@ -176,7 +176,7 @@ Behaviour, in order:
    the reported hostname is the same.
 
    **Known gap — the family executable the command will run is not itself
-   validated (threads on lines 153 and 158).** The trusted-ssh rule above
+   validated.** The trusted-ssh rule above
    governs only the `ssh` the *resolver* runs for `ssh -G`; it does not validate
    the `ssh`/`scp`/`sftp`/`rsync` the *shell* will run. When the resolver
    refuses to run a non-system ssh and falls back to the literal match, an
@@ -298,8 +298,7 @@ Behaviour, in order:
    Each hop is resolved by the same steps 2–6 (same trusted ssh, same config
    scan, same `ssh -G` in the same cwd; the step-1 environment refusal has
    already been applied once to the whole command), **but with a hop-specific,
-   OpenSSH-faithful option set — not the target's `-o` options (thread on line
-   233).** OpenSSH builds the implicit jump connection from the jump host's own
+   OpenSSH-faithful option set — not the target's `-o` options.** OpenSSH builds the implicit jump connection from the jump host's own
    config entry; it does **not** forward the target's `-o HostName=…` (or other
    target host-selecting `-o`) to the hop. Reusing the target's options would
    let `ssh -o HostName=amd-halo evil-jump` (target overridden to an allowlisted
@@ -310,7 +309,7 @@ Behaviour, in order:
    the target's `-o` host-selecting values. The hop's `hostname` comes from its
    own resolved config, and that resolved `hostname` is added to the returned
    list so `_require_lab` checks it. When the depth cap, the invocation cap, or
-   a cycle is hit, **raise a block** (thread on line 238): the hop could not be
+   a cycle is hit, **raise a block**: the hop could not be
    fully resolved, so the real SSH route runs through an unverified chain, and
    treating the unresolved hop as a literal would wrongly clear it whenever that
    literal token happens to be allowlisted even though the chain beyond it is
@@ -385,8 +384,8 @@ value:
 - **A plain assignment:** `PATH=/tmp; ssh amd-halo` or `HOME=/tmp/evil; ssh
   amd-halo`. A bare `PATH=/tmp` assignment changes the shell's own command
   lookup for the rest of the line, so the later `ssh` is found in `/tmp` — the
-  value need not be *exported* to redirect which binary runs (the review on line
-  317 raised this). `HOME` likewise persists as a shell variable.
+  value need not be *exported* to redirect which binary runs. `HOME` likewise
+  persists as a shell variable.
 - **An export:** `export HOME=/tmp/evil; ssh amd-halo` or `export PATH=/tmp; ssh
   amd-halo`. `_check_exported_env` in `exfil_bash_dispatch.py` refuses only git
   repository-selecting/transport variables, rsync transport variables and
@@ -410,7 +409,7 @@ list, is analysed with the set treated as "unknown", i.e. as if both were set �
 the analogue of the existing `ctx.at(None)` rule for a line that changes
 directory.
 
-**`source`/`.` fails closed (review on line 322).** A sourced file can assign or
+**`source`/`.` fails closed.** A sourced file can assign or
 export `HOME`/`PATH` where the dispatcher cannot see it, so a `source <file>` (or
 `. <file>`) anywhere earlier on the line is treated as having set **both** names
 — the same "unknown ⇒ as if set" rule as a substitution body. Any ssh-family
@@ -425,7 +424,7 @@ Scope of the tracking: one Bash tool call. Shell state other than the working
 directory does not persist between Bash tool calls, so an assignment or export
 cannot reach an ssh in a later call.
 
-### Config-chain modification earlier on the line (review on line 202)
+### Config-chain modification earlier on the line
 
 The static scan proves a config free of command-executing directives *at the
 moment it reads it* — but the hook analyses the whole shell line before any
@@ -705,7 +704,9 @@ network tests). CI runs all `test_exfiltration_guard_*.py` modules via
 
 ## Dependencies
 
-- None on other tracker tasks (`blocked_by` is empty).
+- **One blocking tracker dependency:** the rsync option-parsing prerequisite
+  below (`6b5e109d-3bce-4e93-aecf-98be2fd954c9`), which the tracker task's
+  `blocked_by` lists. No others.
 - **Owner sanction on the implementing job.** This edits files under
   `.claude/hooks`, which are protected: the implementation job must carry the
   owner's explicit `skip_agent_permission_prompts` / sensitive-file bypass, and
@@ -736,11 +737,15 @@ network tests). CI runs all `test_exfiltration_guard_*.py` modules via
   of adding them. Because both lists are under the CI-file lock
   (`.github/workflows/` and `tools/ci/`), that registration must land on a
   `ci/...` branch (or with the owner's signed bypass). The implementation is
-  **incomplete** until the registration lands. (Raised on line 661; it was an
-  Open question in an earlier draft and is now a firm dependency.)
-- **Prerequisite (separate task):** the rsync option-parsing fix,
+  **incomplete** until the registration lands. (This was an Open question in an
+  earlier draft and is now a firm dependency.)
+- **Blocking prerequisite (separate task):** the rsync option-parsing fix,
   `6b5e109d-3bce-4e93-aecf-98be2fd954c9` (see "Faithful resolution"). Without it,
-  rsync destinations hidden behind an rsync switch never reach the resolver.
+  rsync destinations hidden behind an rsync switch never reach the resolver, so
+  the rsync Success criterion cannot be met if this fix lands after the resolver.
+  It is therefore a real dependency, recorded in the tracker task's `blocked_by`:
+  the implementing job either waits for `6b5e109d` to close or folds the parser
+  fix into the same change.
 - **Related (separate tasks):** the path-qualified ssh-family scan gap,
   `dfed2140-25dc-4290-b718-b41d0561236b`, and the bare untrusted-PATH ssh-family
   binary gap, `8a5be352-003a-4c2c-955d-5e913f4ca625`. This plan only guarantees
@@ -811,43 +816,43 @@ A third review round raised four more points, settled the same way:
 A fourth review round (Copilot, PR #1133 HEAD) raised ten more points, settled the
 same way:
 
-10. **Scan the config OpenSSH actually reads** (thread on line 160, the
-    `TODO(review)` now resolved). Settled in resolver step 3: the per-user config
+10. **Scan the config OpenSSH actually reads** (the `TODO(review)` now
+    resolved). Settled in resolver step 3: the per-user config
     is located from the passwd-database home (`pwd.getpwuid(os.getuid()).pw_dir`)
     and `~` expands to it, matching how OpenSSH builds the path and expands `~` —
     `$HOME` is not consulted, so the scanned file is the file `ssh -G` reads even
     when the hook's `HOME` differs from `pw_dir`. If the passwd entry cannot be
     resolved, the scan blocks.
-11. **Block on scan-content uncertainty** (thread on line 196). Settled in resolver
+11. **Block on scan-content uncertainty.** Settled in resolver
     step 3: only a genuinely absent config chain falls back to the literal match; a
     file present but unreadable or unparseable, or an un-followable `Include`,
     blocks — parse uncertainty is no longer lumped into literal fallback.
-12. **TOCTOU: a config rewritten earlier on the line** (thread on line 202).
+12. **TOCTOU: a config rewritten earlier on the line.**
     Settled in "Config-chain modification earlier on the line": a redirection or
     copy into the reachable config chain earlier on the same command line poisons
     the scan, so the ssh-family command blocks; tracked on `BashContext` like the
     `cd` and assignment set.
-13. **Jump hops use OpenSSH-faithful options** (thread on line 233). Settled in
+13. **Jump hops use OpenSSH-faithful options.** Settled in
     resolver step 7 and the `-J` note under "Faithful resolution": a hop is
     resolved with the shared `-F` but **none** of the target's `-o` host-selecting
     values, because OpenSSH does not forward them to the jump; a target
     `-o HostName=` cannot clear a non-allowlisted hop.
-14. **Block on jump-chain exhaustion** (thread on line 238). Settled in resolver
+14. **Block on jump-chain exhaustion.** Settled in resolver
     step 7: depth/cycle/invocation-cap exhaustion blocks rather than literal-matching
     the unresolved hop.
-15. **Track preceding `HOME`/`PATH` assignments, not only exports** (thread on line
-    317). Settled in "Preceding HOME/PATH assignments": a plain `PATH=/tmp; ssh …`
+15. **Track preceding `HOME`/`PATH` assignments, not only exports.**
+    Settled in "Preceding HOME/PATH assignments": a plain `PATH=/tmp; ssh …`
     assignment (which changes the shell's own command lookup without being exported)
     is tracked too, and the `env -i`/`env -u` wrapper forms are treated as overrides.
-16. **`source`/`.` fails closed** (thread on line 322). Settled in "Preceding
+16. **`source`/`.` fails closed.** Settled in "Preceding
     HOME/PATH assignments": a `source`/`.` earlier on the line is treated as setting
     both names, so a later ssh-family command blocks. No longer an open question.
-17. **Register the new test module in both protected lists** (thread on line 661).
+17. **Register the new test module in both protected lists.**
     Moved from an Open question to a firm Dependency: the implementation is
     incomplete until the new module is added to `GUARD_FILES` and the tampering
     step's `PROTECTED_FILES`.
-18. **The family executable the shell runs is not validated** (threads on lines 153
-    and 158). Acknowledged as a **pre-existing** gap, not closed here: when the
+18. **The family executable the shell runs is not validated.**
+    Acknowledged as a **pre-existing** gap, not closed here: when the
     resolver falls back to the literal match for an untrusted PATH-selected binary,
     an allowlisted host is still allowed though the untrusted binary runs — exactly
     today's base-branch behaviour. Scoped out of the "no new vector" claim (step 2,
