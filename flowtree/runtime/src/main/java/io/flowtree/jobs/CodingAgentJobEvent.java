@@ -631,7 +631,30 @@ public class CodingAgentJobEvent extends JobCompletionEvent {
     static CodingAgentJobEvent forJob(CodingAgentJob job, Exception error) {
         CodingAgentJobEvent event = statusFor(job, error);
         event.populateFrom(job);
+        event.foldEnforcementRetirements(job.sessionAccumulator().enforcementRetirements());
         return event;
+    }
+
+    /**
+     * Folds the enforcement-rule retirement reasons into this event's error
+     * message so they travel to the controller and surface in
+     * {@code workstream_get_job} and {@code workstream_context}.
+     *
+     * <p>The reasons are appended, not substituted: when the event already
+     * carries a terminal reason (a degraded or failed status), the retirements
+     * extend it rather than replace it. When there is nothing to append the
+     * message is left exactly as it was, so a clean success keeps its empty
+     * message.</p>
+     *
+     * @param retirements the retirement records accumulated during the job;
+     *                    {@code null} or empty leaves the message unchanged
+     */
+    private void foldEnforcementRetirements(List<String> retirements) {
+        if (retirements == null || retirements.isEmpty()) return;
+        String summary = String.join("\n", retirements);
+        String existing = getErrorMessage();
+        setErrorMessage(existing == null || existing.isEmpty()
+                ? summary : existing + "\n\n" + summary);
     }
 
     /**

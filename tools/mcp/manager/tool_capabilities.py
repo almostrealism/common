@@ -91,6 +91,7 @@ EXCLUDED_TOOLS = (
     "workstream_register",
     "workstream_update_config",
     "workspace_update_config",
+    "workspace_get_config",
     "workstream_archive",
     "workstream_unarchive",
     "workstream_archive_many",

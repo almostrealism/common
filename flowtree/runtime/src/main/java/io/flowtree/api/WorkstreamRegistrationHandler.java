@@ -388,6 +388,7 @@ final class WorkstreamRegistrationHandler {
         Registration created = register(
                 registrationRequest(targetBranch, repoUrl,
                         JsonFieldExtractor.extractString(body, "baseBranch"),
+                        JsonFieldExtractor.hasField(body, "settledCiTrigger"),
                         JsonFieldExtractor.extractString(body, "settledCiTrigger")),
                 targetBranch);
         if (created.failure() == null) {
@@ -418,14 +419,26 @@ final class WorkstreamRegistrationHandler {
      * first job creates its workstream would never have its merge-gating
      * test run started.</p>
      *
-     * @param targetBranch     the branch the workstream tracks
-     * @param repoUrl          the repository the workstream tracks
-     * @param baseBranch       the base branch, or {@code null} for the default
-     * @param settledCiTrigger the settled-CI trigger spec, or {@code null} for none
+     * <p>The field's <em>presence</em> is preserved, not merely its value: a
+     * submission that supplies an explicit empty {@code settledCiTrigger}
+     * emits the field with an empty value so {@link #register} reads it as a
+     * deliberate clear, exactly as the direct registration endpoint does. An
+     * absent field is omitted so the create path's field-absent default
+     * applies. Collapsing the two would turn an explicit clear into the
+     * default and make the submit path inconsistent with direct registration.</p>
+     *
+     * @param targetBranch        the branch the workstream tracks
+     * @param repoUrl             the repository the workstream tracks
+     * @param baseBranch          the base branch, or {@code null} for the default
+     * @param hasSettledCiTrigger whether the submission named {@code settledCiTrigger}
+     *                            at all; when {@code false} the field is omitted
+     * @param settledCiTrigger    the settled-CI trigger spec the submission named,
+     *                            or {@code null}
      * @return the registration request JSON
      */
     private static String registrationRequest(String targetBranch, String repoUrl,
-                                              String baseBranch, String settledCiTrigger) {
+                                              String baseBranch, boolean hasSettledCiTrigger,
+                                              String settledCiTrigger) {
         StringBuilder json = new StringBuilder();
         json.append("{\"defaultBranch\":\"")
             .append(JsonFieldExtractor.escapeJson(targetBranch)).append("\"");
@@ -435,9 +448,10 @@ final class WorkstreamRegistrationHandler {
             json.append(",\"baseBranch\":\"")
                 .append(JsonFieldExtractor.escapeJson(baseBranch)).append("\"");
         }
-        if (settledCiTrigger != null && !settledCiTrigger.isEmpty()) {
+        if (hasSettledCiTrigger) {
             json.append(",\"settledCiTrigger\":\"")
-                .append(JsonFieldExtractor.escapeJson(settledCiTrigger)).append("\"");
+                .append(JsonFieldExtractor.escapeJson(settledCiTrigger == null ? "" : settledCiTrigger))
+                .append("\"");
         }
         json.append("}");
         return json.toString();
@@ -503,7 +517,7 @@ final class WorkstreamRegistrationHandler {
      * ({@code baseBranch}, {@code repoUrl}, {@code channelName}, …); the
      * branch is a separate parameter because a submission names it
      * {@code targetBranch}. The submission path supplies a request built by
-     * {@link #registrationRequest(String, String, String, String)} rather than its own
+     * {@link #registrationRequest(String, String, String, boolean, String)} rather than its own
      * body, so job-level fields never become workstream defaults.</p>
      *
      * <p>Deduplication runs in two steps. An exact {@code (branch, repo)}
@@ -523,6 +537,25 @@ final class WorkstreamRegistrationHandler {
      * loop, so a workstream is registered for {@code repoUrl} instead. The
      * exact match always wins, so a workstream that genuinely tracks
      * {@code (branch, repo)} is never returned as a dependent-repo match.</p>
+     *
+     * <p>A registration that names a {@code repoUrl} but omits
+     * {@code settledCiTrigger} entirely is given the
+     * {@link CiTrigger#defaultSettled() default} ({@code deployment:test}). A
+     * branch workstream whose merge gate is a long-running test run must carry a
+     * trigger, or its pull request settles the review loop and then stalls in
+     * {@code ci: auto-review} with no test run ever started. The controller is
+     * the single chokepoint every registration passes through, so defaulting
+     * here closes the gap for any client that omits the field when a workstream
+     * is first created. An already-registered workstream — matched by
+     * {@code (branch, repo)} or as a dependent repo above — is returned before
+     * this point and keeps whatever trigger it already has; repairing one that
+     * was registered without a trigger is left to the path that re-applies it on
+     * update. The default is gated on a {@code repoUrl} because a workstream
+     * with no repository runs no CI. The default fires only on an absent field,
+     * matching the presence-signal convention the update endpoint uses for this
+     * and the sibling fields: a client that supplies an explicit empty
+     * {@code settledCiTrigger} wants none, and the create path honours that
+     * clear rather than overriding it with the default.</p>
      *
      * @param body          the raw request body JSON
      * @param defaultBranch the branch the workstream tracks; must be non-empty
@@ -555,6 +588,7 @@ final class WorkstreamRegistrationHandler {
         List<String> dependentRepos = JsonFieldExtractor.extractStringArray(body, "dependentRepos");
         List<String> completionListeners = extractCompletionListeners(body);
         boolean dispatchCapable = JsonFieldExtractor.extractBoolean(body, "dispatchCapable");
+        boolean hasSettledCiTrigger = JsonFieldExtractor.hasField(body, "settledCiTrigger");
         List<String> trackerCapabilities;
         CiTrigger settledCiTrigger;
         try {
@@ -674,6 +708,12 @@ final class WorkstreamRegistrationHandler {
             workstream.setPlanInstructions(planInstructions);
         }
 
+        // Default only an absent trigger so no branch workstream is left unable
+        // to start its merge-gating test run, while an explicit empty clears it;
+        // see this method's javadoc.
+        if (!hasSettledCiTrigger && repoUrl != null && !repoUrl.isEmpty()) {
+            settledCiTrigger = CiTrigger.defaultSettled();
+        }
         workstream.setSettledCiTrigger(settledCiTrigger);
 
         if (!requiredLabels.isEmpty()) {

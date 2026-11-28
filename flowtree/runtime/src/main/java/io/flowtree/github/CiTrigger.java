@@ -115,6 +115,21 @@ public record CiTrigger(Kind kind, String target) implements ConsoleFeatures {
     }
 
     /**
+     * Returns the settled-CI trigger a repository uses by default when nothing
+     * else is configured: a deployment to the {@code test} environment, whose
+     * checks count toward a pull request's required status checks. A branch
+     * workstream whose merge gate is a long-running test run needs one of
+     * these, so the controller falls back to it rather than leaving a
+     * workstream with no trigger — a state in which the pull request settles
+     * its review loop but never starts the test run it is waiting for.
+     *
+     * @return a fresh {@code deployment:test} trigger
+     */
+    public static CiTrigger defaultSettled() {
+        return new CiTrigger(Kind.DEPLOYMENT, "test");
+    }
+
+    /**
      * Returns the spec string this trigger parses from.
      *
      * @return {@code <kind>:<target>}

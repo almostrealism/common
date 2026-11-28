@@ -153,6 +153,11 @@ class TestReader(_Tree):
         self.assertTrue(self.index.has_type("CompletableFuture"))
         self.assertFalse(self.index.has_type("ClaudeCodeJob"))
 
+    def test_declares_type_excludes_imported_names(self):
+        self.assertTrue(self.index.declares_type("OopRule"))
+        self.assertFalse(self.index.declares_type("CompletableFuture"))
+        self.assertFalse(self.index.declares_type("ClaudeCodeJob"))
+
     def test_facts_for_a_script_and_a_type(self):
         facts = self.index.facts_for(["validate.sh", "OopRule"], limit=10)
         labels = [f["label"] for f in facts]

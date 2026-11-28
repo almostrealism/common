@@ -229,6 +229,10 @@ class EnforcementRunner implements ConsoleFeatures {
 
                 log("Enforcement rule '" + ruleName + "': violation detected");
 
+                // Re-evaluated before every attempt (loop foot); environment-determined
+                // means zero further retries. See classifyViolation.
+                ViolationClassification classification = rule.classifyViolation(job);
+
                 // Correction attempts in a single pass are bounded by the rule's own cap
                 // and the absolute safety ceiling, whichever is smaller. When the rule's
                 // cap exceeds the ceiling, the ceiling is what stops the pass — and in that
@@ -237,7 +241,8 @@ class EnforcementRunner implements ConsoleFeatures {
                 boolean ceilingLimited = rule.getMaxRetries() > CodingAgentJob.DEFAULT_MAX_RULE_ENTRIES;
                 int attempts = 0;
                 int noProgressAttempts = 0;
-                while (attempts < ruleCap
+                while (!classification.isEnvironmentDetermined()
+                        && attempts < ruleCap
                         && noProgressAttempts < MAX_NO_PROGRESS_ATTEMPTS
                         && rule.isViolated(job)
                         && !job.hasAgentCommitted()
@@ -283,42 +288,51 @@ class EnforcementRunner implements ConsoleFeatures {
                     if (job.hasAgentCommitted()) break;
                     noProgressAttempts = treeBefore != null && treeBefore.equals(workingTreeFingerprint(rule))
                             ? noProgressAttempts + 1 : 0;
+                    // Re-classify while still violated, so a correction that made the
+                    // remaining violation environment-determined stops the loop.
+                    if (rule.isViolated(job)) classification = rule.classifyViolation(job);
                 }
 
                 if (!job.hasAgentCommitted() && rule.isViolated(job)) {
                     boolean stalled = noProgressAttempts >= MAX_NO_PROGRESS_ATTEMPTS;
-                    if (stalled || attempts >= ruleCap) {
-                        if (stalled) {
-                            warn("Enforcement rule '" + ruleName + "': " + noProgressAttempts
-                                    + " consecutive correction attempts left the working tree unchanged"
-                                    + " and the violation in place; retiring the rule until the tree changes");
-                            job.harnessStatus().unusual("Enforcement rule '" + ruleName + "' retired after "
-                                    + noProgressAttempts + " correction attempts that made no progress");
+                    if (classification.isEnvironmentDetermined() || stalled || attempts >= ruleCap) {
+                        String reason;
+                        boolean retireForGood;
+                        if (classification.isEnvironmentDetermined()) {
+                            reason = "violation is environment-determined and was not retried — "
+                                    + classification.getReason();
+                            retireForGood = true;
+                        } else if (stalled) {
+                            reason = noProgressAttempts + " consecutive correction attempts left the working"
+                                    + " tree unchanged and the violation in place";
+                            retireForGood = false;
                         } else if (ceilingLimited) {
-                            warn("Enforcement rule '" + ruleName
-                                    + "': absolute entry ceiling (" + CodingAgentJob.DEFAULT_MAX_RULE_ENTRIES
-                                    + ") reached; skipping rule to prevent runaway cost");
-                            job.harnessStatus().unusual("Enforcement rule '" + ruleName
-                                    + "' reached absolute entry ceiling and was skipped");
+                            reason = "reached the absolute entry ceiling of "
+                                    + CodingAgentJob.DEFAULT_MAX_RULE_ENTRIES
+                                    + " and was skipped to prevent runaway cost";
+                            retireForGood = true;
                         } else {
-                            warn("Enforcement rule '" + ruleName + "': exhausted "
-                                    + attempts + " retries without resolution");
-                            job.harnessStatus().unusual("Enforcement rule '" + ruleName
-                                    + "' exhausted " + attempts + " retries without resolution");
+                            reason = "exhausted " + attempts + " retries without resolution";
+                            retireForGood = false;
                         }
+                        recordRetirement(ruleName, reason);
                         if ("post-completion-command".equals(ruleName)) job.setPostCompletionCapHit(true);
                         boolean fallbackApplied = applyExhaustionFallback(rule, job);
-                        // A rule with no retries left (a whole-job budget now spent, or a
-                        // cap of 0) has nothing to attempt on a later pass.
-                        if (ceilingLimited || fallbackApplied || rule.getMaxRetries() == 0) {
+                        // Retire for good when a later pass has nothing left to attempt;
+                        // a stalled rule re-enters once something changes the tree.
+                        if (retireForGood || fallbackApplied || rule.getMaxRetries() == 0) {
                             exhaustedRules.add(ruleName);
                         } else if (stalled) {
                             String stalledOn = workingTreeFingerprint(rule);
                             if (stalledOn != null) stalledRules.put(ruleName, stalledOn);
                         }
                     } else if (totalAttempts >= CodingAgentJob.DEFAULT_MAX_TOTAL_ENFORCEMENT_ATTEMPTS) {
-                        warn("Enforcement rule '" + ruleName
-                                + "': stopped because the total enforcement attempt cap was reached");
+                        // The job-wide ceiling stopped this rule before its own cap; the rule
+                        // is left violated, so record why alongside the other retirement paths
+                        // rather than only logging it.
+                        recordRetirement(ruleName, "reached the job-wide ceiling of "
+                                + CodingAgentJob.DEFAULT_MAX_TOTAL_ENFORCEMENT_ATTEMPTS
+                                + " total enforcement attempts before the violation was resolved");
                     }
                 } else if ("post-completion-command".equals(ruleName) && ((PostCompletionCommandRule) rule).isCapHit()) {
                     job.setPostCompletionCapHit(true);
@@ -333,6 +347,23 @@ class EnforcementRunner implements ConsoleFeatures {
                     + CodingAgentJob.DEFAULT_MAX_TOTAL_ENFORCEMENT_ATTEMPTS + ") — giving up to"
                     + " avoid an unbounded retry loop");
         }
+    }
+
+    /**
+     * Retires a rule: logs it, reports it as an unusual harness status, and
+     * records it on the job's {@link JobSessionAccumulator} so the reason
+     * travels on the completion event and is visible in {@code workstream_get_job}
+     * and {@code workstream_context}.
+     *
+     * @param ruleName the rule being retired
+     * @param reason   why the rule was retired (environment-determined, no
+     *                 progress, ceiling, or exhausted retries)
+     */
+    private void recordRetirement(String ruleName, String reason) {
+        String retirement = "Enforcement rule '" + ruleName + "' retired: " + reason;
+        warn(retirement);
+        job.harnessStatus().unusual(retirement);
+        job.sessionAccumulator().recordEnforcementRetirement(retirement);
     }
 
     /**

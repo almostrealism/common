@@ -98,17 +98,8 @@ public class RequestBodyReader implements GitHubProxyHandler.BodyReader, Console
     }
 
     /**
-     * Reads a PATCH body from the session's input stream, bounded by a
-     * validated {@code Content-Length}.
-     *
-     * <p>NanoHTTPD discards a PATCH body, so it is read straight from the
-     * stream. The declared length is checked against {@link #MAX_BODY_BYTES}
-     * <em>before</em> any buffer is allocated: a missing, unparseable,
-     * negative, or over-limit length is rejected with an
-     * {@link InvalidRequestBodyException} rather than trusted to size the
-     * allocation. A stream that ends before the declared length is read — a
-     * client that closed early — is likewise rejected rather than forwarded as
-     * a truncated body.</p>
+     * Reads a PATCH body from the session's input stream. NanoHTTPD discards a
+     * PATCH body, so it is read with {@link #readBytes(IHTTPSession)}.
      *
      * @param session the NanoHTTPD session
      * @return the body string
@@ -117,10 +108,37 @@ public class RequestBodyReader implements GitHubProxyHandler.BodyReader, Console
      *         or the stream yields fewer bytes than declared
      */
     private String readPatchBody(IHTTPSession session) throws IOException {
+        return new String(readBytes(session), StandardCharsets.UTF_8);
+    }
+
+    /**
+     * Reads the request body exactly as it arrived, straight from the session's
+     * input stream and bounded by a validated {@code Content-Length}, without
+     * NanoHTTPD's {@code parseBody} decoding. A caller that verifies a
+     * signature over the body bytes needs this: {@code parseBody} decodes a
+     * body whose {@code Content-Type} names no charset as US-ASCII and trims
+     * it, which changes the bytes that were signed. Call it instead of
+     * {@link #read(IHTTPSession)}, never after it, since the stream is consumed.
+     *
+     * <p>The declared length is checked against {@link #MAX_BODY_BYTES}
+     * <em>before</em> any buffer is allocated: a missing, unparseable,
+     * negative, or over-limit length is rejected with an
+     * {@link InvalidRequestBodyException} rather than trusted to size the
+     * allocation. A stream that ends before the declared length is read — a
+     * client that closed early — is likewise rejected rather than returned as
+     * a truncated body.</p>
+     *
+     * @param session the NanoHTTPD session
+     * @return the body bytes
+     * @throws IOException                 if the stream cannot be read
+     * @throws InvalidRequestBodyException if the declared length is absent or out of range,
+     *         or the stream yields fewer bytes than declared
+     */
+    public byte[] readBytes(IHTTPSession session) throws IOException {
         String length = session.getHeaders().get("content-length");
         if (length == null || length.isBlank()) {
             throw new InvalidRequestBodyException(
-                    "a PATCH request requires a Content-Length header");
+                    "a " + session.getMethod() + " request requires a Content-Length header");
         }
         long declared;
         try {
@@ -140,6 +158,6 @@ public class RequestBodyReader implements GitHubProxyHandler.BodyReader, Console
                     "truncated request body: read " + bytes.length + " of "
                             + declared + " declared bytes");
         }
-        return new String(bytes, StandardCharsets.UTF_8);
+        return bytes;
     }
 }
