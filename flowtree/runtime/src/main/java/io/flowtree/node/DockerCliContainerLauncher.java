@@ -28,6 +28,8 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 
 /**
  * The production {@link ContainerLauncher}: it drives the {@code docker} command-line
@@ -36,7 +38,8 @@ import java.util.Map;
  * dependency and of raw root-equivalent socket access.
  *
  * <p>{@link #launch(ContainerRequest)} runs {@code docker run --rm -i}, feeds the
- * encoded job to the container's standard input, and streams its combined output.
+ * encoded job to the container's standard input on a separate thread, and streams its
+ * combined output.
  * The first element of {@link ContainerRequest#command()} is passed as
  * {@code --entrypoint} and the rest as its arguments, so the request's command runs
  * in place of the image's own entrypoint — the agent image's entrypoint starts a
@@ -58,13 +61,49 @@ public class DockerCliContainerLauncher implements ContainerLauncher, ConsoleFea
 		builder.redirectErrorStream(true);
 		Process process = builder.start();
 
-		try (OutputStream stdin = process.getOutputStream()) {
-			stdin.write(request.encodedJob().getBytes(StandardCharsets.UTF_8));
-		} catch (IOException e) {
-			warn("Could not feed the encoded job to container " + request.name(), e);
-		}
+		CompletableFuture<Void> delivered = feedInput(request, process.getOutputStream(),
+				() -> kill(request.name()));
+		return new ProcessContainerSession(request.name(), process, delivered);
+	}
 
-		return new ProcessContainerSession(request.name(), process);
+	/**
+	 * Writes the encoded job to the container's standard input on a thread of its own and
+	 * then closes the stream, so {@link #launch(ContainerRequest)} returns at once and
+	 * the caller's silence guard covers the input phase too. Writing synchronously would
+	 * let a container that never reads its input — or a payload larger than the pipe
+	 * while the runtime is busy writing pull progress nobody is yet reading — block the
+	 * launch before any guard is running.
+	 *
+	 * <p>A failure to deliver the whole payload means the container cannot be running
+	 * the job it was given, so the container is removed through {@code onFailure} and
+	 * the returned future completes exceptionally; the session reports that from
+	 * {@link ContainerSession#awaitExit()} rather than an exit status that could be
+	 * zero.</p>
+	 *
+	 * @param request    the container being started, whose encoded job is written.
+	 * @param stdin      the container process's standard input.
+	 * @param onFailure  run when the payload could not be delivered, to remove the container.
+	 * @return  a future completed once the payload is written and the stream closed.
+	 */
+	CompletableFuture<Void> feedInput(ContainerRequest request, OutputStream stdin,
+			Runnable onFailure) {
+		CompletableFuture<Void> delivered = new CompletableFuture<>();
+		byte[] payload = request.encodedJob().getBytes(StandardCharsets.UTF_8);
+
+		Thread feeder = new Thread(() -> {
+			try (OutputStream out = stdin) {
+				out.write(payload);
+			} catch (IOException e) {
+				warn("Could not feed the encoded job to container " + request.name(), e);
+				onFailure.run();
+				delivered.completeExceptionally(e);
+				return;
+			}
+			delivered.complete(null);
+		}, "DockerCli Input " + request.name());
+		feeder.setDaemon(true);
+		feeder.start();
+		return delivered;
 	}
 
 	/**
@@ -164,13 +203,19 @@ public class DockerCliContainerLauncher implements ContainerLauncher, ConsoleFea
 		/** The process's combined output, read line by line. */
 		private final BufferedReader output;
 
+		/** Completed once the encoded job has been written to the container's input. */
+		private final CompletableFuture<Void> delivered;
+
 		/**
-		 * @param name     the container name, for cancellation.
-		 * @param process  the running {@code docker run} process.
+		 * @param name       the container name, for cancellation.
+		 * @param process    the running {@code docker run} process.
+		 * @param delivered  completed once the encoded job reached the container's input.
 		 */
-		private ProcessContainerSession(String name, Process process) {
+		private ProcessContainerSession(String name, Process process,
+				CompletableFuture<Void> delivered) {
 			this.name = name;
 			this.process = process;
+			this.delivered = delivered;
 			this.output = new BufferedReader(new InputStreamReader(
 					process.getInputStream(), StandardCharsets.UTF_8));
 		}
@@ -181,8 +226,15 @@ public class DockerCliContainerLauncher implements ContainerLauncher, ConsoleFea
 		}
 
 		@Override
-		public int awaitExit() throws InterruptedException {
-			return process.waitFor();
+		public int awaitExit() throws InterruptedException, IOException {
+			int exit = process.waitFor();
+			try {
+				delivered.get();
+			} catch (ExecutionException e) {
+				throw new IOException("The encoded job was not delivered to container "
+						+ name, e.getCause());
+			}
+			return exit;
 		}
 
 		@Override

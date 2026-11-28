@@ -26,8 +26,11 @@ import org.junit.Assert;
 import org.junit.Test;
 
 import java.io.BufferedReader;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.OutputStream;
 import java.io.StringReader;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -36,6 +39,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
@@ -453,6 +457,129 @@ public class DockerNodeTest extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * A container that exits zero although its encoded job was never delivered has not
+	 * run the job, so the launch fails rather than reporting success.
+	 */
+	@Test(timeout = 10000)
+	public void undeliveredJobFailsTheLaunchEvenOnAZeroExit() {
+		StubSession session = StubSession.completing(0, null)
+				.failingDelivery(new IOException("Broken pipe"));
+		DockerNode node = new DockerNode(null, 4, 4, dockerConfig(), new StubLauncher(session));
+		StubJob job = new StubJob("task-undelivered");
+
+		try {
+			node.launch(job);
+			Assert.fail("an undelivered job must not be reported as a successful run");
+		} catch (Exception expected) {
+			Assert.assertTrue("the failure is the delivery failure",
+					expected.getMessage().contains("Broken pipe"));
+		}
+		Assert.assertTrue("the future is still completed", job.getCompletableFuture().isDone());
+	}
+
+	/**
+	 * A delivery failure caused by a cancellation removing the container is terminal like
+	 * every other cancelled launch, so it is not routed onto the retry path.
+	 */
+	@Test(timeout = 10000)
+	public void undeliveredJobUnderCancellationIsTerminal() throws Exception {
+		StubSession session = StubSession.completing(0, null)
+				.failingDelivery(new IOException("Broken pipe"));
+		StubLauncher launcher = new StubLauncher(session);
+		DockerNode node = new DockerNode(null, 4, 4, dockerConfig(), launcher);
+		launcher.onLaunch = () -> node.sendKill("task-undelivered-cancel", 0);
+		StubJob job = new StubJob("task-undelivered-cancel");
+
+		node.launch(job);
+
+		Assert.assertTrue("the cancelled container is killed",
+				launcher.killed.contains(session.name()));
+		Assert.assertFalse("the future completes normally",
+				job.getCompletableFuture().isCompletedExceptionally());
+	}
+
+	/**
+	 * A failure of the host output sink after the container finished is not a container
+	 * failure: the launch returns normally, so completed work is never retried.
+	 */
+	@Test(timeout = 10000)
+	public void outputConsumerFailureDoesNotFailTheLaunch() throws Exception {
+		ContainerWorkerResult result = new ContainerWorkerResult(0, "session-2", "done");
+		StubLauncher launcher = new StubLauncher(StubSession.completing(0, result.encodeLine()));
+		DockerNode node = new DockerNode(null, 4, 4, dockerConfig(), launcher);
+		StubJob job = new StubJob("task-sink");
+		AtomicReference<JobOutput> received = new AtomicReference<>();
+		job.setOutputConsumer(output -> {
+			received.set(output);
+			throw new IllegalStateException("sink unavailable");
+		});
+
+		node.launch(job);
+
+		Assert.assertEquals("the consumer was offered the output", "done",
+				received.get().getOutput());
+		Assert.assertTrue("the future is completed", job.getCompletableFuture().isDone());
+	}
+
+	/** The launcher writes the encoded job verbatim to the container input and closes it. */
+	@Test(timeout = 10000)
+	public void launcherFeedsTheEncodedJobVerbatim() throws Exception {
+		ContainerRequest request = feedRequest("job::id:=task \n");
+		AtomicBoolean closed = new AtomicBoolean(false);
+		ByteArrayOutputStream stdin = new ByteArrayOutputStream() {
+			@Override
+			public void close() throws IOException {
+				closed.set(true);
+				super.close();
+			}
+		};
+		AtomicBoolean failed = new AtomicBoolean(false);
+
+		new DockerCliContainerLauncher().feedInput(request, stdin, () -> failed.set(true))
+				.get(5, TimeUnit.SECONDS);
+
+		Assert.assertEquals("the payload is written byte for byte", "job::id:=task \n",
+				stdin.toString(StandardCharsets.UTF_8));
+		Assert.assertTrue("the input is closed so the worker sees end of input", closed.get());
+		Assert.assertFalse("a delivered payload does not remove the container", failed.get());
+	}
+
+	/** A failed input write removes the container and fails the delivery future. */
+	@Test(timeout = 10000)
+	public void launcherRemovesTheContainerWhenTheInputCannotBeWritten() throws Exception {
+		ContainerRequest request = feedRequest("payload");
+		OutputStream broken = new OutputStream() {
+			@Override
+			public void write(int b) throws IOException {
+				throw new IOException("Broken pipe");
+			}
+		};
+		CountDownLatch removed = new CountDownLatch(1);
+
+		CompletableFuture<Void> delivered = new DockerCliContainerLauncher()
+				.feedInput(request, broken, removed::countDown);
+
+		Assert.assertTrue("the container is removed", removed.await(5, TimeUnit.SECONDS));
+		try {
+			delivered.get(5, TimeUnit.SECONDS);
+			Assert.fail("an undelivered payload must fail the delivery future");
+		} catch (ExecutionException expected) {
+			Assert.assertEquals("Broken pipe", expected.getCause().getMessage());
+		}
+	}
+
+	/**
+	 * @param encodedJob  the payload to feed.
+	 * @return  a request carrying the payload, for exercising the launcher's input feed.
+	 */
+	private static ContainerRequest feedRequest(String encodedJob) {
+		return new ContainerRequest.Builder("flowtree-job-feed", "flowtree/agent:test")
+				.command(List.of("java", CodingAgentJobWorker.class.getName()))
+				.encodedJob(encodedJob)
+				.build();
+	}
+
 	// ── Stubs ────────────────────────────────────────────────────────────────
 
 	/**
@@ -517,6 +644,9 @@ public class DockerNodeTest extends TestSuiteBase {
 		/** Set once the reader {@link #output()} handed out has been closed. */
 		private final AtomicBoolean outputClosed = new AtomicBoolean(false);
 
+		/** Thrown from {@link #awaitExit()} when set, as an undelivered encoded job. */
+		private IOException deliveryFailure;
+
 		/**
 		 * @param output    the canned output, or {@code null} for none.
 		 * @param exitCode  the exit status to report.
@@ -567,10 +697,23 @@ public class DockerNodeTest extends TestSuiteBase {
 			};
 		}
 
+		/**
+		 * Makes {@link #awaitExit()} report that the encoded job never reached the
+		 * container, as the real launcher does when its input write fails.
+		 *
+		 * @param failure  the delivery failure to throw.
+		 * @return  this session.
+		 */
+		private StubSession failingDelivery(IOException failure) {
+			this.deliveryFailure = failure;
+			return this;
+		}
+
 		@Override
-		public int awaitExit() throws InterruptedException {
+		public int awaitExit() throws InterruptedException, IOException {
 			reachedExit.countDown();
 			exitGate.await();
+			if (deliveryFailure != null) throw deliveryFailure;
 			return exitCode;
 		}
 

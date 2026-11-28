@@ -17,6 +17,7 @@
 package io.flowtree.node;
 
 import java.io.BufferedReader;
+import java.io.IOException;
 
 /**
  * A running container started by a {@link ContainerLauncher}. It exposes the
@@ -51,8 +52,11 @@ public interface ContainerSession {
 	 *
 	 * @return  the container process exit status.
 	 * @throws InterruptedException  If the wait is interrupted.
+	 * @throws IOException  If the encoded job could not be delivered to the container,
+	 *                      so whatever status it exited with does not describe a run of
+	 *                      that job.
 	 */
-	int awaitExit() throws InterruptedException;
+	int awaitExit() throws InterruptedException, IOException;
 
 	/**
 	 * Returns the name the container was started with, used to cancel it.

@@ -262,7 +262,14 @@ public class DockerNode extends Node {
 	 * through {@code addFailedJob}. This matches the native path, where a killed job's
 	 * {@code run()} returns rather than throwing, and it is what keeps a cancelled task
 	 * from being requeued and re-cancelled forever when failed-job retention is enabled —
-	 * the sticky {@link #cancelledTasks cancellation marker} would cancel every retry.</p>
+	 * the sticky {@link #cancelledTasks cancellation marker} would cancel every retry.
+	 * That includes a launch, input delivery or output read that fails because the kill
+	 * removed the container: a failure under cancellation is reported, not thrown.</p>
+	 *
+	 * <p>A failure of the job's own output consumer is not a container failure either:
+	 * by then the container has finished the job and pushed its work, so retrying it
+	 * would repeat completed work. It is logged rather than thrown, as the native path
+	 * absorbs it inside the job's own run.</p>
 	 *
 	 * @param j  the job to run; never {@code null}.
 	 * @throws Exception  if the container fails to run the job to completion.
@@ -300,6 +307,10 @@ public class DockerNode extends Node {
 				throw new IOException("Container " + containerName + " for job " + taskId
 						+ " exited with status " + exit);
 			}
+		} catch (IOException e) {
+			if (!container.isCancelled()) throw e;
+			displayMessage("Container " + containerName + " for job " + taskId
+					+ " stopped because the task was cancelled: " + e.getMessage());
 		} finally {
 			unregister(taskId, container);
 			j.getCompletableFuture().complete(null);
@@ -476,15 +487,21 @@ public class DockerNode extends Node {
 	 * Forwards the worker's output to the job's own output consumer as the job output
 	 * the worker captured — with its prompt, session id and agent exit code — so a
 	 * containerized run records the same output at the same host sink an in-process
-	 * run would.
+	 * run would. A failure inside the consumer is logged and not propagated, so a host
+	 * sink failure is never mistaken for a container failure and retried.
 	 *
 	 * @param j       the job the output belongs to.
 	 * @param result  the worker's parsed result.
 	 */
 	private void forwardOutput(Job j, ContainerWorkerResult result) {
 		Consumer<JobOutput> consumer = j.getOutputConsumer();
-		if (consumer != null) {
+		if (consumer == null) return;
+
+		try {
 			consumer.accept(result.toJobOutput(j.getTaskId()));
+		} catch (RuntimeException e) {
+			warn("Could not deliver the output of job " + j.getTaskId()
+					+ " to its output consumer", e);
 		}
 	}
 

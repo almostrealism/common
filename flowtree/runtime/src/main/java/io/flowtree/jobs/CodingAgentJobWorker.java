@@ -106,7 +106,10 @@ public final class CodingAgentJobWorker {
 	}
 
 	/**
-	 * Decodes and runs one job, writing the framed result line to {@code out}.
+	 * Decodes and runs one job, writing the framed result line to {@code out}. The
+	 * input is decoded exactly as read: the host writes the wire form with no
+	 * delimiter, and the string wire format allows values that end in whitespace, so
+	 * trimming would change the job the container runs.
 	 *
 	 * @param in   the stream carrying the encoded job.
 	 * @param out  the stream carrying heartbeats and the framed result line.
@@ -116,7 +119,7 @@ public final class CodingAgentJobWorker {
 	static int execute(InputStream in, PrintStream out) {
 		String wire;
 		try {
-			wire = new String(in.readAllBytes(), StandardCharsets.UTF_8).trim();
+			wire = new String(in.readAllBytes(), StandardCharsets.UTF_8);
 		} catch (Exception e) {
 			out.println("CodingAgentJobWorker: could not read the encoded job: " + e.getMessage());
 			return EXIT_WORKER_FAILURE;
