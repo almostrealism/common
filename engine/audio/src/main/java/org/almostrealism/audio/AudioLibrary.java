@@ -1339,27 +1339,51 @@ public class AudioLibrary implements ConsoleFeatures {
 	public void stop() { stop(5); }
 
 	/**
-	 * Stops the background analysis executor, waiting up to the given number of seconds.
+	 * Stops the background analysis executor, waiting up to the given number of seconds
+	 * for the job in flight to finish. If it does not finish in time the worker is
+	 * interrupted, and this waits up to the same number of seconds again for it to
+	 * terminate. The store is flushed either way.
 	 *
-	 * @param timeout the maximum number of seconds to wait for shutdown
+	 * <p>The return value tells the caller whether the worker can still write to the
+	 * store: when it is {@code false}, a job that ignored the interrupt may still be
+	 * running and may {@code put} a record after this returns, so the caller must not
+	 * close the store.</p>
+	 *
+	 * @param timeout the maximum number of seconds to wait for shutdown, and again
+	 *                for the interrupted worker to terminate
+	 * @return {@code true} if the worker has terminated (or the library was not running),
+	 *         {@code false} if it may still be running
 	 */
-	public void stop(int timeout) {
+	public boolean stop(int timeout) {
+		boolean terminated = true;
+
 		try {
 			queue.clear();
+			if (executor == null) return true;
+
 			executor.shutdown();
 
 			if (!executor.awaitTermination(timeout, TimeUnit.SECONDS)) {
 				executor.shutdownNow();
+				terminated = executor.awaitTermination(timeout, TimeUnit.SECONDS);
+
+				if (!terminated) {
+					warn("Analysis did not stop within " + 2 * timeout +
+							" seconds; the job in flight may still write to the store");
+				}
 			}
 		} catch (InterruptedException e) {
 			warn("Interrupted waiting for executor to shut down", e);
 			Thread.currentThread().interrupt();
+			terminated = executor.isTerminated();
 		} finally {
 			executor = null;
 			if (store != null) {
 				store.flush();
 			}
 		}
+
+		return terminated;
 	}
 
 	/**
