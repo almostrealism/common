@@ -232,7 +232,23 @@ public class CounterRandom extends TraversableExpressionComputation implements R
 	 * @return the counter increment assignment
 	 */
 	public Assignment<PackedCollection> advance() {
-		return a(p(counter), add(p(counter), c(1.0)));
+		return advance(c(1.0));
+	}
+
+	/**
+	 * Returns the increment of the counter by a device-computed amount as an {@link Assignment}
+	 * operation, so a caller composing one larger compiled operation can advance this generator's
+	 * stream only when its own state says a new value is needed &mdash; for example a
+	 * sample-and-hold that advances by one just on the samples where it draws a new held value,
+	 * and by zero otherwise, leaving the counter well below its single-precision limit. Passing a
+	 * constant one is equivalent to {@link #advance()}. Like {@link #advance()}, this neither
+	 * compiles nor runs the assignment.
+	 *
+	 * @param amount the amount to add to the counter each time the assignment runs
+	 * @return the counter increment assignment
+	 */
+	public Assignment<PackedCollection> advance(Producer<PackedCollection> amount) {
+		return a(p(counter), add(p(counter), amount));
 	}
 
 	/**

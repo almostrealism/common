@@ -23,6 +23,17 @@ import java.util.List;
 public class SpatialDrawingTest extends TestSuiteBase {
 
 	/**
+	 * Tests that {@link TemporalSpatialContext#setDurationSeconds(double)} converts
+	 * seconds into the context's time units when the temporal scale is not {@code 1}.
+	 */
+	@Test(timeout = 30000)
+	public void testSetDurationSecondsAppliesTemporalScale() {
+		TemporalSpatialContext context = new TemporalSpatialContext(() -> 2.0, true);
+		context.setDurationSeconds(3.0);
+		Assert.assertEquals(6.0, context.getDuration(), 1e-9);
+	}
+
+	/**
 	 * Tests that position() and inverse() are true inverses.
 	 */
 	@Test(timeout = 30000)

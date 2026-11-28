@@ -416,7 +416,7 @@ public class Node implements Runnable, ThreadFactory, ConsoleFeatures {
 
 						try {
 							j.setExecutorService(pool);
-							j.run();
+							launch(j);
 							complete = true;
 						} catch (Exception e) {
 							if (e instanceof RuntimeException)
@@ -476,7 +476,26 @@ public class Node implements Runnable, ThreadFactory, ConsoleFeatures {
 		
 		this.setName("Node " + this.id);
 	}
-	
+
+	/**
+	 * Executes a job that this node has dequeued and found it {@link #satisfies
+	 * satisfies}. This is the seam that distinguishes one {@link NodeKind} from
+	 * another: the native Node runs the job in-process on the worker thread, which
+	 * is today's behaviour; a Node kind that delegates work to an isolated runtime
+	 * (e.g. a container) overrides this method to hand the job to that runtime and
+	 * map its outcome back onto the job's completion.
+	 *
+	 * <p>The job has already been {@link #nextJob() prepared} and assigned an
+	 * executor service. An exception thrown here is caught by the worker thread,
+	 * which records the job as failed via {@link #addFailedJob(String)}.</p>
+	 *
+	 * @param j  the job to execute; never {@code null}
+	 * @throws Exception  if execution fails
+	 */
+	protected void launch(Job j) throws Exception {
+		j.run();
+	}
+
 	/**
 	 * Starts the thread that manages the activity of this node.
 	 */

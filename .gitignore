@@ -76,3 +76,6 @@ graphpersistdb**
 # Agent session captures written beside a job working directory
 .flowtree/
 *.iml
+
+# Path change dates rebuild.sh writes into the ar-manager build context
+tools/mcp/manager/snapshot-path-dates.txt

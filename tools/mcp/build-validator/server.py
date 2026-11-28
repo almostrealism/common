@@ -21,6 +21,15 @@ Available checks:
 
 For running the actual test suite use mcp__ar-test-runner__start_test_run.
 
+The checks run against the repository this server ships in by default, but a
+run may target any other Maven project -- a sibling checkout or worktree of a
+downstream consumer -- through the ``project`` argument, the same way
+mcp__ar-test-runner__start_test_run does. The style and structure checks
+(checkstyle, javadoc, errorprone, invalid_files) apply to any Maven project;
+the policy checks (code_policy, test_timeouts, duplicate_code) run the
+platform's own CodePolicyEnforcementTest and so are meaningful only against a
+checkout of the platform.
+
 Usage:
   1. start_validation(checks=["checkstyle", "code_policy"])  → run_id
   2. get_validation_status(run_id)                           → per-check status
@@ -51,6 +60,7 @@ _COMMON_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "co
 if _COMMON_DIR not in sys.path:
     sys.path.insert(0, _COMMON_DIR)
 from polling import block_until_terminal, resolve_block_timeout  # noqa: E402
+from maven_project import resolve_project_root  # noqa: E402
 import build_tree  # noqa: E402
 import run_store  # noqa: E402
 
@@ -118,6 +128,17 @@ class ValidationConfig:
     checks: list = field(default_factory=lambda: list(DEFAULT_CHECKS))
     skip_build: bool = False
     timeout_minutes: int = DEFAULT_TIMEOUT_MINUTES
+    project: str = ""
+
+    def project_root(self) -> Path:
+        """Return the resolved Maven project this run validates.
+
+        Empty :attr:`project` selects the repository the server ships in. A
+        relative path names a sibling checkout the way a shell in the
+        repository would. :data:`PROJECT_ROOT` is read at call time so it stays
+        patchable in tests.
+        """
+        return resolve_project_root(self.project, base=PROJECT_ROOT)
 
 
 @dataclass
@@ -355,6 +376,11 @@ class BuildValidator:
         needs_full_install = needs_build
 
         try:
+            # Resolve inside the try so a target validated in call_tool but
+            # since removed fails this run terminally, rather than escaping the
+            # worker and leaving the run reported as running until timeout.
+            project_root = config.project_root()
+
             # ── Step 1: Build ────────────────────────────────────────
             if needs_build:
                 if self._is_cancelled(run_id):
@@ -366,7 +392,7 @@ class BuildValidator:
 
                 self._write_section(output_file, label)
                 build_start = datetime.now()
-                build_exit = self._run_subprocess(build_cmd, output_file, run_id)
+                build_exit = self._run_subprocess(build_cmd, output_file, run_id, project_root)
                 build_dur = (datetime.now() - build_start).total_seconds()
                 metadata["build_status"] = "passed" if build_exit == 0 else "failed"
                 metadata["build_duration_seconds"] = round(build_dur, 1)
@@ -415,10 +441,7 @@ class BuildValidator:
                 # Delete any stale surefire report before running test-based checks
                 # so that _parse_surefire cannot surface results from a previous run.
                 if check_name in BUILD_REQUIRED_CHECKS:
-                    stale_report = (
-                        PROJECT_ROOT / "tools" / "target" / "surefire-reports"
-                        / f"TEST-{SUREFIRE_TEST_CLASS}.xml"
-                    )
+                    stale_report = self._surefire_report(project_root)
                     try:
                         stale_report.unlink(missing_ok=True)
                     except Exception:
@@ -428,7 +451,8 @@ class BuildValidator:
                 # subprocess. They produce their violations inline.
                 if check_name in PYTHON_NATIVE_CHECKS:
                     check_start = datetime.now()
-                    exit_code, violations = self._run_native_check(check_name, output_file)
+                    exit_code, violations = self._run_native_check(
+                        check_name, output_file, project_root)
                     duration = (datetime.now() - check_start).total_seconds()
 
                     # A native check walks the tree itself rather than reporting a
@@ -437,12 +461,12 @@ class BuildValidator:
                 else:
                     cmd = self._build_command(check_name)
                     check_start = datetime.now()
-                    exit_code = self._run_subprocess(cmd, output_file, run_id)
+                    exit_code = self._run_subprocess(cmd, output_file, run_id, project_root)
                     duration = (datetime.now() - check_start).total_seconds()
 
                     # Extract the output produced by this check only
                     check_output = self._read_from_offset(output_file, offset_before)
-                    violations = self._parse_violations(check_name, check_output)
+                    violations = self._parse_violations(check_name, check_output, project_root)
                 result = {
                     "status": "passed" if exit_code == 0 else "failed",
                     "completed_at": datetime.now().isoformat(),
@@ -517,18 +541,18 @@ class BuildValidator:
     # Native (pure-Python) checks
     # ──────────────────────────────────────────────────────────────────
 
-    def _run_native_check(self, check_name: str, output_file: Path) -> tuple:
+    def _run_native_check(self, check_name: str, output_file: Path, project_root: Path) -> tuple:
         """Run a pure-Python check, appending findings to output_file.
 
         Returns a (exit_code, violations) tuple where exit_code is non-zero
         when the check found at least one violation.
         """
         if check_name == "invalid_files":
-            return self._check_invalid_files(output_file)
+            return self._check_invalid_files(output_file, project_root)
         raise ValueError(f"Unknown native check: {check_name!r}")
 
-    def _check_invalid_files(self, output_file: Path) -> tuple:
-        """Fail when any invalid binary (*.bin) file exists anywhere in the repo.
+    def _check_invalid_files(self, output_file: Path, project_root: Path) -> tuple:
+        """Fail when any invalid binary (*.bin) file exists anywhere in the project.
 
         Binary litter must never be present: other tooling stages and commits
         whatever is on disk, so a stray .bin file inevitably ends up in history.
@@ -536,7 +560,7 @@ class BuildValidator:
         files even though .gitignore now ignores them — an ignored file is still
         litter. The git metadata directory is skipped.
         """
-        invalid = self._scan_invalid_files()
+        invalid = self._scan_invalid_files(project_root)
         if invalid:
             self._append(output_file,
                 f"Found {len(invalid)} invalid binary (.bin) file(s) in the repository:\n")
@@ -561,17 +585,17 @@ class BuildValidator:
         return (1 if invalid else 0), violations
 
     @staticmethod
-    def _scan_invalid_files() -> list:
-        """Return repo-relative paths of every *.bin file, skipping .git."""
+    def _scan_invalid_files(project_root: Path) -> list:
+        """Return project-relative paths of every *.bin file, skipping .git."""
         invalid = []
-        for dirpath, dirnames, filenames in os.walk(PROJECT_ROOT):
+        for dirpath, dirnames, filenames in os.walk(project_root):
             if SCAN_EXCLUDED_DIR in dirnames:
                 dirnames.remove(SCAN_EXCLUDED_DIR)
             for name in filenames:
                 if name.endswith(INVALID_FILE_EXTENSION):
                     full = Path(dirpath) / name
                     try:
-                        rel = str(full.relative_to(PROJECT_ROOT))
+                        rel = str(full.relative_to(project_root))
                     except ValueError:
                         rel = str(full)
                     invalid.append(rel)
@@ -581,19 +605,31 @@ class BuildValidator:
     # Violation parsers
     # ──────────────────────────────────────────────────────────────────
 
-    def _parse_violations(self, check_name: str, check_output: str) -> list:
+    def _parse_violations(self, check_name: str, check_output: str, project_root: Path) -> list:
         """Parse violations from the output produced by a single check."""
         if check_name in ("checkstyle", "javadoc"):
-            return self._parse_checkstyle(check_output)
+            return self._parse_checkstyle(check_output, project_root)
         if check_name == "errorprone":
-            return self._parse_errorprone(check_output)
+            return self._parse_errorprone(check_output, project_root)
         if check_name == "code_policy":
-            return self._parse_code_policy()
+            return self._parse_code_policy(project_root)
         if check_name in BUILD_REQUIRED_CHECKS:
-            return self._parse_surefire(check_name)
+            return self._parse_surefire(check_name, project_root)
         return []
 
-    def _parse_code_policy(self) -> list:
+    @staticmethod
+    def _surefire_report(project_root: Path) -> Path:
+        """Surefire report for the policy enforcement test under a project root.
+
+        The policy checks run ``CodePolicyEnforcementTest`` in the ``tools``
+        module -- the only module ``mvn test`` is permitted to touch -- so their
+        report is always at this fixed location beneath whichever project is
+        being validated.
+        """
+        return (project_root / _SAFE_TEST_MODULE / "target" / "surefire-reports"
+                / f"TEST-{SUREFIRE_TEST_CLASS}.xml")
+
+    def _parse_code_policy(self, project_root: Path) -> list:
         """Parse structured POLICY_VIOLATION records from the enforceCodePolicies report.
 
         enforceCodePolicies emits one tab-delimited line per violation of the form
@@ -602,10 +638,7 @@ class BuildValidator:
         violations detected.") and any incidental text are ignored — no keyword
         scraping. Records are keyed by (file, line, rule) to de-duplicate.
         """
-        report_file = (
-            PROJECT_ROOT / "tools" / "target" / "surefire-reports"
-            / f"TEST-{SUREFIRE_TEST_CLASS}.xml"
-        )
+        report_file = self._surefire_report(project_root)
         if not report_file.exists():
             return []
 
@@ -635,7 +668,7 @@ class BuildValidator:
                             m.group(1), m.group(2), m.group(3), m.group(4).strip()
                         )
                         try:
-                            rel = str(Path(filepath).relative_to(PROJECT_ROOT))
+                            rel = str(Path(filepath).relative_to(project_root))
                         except ValueError:
                             rel = filepath
                         key = (rel, int(line), rule)
@@ -653,7 +686,7 @@ class BuildValidator:
 
         return violations
 
-    def _parse_checkstyle(self, text: str) -> list:
+    def _parse_checkstyle(self, text: str, project_root: Path) -> list:
         """Extract checkstyle violations from Maven output.
 
         Matches lines like:
@@ -668,7 +701,7 @@ class BuildValidator:
         for m in pattern.finditer(text):
             filepath, line, message, rule = m.group(1), m.group(2), m.group(3), m.group(4) or ""
             try:
-                rel = str(Path(filepath).relative_to(PROJECT_ROOT))
+                rel = str(Path(filepath).relative_to(project_root))
             except ValueError:
                 rel = filepath
             violations.append({
@@ -679,7 +712,7 @@ class BuildValidator:
             })
         return violations
 
-    def _parse_errorprone(self, text: str) -> list:
+    def _parse_errorprone(self, text: str, project_root: Path) -> list:
         """Extract ErrorProne violations from Maven compiler output.
 
         Matches lines like:
@@ -694,7 +727,7 @@ class BuildValidator:
         for m in pattern.finditer(text):
             filepath, line, rule, message = m.group(1), m.group(2), m.group(3), m.group(4)
             try:
-                rel = str(Path(filepath).relative_to(PROJECT_ROOT))
+                rel = str(Path(filepath).relative_to(project_root))
             except ValueError:
                 rel = filepath
             violations.append({
@@ -705,12 +738,9 @@ class BuildValidator:
             })
         return violations
 
-    def _parse_surefire(self, check_name: str) -> list:
+    def _parse_surefire(self, check_name: str, project_root: Path) -> list:
         """Extract violations from the surefire report for a CodePolicyEnforcementTest method."""
-        surefire_dir = (
-            PROJECT_ROOT / "tools" / "target" / "surefire-reports"
-        )
-        report_file = surefire_dir / f"TEST-{SUREFIRE_TEST_CLASS}.xml"
+        report_file = self._surefire_report(project_root)
         if not report_file.exists():
             return []
 
@@ -848,12 +878,15 @@ class BuildValidator:
                 f"execution. Command was: {cmd_str}"
             )
 
-    def _run_subprocess(self, cmd: list, output_file: Path, run_id: str) -> int:
+    def _run_subprocess(self, cmd: list, output_file: Path, run_id: str,
+                        project_root: Path) -> int:
         """Run a command, appending stdout/stderr to output_file. Returns exit code.
 
         Calls _assert_safe_command before creating any subprocess. This is the
         single enforcement point: no Maven test command that hasn't passed the
-        safety guard can ever be executed by this server.
+        safety guard can ever be executed by this server. ``project_root`` is the
+        Maven project the command runs in, so a validation targets the checkout
+        the caller named rather than only the repository the server ships in.
         """
         self._assert_safe_command(cmd)
 
@@ -866,7 +899,7 @@ class BuildValidator:
                 stdout=out,
                 stderr=subprocess.STDOUT,
                 env=env,
-                cwd=PROJECT_ROOT,
+                cwd=project_root,
                 preexec_fn=os.setsid,
             )
             self._active_pids[run_id] = process.pid
@@ -1011,6 +1044,8 @@ async def list_tools():
                 "first unless skip_build=true. "
                 "\n\nFor a fast pre-commit check: use checks=['checkstyle'] — no build needed. "
                 "For a full pre-push check: use the defaults (all four checks). "
+                "\n\nValidates this repository by default; pass project to validate any other "
+                "Maven checkout (a sibling checkout or worktree of a downstream consumer). "
                 "\n\nRun this on its own. It builds the same target/ directories as a test "
                 "run, and the checks walk that tree while they work, so an overlapping run "
                 "makes both results meaningless — the validation typically reports a failed "
@@ -1061,6 +1096,21 @@ async def list_tools():
                         "description": (
                             f"Maximum run time in minutes (default: {DEFAULT_TIMEOUT_MINUTES}). "
                             "The build step alone can take 5–10 minutes on a cold cache."
+                        ),
+                    },
+                    "project": {
+                        "type": "string",
+                        "description": (
+                            "Root of the Maven project to validate — the directory holding "
+                            "the reactor pom.xml. Defaults to this repository. Use it to "
+                            "validate any other Maven project, such as a sibling checkout of "
+                            "a downstream consumer: a relative path is resolved against this "
+                            "repository, so \"../downstream\" names a sibling. The style and "
+                            "structure checks (checkstyle, javadoc, errorprone, invalid_files) "
+                            "apply to any project; the policy checks (code_policy, "
+                            "test_timeouts, duplicate_code) run the platform's own "
+                            "CodePolicyEnforcementTest and are meaningful only against a "
+                            "checkout of the platform."
                         ),
                     },
                 },
@@ -1189,27 +1239,35 @@ async def call_tool(name: str, arguments: dict):
                 return [TextContent(type="text",
                     text=json.dumps({"error": f"Unknown checks: {bad}. Valid: {sorted(VALID_CHECKS)}"}))]
 
-            active = build_tree.in_flight()
+            config = ValidationConfig(
+                checks=checks,
+                skip_build=arguments.get("skip_build", False),
+                timeout_minutes=arguments.get("timeout_minutes", DEFAULT_TIMEOUT_MINUTES),
+                project=arguments.get("project", ""),
+            )
+            try:
+                project_root = config.project_root()
+            except ValueError as exc:
+                return [TextContent(type="text", text=json.dumps({"error": str(exc)}))]
+
+            active = build_tree.in_flight(project_root=project_root)
             if active:
                 return [TextContent(type="text", text=json.dumps({
-                    "error": build_tree.conflict_message(active, "ar-build-validator"),
+                    "error": build_tree.conflict_message(
+                        active, "ar-build-validator", project_root=project_root),
                     "active_runs": [
                         {"tool": r.tool, "run_id": r.run_id, "started_at": r.started_at}
                         for r in active
                     ],
                 }, indent=2))]
 
-            config = ValidationConfig(
-                checks=checks,
-                skip_build=arguments.get("skip_build", False),
-                timeout_minutes=arguments.get("timeout_minutes", DEFAULT_TIMEOUT_MINUTES),
-            )
             run_id = validator.start_run(config)
             return [TextContent(type="text", text=json.dumps({
                 "run_id": run_id,
                 "status": "started",
                 "checks": checks,
                 "skip_build": config.skip_build,
+                "project": str(project_root),
                 "note": (
                     "Poll get_validation_status until status is completed/failed. "
                     "Then call get_validation_violations for structured results."

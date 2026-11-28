@@ -122,6 +122,42 @@ public final class JsonFieldExtractor {
 	}
 
 	/**
+	 * Returns the numeric value of a top-level field, read from the parsed JSON
+	 * object rather than by scanning the raw text.
+	 *
+	 * <p>Unlike {@link #extractInt(String, String)}, which matches the first
+	 * {@code "field"} token anywhere in the raw string, this reads the field from
+	 * the top-level object, so a same-named key nested in an earlier field — or a
+	 * {@code "field":N} fragment inside another field's string value — cannot
+	 * change the result. Use it for a value whose integrity must not be spoofable
+	 * by request content, for the same reason {@link #getBoolean(String, String, boolean)}
+	 * exists. A top-level numeric string ({@code "field":"5"}) is accepted too.</p>
+	 *
+	 * <p>The value is returned exactly as parsed: it is not truncated, and it may
+	 * be non-finite ({@code "Infinity"}, {@code "NaN"}, or a literal too large for
+	 * a {@code double}). A caller that needs a whole number or a finite amount
+	 * validates the returned value itself rather than having it silently
+	 * coerced.</p>
+	 *
+	 * @param json  the JSON object string
+	 * @param field the field name
+	 * @return the numeric value, or {@code null} when the input is not a JSON
+	 *         object, the field is absent, or its value is neither a number nor a
+	 *         numeric string
+	 */
+	public static Double getNumber(String json, String field) {
+		if (json == null) return null;
+		try {
+			JsonNode root = MAPPER.readTree(json);
+			if (root == null || !root.isObject()) return null;
+			JsonNode node = root.get(field);
+			return node == null ? null : numericValue(node);
+		} catch (Exception e) {
+			return null;
+		}
+	}
+
+	/**
 	 * Extracts a string field from a JSON string.
 	 * Handles JSON escape sequences including Unicode escapes.
 	 *

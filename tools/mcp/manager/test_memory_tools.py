@@ -17,11 +17,11 @@ _MANAGER_DIR = os.path.dirname(os.path.abspath(__file__))
 if _MANAGER_DIR not in sys.path:
     sys.path.insert(0, _MANAGER_DIR)
 
-from inference import Synthesis  # noqa: E402
 from manager_test_support import (  # noqa: E402
     server, _grant_all_scopes, _grant_scopes, _clear_scopes,
     _set_workspaces, _clear_workspaces, _reset_workspace_cache,
 )
+from inference import Synthesis  # noqa: E402
 
 
 class TestMemoryRecall(unittest.TestCase):

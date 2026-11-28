@@ -183,6 +183,53 @@ public class AudioModel {
 	}
 
 	/**
+	 * Removes an audio condition file path, if present.
+	 *
+	 * @param condition the path to the audio condition file
+	 */
+	public void removeAudioCondition(String condition) {
+		if (audioConditions != null) audioConditions.remove(condition);
+	}
+
+	/**
+	 * Returns whether this model has a non-blank text condition.
+	 *
+	 * @return {@code true} if generation has a text prompt to condition on
+	 */
+	public boolean hasTextCondition() {
+		return containsNonBlank(textConditions);
+	}
+
+	/**
+	 * Returns whether this model has at least one non-blank audio condition path.
+	 *
+	 * @return {@code true} if generation has an audio file to condition on
+	 */
+	public boolean hasAudioCondition() {
+		return containsNonBlank(audioConditions);
+	}
+
+	/**
+	 * Returns whether this model has any usable input: a non-blank text
+	 * condition or a non-blank audio condition path.
+	 *
+	 * @return {@code true} if generation has something to condition on
+	 */
+	public boolean hasAnyCondition() {
+		return hasTextCondition() || hasAudioCondition();
+	}
+
+	/**
+	 * Returns whether the given list contains at least one non-null, non-blank value.
+	 *
+	 * @param values the values to check, may be {@code null}
+	 * @return {@code true} if any value is non-blank
+	 */
+	private static boolean containsNonBlank(List<String> values) {
+		return values != null && values.stream().anyMatch(v -> v != null && !v.isBlank());
+	}
+
+	/**
 	 * Returns a human-readable summary of all conditioning inputs.
 	 *
 	 * @param audioDescription function mapping an audio condition path to a display string

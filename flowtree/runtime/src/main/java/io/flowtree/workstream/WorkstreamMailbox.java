@@ -80,6 +80,9 @@ public class WorkstreamMailbox implements ConsoleFeatures {
      */
     public static final int MAX_WAITERS = 32;
 
+    /** The {@code limit} that places no bound on how many messages a read delivers. */
+    public static final int UNLIMITED = 0;
+
     /** Identifier of the workstream this mailbox belongs to. */
     private final String workstreamId;
 
@@ -207,12 +210,37 @@ public class WorkstreamMailbox implements ConsoleFeatures {
      * @return the delivery, possibly empty when the wait elapsed
      */
     public synchronized Delivery read(long since, String excludeSender, int waitSeconds) {
+        return read(since, excludeSender, waitSeconds, UNLIMITED);
+    }
+
+    /**
+     * Reads at most {@code limit} of the messages that follow {@code since},
+     * blocking for up to {@code waitSeconds} when there are none.
+     *
+     * <p>This behaves as {@link #read(long, String, int)} does, except that
+     * collection stops once {@code limit} messages have been found. The
+     * delivery's {@link Delivery#nextSince()} is then the {@code seq} of the
+     * last message delivered, so a reader that names it next receives the
+     * rest; comparing it with {@link Delivery#head()} tells the reader whether
+     * anything was held back.</p>
+     *
+     * @param since         the highest {@code seq} already seen, or negative to
+     *                      start from the current head
+     * @param excludeSender sender whose messages to skip, or {@code null} to
+     *                      receive every message
+     * @param waitSeconds   how long to block when nothing new is available;
+     *                      clamped to {@link #MAX_WAIT_SECONDS}
+     * @param limit         most messages to deliver, or {@link #UNLIMITED}
+     *                      (any value below one) for no bound
+     * @return the delivery, possibly empty when the wait elapsed
+     */
+    public synchronized Delivery read(long since, String excludeSender, int waitSeconds, int limit) {
         long cursor = since < 0 ? head() : since;
         long deadline = System.currentTimeMillis()
                 + Math.min(Math.max(waitSeconds, 0), MAX_WAIT_SECONDS) * 1000L;
 
         while (true) {
-            Delivery delivery = since(cursor, excludeSender);
+            Delivery delivery = since(cursor, excludeSender, limit);
             if (!delivery.messages().isEmpty()) return delivery;
 
             long remaining = deadline - System.currentTimeMillis();
@@ -229,6 +257,43 @@ public class WorkstreamMailbox implements ConsoleFeatures {
                 waiters--;
             }
         }
+    }
+
+    /**
+     * Returns the most recent {@code limit} retained messages, without waiting.
+     *
+     * <p>The head and the messages are taken under one lock, so a message
+     * appended while the tail is being read cannot leave the delivery showing
+     * an older window than the head it reports. The delivery's
+     * {@link Delivery#nextSince()} is the head, so a reader that names it next
+     * hears only what is sent afterwards.</p>
+     *
+     * <p>A reader that wants to know whether older messages are still
+     * retained asks for one more than it will show: it holds older messages
+     * back exactly when the extra one is delivered. Retention pruning and
+     * gaps in {@code seq} cannot mislead that test, since it counts messages
+     * actually held rather than inferring them from the head.</p>
+     *
+     * @param excludeSender sender whose messages to skip, or {@code null} to
+     *                      receive every message
+     * @param limit         most messages to deliver, or {@link #UNLIMITED}
+     *                      (any value below one) for every retained message
+     * @return the delivery, oldest first; empty when nothing is retained
+     */
+    public synchronized Delivery tail(String excludeSender, int limit) {
+        List<Message> found = new ArrayList<>();
+
+        for (int i = messages.size() - 1; i >= 0; i--) {
+            if (limit > 0 && found.size() >= limit) break;
+
+            Message message = messages.get(i);
+            if (excludeSender != null && excludeSender.equals(message.sender())) continue;
+
+            found.add(message);
+        }
+
+        Collections.reverse(found);
+        return new Delivery(Collections.unmodifiableList(found), head(), head());
     }
 
     /**
@@ -283,18 +348,20 @@ public class WorkstreamMailbox implements ConsoleFeatures {
     }
 
     /**
-     * Collects the retained messages that follow {@code cursor} without
-     * waiting.
+     * Collects up to {@code limit} of the retained messages that follow
+     * {@code cursor} without waiting.
      *
      * @param cursor        the highest {@code seq} already seen
      * @param excludeSender sender whose messages to skip, or {@code null}
+     * @param limit         most messages to collect, or {@link #UNLIMITED}
      * @return the delivery; empty when nothing follows {@code cursor}
      */
-    private synchronized Delivery since(long cursor, String excludeSender) {
+    private synchronized Delivery since(long cursor, String excludeSender, int limit) {
         List<Message> found = new ArrayList<>();
         long next = cursor;
 
         for (Message message : messages) {
+            if (limit > 0 && found.size() >= limit) break;
             if (message.seq() <= cursor) continue;
 
             next = message.seq();
@@ -303,7 +370,7 @@ public class WorkstreamMailbox implements ConsoleFeatures {
             found.add(message);
         }
 
-        return new Delivery(Collections.unmodifiableList(found), Math.max(next, cursor));
+        return new Delivery(Collections.unmodifiableList(found), head(), Math.max(next, cursor));
     }
 
     /**
@@ -394,16 +461,22 @@ public class WorkstreamMailbox implements ConsoleFeatures {
      * well as those delivered, so it is not simply the {@code seq} of the last
      * entry in {@code messages}.</p>
      *
+     * <p>{@code head} is the mailbox's {@link WorkstreamMailbox#head()} when
+     * the read was answered. It differs from {@code nextSince} when a limited
+     * read held messages back, or when the reader named a cursor beyond the
+     * head, which {@code nextSince} echoes.</p>
+     *
      * @param messages  the delivered messages, oldest first
+     * @param head      the highest {@code seq} assigned when the read was answered
      * @param nextSince the cursor for the reader's next read
      */
-    public record Delivery(List<Message> messages, long nextSince) {
+    public record Delivery(List<Message> messages, long head, long nextSince) {
 
         /**
          * Renders this delivery as the body of a mailbox read response.
          *
-         * @return a JSON object with {@code ok}, {@code messages}, and
-         *         {@code nextSince}
+         * @return a JSON object with {@code ok}, {@code messages}, {@code head}
+         *         and {@code nextSince}
          */
         public String toJson() {
             StringBuilder out = new StringBuilder("{\"ok\":true,\"messages\":[");
@@ -413,7 +486,8 @@ public class WorkstreamMailbox implements ConsoleFeatures {
                 out.append(messages.get(i).toJson());
             }
 
-            return out.append("],\"nextSince\":").append(nextSince).append('}').toString();
+            return out.append("],\"head\":").append(head)
+                    .append(",\"nextSince\":").append(nextSince).append('}').toString();
         }
     }
 

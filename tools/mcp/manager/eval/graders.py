@@ -26,6 +26,8 @@ The grader vocabulary (see ``validate_case``):
 - ``history_must_include`` — list of case-insensitive regexes that must match
                            the response's ``history`` field
 - ``min_conflicts``      — floor on ``len(conflicts)``
+- ``note_tiers``         — ``{memory id: tier}``: the tier each of those notes
+                           was presented with
 - ``must_mark_unsupported`` — list of case-insensitive regexes; each must match
                            a sentence the citation verifier flagged (one marked
                            ``[unsupported]`` in the prose, or listed in
@@ -44,6 +46,7 @@ EXPECT_KEYS = frozenset({
     "must_cite_any", "must_not_cite", "must_flag_stale", "basis_in",
     "max_citation_warnings", "min_citation_warnings", "must_mark_unsupported",
     "must_not_mark_unsupported", "history_must_include", "min_conflicts",
+    "note_tiers",
 })
 
 # Expectation keys whose value is a list of case-insensitive regexes.
@@ -341,6 +344,14 @@ def grade(response: dict, expect: dict) -> GradeResult:
             f"{n} warnings, fewer than {expect['min_citation_warnings']}",
         )
 
+    if "note_tiers" in expect:
+        presented = {e.get("memory_id"): e.get("tier")
+                     for e in response.get("evidence", []) or [] if e.get("kind") == "note"}
+        for memory_id, wanted in expect["note_tiers"].items():
+            got = presented.get(memory_id)
+            result.record("note_tiers", got == wanted,
+                          f"note {memory_id} presented as {got!r}, expected {wanted!r}")
+
     history = response.get("history") if isinstance(response.get("history"), str) else ""
     for pat in expect.get("history_must_include", []):
         ok = re.search(pat, history, re.IGNORECASE) is not None
@@ -451,6 +462,10 @@ def validate_case(case: dict) -> list[str]:
         unknown = set(expect) - EXPECT_KEYS
         if unknown:
             errors.append(f"{cid}: {label} has unknown keys {sorted(unknown)}")
+        if "note_tiers" in expect and not (
+                isinstance(expect["note_tiers"], dict)
+                and all(isinstance(v, str) for v in expect["note_tiers"].values())):
+            errors.append(f"{cid}: {label} note_tiers must map memory ids to tiers")
         outcome = expect.get("outcome")
         if outcome is not None and outcome not in KNOWN_OUTCOMES:
             errors.append(
