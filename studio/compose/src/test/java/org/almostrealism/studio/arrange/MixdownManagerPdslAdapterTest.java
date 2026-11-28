@@ -308,15 +308,18 @@ public class MixdownManagerPdslAdapterTest extends TestSuiteBase implements Cell
 	}
 
 	/**
-	 * On the efx-off layer the wet arm has no volume or send stage to carry a channel's pan, so a
-	 * stereo-side adapter scales each row of {@code wet_hp_coeffs} and {@code wet_filter_coeffs}
-	 * by that channel's balance-law gain on its side. A centre (no side) adapter leaves the rows
-	 * as the unscaled response-table rows. The pans give the LEFT side gains of {@code 0.8},
-	 * {@code 0.45} and, for a left-panned channel, the clamped {@code 1.0}, so a gain applied to
-	 * the wrong channel, applied twice or left unclamped fails a row.
+	 * On the efx-off layer the wet arm has no volume or send stage to carry a channel's pan, so
+	 * its pan rides the live {@code wet_pan} slot rather than its FIR coefficients. Two things
+	 * follow and are checked here. First, the {@code wet_hp_coeffs} and {@code wet_filter_coeffs}
+	 * banks are the <em>unscaled</em> response-table rows for both a centre (no side) and a
+	 * stereo-side adapter — the pan is no longer folded into them. Second, the refreshed
+	 * {@code wet_pan} slot holds each channel's balance-law gain on its side: unity for centre,
+	 * and for LEFT the pans {@code {0.2, 0.55, -0.6}} give {@code {0.8, 0.45, 1.0}} (the last
+	 * clamped). A pan set after the argument map was built reaches the slot on the next refresh,
+	 * so a gain applied to the wrong channel, left unclamped or frozen at build time fails.
 	 */
 	@Test(timeout = 300_000)
-	public void baseLayerWetBanksFoldPanGainPerChannel() {
+	public void baseLayerWetArmPansThroughLiveWetPanSlot() {
 		double[] pans = { 0.2, 0.55, -0.6 };
 		double[] leftGains = { 0.8, 0.45, 1.0 };
 
@@ -325,6 +328,16 @@ public class MixdownManagerPdslAdapterTest extends TestSuiteBase implements Cell
 			buildFixture(CHANNELS, false, side);
 			for (int ch = 0; ch < CHANNELS; ch++) {
 				mixdown.setPan(ch, pans[ch]);
+			}
+			// The slot refreshed when the map was built still holds the centre pan; re-run the
+			// refresh so it reflects the pans set above, as the real-time runner does per buffer.
+			adapter.automationRefresh(args).get().run();
+
+			PackedCollection wetPan = (PackedCollection) args.get("wet_pan");
+			for (int ch = 0; ch < CHANNELS; ch++) {
+				double expected = side == null ? 1.0 : leftGains[ch];
+				Assert.assertEquals("wet_pan[" + ch + "](side=" + side + ")",
+						expected, wetPan.toDouble(ch), EPS);
 			}
 
 			FixedFilterChromosome wetFilter = mixdown.getWetFilter();
@@ -339,12 +352,7 @@ public class MixdownManagerPdslAdapterTest extends TestSuiteBase implements Cell
 								AudioPassFilter.MIN_FREQUENCY, 20000).evaluate()) {
 							bin = bin(bounded.toDouble(0));
 						}
-						double gain = side == null ? 1.0 : leftGains[ch];
-						for (int t = 0; t < TAPS; t++) {
-							Assert.assertEquals(key + "[" + ch + ", " + t + "]",
-									gain * table.toDouble(bin * TAPS + t),
-									bank.toDouble(ch * TAPS + t), EPS);
-						}
+						assertRow(key, bank, ch, table, bin * TAPS);
 					}
 				}
 			}
