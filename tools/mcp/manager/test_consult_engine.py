@@ -752,5 +752,48 @@ class TestCitationRetry(_Pipeline):
         self.assertEqual(self.verify_calls(self.BAD, Synthesis(self.BAD, "fake")), 2)
 
 
+class TestConceptMap(_Pipeline):
+    """The curated concept map is retrieved as consult's top evidence tier.
+
+    These run against the real docs/internals/consult-concept-map.md (the
+    concept_map() loader is not patched), so they double as a check that the
+    shipped map still matches as intended.
+    """
+
+    def test_index_sequence_entry_leads_the_evidence(self):
+        result = self.consult(
+            "The values form an `IndexSequence` [M1].\n"
+            "BASIS: documentation\nCONFLICTS: none",
+            results=[_doc(text="an unrelated documentation fragment")],
+            question="integer membership for index options",
+            keywords=["integer membership", "index options"])
+        evidence = result["evidence"]
+        self.assertEqual(evidence[0]["kind"], "concept")
+        self.assertEqual(evidence[0]["tier"], "M")
+        self.assertEqual(evidence[0]["section"], "IndexSequence")
+        self.assertEqual(evidence[0]["file"],
+                         "docs/internals/consult-concept-map.md")
+        # The concept entry precedes the document fragment.
+        kinds = [e["kind"] for e in evidence]
+        self.assertLess(kinds.index("concept"), kinds.index("doc"))
+
+    def test_a_concept_citation_expands_and_counts_as_documentation(self):
+        result = self.consult(
+            "The values form an `IndexSequence` [M1].\n"
+            "BASIS: documentation\nCONFLICTS: none",
+            question="integer membership for index options",
+            keywords=["integer membership", "index options"])
+        self.assertIn("[M1: docs/internals/consult-concept-map.md:",
+                      result["answer"])
+        self.assertEqual(result["answer_basis"], "documentation")
+
+    def test_an_unrelated_question_adds_no_concept_entry(self):
+        result = self.consult(
+            "It rejects edits [D1].\nBASIS: documentation\nCONFLICTS: none",
+            results=[_doc(text="rejects edits")],
+            question="quarterly revenue forecast rollup")
+        self.assertTrue(all(e["kind"] != "concept" for e in result["evidence"]))
+
+
 if __name__ == "__main__":
     unittest.main()

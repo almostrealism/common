@@ -20,8 +20,13 @@ import re
 from dataclasses import dataclass, field
 from typing import Optional
 
-# Tiers. A and B may state present fact; B' only qualified by its branch;
-# C and C-stale only history (see consult_tiers.tier for how they are assigned).
+# Tiers. The curated concept-map tier and A and B may state present fact; B'
+# only qualified by its branch; C and C-stale only history (see
+# consult_tiers.tier for how notes are assigned). The concept-map tier leads
+# because a matched concept entry is curated, source-verified guidance about
+# which type already represents the idea — it is what the agent should read
+# before any document fragment.
+TIER_CONCEPT = "M"
 TIER_DOC = "A"
 TIER_CURRENT = "B"
 TIER_BRANCH_LOCAL = "B'"
@@ -31,9 +36,9 @@ TIER_STALE = "C✗"
 # not look branch state up).
 TIER_UNTIERED = "N"
 
-# Prompt order: authoritative first.
-TIER_ORDER = (TIER_DOC, TIER_CURRENT, TIER_BRANCH_LOCAL, TIER_HISTORICAL,
-              TIER_STALE, TIER_UNTIERED)
+# Prompt order: the curated concept map first, then authoritative documentation.
+TIER_ORDER = (TIER_CONCEPT, TIER_DOC, TIER_CURRENT, TIER_BRANCH_LOCAL,
+              TIER_HISTORICAL, TIER_STALE, TIER_UNTIERED)
 
 # Tiers whose items may never supply a present-tense fact.
 HISTORY_ONLY_TIERS = frozenset({TIER_HISTORICAL, TIER_STALE})
@@ -44,13 +49,14 @@ NOTE_FACT_TIERS = frozenset({TIER_CURRENT, TIER_BRANCH_LOCAL})
 KIND_DOC = "doc"
 KIND_NOTE = "note"
 KIND_INDEX = "index"
+KIND_CONCEPT = "concept"
 
-_PREFIX = {KIND_DOC: "D", KIND_NOTE: "N", KIND_INDEX: "I"}
+_PREFIX = {KIND_DOC: "D", KIND_NOTE: "N", KIND_INDEX: "I", KIND_CONCEPT: "M"}
 
-# A citation marker as the model writes it: ``[D1]``, ``[N2]``, or several IDs
-# in one bracket, ``[D1, N2]``.
-MARKER = re.compile(r"\[((?:[DNI]\d+)(?:\s*[,;]\s*[DNI]\d+)*)\]")
-_MARKER_ID = re.compile(r"[DNI]\d+")
+# A citation marker as the model writes it: ``[D1]``, ``[M2]``, or several IDs
+# in one bracket, ``[D1, M2]``.
+MARKER = re.compile(r"\[((?:[DNIM]\d+)(?:\s*[,;]\s*[DNIM]\d+)*)\]")
+_MARKER_ID = re.compile(r"[DNIM]\d+")
 
 # How much of a note's text reaches the prompt. Notes are agent prose and can
 # run to pages; the documentation keeps its own budget (DocsRetriever).
@@ -121,6 +127,11 @@ class EvidenceItem:
 
     def tier_label(self, corpus: Optional[dict] = None) -> str:
         """The label the model applies its tier rule to."""
+        if self.kind == KIND_CONCEPT:
+            commit = (corpus or {}).get("commit", "unknown")
+            built = (corpus or {}).get("built_at", "")
+            snap = f"snapshot {commit[:12]}" + (f", {built[:10]}" if built else "")
+            return f"CONCEPT MAP ({snap})"
         if self.kind in (KIND_DOC, KIND_INDEX):
             commit = (corpus or {}).get("commit", "unknown")
             built = (corpus or {}).get("built_at", "")
@@ -280,6 +291,19 @@ class EvidenceList:
             label=fact.get("label", ""),
         ))
 
+    def add_concept(self, entry, file: str) -> EvidenceItem:
+        """Add a curated concept-map entry (the top tier).
+
+        Args:
+            entry: A ``concept_map.ConceptEntry``.
+            file: The map's repository-relative path, for citation.
+        """
+        return self.add(EvidenceItem(
+            id="", kind=KIND_CONCEPT, text=entry.render(), tier=TIER_CONCEPT,
+            file=file, start=entry.start, end=entry.end, section=entry.name,
+            label=entry.label(),
+        ))
+
     def get(self, item_id: str) -> Optional[EvidenceItem]:
         """The item with ``item_id``, or ``None`` when no such item was shown."""
         return self._items.get(item_id)
@@ -287,7 +311,7 @@ class EvidenceList:
     def items(self) -> list[EvidenceItem]:
         """Items in prompt order: by tier, then documentation before index
         facts before notes, then by ID number."""
-        kind_rank = {KIND_DOC: 0, KIND_INDEX: 1, KIND_NOTE: 2}
+        kind_rank = {KIND_CONCEPT: 0, KIND_DOC: 1, KIND_INDEX: 2, KIND_NOTE: 3}
         return sorted(self._items.values(), key=lambda it: (
             TIER_ORDER.index(it.tier) if it.tier in TIER_ORDER else 9,
             kind_rank.get(it.kind, 9), int(it.id[1:])))
@@ -302,13 +326,19 @@ class EvidenceList:
     def render(self) -> str:
         """The evidence section of the prompt.
 
-        Documentation and index facts come first under ``Relevant
-        Documentation``, then notes under ``Notes From Prior Sessions``,
-        each item headed by ``[ID] <tier label>`` and its provenance.
+        Curated concept-map entries come first under ``Concept Map``, then
+        documentation and index facts under ``Relevant Documentation``, then
+        notes under ``Notes From Prior Sessions``, each item headed by
+        ``[ID] <tier label>`` and its provenance.
         """
-        docs = [it for it in self.items() if it.kind != KIND_NOTE]
+        concepts = self.of_kind(KIND_CONCEPT)
+        docs = [it for it in self.items()
+                if it.kind not in (KIND_NOTE, KIND_CONCEPT)]
         notes = self.of_kind(KIND_NOTE)
         parts = []
+        if concepts:
+            parts.append("### Concept Map\n\n" + "\n\n".join(
+                self._render_item(it) for it in concepts))
         if docs:
             parts.append("### Relevant Documentation\n\n" + "\n\n".join(
                 self._render_item(it) for it in docs))

@@ -611,8 +611,11 @@ def consult(
     claim by evidence ID. The corpus ships inside this server, so this works
     from any repository rather than only from a checkout.
 
-    Every evidence item carries a tier: ``A`` (documentation or index fact,
-    present fact for the snapshot), ``B`` (current note — may answer what the
+    Every evidence item carries a tier: ``M`` (a curated concept-map entry —
+    the type that already represents a concept you are touching, and how it is
+    meant to be extended; presented first, ahead of document fragments), ``A``
+    (documentation or index fact, present fact for the snapshot), ``B`` (current
+    note — may answer what the
     documentation lacks, and the answer then says so), ``B'`` (true only on
     its own unmerged branch), ``C``/``C✗`` (historical or stale note — history
     only). Citations such as ``[D1: path:start-end]`` name the range the model
