@@ -44,7 +44,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=prompt-render.sh
 source "${SCRIPT_DIR}/prompt-render.sh"
 
-FAILURE_LIST=$(cat "$FAILURES_FILE")
+FAILURE_LIST=$(redact_ci_shard_variables < "$FAILURES_FILE")
 
 cat > "$OUTPUT_FILE" <<EOF
 ${FAILURE_COUNT} CI quality gate(s) failed on branch "${BRANCH}" (commit ${COMMIT_SHA}):
