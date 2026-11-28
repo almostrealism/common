@@ -359,6 +359,23 @@ public class MixdownManagerPdslAdapterTest extends TestSuiteBase implements Cell
 		}
 	}
 
+	/**
+	 * The efx-on layer ({@code mixdown_master_wet}) pans through its volume and reverb-send
+	 * stages and does not declare {@code wet_pan}, so its argument map must not carry the slot:
+	 * a slot there would be refreshed every buffer for nothing, or — if a later layer read it —
+	 * apply the pan a second time. The efx-off map must carry it.
+	 */
+	@Test(timeout = 300_000)
+	public void wetPanSlotPresentOnlyForEffectsOffLayer() {
+		buildFixture(CHANNELS, true, ChannelInfo.StereoChannel.LEFT);
+		Assert.assertFalse("efx-on map must not carry wet_pan", args.containsKey("wet_pan"));
+
+		buildFixture(CHANNELS, false, ChannelInfo.StereoChannel.LEFT);
+		Assert.assertTrue("efx-off map must carry wet_pan", args.containsKey("wet_pan"));
+		Assert.assertEquals(CHANNELS,
+				((PackedCollection) args.get("wet_pan")).getShape().getTotalSize());
+	}
+
 	/** Builds the wet-layer fixture with {@link #CHANNELS} channels; see {@link #buildFixture(int)}. */
 	private void buildFixture() {
 		buildFixture(CHANNELS);

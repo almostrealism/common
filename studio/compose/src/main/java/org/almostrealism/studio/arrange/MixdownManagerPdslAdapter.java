@@ -423,6 +423,12 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 	 * {@code MixdownManager.createCells()}. The master low-pass cutoff is a single
 	 * post-sum stage and remains shape-{@code [1]}.</p>
 	 *
+	 * <p>The shape-{@code [channels]} {@code wet_pan} slot is allocated only for the
+	 * efx-off layer ({@link #efx} {@code null}). {@link #wetArgsMap()} also starts from this
+	 * map, but {@code mixdown_master_wet} pans through its volume and reverb-send stages and
+	 * does not declare {@code wet_pan}; omitting the slot there keeps
+	 * {@link #automationRefresh} from evaluating an unused pan producer every buffer.</p>
+	 *
 	 * @return populated argument map for {@code PdslLoader.buildLayer(...)}
 	 */
 	private Map<String, Object> baseArgsMap() {
@@ -449,7 +455,7 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 		// swept filters) into these slots once per buffer.
 		args.put("hp_cutoff", new PackedCollection(config.channels));
 		args.put("volume", new PackedCollection(config.channels));
-		args.put("wet_pan", new PackedCollection(config.channels));
+		if (efx == null) args.put("wet_pan", new PackedCollection(config.channels));
 		args.put("lp_cutoff", new PackedCollection(1));
 		int taps = config.filterOrder + 1;
 		args.put("hp_coeffs", new PackedCollection(
