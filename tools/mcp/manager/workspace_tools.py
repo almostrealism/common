@@ -269,7 +269,8 @@ def workspace_get_config(
         f"/api/workspaces/{quote(workspace_id, safe='')}/config")
     if result.get("ok") is False:
         result.setdefault("next_steps", [
-            "Use workspace_update_config to confirm the workspace_id is correct",
+            "Re-run workspace_get_config with a valid workspace_id "
+            "(the operator-chosen workspace identifier)",
         ])
         return result
 
