@@ -16,14 +16,18 @@
 
 package org.almostrealism.hardware.mem;
 
+import com.sun.management.ThreadMXBean;
 import io.almostrealism.code.Memory;
 import io.almostrealism.code.MemoryProvider;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.jvm.JVMMemoryProvider;
+import org.almostrealism.hardware.metal.MetalMemoryProvider;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
+import org.junit.Assume;
 import org.junit.Test;
 
+import java.lang.management.ManagementFactory;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -301,6 +305,62 @@ public class ChunkedHostCopyTest extends TestSuiteBase {
 			Assert.assertArrayEquals(expected, provider.toArray(mem, 0, size), 0.0);
 		} finally {
 			provider.deallocate(size, mem);
+		}
+	}
+
+	/**
+	 * The heap a chunked copy into Metal memory allocates does not grow with the number of
+	 * chunks: the precision conversion of each chunk is written straight into the off-heap
+	 * transfer buffer rather than through a heap array of the chunk's length, which at
+	 * {@link AbstractMemoryProvider#HOST_COPY_CHUNK_SIZE} is a G1 humongous object per chunk.
+	 * The bound is less than one chunk's worth of FP32 values across six extra chunks.
+	 *
+	 * <p>Only the Metal provider makes this guarantee. {@code CLMemoryProvider} still
+	 * converts each chunk through a heap array, so the test is skipped for it; extending the
+	 * bound to OpenCL is tracked as separate follow-up work.</p>
+	 */
+	@Test(timeout = 120000)
+	public void metalChunkedCopyHeapDoesNotGrowWithChunks() {
+		AbstractMemoryProvider<Memory> provider = kernelProvider();
+		Assume.assumeTrue("the bound is a property of the Metal provider, not " + provider.getName(),
+				MetalMemoryProvider.class.isInstance(provider));
+
+		int chunk = AbstractMemoryProvider.HOST_COPY_CHUNK_SIZE;
+		heapAllocatedByCopy(provider, 2 * chunk);
+		long twoChunks = heapAllocatedByCopy(provider, 2 * chunk);
+		long eightChunks = heapAllocatedByCopy(provider, 8 * chunk);
+		log("twoChunksBytes=" + twoChunks + " eightChunksBytes=" + eightChunks);
+
+		Assert.assertTrue("six more chunks allocated " + (eightChunks - twoChunks) + " more bytes of heap",
+				eightChunks - twoChunks < (long) chunk * Float.BYTES);
+	}
+
+	/**
+	 * Returns the heap bytes the calling thread allocates while copying {@code length}
+	 * elements from a counting source into fresh memory of the given provider.
+	 *
+	 * <p>The JVM reports {@code -1} for thread allocation when tracking is disabled, which
+	 * would make every measurement compare equal; tracking is enabled here and a negative
+	 * reading fails the test rather than passing it vacuously.</p>
+	 */
+	private static long heapAllocatedByCopy(AbstractMemoryProvider<Memory> provider, int length) {
+		ThreadMXBean threads = (ThreadMXBean) ManagementFactory.getThreadMXBean();
+		Assert.assertTrue("thread allocation measurement is not supported by this JVM",
+				threads.isThreadAllocatedMemorySupported());
+		if (!threads.isThreadAllocatedMemoryEnabled()) threads.setThreadAllocatedMemoryEnabled(true);
+
+		CountingSource source = new CountingSource(length);
+		Memory dest = provider.allocate(length);
+
+		try {
+			long before = threads.getCurrentThreadAllocatedBytes();
+			provider.setMem(dest, 0, source, 0, length);
+			long after = threads.getCurrentThreadAllocatedBytes();
+			Assert.assertTrue("thread allocation measurement unavailable: before=" + before + " after=" + after,
+					before >= 0 && after >= 0);
+			return after - before;
+		} finally {
+			provider.deallocate(length, dest);
 		}
 	}
 
