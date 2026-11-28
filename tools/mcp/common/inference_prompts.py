@@ -187,3 +187,38 @@ def build_consult_prompt(
     ))
 
     return "\n\n".join(parts)
+
+
+def revision_instructions(draft: str, warnings: list) -> str:
+    """Instructions asking the model to revise an answer the citation
+    verifier flagged, used in place of the default answering instructions.
+
+    The model sees its draft and, for each flagged sentence, why it failed,
+    so the revision can re-cite the sentence to an item that states it, or
+    drop it. The tier rules and the evidence are unchanged, so the revision
+    is held to exactly the contract the draft was.
+
+    Args:
+        draft: The answer as the model first wrote it, trailer included.
+        warnings: The verifier's ``citation_warnings`` for that answer.
+
+    Returns:
+        The instructions section of the revision prompt.
+    """
+    flagged = []
+    for warning in warnings:
+        missing = warning.get("missing")
+        detail = f" (not found in the cited items: {', '.join(missing)})" if missing else ""
+        flagged.append(f"- \"{warning.get('sentence', '')}\" — {warning.get('reason', '')}"
+                       f", cited {warning.get('marker') or 'nothing'}{detail}")
+    return (
+        "## Your Draft Answer\n\n" + draft.strip() + "\n\n"
+        "## Sentences The Citation Check Could Not Support\n\n" + "\n".join(flagged) + "\n\n"
+        "## Instructions\n\n"
+        "Revise the draft. For each sentence above, either cite the item that "
+        "actually states it, restate it to say only what its cited item says, "
+        "or remove it. Keep every other sentence as it is. Do not add claims "
+        "the evidence does not state. If nothing the question asks is stated "
+        "by the evidence, answer \"Not documented.\" Finish with the BASIS: "
+        "and CONFLICTS: lines."
+    )

@@ -40,7 +40,8 @@ class TestCaseSchema(unittest.TestCase):
         cases = load_cases()
         self.assertEqual([c["id"] for c in cases],
                          ["E1", "E2", "E3", "E4", "E5", "E6", "E7", "E8",
-                          "E9", "E10", "E11", "E12", "E13", "E14", "E17", "E18"])
+                          "E9", "E10", "E11", "E12", "E13", "E14", "E15", "E16",
+                          "E17", "E18"])
 
     def test_every_expect_outcome_is_known(self):
         for case in load_cases():
@@ -229,6 +230,28 @@ class TestCaseSchema(unittest.TestCase):
             "basis_in": ["documentation"],
             "max_citation_warnings": 0,
         }}
+        self.assertEqual(validate_case(ok), [])
+
+    def test_validate_case_rejects_non_string_revised(self):
+        # A truthy non-string ``revised`` used to pass validation and then
+        # reach ``_scripted_text``, where ``os.path.join`` raises instead of
+        # the promised controlled schema error.
+        bad = {"id": "X", "question": "q", "expect": {"outcome": "answer"},
+               "revised": []}
+        self.assertEqual(validate_case(bad),
+                         ["X: 'revised' must be a non-empty string"])
+
+    def test_validate_case_rejects_non_string_revised_in_turn(self):
+        bad = {"id": "X", "question": "q", "expect": {"outcome": "answer"},
+               "turns": [{"question": "q", "revised": []}]}
+        self.assertEqual(validate_case(bad),
+                         ["X: turns[0] 'revised' must be a non-empty string"])
+
+    def test_validate_case_accepts_string_revised(self):
+        ok = {"id": "X", "question": "q", "expect": {"outcome": "answer"},
+              "revised": "fixtures/scripted/E15-revised.txt",
+              "turns": [{"question": "q",
+                         "revised": "fixtures/scripted/E16-revised.txt"}]}
         self.assertEqual(validate_case(ok), [])
 
     def test_load_cases_raises_on_null_must_include(self):
