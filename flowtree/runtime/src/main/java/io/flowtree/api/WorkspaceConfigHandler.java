@@ -18,9 +18,9 @@ package io.flowtree.api;
 
 import fi.iki.elonen.NanoHTTPD;
 import fi.iki.elonen.NanoHTTPD.IHTTPSession;
+import fi.iki.elonen.NanoHTTPD.Method;
 import fi.iki.elonen.NanoHTTPD.Response;
 import io.flowtree.JsonFieldExtractor;
-import io.flowtree.jobs.agent.PhaseConfigBundle;
 
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
@@ -31,8 +31,11 @@ import io.flowtree.workstream.WorkstreamConfig;
 import io.flowtree.slack.SlackListener;
 
 /**
- * Handles the workspace config endpoint ({@code POST /api/workspaces/{id}/config})
- * for {@link FlowTreeApiEndpoint}.
+ * Handles the workspace config endpoints for {@link FlowTreeApiEndpoint}:
+ * {@code GET /api/workspaces/{id}/config} reads a workspace's non-credential
+ * configuration and {@code POST /api/workspaces/{id}/config} updates it. Both
+ * render their response through {@link WorkspaceEntry#appendPublicConfigJson},
+ * the single allowlist serialiser that keeps credential fields out of either.
  *
  * <p>The endpoint exposes a deliberately narrow set of {@link
  * WorkspaceEntry} fields:</p>
@@ -135,8 +138,11 @@ final class WorkspaceConfigHandler {
 
     /**
      * Returns a handled response when {@code uri} matches
-     * {@code /api/workspaces/{id}/config}; {@code null} when the URI is not
-     * for this handler. Callers chain this in their request dispatch.
+     * {@code /api/workspaces/{id}/config}; {@code null} when the URI is not for
+     * this handler, so the caller keeps dispatching. {@code GET} reads the
+     * workspace config and {@code POST} updates it; any other method on a
+     * matching URI is answered with a 400. Callers chain this in their request
+     * dispatch for both methods.
      *
      * @param uri     the HTTP request URI
      * @param session the HTTP session
@@ -147,8 +153,44 @@ final class WorkspaceConfigHandler {
                 || uri.length() <= URL_PREFIX.length() + URL_SUFFIX.length()) {
             return null;
         }
-        return handle(session, uri.substring(URL_PREFIX.length(),
-                uri.length() - URL_SUFFIX.length()));
+        String workspaceId = uri.substring(URL_PREFIX.length(),
+                uri.length() - URL_SUFFIX.length());
+        if (Method.GET.equals(session.getMethod())) {
+            return handleGet(workspaceId);
+        }
+        if (Method.POST.equals(session.getMethod())) {
+            return handle(session, workspaceId);
+        }
+        return errorResponse.apply(
+                "Unsupported method for " + URL_PREFIX + "{id}" + URL_SUFFIX
+                        + "; use GET to read or POST to update");
+    }
+
+    /**
+     * Handles {@code GET /api/workspaces/{id}/config}: returns the workspace's
+     * non-credential configuration without mutating anything.
+     *
+     * @param workspaceId the operator-chosen workspace id from the URL path
+     * @return a 200 JSON response with the allowlisted fields, or a 404 when
+     *         the workspace is unknown
+     */
+    private Response handleGet(String workspaceId) {
+        WorkspaceEntry entry = workspaceLookup.apply(workspaceId);
+        if (entry == null) {
+            return unknownWorkspace(workspaceId);
+        }
+        StringBuilder json = new StringBuilder();
+        entry.appendPublicConfigJson(json);
+        return NanoHTTPD.newFixedLengthResponse(Response.Status.OK,
+                "application/json", json.toString());
+    }
+
+    /** Builds the {@code 404} {@code {"ok":false,"error":"Unknown workspace: ..."}} response. */
+    private static Response unknownWorkspace(String workspaceId) {
+        String json = "{\"ok\":false,\"error\":\"Unknown workspace: "
+                + JsonFieldExtractor.escapeJson(workspaceId) + "\"}";
+        return NanoHTTPD.newFixedLengthResponse(Response.Status.NOT_FOUND,
+                "application/json", json);
     }
 
     /**
@@ -172,10 +214,7 @@ final class WorkspaceConfigHandler {
 
         WorkspaceEntry entry = workspaceLookup.apply(workspaceId);
         if (entry == null) {
-            String json = "{\"ok\":false,\"error\":\"Unknown workspace: "
-                    + JsonFieldExtractor.escapeJson(workspaceId) + "\"}";
-            return NanoHTTPD.newFixedLengthResponse(Response.Status.NOT_FOUND,
-                    "application/json", json);
+            return unknownWorkspace(workspaceId);
         }
 
         String name = JsonFieldExtractor.extractString(body, "name");
@@ -230,27 +269,7 @@ final class WorkspaceConfigHandler {
                         : " (renamed from " + workspaceId + ")"));
 
         StringBuilder json = new StringBuilder();
-        json.append("{\"ok\":true,\"workspaceId\":\"")
-                .append(JsonFieldExtractor.escapeJson(resolvedId))
-                .append("\"");
-        if (entry.getSlackTeamId() != null) {
-            json.append(",\"slackTeamId\":\"")
-                    .append(JsonFieldExtractor.escapeJson(entry.getSlackTeamId()))
-                    .append("\"");
-        }
-        if (entry.getName() != null) {
-            json.append(",\"name\":\"")
-                    .append(JsonFieldExtractor.escapeJson(entry.getName()))
-                    .append("\"");
-        }
-        if (entry.getDefaultChannel() != null) {
-            json.append(",\"defaultChannel\":\"")
-                    .append(JsonFieldExtractor.escapeJson(entry.getDefaultChannel()))
-                    .append("\"");
-        }
-        PhaseConfigBundle bundle = entry.toPhaseConfigBundle();
-        PhaseConfigResolver.appendBundleJson(json, bundle);
-        json.append("}");
+        entry.appendPublicConfigJson(json);
         return NanoHTTPD.newFixedLengthResponse(Response.Status.OK,
                 "application/json", json.toString());
     }
