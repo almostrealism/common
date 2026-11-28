@@ -371,12 +371,16 @@ public class JobCompletionEvent {
     }
 
     /**
-     * Sets the error message for this event.
-     * Intended for use by subclass factory methods.
+     * Sets the error message for this event. Used by subclass factory methods
+     * and by {@link JobStatsStore#rowToEvent} to restore the persisted
+     * {@code error_message} onto an event — such as a {@link Status#SUCCESS}
+     * event — whose factory does not take one, so a diagnostic summary (for
+     * example enforcement-rule retirement reasons) survives the database round
+     * trip.
      *
      * @param errorMessage the error message
      */
-    protected void setErrorMessage(String errorMessage) {
+    public void setErrorMessage(String errorMessage) {
         this.errorMessage = errorMessage;
     }
 

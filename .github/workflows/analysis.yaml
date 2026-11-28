@@ -2450,9 +2450,18 @@ jobs:
             | awk '{print "- repo working tree: " $1}' >> "$GITHUB_STEP_SUMMARY"
 
       - name: Build ar-manager image
-        run: docker build -f tools/mcp/manager/Dockerfile -t ar-manager:ci .
+        env:
+          # The commit the checkout above fetched. The build context has no
+          # .git, so the image learns it from this build argument, as in
+          # rebuild.sh; without it consult reports the corpus commit "unknown".
+          CORPUS_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          docker build --build-arg "CORPUS_COMMIT=${CORPUS_COMMIT}" \
+            -f tools/mcp/manager/Dockerfile -t ar-manager:ci .
 
       - name: Verify the documentation corpus reached the image
+        env:
+          CORPUS_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           # Assert the corpus is present and non-trivial. An empty or missing
           # corpus would leave memory_recall's documentation grounding silently
@@ -2470,6 +2479,14 @@ jobs:
             'find /app/docs-root -name "*.java" | wc -l')
           if [ "$LEAKED" -ne 0 ]; then
             echo "::error::${LEAKED} Java sources leaked into the image docs corpus."
+            exit 1
+          fi
+          # The snapshot index must record the commit passed as CORPUS_COMMIT.
+          RECORDED=$(docker run --rm --entrypoint python ar-manager:ci -c \
+            'import json, os; print(json.load(open(os.environ["AR_SNAPSHOT_INDEX"]))["corpus"]["commit"])')
+          echo "- corpus commit: $RECORDED" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$RECORDED" != "$CORPUS_COMMIT" ]; then
+            echo "::error::The image's snapshot index records corpus commit '${RECORDED}', expected '${CORPUS_COMMIT}'."
             exit 1
           fi
 
@@ -2490,6 +2507,67 @@ jobs:
 
       - name: Build ar-tracker image
         run: docker build -f tools/tracker/Dockerfile -t ar-tracker:ci tools/tracker
+
+  # ─── Deploy Rehearsal ──────────────────────────────────────────────
+  # Runs the deploy itself, short of touching a running stack: the exact
+  # `flowtree/runtime/rebuild.sh` the Deploy Controller Stack workflow runs,
+  # with --rehearse. That is the deploy's own Maven build, every image build
+  # with the deploy's flags (--no-cache --pull, controller stack and agent
+  # pool), and the deploy's own preflight, which starts ar-memory, ar-tracker,
+  # flowtree-controller and ar-manager from the new images and requires every
+  # healthcheck to pass. There is no second description of the deploy to
+  # drift from the first: a change to rebuild.sh, a compose file, a
+  # Dockerfile, a build context or anything an image imports is exercised
+  # here because it is exercised by the deploy.
+  #
+  # Unconditional on purpose. It carries no path gate: a path list is a guess
+  # at what the images depend on, and the guess is how a packaging break
+  # reaches the deploy. It runs in validate runs (All Checks) and in master's
+  # push run (Test Checks), and deploy.yaml refuses to deploy a master commit
+  # whose push run has no successful `Deploy rehearsal` job. It is skipped
+  # only in a deployment-started test run, whose head the validate run
+  # already rehearsed.
+  #
+  # ubuntu-24.04-arm: the deploy host builds linux/arm64 images, so the
+  # rehearsal builds for the same architecture. Uploads no coverage, so per
+  # the analysis.needs rule it is NOT in that list; it IS in all-checks.
+  deploy-rehearsal:
+    name: Deploy rehearsal
+    needs: changes
+    if: needs.changes.result == 'success' && github.event_name != 'deployment'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 90
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      # The deploy host (the native macOS ar-deploy runner) builds with its own
+      # installed JDK, never actions/setup-java, so the rehearsal does the same:
+      # it selects the JDK of the expected major the hosted image already ships
+      # through the shared select-jdk action. This also keeps the single hosted
+      # setup-java contract (test_self_hosted_jdk.py) intact on this arm runner.
+      - name: Select and verify JDK
+        uses: ./.github/actions/select-jdk
+        with:
+          expected-major: ${{ env.EXPECTED_JDK_MAJOR }}
+
+      - name: Restore Maven dependencies
+        uses: ./.github/actions/restore-maven-cache
+        with:
+          cache-version: ${{ env.HOSTED_MAVEN_CACHE_VERSION }}
+
+      - name: Rehearse the deploy
+        env:
+          # Every host path the stack uses lives under this scratch directory.
+          FLOWTREE_HOST_DIR: ${{ runner.temp }}/flowtree
+          FLOWTREE_CONTROLLER_ENV: ${{ runner.temp }}/flowtree/secrets/controller.env
+          FLOWTREE_AGENT_ENV: ${{ runner.temp }}/flowtree/secrets/agent.env
+          FLEET_BIND_ADDR: 127.0.0.1
+          DEPLOY_WAIT_TIMEOUT: '900'
+        run: ./flowtree/runtime/rebuild.sh --rehearse --agents
 
   # ─── Flowtree Tests ────────────────────────────────────────────────
   # Runs in parallel with the test matrix after the validation gates.
@@ -6034,6 +6112,7 @@ jobs:
       - python-evals
       - agent-volume-isolation
       - docker-build
+      - deploy-rehearsal
       - test-flowtree
       - agent-e2e-faults
       - test
@@ -6070,6 +6149,7 @@ jobs:
           PYTHON_EVALS_RESULT: ${{ needs.python-evals.result }}
           AGENT_VOLUME_ISOLATION_RESULT: ${{ needs.agent-volume-isolation.result }}
           DOCKER_BUILD_RESULT: ${{ needs.docker-build.result }}
+          DEPLOY_REHEARSAL_RESULT: ${{ needs.deploy-rehearsal.result }}
           TEST_FLOWTREE_RESULT: ${{ needs.test-flowtree.result }}
           AGENT_E2E_FAULTS_RESULT: ${{ needs.agent-e2e-faults.result }}
           TEST_RESULT: ${{ needs.test.result }}
@@ -6113,6 +6193,7 @@ jobs:
           check_job "python-evals"            "$PYTHON_EVALS_RESULT"
           check_job "agent-volume-isolation"  "$AGENT_VOLUME_ISOLATION_RESULT"
           check_job "docker-build"            "$DOCKER_BUILD_RESULT"
+          check_job "deploy-rehearsal"        "$DEPLOY_REHEARSAL_RESULT"
           check_job "test-flowtree"           "$TEST_FLOWTREE_RESULT"
           check_job "agent-e2e-faults"        "$AGENT_E2E_FAULTS_RESULT"
           check_job "test"                    "$TEST_RESULT"
@@ -6156,6 +6237,7 @@ jobs:
           echo "| python-evals | ${{ needs.python-evals.result }} |" >> "$GITHUB_STEP_SUMMARY"
           echo "| agent-volume-isolation | ${{ needs.agent-volume-isolation.result }} |" >> "$GITHUB_STEP_SUMMARY"
           echo "| docker-build | ${{ needs.docker-build.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| deploy-rehearsal | ${{ needs.deploy-rehearsal.result }} |" >> "$GITHUB_STEP_SUMMARY"
           echo "| test-flowtree | ${{ needs.test-flowtree.result }} |" >> "$GITHUB_STEP_SUMMARY"
           echo "| agent-e2e-faults | ${{ needs.agent-e2e-faults.result }} |" >> "$GITHUB_STEP_SUMMARY"
           echo "| test | ${{ needs.test.result }} |" >> "$GITHUB_STEP_SUMMARY"

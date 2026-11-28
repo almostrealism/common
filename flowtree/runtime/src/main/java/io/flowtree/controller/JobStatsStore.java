@@ -1162,6 +1162,14 @@ public class JobStatsStore extends ControllerDatabase {
      * {@code submitted_at} — on a {@code SUBMITTED} row, or on one cancelled before
      * it ever started — is that placeholder, and presenting it as a real start
      * would make a job that never ran look started.</p>
+     *
+     * <p>The persisted {@code error_message} is applied even to a status whose
+     * reconstruction factory does not take one, such as {@link JobCompletionEvent.Status#SUCCESS}:
+     * that column doubles as a diagnostic summary channel (enforcement-rule
+     * retirement reasons folded in by {@link CodingAgentJobEvent#forJob}, for
+     * one), and dropping it here would lose that summary every time the
+     * controller reloads the job. Statuses whose factory already set the
+     * message keep it.</p>
      */
     private JobCompletionEvent rowToEvent(ResultSet rs) throws SQLException {
         String jobId = rs.getString("job_id");
@@ -1190,6 +1198,12 @@ public class JobStatsStore extends ControllerDatabase {
                     rs.getBoolean("blocked_verified")));
         } else {
             event = new JobCompletionEvent(jobId, status, description);
+        }
+
+        // Restore the persisted error_message when the factory above did not
+        // set one (see javadoc); statuses that already carry it are untouched.
+        if (errorMessage != null && event.getErrorMessage() == null) {
+            event.setErrorMessage(errorMessage);
         }
 
         // Source the event time from the persisted row: completed_at when present,
