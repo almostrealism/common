@@ -268,8 +268,22 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 	private Supplier<Runnable> clockFollowsWindow(RealtimePositionWindow window,
 												  RealtimeRunnerOptions options, int[] consumerFrame) {
 		if (options == null) return new OperationList("No Clock Window");
-		return () -> () -> scene.getTimeManager().getClock().setFrame(
-				scene.getTimeManager().positionForFrame(window.position(consumerFrame[0])));
+		return () -> () -> syncClockToWindow(window, consumerFrame[0]);
+	}
+
+	/**
+	 * Moves the automation clock to the pattern position the window maps the given consumer
+	 * frame to. A {@link RealtimeRunner#retarget(long)} calls this directly so the clock is at
+	 * the new position the moment it returns — before the next tick's {@link #clockFollowsWindow}
+	 * synchronization runs — satisfying the retarget contract that the automation clock moves
+	 * with the render position even when no options (and so no per-tick synchronization) are set.
+	 *
+	 * @param window        the runner's position window
+	 * @param consumerFrame frames mixed since the last (re)start
+	 */
+	private void syncClockToWindow(RealtimePositionWindow window, int consumerFrame) {
+		scene.getTimeManager().getClock().setFrame(
+				scene.getTimeManager().positionForFrame(window.position(consumerFrame)));
 	}
 
 	/**
@@ -337,8 +351,9 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 			}
 
 			/**
-			 * Moves the render position. The CellList path renders inline in each tick, so
-			 * there is no ring to empty: the next tick renders at the new position.
+			 * Moves the render position and the automation clock with it. The CellList path
+			 * renders inline in each tick, so there is no ring to empty: the next tick renders
+			 * at the new position.
 			 */
 			@Override
 			public void retarget(long startFrame, Runnable whileStopped) {
@@ -346,6 +361,7 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 				window.setStartFrame(startFrame);
 				currentFrame[0] = 0;
 				ticks[0] = 0;
+				syncClockToWindow(window, currentFrame[0]);
 			}
 
 			/** Always {@code true}: this path renders inside the tick and never waits on a producer. */
@@ -640,9 +656,10 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 			/**
 			 * Stops the producer cooperatively (an in-flight render ends at its next note and
 			 * is never interrupted), moves the window so cursor frame {@code 0} is
-			 * {@code startFrame}, and restarts the producer with a one-buffer prefill. Both
-			 * cursors restart at {@code 0}; the mixdown sides keep their state. The optional
-			 * {@code whileStopped} action runs with no render in progress.
+			 * {@code startFrame}, moves the automation clock to that position, and restarts the
+			 * producer with a one-buffer prefill. Both cursors restart at {@code 0}; the mixdown
+			 * sides keep their state. The optional {@code whileStopped} action runs with no
+			 * render in progress.
 			 */
 			@Override
 			public void retarget(long startFrame, Runnable whileStopped) {
@@ -651,6 +668,7 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 				window.setStartFrame(startFrame);
 				renderFrame[0] = 0;
 				currentFrame[0] = 0;
+				syncClockToWindow(window, currentFrame[0]);
 				renderStream.start(1);
 			}
 

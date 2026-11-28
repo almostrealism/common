@@ -146,4 +146,70 @@ public class RealtimeRunnerWindowTest extends AudioSceneTestBase {
 			runner.destroy();
 		}
 	}
+
+	/**
+	 * A retarget moves the automation clock to the new position the moment it returns, before
+	 * the next tick runs, so a consumer that observes or mixes between the retarget and the next
+	 * tick reads the new automation time rather than the stale one. Checked for a looping window
+	 * after the clock has already advanced away from the target.
+	 */
+	@Test(timeout = 600_000)
+	public void retargetMovesClockImmediately() {
+		double loopFrames = BUFFER_SIZE * 2.5;
+
+		AudioScene<?> scene = createBaselineScene(getSamplesDir(), 2);
+		applyGenome(scene, GENOME_SEED);
+		WaveOutput out = new WaveOutput(() -> new File("results/runner-retarget-clock.wav"), 24, true);
+		RealtimeRunner runner = scene.runnerRealTime(new MultiChannelAudioOutput(out), List.of(0),
+				BUFFER_SIZE, new RealtimeRunnerOptions().loopFrames(loopFrames).renderAheadSlots(4));
+
+		try (out) {
+			RealtimePositionWindow window = runner.getWindow();
+			runner.setup().get().run();
+			Runnable tick = runner.tick().get();
+
+			tick.run();
+			tick.run();
+			Assert.assertNotEquals("the clock has advanced away from the target before the retarget",
+					scene.getTimeManager().positionForFrame(window.position(0)),
+					scene.getTimeManager().getClock().getFrame(), 0.0);
+
+			long target = 1500;
+			runner.retarget(target);
+			Assert.assertEquals("the clock moves to the target the moment retarget returns",
+					scene.getTimeManager().positionForFrame(window.position(0)),
+					scene.getTimeManager().getClock().getFrame(), 0.0);
+		} finally {
+			runner.destroy();
+		}
+	}
+
+	/**
+	 * A runner built without options keeps the free-running clock for its ticks, but a retarget
+	 * still moves the automation clock to the requested position: the retarget contract moves the
+	 * clock regardless of whether per-tick synchronization is configured.
+	 */
+	@Test(timeout = 600_000)
+	public void nullOptionsRetargetMovesClock() {
+		AudioScene<?> scene = createBaselineScene(getSamplesDir(), 2);
+		applyGenome(scene, GENOME_SEED);
+		WaveOutput out = new WaveOutput(() -> new File("results/runner-retarget-null.wav"), 24, true);
+		RealtimeRunner runner = scene.runnerRealTime(new MultiChannelAudioOutput(out),
+				List.of(0), BUFFER_SIZE, null);
+
+		try (out) {
+			RealtimePositionWindow window = runner.getWindow();
+			runner.setup().get().run();
+			Runnable tick = runner.tick().get();
+			tick.run();
+
+			long target = 1500;
+			runner.retarget(target);
+			Assert.assertEquals("a null-options retarget moves the clock to the target",
+					scene.getTimeManager().positionForFrame(window.position(0)),
+					scene.getTimeManager().getClock().getFrame(), 0.0);
+		} finally {
+			runner.destroy();
+		}
+	}
 }
