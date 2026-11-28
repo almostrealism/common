@@ -188,7 +188,10 @@ public abstract class AudioSceneTestBase extends TestSuiteBase implements CellFe
 	/** Minimum peak amplitude below which a rendered signal is considered silent. */
 	protected static final double SILENCE_THRESHOLD = 1e-4;
 
-	/** Every scene this test created through {@link #createBaselineScene(File, int)}. */
+	/**
+	 * Every scene this test created through {@link #createBaselineScene(File, int)} or
+	 * {@link #loadCuratedScene(File, File, double, int)}.
+	 */
 	private final List<AudioScene<?>> createdScenes = new ArrayList<>();
 
 	/**
@@ -295,6 +298,8 @@ public abstract class AudioSceneTestBase extends TestSuiteBase implements CellFe
 	 * persisted to {@link #SCENE_SETTINGS} on first load so every later run (and every later
 	 * session) reconstructs the identical arrangement.
 	 *
+	 * <p>The scene belongs to this test and is destroyed when the test finishes.</p>
+	 *
 	 * @param library        the recursive sample library root
 	 * @param patternFactory the curated pattern factory JSON
 	 * @param bpm            tempo for the scene
@@ -329,6 +334,7 @@ public abstract class AudioSceneTestBase extends TestSuiteBase implements CellFe
 				settings.exists() ? settings.getAbsolutePath() : null,
 				patternFactory.getAbsolutePath(),
 				library.getAbsolutePath(), bpm, SAMPLE_RATE);
+		createdScenes.add(scene);
 		scene.setTotalMeasures(totalMeasures);
 
 		if (!settings.exists()) {

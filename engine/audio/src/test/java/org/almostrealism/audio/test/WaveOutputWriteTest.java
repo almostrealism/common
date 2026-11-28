@@ -22,6 +22,7 @@ import org.almostrealism.audio.WavFile;
 import org.almostrealism.audio.data.WaveData;
 import org.almostrealism.audio.line.OutputLine;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
@@ -169,6 +170,47 @@ public class WaveOutputWriteTest extends TestSuiteBase implements CellFeatures {
 			}
 		} finally {
 			out.destroy();
+			wave.destroy();
+		}
+	}
+
+	/**
+	 * An output that allocates its own buffer releases that buffer when it is destroyed.
+	 * The channel producers refer to views of the buffer, and destroying a view does not
+	 * release the memory it delegates to, so the buffer itself must be released; otherwise
+	 * every such output leaves its whole timeline allocated until garbage collection, which
+	 * never comes while anything still reaches the output.
+	 */
+	@Test(timeout = 60000)
+	public void ownedBufferIsReleasedOnDestroy() {
+		int frames = 4096;
+		WaveOutput out = new WaveOutput(() -> null, 24, frames, true);
+		PackedCollection view = (PackedCollection) out.getChannelData(0).evaluate();
+		MemoryData buffer = view.getRootDelegate();
+
+		Assert.assertTrue("the channel view must delegate to the whole stereo buffer",
+				buffer.getMemLength() >= 2 * frames);
+		Assert.assertFalse(buffer.isDestroyed());
+
+		out.destroy();
+		Assert.assertTrue("destroying the output must release the buffer it allocated",
+				buffer.isDestroyed());
+	}
+
+	/**
+	 * An output given a caller's {@link WaveData} leaves it allocated when it is destroyed:
+	 * the buffer belongs to the caller, which may still read it.
+	 */
+	@Test(timeout = 60000)
+	public void suppliedBufferSurvivesDestroy() {
+		WaveData wave = new WaveData(2, 4096, OutputLine.sampleRate);
+		WaveOutput out = new WaveOutput(() -> null, 24, wave);
+
+		try {
+			out.destroy();
+			Assert.assertFalse("a caller's buffer must not be released by the output",
+					wave.getData().isDestroyed());
+		} finally {
 			wave.destroy();
 		}
 	}

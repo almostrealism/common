@@ -16,6 +16,7 @@
 
 package org.almostrealism.studio.pattern.test;
 
+import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.audio.WaveOutput;
@@ -298,24 +299,7 @@ public class AudioScenePdslCutoverTest extends AudioSceneTestBase {
 	 */
 	private double[][] renderStereoMasters(AudioScene<?> scene, int frames, int bufferSize,
 										   File outFile) throws IOException {
-		WaveOutput out = new WaveOutput(() -> outFile, 24, true);
-		MultiChannelAudioOutput output = new MultiChannelAudioOutput(out);
-		TemporalCellular runner = scene.runnerRealTime(output, null, bufferSize);
-
-		int bufferCount = (frames + bufferSize - 1) / bufferSize;
-		Runnable setup = runner.setup().get();
-		Runnable tick = runner.tick().get();
-		try {
-			setup.run();
-			for (int b = 0; b < bufferCount; b++) {
-				tick.run();
-			}
-			out.write().get().run();
-		} finally {
-			out.reset();
-			runner.reset();
-			runner.destroy();
-		}
+		renderToWav(scene, null, frames, bufferSize, outFile);
 
 		WaveData wav = WaveData.load(outFile);
 		try {
@@ -441,10 +425,29 @@ public class AudioScenePdslCutoverTest extends AudioSceneTestBase {
 		File outDir = new File("results/pdsl-cutover");
 		outDir.mkdirs();
 		WaveOutput sink = new WaveOutput(() -> new File(outDir, "automation_probe_sink.wav"), 24, true);
-		MultiChannelAudioOutput output = new MultiChannelAudioOutput(sink);
-		TemporalCellular runner = scene.runnerRealTime(output, null, 8192);
-		runner.setup().get().run();
+		TemporalCellular runner = null;
+		try {
+			MultiChannelAudioOutput output = new MultiChannelAudioOutput(sink);
+			runner = scene.runnerRealTime(output, null, 8192);
+			runner.setup().get().run();
+			logAutomationValues(scene, channelCount, seed);
+		} finally {
+			List<Runnable> releases = new ArrayList<>();
+			if (runner != null) releases.add(runner::destroy);
+			releases.add(sink::destroy);
+			Destroyable.releaseAll(releases);
+		}
+	}
 
+	/**
+	 * Logs the per-buffer automation slots and the time-varying efx producers of a scene whose
+	 * real-time runner has been set up, at a few probed clock frames.
+	 *
+	 * @param scene        the scene, with a genome applied and a runner set up
+	 * @param channelCount the number of channels in the scene
+	 * @param seed         the genome seed that was applied, for the log
+	 */
+	private void logAutomationValues(AudioScene<?> scene, int channelCount, long seed) {
 		MixdownManager mixdown = scene.getMixdownManager();
 		MixdownManagerPdslAdapter adapter = new MixdownManagerPdslAdapter(mixdown,
 				scene.getEfxManager(), new MixdownManagerPdslAdapter.Config(
@@ -732,11 +735,12 @@ public class AudioScenePdslCutoverTest extends AudioSceneTestBase {
 		File outDir = new File("results/pdsl-cutover");
 		outDir.mkdirs();
 		boolean prevPdsl = MixdownManager.enablePdslMixdown;
+		WaveOutput sink = new WaveOutput(() -> new File(outDir, "region_probe_sink.wav"), 24, true);
+		TemporalCellular runner = null;
 		try {
 			MixdownManager.enablePdslMixdown = true;
-			WaveOutput sink = new WaveOutput(() -> new File(outDir, "region_probe_sink.wav"), 24, true);
 			MultiChannelAudioOutput output = new MultiChannelAudioOutput(sink);
-			TemporalCellular runner = scene.runnerRealTime(output, null, REVIEW_BUFFER);
+			runner = scene.runnerRealTime(output, null, REVIEW_BUFFER);
 			runner.setup().get().run();
 
 			int channelCount = scene.getChannelCount();
@@ -828,6 +832,10 @@ public class AudioScenePdslCutoverTest extends AudioSceneTestBase {
 			runner.reset();
 		} finally {
 			MixdownManager.enablePdslMixdown = prevPdsl;
+			List<Runnable> releases = new ArrayList<>();
+			if (runner != null) releases.add(runner::destroy);
+			releases.add(sink::destroy);
+			Destroyable.releaseAll(releases);
 		}
 	}
 
@@ -1112,25 +1120,48 @@ public class AudioScenePdslCutoverTest extends AudioSceneTestBase {
 	 */
 	private double[] renderAndRead(AudioScene<?> scene, List<Integer> channels, int frames,
 								   int bufferSize, File outFile) throws IOException {
-		WaveOutput out = new WaveOutput(() -> outFile, 24, true);
-		MultiChannelAudioOutput output = new MultiChannelAudioOutput(out);
-		TemporalCellular runner = scene.runnerRealTime(output, channels, bufferSize);
+		renderToWav(scene, channels, frames, bufferSize, outFile);
+		return readWavSamples(outFile);
+	}
 
-		int bufferCount = (frames + bufferSize - 1) / bufferSize;
-		Runnable setup = runner.setup().get();
-		Runnable tick = runner.tick().get();
+	/**
+	 * Builds a real-time runner over the scene (respecting {@link MixdownManager#enablePdslMixdown}),
+	 * ticks it for {@code frames} frames and writes a stereo WAV. The runner and the output are
+	 * destroyed before returning, so every render releases the device memory it allocated rather
+	 * than leaving it to accumulate across the renders of a test class.
+	 *
+	 * @param scene      the scene to render
+	 * @param channels   channel indices, or {@code null} for all channels
+	 * @param frames     number of frames to render
+	 * @param bufferSize frames per buffer
+	 * @param outFile    destination WAV file
+	 */
+	private void renderToWav(AudioScene<?> scene, List<Integer> channels, int frames,
+							 int bufferSize, File outFile) {
+		WaveOutput out = new WaveOutput(() -> outFile, 24, true);
+		TemporalCellular runner = null;
 		try {
+			MultiChannelAudioOutput output = new MultiChannelAudioOutput(out);
+			runner = scene.runnerRealTime(output, channels, bufferSize);
+
+			int bufferCount = (frames + bufferSize - 1) / bufferSize;
+			Runnable setup = runner.setup().get();
+			Runnable tick = runner.tick().get();
 			setup.run();
 			for (int b = 0; b < bufferCount; b++) {
 				tick.run();
 			}
 			out.write().get().run();
 		} finally {
-			out.reset();
-			runner.reset();
+			List<Runnable> releases = new ArrayList<>();
+			releases.add(out::reset);
+			if (runner != null) {
+				releases.add(runner::reset);
+				releases.add(runner::destroy);
+			}
+			releases.add(out::destroy);
+			Destroyable.releaseAll(releases);
 		}
-
-		return readWavSamples(outFile);
 	}
 
 	/**
