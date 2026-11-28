@@ -26,7 +26,10 @@ import org.junit.Assert;
 import org.junit.Test;
 
 import java.io.BufferedReader;
+import java.io.IOException;
 import java.io.StringReader;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -34,6 +37,7 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
@@ -308,6 +312,93 @@ public class DockerNodeTest extends TestSuiteBase {
 				job.getCompletableFuture().isDone());
 	}
 
+	/** A job that cannot be encoded still completes its future and never reaches the launcher. */
+	@Test(timeout = 10000)
+	public void completesTheJobFutureWhenEncodingFails() {
+		StubLauncher launcher = new StubLauncher(StubSession.completing(0, null));
+		DockerNode node = new DockerNode(null, 4, 4, dockerConfig(), launcher);
+
+		StubJob job = new StubJob("task-encode-fail")
+				.failingToEncode(new IllegalStateException("cannot encode"));
+		try {
+			node.launch(job);
+			Assert.fail("an encoding failure must propagate");
+		} catch (Exception expected) {
+			// The failure propagates; the future is still completed below.
+		}
+
+		Assert.assertTrue("the host-side job future is completed even when encoding fails",
+				job.getCompletableFuture().isDone());
+		Assert.assertTrue("no container is started when the job cannot be encoded",
+				launcher.requests.isEmpty());
+	}
+
+	/** A launch registered after a kill for its task has been delivered is cancelled. */
+	@Test(timeout = 10000)
+	public void aLaunchRegisteredAfterAKillIsCancelled() {
+		StubLauncher launcher = new StubLauncher(StubSession.completing(0, null));
+		DockerNode node = new DockerNode(null, 4, 4, dockerConfig(), launcher);
+
+		node.sendKill("task-late", 0);
+
+		try {
+			node.launch(new StubJob("task-late"));
+			Assert.fail("a job for an already-cancelled task must not run");
+		} catch (Exception expected) {
+			Assert.assertTrue("the failure names the cancellation",
+					expected.getMessage().contains("cancelled"));
+		}
+
+		Assert.assertTrue("the cancelled launch never starts a container",
+				launcher.requests.isEmpty());
+	}
+
+	/** The container's output reader is closed once its output has been consumed. */
+	@Test(timeout = 10000)
+	public void closesTheContainerOutputReader() throws Exception {
+		StubSession session = StubSession.completing(0, null);
+		StubLauncher launcher = new StubLauncher(session);
+		DockerNode node = new DockerNode(null, 4, 4, dockerConfig(), launcher);
+
+		node.launch(new StubJob("task-reader"));
+
+		Assert.assertTrue("the container output reader is closed after it is consumed",
+				session.outputClosed.get());
+	}
+
+	/** The host transcript root is read from the deployment's transcript variable. */
+	@Test(timeout = 10000)
+	public void resolvesTranscriptRootFromDeploymentVariable() throws Exception {
+		StubLauncher launcher = new StubLauncher(StubSession.completing(0, null));
+		Map<String, String> environment = Map.of("TRANSCRIPT_DIR_HOST", "/host/transcripts");
+		DockerNode node = new DockerNode(null, 4, 4, dockerConfig(), launcher, environment);
+
+		node.launch(new StubJob("task-transcript"));
+
+		Assert.assertTrue("the per-job transcript dir sits under the configured root",
+				launcher.requests.get(0).transcriptHostDir().startsWith("/host/transcripts/"));
+	}
+
+	/** The real launcher pre-creates the per-launch transcript directory before docker runs. */
+	@Test(timeout = 10000)
+	public void launcherCreatesTheTranscriptDirectory() throws Exception {
+		Path root = Files.createTempDirectory("docker-node-transcript");
+		Path transcript = root.resolve("task-launch-nonce");
+		Assert.assertFalse("the transcript directory does not exist yet",
+				Files.exists(transcript));
+
+		ContainerRequest request = new ContainerRequest.Builder("flowtree-job-x", "flowtree/agent:test")
+				.transcript(transcript.toString(), DockerNode.TRANSCRIPT_MOUNT)
+				.command(List.of("java", CodingAgentJobWorker.class.getName()))
+				.encodedJob("payload")
+				.build();
+
+		new DockerCliContainerLauncher().prepareTranscriptDirectory(request);
+
+		Assert.assertTrue("the launcher creates the transcript directory before mounting it",
+				Files.isDirectory(transcript));
+	}
+
 	/** A missing image is reported at construction rather than failing opaquely later. */
 	@Test(timeout = 10000)
 	public void requiresAnImage() {
@@ -382,6 +473,9 @@ public class DockerNodeTest extends TestSuiteBase {
 		/** The container name, assigned when the launcher starts this session. */
 		private String name = "unnamed";
 
+		/** Set once the reader {@link #output()} handed out has been closed. */
+		private final AtomicBoolean outputClosed = new AtomicBoolean(false);
+
 		/**
 		 * @param output    the canned output, or {@code null} for none.
 		 * @param exitCode  the exit status to report.
@@ -423,7 +517,13 @@ public class DockerNodeTest extends TestSuiteBase {
 
 		@Override
 		public BufferedReader output() {
-			return new BufferedReader(new StringReader(output));
+			return new BufferedReader(new StringReader(output)) {
+				@Override
+				public void close() throws IOException {
+					outputClosed.set(true);
+					super.close();
+				}
+			};
 		}
 
 		@Override
@@ -454,11 +554,26 @@ public class DockerNodeTest extends TestSuiteBase {
 		/** The registered output consumer, or {@code null}. */
 		private Consumer<JobOutput> outputConsumer;
 
+		/** Thrown from {@link #encode()} when set, to simulate an encoding failure. */
+		private RuntimeException encodeFailure;
+
 		/**
 		 * @param taskId  the task identifier.
 		 */
 		private StubJob(String taskId) {
 			this.taskId = taskId;
+		}
+
+		/**
+		 * Makes this job's wire encoding fail, so a launch can be exercised against a job
+		 * that cannot be serialized.
+		 *
+		 * @param failure  the exception {@link #encode()} should throw.
+		 * @return  this job.
+		 */
+		private StubJob failingToEncode(RuntimeException failure) {
+			this.encodeFailure = failure;
+			return this;
 		}
 
 		@Override
@@ -472,6 +587,7 @@ public class DockerNodeTest extends TestSuiteBase {
 
 		@Override
 		public String encode() {
+			if (encodeFailure != null) throw encodeFailure;
 			return StubJob.class.getName() + "::id:=" + taskId;
 		}
 

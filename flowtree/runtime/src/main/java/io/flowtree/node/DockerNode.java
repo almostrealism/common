@@ -106,8 +106,13 @@ public class DockerNode extends Node {
 	 */
 	static final List<String> FORWARDED_ENV = List.of("FLOWTREE_ROOT_HOST", "FLOWTREE_ROOT_PORT");
 
-	/** Environment variable naming the host transcript root the per-job dir sits under. */
-	private static final String TRANSCRIPT_ROOT_ENV = "FLOWTREE_TRANSCRIPT_ROOT";
+	/**
+	 * Environment variable naming the host transcript root the per-job dir sits under.
+	 * This is the same variable the agent compose file and start scripts already use to
+	 * place transcripts, so a host Server launching containers reads the root the
+	 * deployment already configures rather than one nothing sets.
+	 */
+	private static final String TRANSCRIPT_ROOT_ENV = "TRANSCRIPT_DIR_HOST";
 
 	/** The host transcript root used when the environment names none. */
 	private static final String DEFAULT_TRANSCRIPT_ROOT = "/agent-transcripts";
@@ -154,6 +159,16 @@ public class DockerNode extends Node {
 	 * running the task, including one that is still being started.
 	 */
 	private final Map<String, Set<RunningContainer>> runningContainers = new ConcurrentHashMap<>();
+
+	/**
+	 * The task ids a kill has been delivered for, so a launch that registers its
+	 * container after {@link #sendKill(String, int)} has already scanned the task is
+	 * still marked cancelled rather than slipping through the scan and proceeding. An
+	 * entry is kept for the life of the Node because a task id names one logical task
+	 * for one factory, so a job dequeued later under a cancelled task id must also be
+	 * cancelled.
+	 */
+	private final Set<String> cancelledTasks = ConcurrentHashMap.newKeySet();
 
 	/**
 	 * Constructs a Docker Node that drives the real {@code docker} CLI. The node id is
@@ -228,7 +243,10 @@ public class DockerNode extends Node {
 	 * reports success or failure separately: here the separate signal is this method
 	 * throwing on a non-zero exit. The container executes the decoded copy of the job,
 	 * so the host-side job's own {@code run()} is never called and this is the only
-	 * place its future is completed.</p>
+	 * place its future is completed. The job is registered before the request is built,
+	 * and the request is built inside the guard, so a cancellation delivered while the
+	 * job is still being encoded is honoured and a failure to encode the job still
+	 * completes the future rather than leaving a caller waiting forever.</p>
 	 *
 	 * @param j  the job to run; never {@code null}.
 	 * @throws Exception  if the container fails to run the job to completion.
@@ -238,7 +256,6 @@ public class DockerNode extends Node {
 		String taskId = j.getTaskId();
 		String launchId = launchId(taskId);
 		String containerName = CONTAINER_NAME_PREFIX + launchId;
-		ContainerRequest request = buildRequest(j, containerName, launchId);
 
 		RunningContainer container = register(taskId, containerName);
 		try {
@@ -246,6 +263,8 @@ public class DockerNode extends Node {
 				throw new IOException("Task " + taskId + " was cancelled before container "
 						+ containerName + " started");
 			}
+
+			ContainerRequest request = buildRequest(j, containerName, launchId);
 
 			ContainerSession session = launcher.launch(request);
 			if (container.isCancelled()) launcher.kill(containerName);
@@ -274,7 +293,9 @@ public class DockerNode extends Node {
 	 * reaches a containerized agent. The base behaviour (dropping queued jobs and
 	 * broadcasting the kill) still runs first. Each container is marked cancelled
 	 * before it is killed, so a container the runtime had not yet created when this
-	 * kill ran is killed once it starts.
+	 * kill ran is killed once it starts. The task is also recorded as cancelled before
+	 * its containers are scanned, so a launch that registers concurrently — after the
+	 * scan but for the same task — still sees the cancellation when it registers.
 	 *
 	 * @param task   the task id of the jobs to cancel.
 	 * @param relay  the number of additional hops to relay the kill signal.
@@ -282,6 +303,8 @@ public class DockerNode extends Node {
 	@Override
 	public void sendKill(String task, int relay) {
 		super.sendKill(task, relay);
+
+		cancelledTasks.add(task);
 
 		Set<RunningContainer> containers = runningContainers.get(task);
 		if (containers == null) return;
@@ -296,7 +319,9 @@ public class DockerNode extends Node {
 
 	/**
 	 * Registers a container for a task before it is started, so a cancellation that
-	 * arrives during startup can find it.
+	 * arrives during startup can find it. If a kill has already been delivered for the
+	 * task, the new container is marked cancelled at once, closing the race where it
+	 * registers after {@link #sendKill(String, int)} has finished scanning the task.
 	 *
 	 * @param taskId         the task the container runs.
 	 * @param containerName  the container's unique name.
@@ -310,6 +335,7 @@ public class DockerNode extends Node {
 			set.add(container);
 			return set;
 		});
+		if (cancelledTasks.contains(taskId)) container.cancel();
 		return container;
 	}
 
@@ -354,7 +380,8 @@ public class DockerNode extends Node {
 	/**
 	 * Reads the container's output line by line until it ends, resetting the outer
 	 * silence guard on each line, ignoring heartbeats, and capturing the worker's
-	 * framed result line.
+	 * framed result line. The output reader is closed once consumed, so the process's
+	 * output pipe is not held open across repeated launches.
 	 *
 	 * @param session    the running container session.
 	 * @param container  the registration whose cancellation the guard re-applies.
@@ -381,6 +408,7 @@ public class DockerNode extends Node {
 			}
 		} finally {
 			guard.interrupt();
+			reader.close();
 		}
 
 		if (killed.get()) {

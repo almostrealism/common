@@ -23,6 +23,8 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -50,6 +52,8 @@ public class DockerCliContainerLauncher implements ContainerLauncher, ConsoleFea
 
 	@Override
 	public ContainerSession launch(ContainerRequest request) throws IOException {
+		prepareTranscriptDirectory(request);
+
 		ProcessBuilder builder = new ProcessBuilder(runCommand(request));
 		builder.redirectErrorStream(true);
 		Process process = builder.start();
@@ -115,6 +119,22 @@ public class DockerCliContainerLauncher implements ContainerLauncher, ConsoleFea
 			command.addAll(containerCommand.subList(1, containerCommand.size()));
 		}
 		return command;
+	}
+
+	/**
+	 * Creates the per-launch transcript directory on the host before the container is
+	 * started. Docker would otherwise create the missing bind-mount source itself, as
+	 * {@code root}, leaving it unwritable by the image's non-root {@code agent} user and
+	 * losing the transcript. Creating it here — as the host Server's own user, matching
+	 * what the agent start scripts do — keeps it writable by the worker.
+	 *
+	 * @param request  the container to start.
+	 * @throws IOException  if the directory cannot be created.
+	 */
+	void prepareTranscriptDirectory(ContainerRequest request) throws IOException {
+		if (request.transcriptHostDir() != null) {
+			Files.createDirectories(Path.of(request.transcriptHostDir()));
+		}
 	}
 
 	@Override
