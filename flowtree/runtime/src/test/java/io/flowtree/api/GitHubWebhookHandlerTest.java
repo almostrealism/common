@@ -213,6 +213,71 @@ public class GitHubWebhookHandlerTest extends TestSuiteBase {
         assertEquals(1, posted.size());
     }
 
+    /**
+     * A failed post that reports failure by returning {@code null} (the way
+     * Slack reports a rejected message, without throwing) returns
+     * {@link Outcome#FAILED} and releases the claim, so GitHub's redelivery is
+     * acted on once the post succeeds.
+     */
+    @Test(timeout = 30000)
+    public void postFailureWithoutThrowingReleasesClaim() {
+        SlackNotifier notifier = new SlackNotifier(null);
+        Workstream unresolvable = new Workstream("ws-nochannel", null, "#none");
+        unresolvable.setDefaultBranch(BRANCH);
+        unresolvable.setRepoUrl(REPO);
+        notifier.registerWorkstream(unresolvable);
+        NotifierRegistry nullChannel = new NotifierRegistry(notifier, null);
+        GitHubWebhookHandler failing = new GitHubWebhookHandler(nullChannel,
+                new RequestBodyReader(), new SlackEventDeduplicator(60000));
+        failing.setSecret(SECRET);
+        byte[] body = pullRequestPayload("closed", BRANCH, REPO, true);
+        String header = new GitHubWebhookSignature(SECRET).sign(body);
+        assertEquals(Outcome.FAILED, failing.accept("pull_request", "d-null", header, body));
+
+        notifier.setMessageCallback(posted::add);
+        notifier.getWorkstream("ws-nochannel").setChannelId(CHANNEL);
+        assertEquals(Outcome.POSTED, failing.accept("pull_request", "d-null", header, body));
+        assertEquals(1, posted.size());
+    }
+
+    /** A non-ping delivery with no delivery identifier is refused as malformed and posts nothing. */
+    @Test(timeout = 30000)
+    public void deliveryWithoutIdentifierIsRejected() {
+        byte[] body = pullRequestPayload("closed", BRANCH, REPO, true);
+        String header = new GitHubWebhookSignature(SECRET).sign(body);
+        assertEquals(Outcome.MALFORMED, handler.accept("pull_request", null, header, body));
+        assertEquals(Outcome.MALFORMED, handler.accept("pull_request", "  ", header, body));
+        assertTrue(posted.isEmpty());
+    }
+
+    /** A signed but empty body is answered malformed rather than parsing to a null payload. */
+    @Test(timeout = 30000)
+    public void emptyBodyIsMalformed() {
+        byte[] empty = new byte[0];
+        String header = new GitHubWebhookSignature(SECRET).sign(empty);
+        assertEquals(Outcome.MALFORMED, handler.accept("pull_request", "d-empty", header, empty));
+        assertTrue(posted.isEmpty());
+    }
+
+    /** A contributor-controlled title is escaped, so it cannot inject a Slack mention or markup. */
+    @Test(timeout = 30000)
+    public void titleWithSlackMarkupIsEscaped() {
+        String json = "{\"action\":\"closed\",\"number\":42,"
+                + "\"pull_request\":{\"number\":42,"
+                + "\"html_url\":\"https://github.com/example-org/example-repo/pull/42\","
+                + "\"title\":\"<!channel> & <b>\","
+                + "\"state\":\"closed\",\"merged\":true,"
+                + "\"merged_at\":\"2026-01-01T00:00:00Z\",\"merged_by\":{\"login\":\"merger\"},"
+                + "\"head\":{\"ref\":\"" + BRANCH + "\",\"repo\":{\"clone_url\":\"" + REPO + "\"}},"
+                + "\"base\":{\"ref\":\"master\"}},\"sender\":{\"login\":\"actor\"}}";
+        byte[] body = json.getBytes(StandardCharsets.UTF_8);
+        assertEquals(Outcome.POSTED, deliverSigned("d-escape", body));
+        assertEquals(1, posted.size());
+        String message = posted.get(0);
+        assertTrue(message, message.contains("&lt;!channel&gt; &amp; &lt;b&gt;"));
+        assertTrue(message, !message.contains("<!channel>"));
+    }
+
     /** A branch no workstream tracks is ignored without posting. */
     @Test(timeout = 30000)
     public void unmatchedBranchIsIgnored() {

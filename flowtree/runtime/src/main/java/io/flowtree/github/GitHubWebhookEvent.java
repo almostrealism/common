@@ -72,10 +72,16 @@ public record GitHubWebhookEvent(String eventType, JsonNode payload) {
      * @param eventType the {@code X-GitHub-Event} header value
      * @param body      the raw JSON body
      * @return the parsed event
-     * @throws IOException when the body is not JSON
+     * @throws IOException when the body is not JSON, is empty, or is not a
+     *         JSON object (Jackson returns a {@code null} tree for an empty
+     *         body rather than throwing)
      */
     public static GitHubWebhookEvent parse(String eventType, byte[] body) throws IOException {
-        return new GitHubWebhookEvent(eventType, MAPPER.readTree(body));
+        JsonNode payload = MAPPER.readTree(body);
+        if (payload == null || !payload.isObject()) {
+            throw new IOException("webhook body is not a JSON object");
+        }
+        return new GitHubWebhookEvent(eventType, payload);
     }
 
     /**

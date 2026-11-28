@@ -120,13 +120,35 @@ public record PullRequest(JsonNode json) {
      * Returns the pull request as a Slack mrkdwn link labelled with its number,
      * such as {@code <https://github.com/o/r/pull/7|PR #7>}, with the title appended.
      *
+     * <p>The title is contributor-controlled text, so it is escaped for Slack
+     * before being appended: a title such as {@code <!channel>} would otherwise
+     * notify the whole channel, and bare {@code <}/{@code >} would be read as
+     * link markup. The generated link markup itself is assembled from the
+     * already-safe URL and label, so it is left intact.</p>
+     *
      * @return the link, or the bare label when the URL is absent
      */
     public String slackLink() {
         String label = "PR #" + number();
         String url = htmlUrl();
         String link = url == null || url.isEmpty() ? label : "<" + url + "|" + label + ">";
-        return title().isEmpty() ? link : link + " (" + title() + ")";
+        return title().isEmpty() ? link : link + " (" + escapeSlackText(title()) + ")";
+    }
+
+    /**
+     * Escapes the three characters Slack reserves in message text, so
+     * contributor-controlled text cannot be read as a mention or as link
+     * markup. The ampersand is replaced first so the entities the others
+     * introduce are not re-escaped.
+     *
+     * @param text the raw text
+     * @return the text with {@code &}, {@code <} and {@code >} replaced by
+     *         their Slack HTML entities
+     */
+    private static String escapeSlackText(String text) {
+        return text.replace("&", "&amp;")
+                .replace("<", "&lt;")
+                .replace(">", "&gt;");
     }
 
     /**

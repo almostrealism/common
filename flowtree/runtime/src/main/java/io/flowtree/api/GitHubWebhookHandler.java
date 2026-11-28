@@ -217,6 +217,10 @@ public final class GitHubWebhookHandler implements ConsoleFeatures {
             return Outcome.BAD_SIGNATURE;
         }
         if (GitHubWebhookEvent.PING.equals(eventType)) return Outcome.PONG;
+        if (deliveryId == null || deliveryId.isBlank()) {
+            warn("GitHub webhook delivery refused: no " + GitHubWebhookEvent.DELIVERY_HEADER);
+            return Outcome.MALFORMED;
+        }
         if (!deliveries.claim(deliveryId)) return Outcome.DUPLICATE;
 
         GitHubWebhookEvent event;
@@ -237,13 +241,19 @@ public final class GitHubWebhookHandler implements ConsoleFeatures {
                     eventType, event.action(), event.headBranch(), event.headRepoUrl());
             return Outcome.IGNORED;
         }
-        // TODO(review): SlackNotifier.postMessage reports failure by returning null, not throwing, so FAILED/release never fires in production.
+        boolean posted;
         try {
-            notifiers.postWorkstreamNotice(workstreamId, message);
+            posted = notifiers.postWorkstreamNotice(workstreamId, message);
         } catch (RuntimeException e) {
             deliveries.release(deliveryId);
             warn("Failed to post GitHub " + eventType + "." + event.action()
                     + " to workstreamId=" + workstreamId, e);
+            return Outcome.FAILED;
+        }
+        if (!posted) {
+            deliveries.release(deliveryId);
+            warn("Slack did not accept GitHub " + eventType + "." + event.action()
+                    + " for workstreamId=" + workstreamId);
             return Outcome.FAILED;
         }
         log("Posted GitHub " + eventType + "." + event.action() + " to workstreamId=" + workstreamId);
