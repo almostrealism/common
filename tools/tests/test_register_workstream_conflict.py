@@ -64,8 +64,13 @@ class RegisterWorkstreamConflictWorkflowTests(unittest.TestCase):
         trigger = self.workflow[_ON]
         self.assertEqual(["pull_request_target"], list(trigger))
         self.assertEqual(["master"], trigger["pull_request_target"]["branches"])
-        # Covers a PR opened conflicted, reopened, or pushed to while conflicted.
-        self.assertIn("opened", trigger["pull_request_target"]["types"])
+        # Covers a PR opened conflicted, reopened, or pushed to while
+        # conflicted. Asserting the full set, not just "opened", keeps a later
+        # edit from dropping reopened or synchronize and silently leaving those
+        # conflicted PRs unregistered.
+        self.assertEqual(
+            {"opened", "reopened", "synchronize"},
+            set(trigger["pull_request_target"]["types"]))
 
     def test_it_checks_out_the_base_branch_not_the_pr(self):
         """The checkout must carry no `ref`: that takes the base branch, so the
