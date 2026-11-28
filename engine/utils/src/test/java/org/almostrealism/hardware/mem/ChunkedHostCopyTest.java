@@ -314,11 +314,14 @@ public class ChunkedHostCopyTest extends TestSuiteBase {
 	 * transfer buffer rather than through a heap array of the chunk's length, which at
 	 * {@link AbstractMemoryProvider#HOST_COPY_CHUNK_SIZE} is a G1 humongous object per chunk.
 	 * The bound is less than one chunk's worth of FP32 values across six extra chunks.
+	 *
+	 * <p>Only the Metal provider makes this guarantee. {@code CLMemoryProvider} still
+	 * converts each chunk through a heap array, so the test is skipped for it; extending the
+	 * bound to OpenCL is tracked as separate follow-up work.</p>
 	 */
 	@Test(timeout = 120000)
 	public void metalChunkedCopyHeapDoesNotGrowWithChunks() {
 		AbstractMemoryProvider<Memory> provider = kernelProvider();
-		// TODO(review): Metal-only; CLMemoryProvider keeps the same per-chunk float[] pattern and has no bound test.
 		Assume.assumeTrue("the bound is a property of the Metal provider, not " + provider.getName(),
 				MetalMemoryProvider.class.isInstance(provider));
 
@@ -335,16 +338,27 @@ public class ChunkedHostCopyTest extends TestSuiteBase {
 	/**
 	 * Returns the heap bytes the calling thread allocates while copying {@code length}
 	 * elements from a counting source into fresh memory of the given provider.
+	 *
+	 * <p>The JVM reports {@code -1} for thread allocation when tracking is disabled, which
+	 * would make every measurement compare equal; tracking is enabled here and a negative
+	 * reading fails the test rather than passing it vacuously.</p>
 	 */
 	private static long heapAllocatedByCopy(AbstractMemoryProvider<Memory> provider, int length) {
 		ThreadMXBean threads = (ThreadMXBean) ManagementFactory.getThreadMXBean();
+		Assert.assertTrue("thread allocation measurement is not supported by this JVM",
+				threads.isThreadAllocatedMemorySupported());
+		if (!threads.isThreadAllocatedMemoryEnabled()) threads.setThreadAllocatedMemoryEnabled(true);
+
 		CountingSource source = new CountingSource(length);
 		Memory dest = provider.allocate(length);
 
 		try {
 			long before = threads.getCurrentThreadAllocatedBytes();
 			provider.setMem(dest, 0, source, 0, length);
-			return threads.getCurrentThreadAllocatedBytes() - before;
+			long after = threads.getCurrentThreadAllocatedBytes();
+			Assert.assertTrue("thread allocation measurement unavailable: before=" + before + " after=" + after,
+					before >= 0 && after >= 0);
+			return after - before;
 		} finally {
 			provider.deallocate(length, dest);
 		}
